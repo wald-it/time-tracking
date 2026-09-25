@@ -330,18 +330,34 @@ export function monthWindow(year: number, month: number): { start: string; end: 
 }
 
 const ISO_TIMESTAMP =
-  /^\d{4}(?:-\d{2}(?:-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/i
+  /^(\d{4})(?:-(\d{2})(?:-(\d{2})(T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/
+
+/** Month and day exist in the calendar, read as written — before any offset shifts them. */
+function isCalendarDate(year: string, month?: string, day?: string): boolean {
+  if (month === undefined) return true
+  const m = Number(month)
+  if (m < 1 || m > 12) return false
+  if (day === undefined) return true
+  const d = Number(day)
+  return d >= 1 && d <= new Date(Date.UTC(Number(year), m, 0)).getUTCDate()
+}
 
 /**
  * Normalise a caller's range boundary to the stored `toISOString()` form.
  * `started_at` is compared as text, so a raw `+02:00` or millisecond-less
  * boundary would compare its local digits against the stored UTC digits
  * (#228). A date-time without a zone designator stays UTC, as it always
- * compared; anything that is not an ISO timestamp is rejected, not guessed.
+ * compared; anything that is not an ISO timestamp is rejected, not guessed —
+ * including a date Date.parse would silently roll over (2026-02-30).
  */
 function toStoredInstant(value: string, name: 'from' | 'to'): string {
-  const match = ISO_TIMESTAMP.exec(value)
-  const ms = match ? Date.parse(value.includes('T') && !match[1] ? `${value}Z` : value) : NaN
+  // Upper-case first so a lowercase `t`/`z` takes the same path as `T`/`Z`.
+  const upper = value.toUpperCase()
+  const match = ISO_TIMESTAMP.exec(upper)
+  const ms =
+    match && isCalendarDate(match[1], match[2], match[3])
+      ? Date.parse(match[4] && !match[5] ? `${upper}Z` : upper)
+      : NaN
   if (Number.isNaN(ms)) {
     throw new Error(
       `${name} must be an ISO timestamp such as 2026-06-01T10:00:00+02:00 or 2026-06-01T08:00:00Z, got "${value}"`

@@ -271,6 +271,46 @@ describe('query layer', () => {
     ).toEqual([100])
   })
 
+  it('listEntries treats a lowercase t separator like T (#228)', () => {
+    // The pattern is case-insensitive, so the no-zone check must be too —
+    // otherwise Date.parse reads '…t08:30:00' as local time. That is only
+    // visible off UTC, so pin a non-UTC zone (CI runs on UTC).
+    const previousTz = process.env.TZ
+    process.env.TZ = 'Asia/Kolkata'
+    try {
+      expect(
+        listEntries(
+          sdb,
+          HIDE,
+          { from: '2026-06-10t08:30:00', to: '2026-06-10t09:30:00' },
+          0
+        ).entries!.map((e) => e.id)
+      ).toEqual([100])
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ
+      else process.env.TZ = previousTz
+    }
+  })
+
+  it('listEntries rejects impossible calendar dates instead of rolling them over (#228)', () => {
+    // Date.parse turns 2026-02-30 into 2026-03-02 without complaint.
+    expect(() => listEntries(sdb, HIDE, { from: '2026-02-30' }, 0)).toThrow(/from/)
+    expect(() => listEntries(sdb, HIDE, { from: '2026-02-30T10:00:00Z' }, 0)).toThrow(/from/)
+    expect(() => listEntries(sdb, HIDE, { to: '2026-02-29' }, 0)).toThrow(/to/)
+    expect(() => listEntries(sdb, HIDE, { to: '2026-04-31T00:00:00+02:00' }, 0)).toThrow(/to/)
+    // Leap day, and a valid local date whose UTC date is the day before: the
+    // calendar check reads the date as written, not the converted instant.
+    expect(() => listEntries(sdb, HIDE, { from: '2028-02-29' }, 0)).not.toThrow()
+    expect(
+      listEntries(
+        sdb,
+        HIDE,
+        { from: '2026-06-10T01:00:00+02:00', to: '2026-06-10T12:00:00+02:00' },
+        0
+      ).entries!.map((e) => e.id)
+    ).toEqual([100])
+  })
+
   it('listEntries rejects a from/to that is not an ISO timestamp (#228)', () => {
     expect(() => listEntries(sdb, HIDE, { from: 'yesterday' }, 0)).toThrow(/from/)
     expect(() => listEntries(sdb, HIDE, { to: '2026-13-01' }, 0)).toThrow(/to/)

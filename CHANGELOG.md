@@ -17,7 +17,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
-- **MCP `list_entries`: `from`/`to` with a UTC offset now select the right entries (#228)** — The boundaries were compared as text against the stored UTC `started_at`, so `10:00+02:00` was read as 10:00 UTC and a sub-day window with an offset returned nothing; a whole-day window only worked by accident. A boundary without milliseconds (`…09:00:00Z`) also sorted after an entry starting at exactly that second. Both boundaries are now parsed as instants and normalised to the stored form, so `10:00+02:00` and `08:00Z` select the same rows. A date-time without an offset still counts as UTC, as before; a value that is not an ISO timestamp is now rejected with an error instead of being compared as arbitrary text.
+- **MCP `list_entries`: `from`/`to` with a UTC offset now select the right entries (#228)** — The boundaries were compared as text against the stored UTC `started_at`, so `10:00+02:00` was read as 10:00 UTC and a sub-day window with an offset returned nothing; a whole-day window only worked by accident. A boundary without milliseconds (`…09:00:00Z`) also sorted after an entry starting at exactly that second. Both boundaries are now parsed as instants and normalised to the stored form, so `10:00+02:00` and `08:00Z` select the same rows. A date-time without an offset still counts as UTC, as before; a value that is not an ISO timestamp, or names a date that does not exist (`2026-02-30`), is now rejected with an error instead of being compared as arbitrary text or rolled over into the next month.
 
 ## [1.19.0] — 2026-08-27
 
