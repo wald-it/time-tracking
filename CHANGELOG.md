@@ -13,6 +13,8 @@ All notable changes to TimeTrack are documented here.
 
   `start_timer` deliberately says nothing, although it also takes a `description`: its path does not run that validation, so no limit is enforced there. A documented limit nobody applies would be a promise the server does not keep — worse than saying nothing, because someone would rely on it.
 
+  The same validation enforces two more limits, now named as well (#226): `reference` at 200 characters in both write tools, and the 24-hour cap on an entry's span, stated on `stopped_at` because it constrains the distance to the start rather than either timestamp alone. A new test pins every stated figure to the constant that is actually enforced, so the literals in the schema can no longer drift unnoticed.
+
 ## [1.19.0] — 2026-08-27
 
 ### Changed
