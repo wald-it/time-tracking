@@ -465,11 +465,15 @@ jobs:
             gh release upload "$TAG" dist/* --clobber
             # electron-updater reads /releases/latest, and GitHub does not
             # reliably move that marker when a prerelease becomes a normal
-            # release. Only a release that was a prerelease gets --latest: a
-            # plain re-run of an older, complete release must not take the
-            # marker from a newer one.
+            # release. scripts/release-latest.mjs decides whether --latest is
+            # safe: only for a former prerelease that is now complete, and only
+            # if its tag is newer than the current latest release — completing
+            # v1.20.0 after v1.21.0 shipped must not move the marker back. A
+            # failed lookup leaves CURRENT_LATEST empty, which fails closed.
+            CURRENT_LATEST="$(gh release view --json tagName --jq '.tagName' 2>/dev/null || true)"
+            MARK_LATEST="$(TAG="$TAG" CURRENT_LATEST="$CURRENT_LATEST" WAS_PRERELEASE="$WAS_PRERELEASE" PRERELEASE="$PRERELEASE" node scripts/release-latest.mjs)"
             LATEST_FLAG=()
-            if [ "$WAS_PRERELEASE" = "true" ] && [ "$PRERELEASE" = "false" ]; then
+            if [ "$MARK_LATEST" = "true" ]; then
               LATEST_FLAG=(--latest)
             fi
             gh release edit "$TAG" --notes-file "$NOTES_FILE" --prerelease="$PRERELEASE" "${LATEST_FLAG[@]}"

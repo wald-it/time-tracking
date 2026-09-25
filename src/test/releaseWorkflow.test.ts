@@ -197,5 +197,81 @@ describe('release.yml wiring (#221)', () => {
       expect(editPath).toMatch(/isPrerelease/)
       expect(editPath).toContain('--latest')
     })
+
+    it('lets release-latest.mjs decide, against the current latest release', () => {
+      expect(editPath).toContain('node scripts/release-latest.mjs')
+      expect(editPath).toContain('CURRENT_LATEST')
+    })
+  })
+})
+
+const LATEST_SCRIPT = join(REPO_ROOT, 'scripts', 'release-latest.mjs')
+
+function runLatest(env: {
+  TAG: string
+  CURRENT_LATEST: string
+  WAS_PRERELEASE: string
+  PRERELEASE: string
+}): { status: number | null; stdout: string; stderr: string } {
+  const proc = spawnSync(process.execPath, [LATEST_SCRIPT], {
+    env: { ...process.env, ...env },
+    encoding: 'utf8'
+  })
+  return { status: proc.status, stdout: proc.stdout.trim(), stderr: proc.stderr }
+}
+
+describe('release-latest: may a completed prerelease take the latest marker? (#221)', () => {
+  const completed = { WAS_PRERELEASE: 'true', PRERELEASE: 'false' }
+
+  it('completing an older prerelease after a newer stable release sets no --latest', () => {
+    // v1.20.0 went out partial, v1.21.0 shipped stable, then v1.20.0 is
+    // re-run: moving the marker back would make electron-updater offer
+    // clients v1.20.0 instead of v1.21.0.
+    const r = runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.21.0' })
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout).toBe('false')
+  })
+
+  it('a completed prerelease newer than the current latest takes the marker', () => {
+    const r = runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.19.1' })
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout).toBe('true')
+  })
+
+  it('compares versions numerically, not as text', () => {
+    expect(runLatest({ ...completed, TAG: 'v1.10.0', CURRENT_LATEST: 'v1.9.3' }).stdout).toBe(
+      'true'
+    )
+    expect(runLatest({ ...completed, TAG: 'v1.9.3', CURRENT_LATEST: 'v1.10.0' }).stdout).toBe(
+      'false'
+    )
+  })
+
+  it('the tag that already is latest needs no --latest', () => {
+    expect(runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.20.0' }).stdout).toBe(
+      'false'
+    )
+  })
+
+  it('only a former prerelease that is now complete qualifies', () => {
+    const base = { TAG: 'v1.20.0', CURRENT_LATEST: 'v1.19.1' }
+    expect(runLatest({ ...base, WAS_PRERELEASE: 'false', PRERELEASE: 'false' }).stdout).toBe(
+      'false'
+    )
+    expect(runLatest({ ...base, WAS_PRERELEASE: 'true', PRERELEASE: 'true' }).stdout).toBe('false')
+  })
+
+  it('fails closed when the current latest release could not be read', () => {
+    const r = runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: '' })
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout).toBe('false')
+    expect(r.stderr).toMatch(/by hand/)
+  })
+
+  it('fails closed on a tag it cannot compare', () => {
+    const r = runLatest({ ...completed, TAG: 'v1.20.0-beta.1', CURRENT_LATEST: 'v1.19.1' })
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout).toBe('false')
+    expect(r.stderr).toMatch(/by hand/)
   })
 })
