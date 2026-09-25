@@ -305,9 +305,11 @@ export function buildServer(): McpServer {
         client_id: z.number().int().describe('Kunden-ID'),
         description: z.string().describe('Tätigkeitsbeschreibung. Max. 500 Zeichen.'),
         started_at: z.string().describe('Startzeit als ISO-Zeitstempel'),
-        stopped_at: z.string().describe('Endzeit als ISO-Zeitstempel'),
+        stopped_at: z
+          .string()
+          .describe('Endzeit als ISO-Zeitstempel. Max. 24 Stunden nach der Startzeit.'),
         tags: z.string().optional().describe("Serialisierte Tags, z. B. ',bug,ux,'"),
-        reference: z.string().optional().describe('Ticket/Referenz'),
+        reference: z.string().optional().describe('Ticket/Referenz. Max. 200 Zeichen.'),
         billable: z.boolean().optional().describe('Abrechenbar (Default true)'),
         private_note: z
           .string()
@@ -345,9 +347,12 @@ export function buildServer(): McpServer {
         client_id: z.number().int().optional().describe('Neuer Kunde'),
         description: z.string().optional().describe('Neue Beschreibung. Max. 500 Zeichen.'),
         started_at: z.string().optional().describe('Neue Startzeit (ISO)'),
-        stopped_at: z.string().optional().describe('Neue Endzeit (ISO)'),
+        stopped_at: z
+          .string()
+          .optional()
+          .describe('Neue Endzeit (ISO). Max. 24 Stunden nach der Startzeit.'),
         tags: z.string().optional().describe("Neue Tags, z. B. ',bug,'"),
-        reference: z.string().optional().describe('Neue Referenz'),
+        reference: z.string().optional().describe('Neue Referenz. Max. 200 Zeichen.'),
         billable: z.boolean().optional().describe('Abrechenbar'),
         private_note: z.string().optional().describe('Interne Notiz. Max. 1000 Zeichen.'),
         project_id: z.number().int().nullable().optional().describe('Projekt-ID oder null'),
