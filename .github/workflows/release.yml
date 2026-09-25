@@ -346,8 +346,23 @@ jobs:
             dist/latest-mac.yml
           if-no-files-found: error
 
+  # #221: one failed build job no longer discards what the others built. Until
+  # v1.19.0 this job needed all three to succeed, so a green, smoke-tested
+  # installer went down with an unrelated platform (v1.18.0: the plugin job;
+  # v1.19.0: the macOS job) and had to be rebuilt on a new tag.
+  #
+  # It now runs once the tag is valid and at least one installer exists; a
+  # release with nothing to install is not published. How a partial release is
+  # marked is decided in scripts/release-plan.mjs: a missing installer makes it
+  # a prerelease (electron-updater ignores those, so no client is offered a
+  # version whose update feed is missing), a missing plugin alone does not.
+  #
+  # `!cancelled()` rather than `always()`: a run the owner cancels still
+  # publishes nothing. Without any status function GitHub adds an implicit
+  # `success()`, which is the old all-or-nothing behaviour.
   publish-release:
-    needs: [build-windows, build-macos, pack-streamdeck]
+    needs: [prepare, build-windows, build-macos, pack-streamdeck]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-windows.result == 'success' || needs.build-macos.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -356,13 +371,17 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
+      # #221: each download only runs for a job that succeeded — a failed job
+      # uploaded nothing, and a missing artifact would fail this job too.
       - name: Download installer artifact
+        if: needs.build-windows.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: timetrack-windows-installer
           path: dist
 
       - name: Download macOS artifacts
+        if: needs.build-macos.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: timetrack-macos
@@ -371,6 +390,7 @@ jobs:
       # #192: lands in dist/ like the installers and is uploaded by the same
       # `dist/*` glob below — double-click installs it into the Stream Deck app.
       - name: Download Stream Deck plugin artifact
+        if: needs.pack-streamdeck.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: timetrack-streamdeck-plugin
@@ -380,14 +400,25 @@ jobs:
         id: tag
         run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
+      - name: Plan release (complete or partial)
+        id: plan
+        env:
+          WINDOWS_RESULT: ${{ needs.build-windows.result }}
+          MACOS_RESULT: ${{ needs.build-macos.result }}
+          STREAMDECK_RESULT: ${{ needs.pack-streamdeck.result }}
+          NOTICE_FILE: ${{ runner.temp }}/release-notice.md
+        run: node scripts/release-plan.mjs
+
       - name: Create / update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ steps.plan.outputs.prerelease }}
         run: |
           set -euo pipefail
           TAG="${{ steps.tag.outputs.name }}"
           VERSION="${TAG#v}"
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          NOTICE_FILE="$RUNNER_TEMP/release-notice.md"
 
           # #137: Build the release body from the matching CHANGELOG.md section
           # — everything between the "## [VERSION]" heading and the next "## ["
@@ -417,13 +448,21 @@ jobs:
               -f tag_name="$TAG" --jq '.body' > "$NOTES_FILE"
           fi
 
+          # #221: a partial release opens with a notice naming what is missing
+          # (empty for a complete release).
+          cat "$NOTICE_FILE" "$NOTES_FILE" > "$NOTES_FILE.tmp"
+          mv "$NOTES_FILE.tmp" "$NOTES_FILE"
+
+          # The flag is set on both paths: a re-run that completes a partial
+          # release also lifts its prerelease mark.
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists — updating body and re-uploading assets."
-            gh release edit "$TAG" --notes-file "$NOTES_FILE"
+            gh release edit "$TAG" --notes-file "$NOTES_FILE" --prerelease="$PRERELEASE"
             gh release upload "$TAG" dist/* --clobber
           else
             gh release create "$TAG" \
               --title "TimeTrack $TAG" \
               --notes-file "$NOTES_FILE" \
+              --prerelease="$PRERELEASE" \
               dist/*
           fi
