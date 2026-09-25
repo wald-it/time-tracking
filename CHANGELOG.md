@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [1.20.0] — 2026-09-25
+
 ### Changed
 
 - **MCP write tools name the field limits they enforce** — The write bridge rejects a `description` over 500 characters and a `private_note` over 1000, but nothing said so before the call. The limits live in `validateManualEntry`, which the tool schemas never mentioned, so a consumer met them as an error after composing the text — and an AI client had no way to trim beforehand. `create_manual_entry` and `update_entry_fields` now carry both numbers in their parameter descriptions.
