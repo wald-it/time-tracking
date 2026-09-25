@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to TimeTrack are documented here.
 
@@ -14,6 +14,10 @@ All notable changes to TimeTrack are documented here.
   `start_timer` deliberately says nothing, although it also takes a `description`: its path does not run that validation, so no limit is enforced there. A documented limit nobody applies would be a promise the server does not keep — worse than saying nothing, because someone would rely on it.
 
   The same validation enforces two more limits, now named as well (#226): `reference` at 200 characters in both write tools, and the 24-hour cap on an entry's span, stated on `stopped_at` because it constrains the distance to the start rather than either timestamp alone. A new test pins every stated figure to the constant that is actually enforced, so the literals in the schema can no longer drift unnoticed.
+
+- **A failed build job no longer discards the rest of the release (#221)** — The release workflow published only when all three build jobs succeeded. One red job skipped the publish, and a green, smoke-tested installer went down with an unrelated platform — v1.18.0 lost its installers to the Stream Deck plugin job, v1.19.0 lost the Windows installer and the plugin to the macOS job. Each time the work had to be redone on a new tag.
+
+  The release now publishes what was built, as long as the tag is valid and at least one installer exists, and the release notes open with a warning naming what is missing. A missing installer makes it a **prerelease**: electron-updater ignores prereleases, so no client is offered a version whose update feed (`latest.yml` / `latest-mac.yml`) is not on the release. A missing Stream Deck plugin alone keeps it a normal release, since no update feed depends on it. A re-run that completes the release first uploads the missing files, then lifts the prerelease mark — and marks it as the latest release only if no newer release has shipped in the meantime; otherwise the mark is lifted by hand.
 
 ### Fixed
 
