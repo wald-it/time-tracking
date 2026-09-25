@@ -172,4 +172,30 @@ describe('release.yml wiring (#221)', () => {
     const flagUses = job.match(/--prerelease="\$PRERELEASE"/g) ?? []
     expect(flagUses.length).toBe(2)
   })
+
+  describe('re-run on an existing release', () => {
+    const editPath = (() => {
+      const from = job.indexOf('if gh release view "$TAG"')
+      const to = job.indexOf('\n          else\n', from)
+      return from >= 0 && to > from ? job.slice(from, to) : ''
+    })()
+
+    it('uploads the assets before it changes the release', () => {
+      // Lifting the prerelease mark first would show stable clients a release
+      // whose update feed is not uploaded yet — and leave it that way if the
+      // upload fails or the run is cancelled in between.
+      const upload = editPath.indexOf('gh release upload "$TAG"')
+      const edit = editPath.indexOf('gh release edit "$TAG"')
+      expect(upload, 'upload step not found').toBeGreaterThanOrEqual(0)
+      expect(edit, 'edit step not found').toBeGreaterThanOrEqual(0)
+      expect(upload).toBeLessThan(edit)
+    })
+
+    it('marks a completed former prerelease as latest', () => {
+      // electron-updater reads /releases/latest, and GitHub does not reliably
+      // move that marker when a prerelease is turned into a normal release.
+      expect(editPath).toMatch(/isPrerelease/)
+      expect(editPath).toContain('--latest')
+    })
+  })
 })

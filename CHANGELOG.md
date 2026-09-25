@@ -17,7 +17,7 @@ All notable changes to TimeTrack are documented here.
 
 - **A failed build job no longer discards the rest of the release (#221)** — The release workflow published only when all three build jobs succeeded. One red job skipped the publish, and a green, smoke-tested installer went down with an unrelated platform — v1.18.0 lost its installers to the Stream Deck plugin job, v1.19.0 lost the Windows installer and the plugin to the macOS job. Each time the work had to be redone on a new tag.
 
-  The release now publishes what was built, as long as the tag is valid and at least one installer exists, and the release notes open with a warning naming what is missing. A missing installer makes it a **prerelease**: electron-updater ignores prereleases, so no client is offered a version whose update feed (`latest.yml` / `latest-mac.yml`) is not on the release. A missing Stream Deck plugin alone keeps it a normal release, since no update feed depends on it. A re-run that completes the release lifts the prerelease mark; otherwise it is lifted by hand.
+  The release now publishes what was built, as long as the tag is valid and at least one installer exists, and the release notes open with a warning naming what is missing. A missing installer makes it a **prerelease**: electron-updater ignores prereleases, so no client is offered a version whose update feed (`latest.yml` / `latest-mac.yml`) is not on the release. A missing Stream Deck plugin alone keeps it a normal release, since no update feed depends on it. A re-run that completes the release first uploads the missing files, then lifts the prerelease mark and marks it as the latest release; otherwise the mark is lifted by hand.
 
 ### Fixed
 

@@ -456,9 +456,23 @@ jobs:
           # The flag is set on both paths: a re-run that completes a partial
           # release also lifts its prerelease mark.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists — updating body and re-uploading assets."
-            gh release edit "$TAG" --notes-file "$NOTES_FILE" --prerelease="$PRERELEASE"
+            echo "Release $TAG already exists — re-uploading assets, then updating body and flags."
+            WAS_PRERELEASE="$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease')"
+            # Upload first: lifting the prerelease mark before the missing
+            # installers and latest*.yml are attached would show stable
+            # clients a release without an update feed — and leave it so if
+            # the upload fails or the run is cancelled in between.
             gh release upload "$TAG" dist/* --clobber
+            # electron-updater reads /releases/latest, and GitHub does not
+            # reliably move that marker when a prerelease becomes a normal
+            # release. Only a release that was a prerelease gets --latest: a
+            # plain re-run of an older, complete release must not take the
+            # marker from a newer one.
+            LATEST_FLAG=()
+            if [ "$WAS_PRERELEASE" = "true" ] && [ "$PRERELEASE" = "false" ]; then
+              LATEST_FLAG=(--latest)
+            fi
+            gh release edit "$TAG" --notes-file "$NOTES_FILE" --prerelease="$PRERELEASE" "${LATEST_FLAG[@]}"
           else
             gh release create "$TAG" \
               --title "TimeTrack $TAG" \
