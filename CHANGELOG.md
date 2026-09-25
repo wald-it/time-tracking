@@ -15,6 +15,10 @@ All notable changes to TimeTrack are documented here.
 
   The same validation enforces two more limits, now named as well (#226): `reference` at 200 characters in both write tools, and the 24-hour cap on an entry's span, stated on `stopped_at` because it constrains the distance to the start rather than either timestamp alone. A new test pins every stated figure to the constant that is actually enforced, so the literals in the schema can no longer drift unnoticed.
 
+### Fixed
+
+- **MCP `list_entries`: `from`/`to` with a UTC offset now select the right entries (#228)** — The boundaries were compared as text against the stored UTC `started_at`, so `10:00+02:00` was read as 10:00 UTC and a sub-day window with an offset returned nothing; a whole-day window only worked by accident. A boundary without milliseconds (`…09:00:00Z`) also sorted after an entry starting at exactly that second. Both boundaries are now parsed as instants and normalised to the stored form, so `10:00+02:00` and `08:00Z` select the same rows. A date-time without an offset still counts as UTC, as before; a value that is not an ISO timestamp is now rejected with an error instead of being compared as arbitrary text.
+
 ## [1.19.0] — 2026-08-27
 
 ### Changed

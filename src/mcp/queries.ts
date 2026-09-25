@@ -329,6 +329,27 @@ export function monthWindow(year: number, month: number): { start: string; end: 
   return { start, end }
 }
 
+const ISO_TIMESTAMP =
+  /^\d{4}(?:-\d{2}(?:-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?)?)?$/i
+
+/**
+ * Normalise a caller's range boundary to the stored `toISOString()` form.
+ * `started_at` is compared as text, so a raw `+02:00` or millisecond-less
+ * boundary would compare its local digits against the stored UTC digits
+ * (#228). A date-time without a zone designator stays UTC, as it always
+ * compared; anything that is not an ISO timestamp is rejected, not guessed.
+ */
+function toStoredInstant(value: string, name: 'from' | 'to'): string {
+  const match = ISO_TIMESTAMP.exec(value)
+  const ms = match ? Date.parse(value.includes('T') && !match[1] ? `${value}Z` : value) : NaN
+  if (Number.isNaN(ms)) {
+    throw new Error(
+      `${name} must be an ISO timestamp such as 2026-06-01T10:00:00+02:00 or 2026-06-01T08:00:00Z, got "${value}"`
+    )
+  }
+  return new Date(ms).toISOString()
+}
+
 export function listEntries(
   db: SqliteDb,
   privacy: PrivacyConfig,
@@ -338,12 +359,15 @@ export function listEntries(
   const filters = ['deleted_at IS NULL']
   const params: unknown[] = []
 
-  let from = opts.from
-  let to = opts.to
+  let from: string | undefined
+  let to: string | undefined
   if (typeof opts.year === 'number' && typeof opts.month === 'number') {
     const w = monthWindow(opts.year, opts.month)
     from = w.start
     to = w.end
+  } else {
+    from = opts.from ? toStoredInstant(opts.from, 'from') : undefined
+    to = opts.to ? toStoredInstant(opts.to, 'to') : undefined
   }
   if (from) {
     filters.push('started_at >= ?')

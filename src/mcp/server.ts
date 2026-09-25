@@ -173,8 +173,18 @@ export function buildServer(): McpServer {
       inputSchema: {
         year: z.number().int().optional().describe('Jahr (mit month kombinieren)'),
         month: z.number().int().min(1).max(12).optional().describe('Monat 1–12 (mit year)'),
-        from: z.string().optional().describe('Start ISO-Zeitstempel (inklusive)'),
-        to: z.string().optional().describe('Ende ISO-Zeitstempel (exklusiv)'),
+        from: z
+          .string()
+          .optional()
+          .describe(
+            'Start ISO-Zeitstempel (inklusive), mit Offset oder Z, z. B. 2026-06-01T10:00:00+02:00; ohne Offset gilt UTC'
+          ),
+        to: z
+          .string()
+          .optional()
+          .describe(
+            'Ende ISO-Zeitstempel (exklusiv), mit Offset oder Z, z. B. 2026-06-01T12:00:00+02:00; ohne Offset gilt UTC'
+          ),
         client_id: z.number().int().optional().describe('Nach Kunde filtern'),
         project_id: z.number().int().optional().describe('Nach Projekt filtern'),
         tag: z.string().optional().describe('Nach exaktem Tag filtern'),

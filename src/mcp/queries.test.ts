@@ -230,6 +230,52 @@ describe('query layer', () => {
     expect(res.total_seconds).toBe(7200)
   })
 
+  it('listEntries compares from/to as instants, whatever the offset (#228)', () => {
+    // Entry 100 runs 09:00–10:00Z, i.e. 11:00–12:00 at +02:00. A sub-day
+    // window with an offset must select it exactly like the same window in Z.
+    const now = Date.parse('2026-06-13T09:30:00.000Z')
+    const ids = (from: string, to: string): number[] =>
+      listEntries(sdb, HIDE, { from, to }, now).entries!.map((e) => e.id)
+
+    expect(ids('2026-06-10T08:30:00Z', '2026-06-10T09:30:00Z')).toEqual([100])
+    expect(ids('2026-06-10T10:30:00+02:00', '2026-06-10T11:30:00+02:00')).toEqual([100])
+    expect(ids('2026-06-10T04:30:00-04:30', '2026-06-10T05:30:00-04:30')).toEqual([100])
+    // An offset window that lies before the entry as an instant must stay
+    // empty, even though its local hour (09:xx) matches the stored UTC hour.
+    expect(ids('2026-06-10T09:00:00+02:00', '2026-06-10T09:59:00+02:00')).toEqual([])
+  })
+
+  it('listEntries treats a boundary without milliseconds as the same instant (#228)', () => {
+    // '…09:00:00Z' sorts after the stored '…09:00:00.000Z' as text; as an
+    // instant it is equal, so the inclusive start must still match.
+    const res = listEntries(
+      sdb,
+      HIDE,
+      { from: '2026-06-10T09:00:00Z', to: '2026-06-10T09:00:01Z' },
+      0
+    )
+    expect(res.entries!.map((e) => e.id)).toEqual([100])
+  })
+
+  it('listEntries keeps the date-only and offset-less forms on UTC (#228)', () => {
+    expect(
+      listEntries(sdb, HIDE, { from: '2026-06-10', to: '2026-06-11' }, 0).entries!.map((e) => e.id)
+    ).toEqual([100])
+    expect(
+      listEntries(
+        sdb,
+        HIDE,
+        { from: '2026-06-10T08:30:00', to: '2026-06-10T09:30:00' },
+        0
+      ).entries!.map((e) => e.id)
+    ).toEqual([100])
+  })
+
+  it('listEntries rejects a from/to that is not an ISO timestamp (#228)', () => {
+    expect(() => listEntries(sdb, HIDE, { from: 'yesterday' }, 0)).toThrow(/from/)
+    expect(() => listEntries(sdb, HIDE, { to: '2026-13-01' }, 0)).toThrow(/to/)
+  })
+
   it('listClients filters by name and contact person (#205)', () => {
     // Substring, case-insensitive; archived clients need include_archived.
     expect(listClients(sdb, HIDE, { name: 'acm' }).map((c) => c.name)).toEqual(['Acme'])
