@@ -170,8 +170,10 @@ export function EntryEditForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 text-sm">
-      <div className="grid grid-cols-3 gap-2">
-        <label className="flex flex-col gap-1">
+      {/* Date on a row of its own: in the day panel a third of the width is
+          too narrow for a mono date or time plus the picker icon. */}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="col-span-2 flex flex-col gap-1">
           <span className={FIELD_LABEL}>{t('entry.date')}</span>
           <input
             type="date"
