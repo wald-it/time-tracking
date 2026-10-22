@@ -407,12 +407,23 @@ jobs:
           MACOS_RESULT: ${{ needs.build-macos.result }}
           STREAMDECK_RESULT: ${{ needs.pack-streamdeck.result }}
           NOTICE_FILE: ${{ runner.temp }}/release-notice.md
-        run: node scripts/release-plan.mjs
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.name }}
+        # #234: on a re-run this plan is provisional (no ::warning:: yet) —
+        # the update path re-plans from the attached assets.
+        run: |
+          RELEASE_EXISTS=false
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then RELEASE_EXISTS=true; fi
+          RELEASE_EXISTS="$RELEASE_EXISTS" node scripts/release-plan.mjs
 
       - name: Create / update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRERELEASE: ${{ steps.plan.outputs.prerelease }}
+          # #234: the re-run path plans again, from the attached assets.
+          WINDOWS_RESULT: ${{ needs.build-windows.result }}
+          MACOS_RESULT: ${{ needs.build-macos.result }}
+          STREAMDECK_RESULT: ${{ needs.pack-streamdeck.result }}
         run: |
           set -euo pipefail
           TAG="${{ steps.tag.outputs.name }}"
@@ -449,9 +460,13 @@ jobs:
           fi
 
           # #221: a partial release opens with a notice naming what is missing
-          # (empty for a complete release).
-          cat "$NOTICE_FILE" "$NOTES_FILE" > "$NOTES_FILE.tmp"
-          mv "$NOTES_FILE.tmp" "$NOTES_FILE"
+          # (empty for a complete release). Composed per path below: the
+          # re-run path rewrites the notice after it has re-planned.
+          CHANGELOG_NOTES="$RUNNER_TEMP/release-notes-changelog.md"
+          mv "$NOTES_FILE" "$CHANGELOG_NOTES"
+          compose_notes() {
+            cat "$NOTICE_FILE" "$CHANGELOG_NOTES" > "$NOTES_FILE"
+          }
 
           # The flag is set on both paths: a re-run that completes a partial
           # release also lifts its prerelease mark.
@@ -463,6 +478,23 @@ jobs:
             # clients a release without an update feed — and leave it so if
             # the upload fails or the run is cancelled in between.
             gh release upload "$TAG" dist/* --clobber
+            # #234: this run's job results describe the re-run, not the
+            # release. --clobber removes nothing, so a job that fails now
+            # leaves the first run's installers and latest*.yml attached;
+            # planning from the job results alone would demote a complete
+            # release to a prerelease and withdraw it from stable updates.
+            # Plan again from what is attached after the upload. A failed
+            # lookup aborts the step (set -e) before the release is edited.
+            RELEASE_ASSETS="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+            PLAN_OUTPUT="$RUNNER_TEMP/release-plan-rerun.txt"
+            : > "$PLAN_OUTPUT"
+            RELEASE_ASSETS="$RELEASE_ASSETS" GITHUB_OUTPUT="$PLAN_OUTPUT" NOTICE_FILE="$NOTICE_FILE" node scripts/release-plan.mjs
+            PRERELEASE="$(sed -n 's/^prerelease=//p' "$PLAN_OUTPUT")"
+            if [ "$PRERELEASE" != "true" ] && [ "$PRERELEASE" != "false" ]; then
+              echo "::error::Re-plan from the attached assets gave prerelease='$PRERELEASE'."
+              exit 1
+            fi
+            compose_notes
             # electron-updater reads /releases/latest, and GitHub does not
             # reliably move that marker when a prerelease becomes a normal
             # release. scripts/release-latest.mjs decides whether --latest is
@@ -478,6 +510,7 @@ jobs:
             fi
             gh release edit "$TAG" --notes-file "$NOTES_FILE" --prerelease="$PRERELEASE" "${LATEST_FLAG[@]}"
           else
+            compose_notes
             gh release create "$TAG" \
               --title "TimeTrack $TAG" \
               --notes-file "$NOTES_FILE" \

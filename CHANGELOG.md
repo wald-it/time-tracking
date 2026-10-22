@@ -11,6 +11,8 @@ All notable changes to TimeTrack are documented here.
 
 - **An MCP preview now says that nothing was written** — A write tool called with `preview: true` returned the planned change as plain JSON, which looked exactly like a success. The server even advised clients to preview first, but never to execute afterwards, so an assistant could stop after the preview and report an entry that TimeTrack never showed. Preview replies now carry a `hinweis` that nothing was created and that the same call without `preview` executes it; the server instructions and the `preview` parameter of all four write tools say the same.
 
+- **Re-running a release no longer demotes a complete release to a prerelease (#234)** — On a re-run for an existing tag, the prerelease mark was decided from that run's build jobs alone. If one installer job failed in the re-run, the release was marked as a prerelease and its notes gained a "missing" notice, although the installers and update feeds from the first run were still attached — and electron-updater ignores prereleases, so a valid version was withdrawn from stable updates. A re-run now decides from the assets attached to the release after its upload: a release whose installers and `latest.yml` / `latest-mac.yml` are all present stays a normal release, and a gap that is still open keeps it a prerelease.
+
 ## [1.20.0] — 2026-09-25
 
 ### Changed

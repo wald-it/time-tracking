@@ -40,9 +40,16 @@ interface Plan {
   stderr: string
   outputs: Record<string, string>
   notice: string
+  stdout: string
 }
 
-function runPlan(windows: Result, macos: Result, streamdeck: Result): Plan {
+function runPlan(
+  windows: Result,
+  macos: Result,
+  streamdeck: Result,
+  releaseAssets?: string[],
+  extraEnv: Record<string, string> = {}
+): Plan {
   const dir = mkdtempSync(join(tmpdir(), 'release-plan-'))
   const outputFile = join(dir, 'github_output')
   const noticeFile = join(dir, 'notice.md')
@@ -56,7 +63,9 @@ function runPlan(windows: Result, macos: Result, streamdeck: Result): Plan {
       MACOS_RESULT: macos,
       STREAMDECK_RESULT: streamdeck,
       GITHUB_OUTPUT: outputFile,
-      NOTICE_FILE: noticeFile
+      NOTICE_FILE: noticeFile,
+      ...(releaseAssets === undefined ? {} : { RELEASE_ASSETS: releaseAssets.join('\n') }),
+      ...extraEnv
     },
     encoding: 'utf8'
   })
@@ -71,7 +80,7 @@ function runPlan(windows: Result, macos: Result, streamdeck: Result): Plan {
   } catch {
     // no file written — asserted on below where it matters
   }
-  return { status: proc.status, stderr: proc.stderr, outputs, notice }
+  return { status: proc.status, stderr: proc.stderr, outputs, notice, stdout: proc.stdout }
 }
 
 describe('release plan (#221)', () => {
@@ -116,6 +125,89 @@ describe('release plan (#221)', () => {
   it('refuses an unknown job result instead of guessing', () => {
     const plan = runPlan('success', 'bogus' as Result, 'success')
     expect(plan.status).not.toBe(0)
+  })
+})
+
+// #234: what a complete release carries — the asset list of the real v1.20.0
+// release, verbatim and in GitHub's order (`gh release view v1.20.0 --json
+// assets`), so the suffix matchers run against real names, .blockmap files
+// included.
+const COMPLETE_ASSETS = [
+  'com.timetrack.streamdeck.streamDeckPlugin',
+  'latest-mac.yml',
+  'latest.yml',
+  'time-tracking-1.20.0-setup.exe',
+  'time-tracking-1.20.0-setup.exe.blockmap',
+  'TimeTrack-1.20.0-arm64-mac.zip',
+  'TimeTrack-1.20.0-arm64.dmg',
+  'TimeTrack-1.20.0-arm64.dmg.blockmap'
+]
+
+describe('release plan on a re-run: decided from the attached assets (#234)', () => {
+  it('a complete release stays complete when an installer job fails in the re-run', () => {
+    // --clobber removes nothing: the first run's installers and latest*.yml
+    // are still attached, so demoting the release would only withdraw a
+    // valid version from stable updates.
+    const plan = runPlan('failure', 'success', 'success', COMPLETE_ASSETS)
+    expect(plan.status, plan.stderr).toBe(0)
+    expect(plan.outputs.prerelease).toBe('false')
+    expect(plan.notice.trim()).toBe('')
+  })
+
+  it('no job succeeding in the re-run does not demote a complete release either', () => {
+    const plan = runPlan('failure', 'cancelled', 'skipped', COMPLETE_ASSETS)
+    expect(plan.status, plan.stderr).toBe(0)
+    expect(plan.outputs.prerelease).toBe('false')
+    expect(plan.notice.trim()).toBe('')
+  })
+
+  it('a partial release whose gap is still open stays a prerelease', () => {
+    const withoutMac = COMPLETE_ASSETS.filter((a) => !/\.dmg|\.zip|latest-mac/.test(a))
+    const plan = runPlan('success', 'failure', 'success', withoutMac)
+    expect(plan.status, plan.stderr).toBe(0)
+    expect(plan.outputs.prerelease).toBe('true')
+    expect(plan.notice).toMatch(/macOS/)
+    expect(plan.notice).not.toMatch(/Windows|Stream Deck/)
+  })
+
+  it('an installer without its update feed counts as missing, whatever the job says', () => {
+    const withoutFeed = COMPLETE_ASSETS.filter((a) => a !== 'latest.yml')
+    const plan = runPlan('success', 'success', 'success', withoutFeed)
+    expect(plan.status, plan.stderr).toBe(0)
+    expect(plan.outputs.prerelease).toBe('true')
+    expect(plan.notice).toMatch(/Windows/)
+    expect(plan.notice).not.toMatch(/macOS|Stream Deck/)
+  })
+
+  it('only the Stream Deck plugin missing from the release: normal release with a notice', () => {
+    const withoutPlugin = COMPLETE_ASSETS.filter((a) => !a.endsWith('.streamDeckPlugin'))
+    const plan = runPlan('success', 'success', 'failure', withoutPlugin)
+    expect(plan.status, plan.stderr).toBe(0)
+    expect(plan.outputs.prerelease).toBe('false')
+    expect(plan.notice).toMatch(/Stream Deck plugin/)
+  })
+
+  it('a release with no assets at all is a prerelease, not complete', () => {
+    const plan = runPlan('success', 'success', 'success', [])
+    expect(plan.status, plan.stderr).toBe(0)
+    expect(plan.outputs.prerelease).toBe('true')
+  })
+
+  it('the job-result plan before a re-run is provisional: no ::warning:: annotation', () => {
+    const provisional = runPlan('failure', 'success', 'success', undefined, {
+      RELEASE_EXISTS: 'true'
+    })
+    expect(provisional.status, provisional.stderr).toBe(0)
+    expect(provisional.stdout).not.toContain('::warning::')
+    expect(provisional.stdout).toMatch(/Provisional plan/)
+    // A first publish still annotates, and so does the re-plan from assets.
+    expect(runPlan('failure', 'success', 'success').stdout).toContain('::warning::')
+    const replan = runPlan('failure', 'success', 'success', [], { RELEASE_EXISTS: 'true' })
+    expect(replan.stdout).toContain('::warning::')
+  })
+
+  it('still refuses an unknown job result', () => {
+    expect(runPlan('success', 'bogus' as Result, 'success', COMPLETE_ASSETS).status).not.toBe(0)
   })
 })
 
@@ -196,6 +288,19 @@ describe('release.yml wiring (#221)', () => {
       // move that marker when a prerelease is turned into a normal release.
       expect(editPath).toMatch(/isPrerelease/)
       expect(editPath).toContain('--latest')
+    })
+
+    it('re-plans from the assets attached after the upload and edits with that result (#234)', () => {
+      // The plan step before this one only knows this run's job results; on
+      // an existing release those are not the release's state.
+      const upload = editPath.indexOf('gh release upload "$TAG"')
+      const assets = editPath.indexOf('--json assets')
+      const replan = editPath.indexOf('node scripts/release-plan.mjs')
+      const edit = editPath.indexOf('gh release edit "$TAG"')
+      expect(assets, 'asset lookup not found').toBeGreaterThan(upload)
+      expect(replan, 're-plan not found').toBeGreaterThan(assets)
+      expect(edit).toBeGreaterThan(replan)
+      expect(editPath).toContain('RELEASE_ASSETS=')
     })
 
     it('lets release-latest.mjs decide, against the current latest release', () => {
