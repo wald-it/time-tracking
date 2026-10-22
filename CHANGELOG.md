@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An MCP preview now says that nothing was written** — A write tool called with `preview: true` returned the planned change as plain JSON, which looked exactly like a success. The server even advised clients to preview first, but never to execute afterwards, so an assistant could stop after the preview and report an entry that TimeTrack never showed. Preview replies now carry a `hinweis` that nothing was created and that the same call without `preview` executes it; the server instructions and the `preview` parameter of all four write tools say the same.
+
 ## [1.20.0] — 2026-09-25
 
 ### Changed

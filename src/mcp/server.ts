@@ -82,7 +82,8 @@ export function buildServer(): McpServer {
         'für Auswertungen (Stunden pro Kunde/Projekt), get_dashboard für Tag/Woche. ' +
         'Schreiben (create_manual_entry, update_entry_fields, start_timer, stop_running_timer) ' +
         'erfordert aktivierten Schreibzugriff in der App und kann eine Bestätigung auslösen — ' +
-        'rufe Write-Tools bevorzugt zuerst mit preview:true auf. Stundensätze und interne ' +
+        'rufe Write-Tools bevorzugt zuerst mit preview:true auf. Eine Vorschau legt nichts an: ' +
+        'zum Ausführen denselben Aufruf ohne preview wiederholen. Stundensätze und interne ' +
         'Notizen sind standardmäßig ausgeblendet.'
     }
   )
@@ -295,7 +296,15 @@ export function buildServer(): McpServer {
   // change without committing.
   const WRITE_HINT =
     'Erfordert aktivierten Schreibzugriff (Einstellungen → Integrationen); je nach Einstellung ' +
-    'erscheint eine Bestätigung in TimeTrack. preview:true zeigt die geplante Änderung ohne Commit.'
+    'erscheint eine Bestätigung in TimeTrack. preview:true zeigt die geplante Änderung nur an — ' +
+    'in TimeTrack passiert dabei nichts; zum Ausführen ohne preview erneut aufrufen.'
+
+  // A preview reply looked like a success, so a client could stop there and
+  // report the entry as created while the app showed nothing. Say it in the
+  // reply itself, where a client reads it, not only in the schema.
+  const PREVIEW_NOTE =
+    'Nur Vorschau: in TimeTrack wurde nichts angelegt oder geändert. Zum Ausführen denselben ' +
+    'Aufruf ohne preview wiederholen.'
 
   async function runWrite(
     op: string,
@@ -303,7 +312,12 @@ export function buildServer(): McpServer {
     preview: boolean | undefined
   ): Promise<ReturnType<typeof jsonResult>> {
     const r = await sendWrite(op, args, preview === true)
-    return r.ok ? jsonResult(r.data ?? { ok: true }) : errorResult(r.error ?? 'Unbekannter Fehler')
+    if (!r.ok) return errorResult(r.error ?? 'Unbekannter Fehler')
+    if (preview === true) {
+      // The note goes last so no field of the planned change can overwrite it.
+      return jsonResult({ ...(r.data as Record<string, unknown>), hinweis: PREVIEW_NOTE })
+    }
+    return jsonResult(r.data ?? { ok: true })
   }
 
   server.registerTool(
@@ -326,7 +340,10 @@ export function buildServer(): McpServer {
           .optional()
           .describe('Interne Notiz (nie exportiert). Max. 1000 Zeichen.'),
         project_id: z.number().int().nullable().optional().describe('Projekt-ID oder null'),
-        preview: z.boolean().optional().describe('Nur Vorschau, kein Commit')
+        preview: z
+          .boolean()
+          .optional()
+          .describe('Nur Vorschau: legt nichts an, ändert nichts. Danach ohne preview ausführen.')
       }
     },
     async (a) =>
@@ -366,7 +383,10 @@ export function buildServer(): McpServer {
         billable: z.boolean().optional().describe('Abrechenbar'),
         private_note: z.string().optional().describe('Interne Notiz. Max. 1000 Zeichen.'),
         project_id: z.number().int().nullable().optional().describe('Projekt-ID oder null'),
-        preview: z.boolean().optional().describe('Nur Vorschau, kein Commit')
+        preview: z
+          .boolean()
+          .optional()
+          .describe('Nur Vorschau: legt nichts an, ändert nichts. Danach ohne preview ausführen.')
       }
     },
     async (a) =>
@@ -398,7 +418,10 @@ export function buildServer(): McpServer {
         description: z.string().optional().describe('Beschreibung'),
         started_at: z.string().optional().describe('Startzeit (ISO); Default jetzt'),
         project_id: z.number().int().nullable().optional().describe('Projekt-ID oder null'),
-        preview: z.boolean().optional().describe('Nur Vorschau, kein Commit')
+        preview: z
+          .boolean()
+          .optional()
+          .describe('Nur Vorschau: legt nichts an, ändert nichts. Danach ohne preview ausführen.')
       }
     },
     async (a) =>
@@ -420,7 +443,10 @@ export function buildServer(): McpServer {
       title: 'Laufenden Timer stoppen',
       description: `Stoppt den aktuell laufenden Timer (falls einer läuft). ${WRITE_HINT}`,
       inputSchema: {
-        preview: z.boolean().optional().describe('Nur Vorschau, kein Commit')
+        preview: z
+          .boolean()
+          .optional()
+          .describe('Nur Vorschau: legt nichts an, ändert nichts. Danach ohne preview ausführen.')
       }
     },
     async (a) => runWrite('stop_running_timer', {}, a.preview)
