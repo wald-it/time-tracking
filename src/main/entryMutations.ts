@@ -229,6 +229,11 @@ export function startTimer(db: Db, input: CreateEntryInput): IpcResult<Entry> {
     | { id: number }
     | undefined
   if (!clientRow) return fail('Kunde existiert nicht')
+  // Same rule as manual entries: a project must belong to the client.
+  if (input.project_id != null) {
+    const pErr = validateProjectForClient(db, input.project_id, input.client_id)
+    if (pErr) return fail(pErr)
+  }
   const tx = db.transaction((): Entry => {
     db.prepare(`UPDATE entries SET stopped_at = ? WHERE stopped_at IS NULL`).run(
       new Date().toISOString()

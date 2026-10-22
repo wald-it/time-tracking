@@ -227,7 +227,10 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   const startWithClient = useCallback(
     async (clientId: number, projectId?: number | null) => {
       if (useTimerStore.getState().runningEntry) return
+      // Client and project together: a stale project of the previous client
+      // would otherwise travel into the next start() (global hotkey).
       setSelectedClientId(clientId)
+      useTimerStore.getState().setSelectedProjectId(projectId ?? null)
       setIsLoading(true)
       const res = await window.api.entries.start({
         client_id: clientId,

@@ -343,6 +343,21 @@ describe('useTimer — elapsed clock', () => {
   })
 })
 
+describe('useTimer — startWithClient keeps the selection consistent', () => {
+  // Codex on #242: quick-starting client B left client A's project selected;
+  // the global hotkey's start() then sent B with A's project.
+  it('sets the project together with the client', async () => {
+    const { hook } = await setup()
+    const { useTimerStore } = await import('../store/timerStore')
+    useTimerStore.setState({ selectedClientId: 1, selectedProjectId: 99 })
+    await act(async () => {
+      await hook.result.current.startWithClient(2, null)
+    })
+    expect(useTimerStore.getState().selectedClientId).toBe(2)
+    expect(useTimerStore.getState().selectedProjectId).toBeNull()
+  })
+})
+
 describe('useTimer — one engine per window', () => {
   // Every view calls useTimer(); before, each mounted instance ran its own
   // 1 s tick and 30 s heartbeat, so the main process got one heartbeat (and
