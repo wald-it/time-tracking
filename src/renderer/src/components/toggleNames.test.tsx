@@ -31,7 +31,10 @@ describe('switches outside a settings row carry a name', () => {
 
   it('billable in the entry edit form', () => {
     ;(window as unknown as { api: unknown }).api = {
-      projects: { getAll: async () => ({ ok: true as const, data: [] }) }
+      projects: { getAll: async () => ({ ok: true as const, data: [] }) },
+      // TagInput loads its suggestions on mount; without this the rejection
+      // lands after the test and fails the run as an unhandled error (macOS CI).
+      tags: { getAllWithCount: async () => ({ ok: true as const, data: [] }) }
     }
     render(
       <I18nProvider>
