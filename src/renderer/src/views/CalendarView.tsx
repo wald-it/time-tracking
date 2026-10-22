@@ -15,9 +15,10 @@ import { DayPanel } from '../components/kalender/DayPanel'
 import { ClientBreakdown } from '../components/kalender/ClientBreakdown'
 import { GraphImportModal } from '../components/GraphImportModal'
 import { useRounding } from '../contexts/RoundingContext'
-import { billedMinutes, effectiveRateCent, feeCent, formatEur } from '../../../shared/currency'
+import { billedMinutes, formatEur } from '../../../shared/currency'
 import { formatHm, type DayRange } from '../components/heute/dayScaleLayout'
 import { MiniDayScale } from '../components/kalender/MiniDayScale'
+import { dayRevenueCent } from '../components/kalender/dayRevenue'
 import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
 
 /**
@@ -683,29 +684,6 @@ function dayRoundedSeconds(entries: Entry[], roundStep: number, nowMs: number): 
     const rawMs = Math.max(0, stop - new Date(e.started_at).getTime())
     return sum + (roundStep > 0 ? billedMinutes(rawMs, roundStep) * 60 : Math.floor(rawMs / 1000))
   }, 0)
-}
-
-function dayRevenueCent(
-  entries: Entry[],
-  clients: Client[],
-  projects: Project[],
-  roundStep: number,
-  nowMs: number
-): number {
-  let sum = 0
-  for (const e of entries) {
-    if (e.billable !== 1) continue
-    const clientRate = clients.find((c) => c.id === e.client_id)?.rate_cent ?? 0
-    const projectRate =
-      e.project_id != null ? projects.find((p) => p.id === e.project_id)?.rate_cent : null
-    const rate = effectiveRateCent(projectRate, clientRate)
-    if (rate <= 0) continue
-    // Milliseconds, not entryDurationSeconds: the invoice ceils the exact span.
-    const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : nowMs
-    const rawMs = Math.max(0, stop - new Date(e.started_at).getTime())
-    sum += feeCent(billedMinutes(rawMs, roundStep), rate)
-  }
-  return sum
 }
 
 const MONTHS_KEYS: TranslationKey[] = [

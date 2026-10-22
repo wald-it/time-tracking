@@ -546,3 +546,29 @@ describe('CalendarView — review fixes (PR 3)', () => {
     expect(cell('2026-08-10').getAttribute('aria-label')).toContain('250,00 €')
   })
 })
+
+describe('CalendarView — day details', () => {
+  it("shows the day's amount in the details (narrow cells hide it)", async () => {
+    await setup({
+      byMonth: { '2026-8': AUGUST_ENTRIES },
+      clients: [{ ...CLIENTS[0], rate_cent: 10000 }]
+    })
+    fireEvent.click(cell('2026-08-10'))
+    const drawer = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
+    expect(within(drawer).getByTestId('details-revenue').textContent).toBe('250,00 €')
+  })
+
+  it('Escape belongs to a dialog on top, not to the day details underneath', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    const foreign = document.createElement('div')
+    foreign.setAttribute('role', 'dialog')
+    document.body.appendChild(foreign)
+    try {
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(screen.queryByRole('dialog', { name: 'Einträge für 10.08.2026' })).not.toBeNull()
+    } finally {
+      foreign.remove()
+    }
+  })
+})

@@ -1,5 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNow } from '../../contexts/NowContext'
+import { useRounding } from '../../contexts/RoundingContext'
+import { formatEur } from '../../../../shared/currency'
+import { dayRevenueCent } from './dayRevenue'
 import type { Client, Entry, Project } from '../../../../shared/types'
 import { deserializeTags, entryHasTag } from '../../../../shared/tags'
 import { useEntriesStore } from '../../store/entriesStore'
@@ -45,6 +48,8 @@ export function DayDetails({
   const t = useT()
   const { locale } = useLocale()
   const nowMs = useNow()
+  const { roundMinutes } = useRounding()
+  const sectionRef = useRef<HTMLElement>(null)
   const headingId = useId()
   const projectsVersion = useProjectsStore((s) => s.version)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
@@ -63,6 +68,14 @@ export function DayDetails({
     const handler = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
       const s = escapeState.current
+      // Another dialog on top (e.g. "Termine übernehmen") owns Escape; it must
+      // not also discard an edit here. The drawer around this section and the
+      // own delete confirmation do not count.
+      const section = sectionRef.current
+      const foreignDialog = [
+        ...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')
+      ].some((d) => !section || !d.contains(section))
+      if (foreignDialog && !s.deleteCandidate) return
       if (s.editingId !== null) setEditingId(null)
       else if (s.creating) setCreating(false)
       else if (s.deleteCandidate) setDeleteCandidate(null)
@@ -131,9 +144,20 @@ export function DayDetails({
   }
 
   const totalSeconds = filteredEntries.reduce((sum, e) => sum + durationSeconds(e, nowMs), 0)
+  const revenueCent = dayRevenueCent(
+    entries,
+    clients,
+    [...projectsById.values()],
+    roundMinutes,
+    nowMs
+  )
 
   return (
-    <section aria-labelledby={headingId} className="border-t-2 border-[var(--ink)] pt-[14px]">
+    <section
+      ref={sectionRef}
+      aria-labelledby={headingId}
+      className="border-t-2 border-[var(--ink)] pt-[14px]"
+    >
       <h2 id={headingId} className="m-0 text-[var(--ink2)]" style={LEGEND}>
         {t('calendar.panel.legend')}
       </h2>
@@ -144,8 +168,16 @@ export function DayDetails({
         >
           {dateTitle}
         </span>
-        <span className="font-num text-[24px] font-light text-[var(--ink)]">
-          {formatHMM(totalSeconds)}
+        <span className="flex flex-col items-end">
+          <span className="font-num text-[24px] font-light text-[var(--ink)]">
+            {formatHMM(totalSeconds)}
+          </span>
+          {/* The day's amount, visible here because narrow calendar cells hide it. */}
+          {revenueCent > 0 && (
+            <span data-testid="details-revenue" className="font-num text-[12px] text-[var(--ink3)]">
+              {formatEur(revenueCent)}
+            </span>
+          )}
         </span>
       </div>
 
