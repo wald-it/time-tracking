@@ -13,7 +13,7 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
-import { feeCentSql } from '../shared/currency'
+import { billedMinutesSql, feeCentSql } from '../shared/currency'
 import { localMonthRange } from '../shared/dateRanges'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
@@ -534,12 +534,15 @@ export function getDashboard(db: SqliteDb, privacy: PrivacyConfig, nowMs: number
 export interface McpAnalytics {
   year: number
   month: number
-  /**
-   * Rounded per entry to the `rounding_minutes` step — the canonical
-   * billing/PDF number. May exceed the raw sum from `listEntries`.
-   */
+  /** Worked seconds, raw — the same number as `list_entries` and the app's Auswertung. */
   total_seconds: number
+  /** Worked seconds of billable entries, raw. */
   billable_seconds: number
+  /**
+   * The month rounded per entry like the invoice (minutes ceiled, then the
+   * `rounding_minutes` step), summed — the billing/PDF number.
+   */
+  rounded_seconds: number
   /** Rounding step in minutes (app setting `pdf_round_minutes`); 0 = unrounded. */
   rounding_minutes: number
   /** Number of clients with recorded time in this month. */
@@ -582,14 +585,11 @@ export function getAnalytics(
     .get() as { value: string } | undefined
   const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
 
-  // Hours are worked time: per-entry seconds, rounded up to `roundStep` minutes when
-  // set. Revenue follows the invoice rule (FEE_CENT); with no step the two may differ
-  // by the seconds the invoice ceils to a minute (owner decision 2026-10-22).
-  const RAW_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
-  const ENTRY_SEC =
-    roundStep > 0
-      ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
-      : RAW_SEC
+  // Seconds are worked time, raw — the same rule as the app's Auswertung
+  // (owner decision 2026-10-22). `rounded_seconds` is the month rounded per
+  // entry like the invoice. Revenue follows the invoice rule (REVENUE).
+  const ENTRY_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
+  const BILLED_SEC = `(${billedMinutesSql(roundStep)} * 60)`
   // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
   const REVENUE = feeCentSql(roundStep)
   const monthKey = `${year}-${String(month).padStart(2, '0')}`
@@ -599,14 +599,20 @@ export function getAnalytics(
       `SELECT
          COALESCE(SUM(${ENTRY_SEC}), 0) AS total_sec,
          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${ENTRY_SEC} ELSE 0 END), 0) AS billable_sec,
-         COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent
+         COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent,
+         COALESCE(SUM(${BILLED_SEC}), 0) AS billed_sec
        FROM entries e
        JOIN clients c ON c.id = e.client_id
        LEFT JOIN projects p ON p.id = e.project_id
        WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
          AND strftime('%Y-%m', e.started_at, 'localtime') = ?`
     )
-    .get(monthKey) as { total_sec: number; billable_sec: number; revenue_cent: number }
+    .get(monthKey) as {
+    total_sec: number
+    billable_sec: number
+    revenue_cent: number
+    billed_sec: number
+  }
 
   const byClient = db
     .prepare(
@@ -660,6 +666,7 @@ export function getAnalytics(
     month,
     total_seconds: Math.max(0, Math.floor(totals.total_sec ?? 0)),
     billable_seconds: Math.max(0, Math.floor(totals.billable_sec ?? 0)),
+    rounded_seconds: Math.max(0, Math.round(totals.billed_sec ?? 0)),
     rounding_minutes: roundStep,
     distinct_client_count: byClient.length,
     by_client: byClient.map((r) => ({

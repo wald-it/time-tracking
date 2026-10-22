@@ -10,6 +10,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { buildAnalyticsSummary } from './analyticsHandlers'
+import type { AnalyticsSummary } from '../shared/types'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 
 let DatabaseImpl: DatabaseCtor
@@ -406,5 +407,100 @@ describe('buildAnalyticsSummary', () => {
     expect(acme).toBeDefined()
     // only 1 billable hour: 85 €/h → 8500 cents
     expect(acme!.rev).toBe(8500)
+  })
+})
+
+describe('buildAnalyticsSummary — worked time, rounded sub-line, fair comparison (PR 4)', () => {
+  let tmpDir: string
+  let db: Database.Database
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'tt-analytics-pr4-'))
+    db = makeDb(DatabaseImpl, tmpDir)
+    db.prepare(
+      `INSERT INTO clients (id, name, color, rate_cent) VALUES (1, 'Acme', '#8b7cf8', 8500)`
+    ).run()
+  })
+
+  afterEach(() => {
+    db.close()
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  // Mid-day UTC: the same local day for any zone between UTC-9 and UTC+11.
+  function add(day: string, startHm: string, stopHm: string, billable = 1): void {
+    addEntry(db, {
+      client_id: 1,
+      started_at: `${day}T${startHm}:00.000Z`,
+      stopped_at: `${day}T${stopHm}:00.000Z`,
+      billable
+    })
+  }
+
+  function step(minutes: number): void {
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', ?)`).run(
+      String(minutes)
+    )
+  }
+
+  function summary(year: number, month: number, now: Date): AnalyticsSummary {
+    const r = buildAnalyticsSummary(db, { year, month }, now)
+    if (!r.ok) throw new Error(r.error)
+    return r.data
+  }
+
+  const OCT_22 = new Date(2026, 9, 22, 12)
+
+  it('hours are worked time; the rounded month is its own field, per entry', () => {
+    step(15)
+    add('2026-09-10', '10:00', '10:10') // 10 min → 15 when rounded
+    add('2026-09-11', '10:00', '10:50') // 50 min → 60
+    const s = summary(2026, 9, OCT_22)
+    expect(s.month.hours).toBe(3600)
+    expect(s.month.hoursRounded).toBe(75 * 60)
+    expect(s.byClient[0].h).toBe(3600)
+    expect(s.months[11]).toMatchObject({ h: 3600, b: 3600, n: 0 })
+    expect(s.weeks.reduce((sum, w) => sum + w.b + w.n, 0)).toBe(3600)
+  })
+
+  it('without a rounding step there is no rounded figure', () => {
+    add('2026-09-10', '10:00', '10:10')
+    expect(summary(2026, 9, OCT_22).month.hoursRounded).toBeNull()
+  })
+
+  it('months split billable and non-billable; weeks carry revenue', () => {
+    add('2026-09-10', '10:00', '11:00') // billable, 85 €
+    add('2026-09-11', '10:00', '10:30', 0) // non-billable
+    const s = summary(2026, 9, OCT_22)
+    expect(s.months[11]).toMatchObject({ h: 5400, b: 3600, n: 1800, r: 8500 })
+    expect(s.weeks.reduce((sum, w) => sum + w.r, 0)).toBe(8500)
+  })
+
+  it('the current month is compared with the same days of the previous one (B2)', () => {
+    add('2026-09-10', '10:00', '11:00') // inside 1–22 September
+    add('2026-09-25', '10:00', '12:00') // after the 22nd: not compared
+    add('2026-10-05', '10:00', '11:00')
+    const s = summary(2026, 10, OCT_22)
+    expect(s.month.comparison).toBe('samePeriod')
+    expect(s.month.prevPeriodDays).toBe(22)
+    expect(s.month.hoursPrev).toBe(3600)
+    expect(s.month.revenuePrev).toBe(8500)
+  })
+
+  it('a past month is compared with the whole previous month', () => {
+    add('2026-08-30', '10:00', '11:00')
+    add('2026-09-10', '10:00', '11:00')
+    const s = summary(2026, 9, OCT_22)
+    expect(s.month.comparison).toBe('fullMonth')
+    expect(s.month.prevPeriodDays).toBe(31)
+    expect(s.month.hoursPrev).toBe(3600)
+  })
+
+  it('the compared span is clamped to the length of the previous month', () => {
+    add('2026-02-27', '10:00', '11:00')
+    const s = summary(2026, 3, new Date(2026, 2, 31, 12))
+    expect(s.month.comparison).toBe('samePeriod')
+    expect(s.month.prevPeriodDays).toBe(28)
+    expect(s.month.hoursPrev).toBe(3600)
   })
 })

@@ -388,7 +388,9 @@ describe('query layer', () => {
     expect(a.by_client.map((c) => c.seconds)).toEqual([5400])
   })
 
-  it('getAnalytics rounds per entry while listEntries stays raw (#205)', () => {
+  it('getAnalytics reports worked seconds like listEntries, the invoice figure as rounded_seconds', () => {
+    // Owner decision 2026-10-22 (HANDOFF §2.2) supersedes #205: seconds are
+    // worked time everywhere; the per-entry rounded figure has its own field.
     db.prepare(`UPDATE settings SET value = '15' WHERE key = 'pdf_round_minutes'`).run()
     // 10 completed minutes → rounded up to one 15-minute step.
     db.prepare(
@@ -399,12 +401,13 @@ describe('query layer', () => {
     ).run()
     const a = getAnalytics(sdb, HIDE, 2026, 6)
     expect(a.rounding_minutes).toBe(15)
-    // 60min + 30min + 15min(rounded from 10) = 105min
-    expect(a.total_seconds).toBe(6300)
-    // list_entries reports the unrounded wall-clock sum for the same window.
+    // 60min + 30min + 10min, raw — the same as list_entries for the window.
+    expect(a.total_seconds).toBe(6000)
     const raw = listEntries(sdb, HIDE, { year: 2026, month: 6, summaryOnly: true }, 0)
     // 3600 + 1800 + 600; the running entry contributes 0 at nowMs 0.
     expect(raw.total_seconds).toBe(6000)
+    // per entry like the invoice: 60 + 30 + 15 (from 10) = 105min
+    expect(a.rounded_seconds).toBe(6300)
   })
 
   it('getAnalytics exposes revenue when rates enabled', () => {

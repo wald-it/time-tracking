@@ -277,10 +277,11 @@ export function buildServer(): McpServer {
       description:
         'Monatliche Auswertung: Gesamt-/abrechenbare Sekunden, distinct_client_count sowie ' +
         'Aufschlüsselung by_client und by_project (je mit client_id, sortiert nach seconds ' +
-        'absteigend). Sekundenwerte sind pro Eintrag auf das App-Rundungsintervall gerundet ' +
-        '(Response-Feld rounding_minutes, 0 = ungerundet) und damit die KANONISCHEN Zahlen für ' +
-        'Abrechnung/PDF — sie können von der ungerundeten Summe aus list_entries abweichen. ' +
-        'Umsätze nur, wenn Stundensätze freigeschaltet sind.',
+        'absteigend). Sekundenwerte (total_seconds, billable_seconds, seconds) sind gearbeitete ' +
+        'Zeit, ungerundet — dieselben Zahlen wie list_entries und die Auswertung in der App. ' +
+        'rounded_seconds ist der Monat je Eintrag gerundet wie die Rechnung (Minuten aufgerundet, ' +
+        'dann auf das App-Rundungsintervall rounding_minutes, 0 = nur Minuten) und damit die Zahl ' +
+        'für Abrechnung/PDF. Umsätze (wie die Rechnung) nur, wenn Stundensätze freigeschaltet sind.',
       inputSchema: {
         year: z.number().int().describe('Jahr, z. B. 2026'),
         month: z.number().int().min(1).max(12).describe('Monat 1–12')
