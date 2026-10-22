@@ -105,6 +105,26 @@ export function feeCentSql(step: number): string {
  * Format a minute count as `H:MM` (two-digit minutes). Used for entry rows
  * and totals in the PDF. Examples: 84 → "1:24", 600 → "10:00", 5 → "0:05".
  */
+/** Worked seconds → "H:MM" (a completed duration; seconds under a minute are dropped). */
+export function formatSecondsHm(seconds: number): string {
+  const sec = Number.isFinite(seconds) ? seconds : 0
+  return formatHoursMinutes(Math.max(0, Math.floor(sec / 60)))
+}
+
+/** Cents → whole euros with thousands dots, no unit: "13.078" (half-up). */
+export function formatEurWholeDigits(cents: number): string {
+  const euros = Math.round((Number.isFinite(cents) ? cents : 0) / 100)
+  const digits = Math.abs(euros)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${euros < 0 ? '-' : ''}${digits}`
+}
+
+/** Cents → "13.078 €" (whole euros, half-up). */
+export function formatEurWhole(cents: number): string {
+  return `${formatEurWholeDigits(cents)} €`
+}
+
 export function formatHoursMinutes(minutes: number): string {
   const sign = minutes < 0 ? '-' : ''
   const abs = Math.abs(minutes)

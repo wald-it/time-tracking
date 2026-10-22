@@ -378,43 +378,65 @@ export interface LicenseEntry {
 
 export interface AnalyticsSummary {
   month: {
-    /** Total seconds for the selected month. */
+    /** Worked seconds in the selected month (raw, owner decision 2026-10-22). */
     hours: number
-    /** Total seconds for the previous month. */
+    /**
+     * The same month rounded per entry like the invoice, then summed — for the
+     * "gerundet … h" sub-line. null when no rounding step is set.
+     */
+    hoursRounded: number | null
+    /** Worked seconds in the comparison period (see `comparison`). */
     hoursPrev: number
     /** Total revenue in cents for the selected month. */
     revenue: number
-    /** Total revenue in cents for the previous month. */
+    /** Revenue in cents in the comparison period (see `comparison`). */
     revenuePrev: number
     /** Billable ratio 0–1 (billable seconds / total seconds). */
     billable: number
-    /** Previous month billable ratio. */
+    /** Billable ratio in the comparison period (see `comparison`). */
     billablePrev: number
     /** Days elapsed in the selected month (capped at daysInMonth). */
     daysElapsed: number
     /** Total days in the selected month. */
     daysInMonth: number
+    /**
+     * What the *Prev fields cover (B2): `samePeriod` — the current month is
+     * compared with days 1…`prevPeriodDays` of the previous month; `fullMonth`
+     * — a past month with the whole previous month.
+     */
+    comparison: 'samePeriod' | 'fullMonth'
+    /** Last day of the previous month the comparison covers. */
+    prevPeriodDays: number
     /** True if at least one completed entry exists in the selected month. */
     hasData: boolean
     /** True if at least one client or project has rate_cent > 0. */
     hasRateConfigured: boolean
   }
-  /** 12 calendar weeks trailing to end of selected month. b/n in seconds. */
-  weeks: Array<{ lbl: string; b: number; n: number }>
-  /** 12 calendar months trailing to end of selected month. h in seconds, r in cents. */
-  months: Array<{ lbl: string; h: number; r: number }>
+  /** 12 calendar weeks trailing to end of selected month. b/n in worked seconds, r in cents. */
+  weeks: Array<{ lbl: string; b: number; n: number; r: number }>
+  /**
+   * 12 calendar months trailing to end of selected month. h = b + n in worked
+   * seconds (billable / non-billable), r in cents.
+   */
+  months: Array<{ lbl: string; h: number; b: number; n: number; r: number }>
   /** Hours by client for the selected month, sorted by hours desc. */
   byClient: Array<{
     client_id: number
     name: string
     color: string
-    /** seconds */
+    /** worked seconds */
     h: number
+    /** worked seconds of billable entries; 0 ⇒ the client shows "intern" */
+    b: number
     /** cents */
     rev: number
     rest?: boolean
   }>
-  /** Average seconds per day by weekday (Mo–So), last 90 days global. */
+  /**
+   * Average worked seconds per calendar day by weekday (Mo–So) over the last
+   * 90 completed days, global: the weekday's total divided by how often it
+   * occurs in the span (days off count). The seven add up to the average week.
+   */
   weekday: Array<{ d: string; h: number }>
 }
 

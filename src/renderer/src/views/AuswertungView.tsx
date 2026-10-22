@@ -1,129 +1,110 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useT } from '../contexts/I18nContext'
-import type { AnalyticsSummary } from '../../../shared/types'
-import { TrendChart } from '../components/TrendChart'
-import { ClientBars } from '../components/ClientBars'
-import { WeekdayBars } from '../components/WeekdayBars'
+import { useLocale, useT } from '../contexts/I18nContext'
+import { useNow } from '../contexts/NowContext'
 import { useRounding } from '../contexts/RoundingContext'
-import { roundDuration } from '../../../shared/duration'
+import type { AnalyticsSummary } from '../../../shared/types'
+import type { Locale } from '../../../shared/i18n'
+import type { TranslationKey } from '../../../shared/locales/de'
+import { formatEurWholeDigits, formatSecondsHm } from '../../../shared/currency'
+import { localDateKey } from '../../../shared/dateRanges'
+import { KpiReadout, type KpiDelta } from '../components/auswertung/KpiReadout'
+import { ClientHours } from '../components/auswertung/ClientHours'
+import { WeekdayAverage } from '../components/auswertung/WeekdayAverage'
+import { compareNote } from '../components/auswertung/compareNote'
+import { TrendBands } from '../components/auswertung/TrendBands'
+import { TrendChart } from '../components/TrendChart'
 
-// ── Helper formatters ──────────────────────────────────────────────────────
+/**
+ * B3 switch (HANDOFF §6): the trend shows hours and revenue in two bands that
+ * share the x-axis instead of one chart with a second y-axis. `false` brings
+ * back the old dual-axis `TrendChart`.
+ */
+export const TREND_TWO_BANDS = true
 
-function fmtHours(sec: number): string {
-  return (sec / 3600).toFixed(1).replace('.', ',') + ' h'
-}
+/** 2 px `--focus` outline, offset 2 px (HANDOFF §2.4). */
+const FOCUS =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)]'
+const ICON_KEY = `key-hover flex h-11 w-11 items-center justify-center rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] text-[var(--ink)] shadow-[var(--edge-key)] active:translate-y-px disabled:cursor-not-allowed disabled:text-[var(--ink3)] disabled:active:translate-y-0 ${FOCUS}`
+/** Section legend (HANDOFF §2.2): 11/600 caps, expanded. */
+const LEGEND = 'text-[11px] font-semibold uppercase tracking-[.14em] [font-stretch:118%]'
 
-function fmtEUR(cents: number): string {
-  return (
-    (cents / 100).toLocaleString('de-DE', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }) + ' €'
-  )
-}
-
-function fmtPct(ratio: number, sign = false): string {
-  const n = (ratio * 100).toFixed(0)
-  return (sign && ratio > 0 ? '+' : '') + n + ' %'
-}
-
-function fmtPctPP(diff: number): string {
-  const n = Math.abs(diff * 100).toFixed(0)
-  return (diff >= 0 ? '+' : '−') + n + ' pp'
-}
-
-function deltaRatio(cur: number, prev: number): number {
-  if (prev === 0) return 0
-  return (cur - prev) / prev
-}
-
-const DE_MONTHS = [
-  'Januar',
-  'Februar',
-  'März',
-  'April',
-  'Mai',
-  'Juni',
-  'Juli',
-  'August',
-  'September',
-  'Oktober',
-  'November',
-  'Dezember'
+const MONTHS_KEYS: TranslationKey[] = [
+  'calendar.months.jan',
+  'calendar.months.feb',
+  'calendar.months.mar',
+  'calendar.months.apr',
+  'calendar.months.may',
+  'calendar.months.jun',
+  'calendar.months.jul',
+  'calendar.months.aug',
+  'calendar.months.sep',
+  'calendar.months.oct',
+  'calendar.months.nov',
+  'calendar.months.dec'
 ]
 
-// ── Sub-components ─────────────────────────────────────────────────────────
+// ── Formatters ─────────────────────────────────────────────────────────────
 
-interface DeltaPillProps {
-  value: number // ratio for revenue/hours, absolute diff for pp
-  label: string
-  isPp?: boolean // true for billable % (percentage points)
+const hm = formatSecondsHm
+const wholeEurDigits = formatEurWholeDigits
+
+/** Relative change in percent, rounded to the one decimal it is shown with. */
+function pctChange(cur: number, prev: number): number | null {
+  if (prev <= 0) return null
+  return Math.round(((cur - prev) / prev) * 1000) / 10
 }
 
-function DeltaPill({ value, label, isPp = false }: DeltaPillProps): React.JSX.Element {
-  const up = value >= 0
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-key)] text-xs font-semibold"
-      // Deltas stay ink-coloured; the arrow carries the direction (HANDOFF §3.6).
-      style={{ border: '1px solid var(--line)', color: 'var(--ink)' }}
-    >
-      <span>{up ? '↑' : '↓'}</span>
-      {isPp ? fmtPctPP(value) : fmtPct(value, true)}
-      <span style={{ color: 'var(--text3)', fontWeight: 500, marginLeft: 2 }}>{label}</span>
-    </span>
-  )
+/** "+", "−" (U+2212) or "±" for no change. */
+function sign(change: number): string {
+  return change < 0 ? '−' : change > 0 ? '+' : '±'
 }
 
-interface StatCardProps {
-  label: string
-  value: string
-  accent?: string
-  foot?: React.ReactNode
+function direction(change: number): KpiDelta['direction'] {
+  return change < 0 ? 'down' : change > 0 ? 'up' : 'flat'
 }
 
-function StatCard({ label, value, accent, foot }: StatCardProps): React.JSX.Element {
-  return (
-    <div
-      className="rounded-[var(--r-disp)] border p-4 flex flex-col gap-2 min-h-[120px]"
-      style={{
-        background: 'var(--card-bg)',
-        borderColor: 'var(--card-border)'
-      }}
-    >
-      <div
-        className="text-xs font-semibold uppercase tracking-wide"
-        style={{ color: 'var(--text3)' }}
-      >
-        {label}
-      </div>
-      <div
-        className="text-3xl font-bold tabular-nums leading-tight"
-        style={{
-          fontFamily: 'var(--font-mono, monospace)',
-          color: accent ?? 'var(--text)',
-          letterSpacing: 1
-        }}
-      >
-        {value}
-      </div>
-      {foot && <div className="mt-auto pt-1">{foot}</div>}
-    </div>
-  )
+/**
+ * A percentage delta: "+6,1 %" / "−2,3 %" / "±0,0 %". The direction follows
+ * the shown, rounded value, so a "±0,0 %" never gets a triangle. Without a
+ * base (empty comparison period) only "vs. …" is shown.
+ */
+function pctDelta(cur: number, prev: number, vs: string, locale: Locale): KpiDelta {
+  const pct = pctChange(cur, prev)
+  if (pct === null) return { direction: 'flat', change: null, vs }
+  const digits = Math.abs(pct).toFixed(1)
+  return {
+    direction: direction(pct),
+    change: `${sign(pct)}${locale === 'en' ? digits : digits.replace('.', ',')} %`,
+    vs
+  }
 }
 
-// ── Main View ──────────────────────────────────────────────────────────────
+// ── Main view ──────────────────────────────────────────────────────────────
 
+/**
+ * Auswertung (Messinstrument, HANDOFF §4.3).
+ *
+ * Header: legend, month + year, prev/next keys; on the right the comparison
+ * note (B2, `compareNote`). KPI row: STUNDEN, UMSATZ (or the `noRate` state),
+ * ABRECHENBAR. Middle row: Stunden nach Kunde · Wochentag-Schnitt. Below: the
+ * Verlauf (B3).
+ *
+ * The large numbers are worked time, raw (owner decision 2026-10-22): the
+ * hours KPI shows `month.hours` unrounded, and the deltas compare raw with
+ * raw. The per-entry rounded total (`hoursRounded`) only feeds the sub-line.
+ */
 export default function AuswertungView(): React.JSX.Element {
   const t = useT()
+  const { locale } = useLocale()
   const { roundMinutes } = useRounding()
+  const now = new Date(useNow())
 
-  // Month navigation state — default to current month
-  const today = new Date()
-  const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth() + 1) // 1-based
+  // Month navigation state — default to the current month.
+  const [year, setYear] = useState(() => new Date().getFullYear())
+  const [month, setMonth] = useState(() => new Date().getMonth() + 1) // 1-based
 
-  const [chartMode, setChartMode] = useState<'week' | 'month'>('week')
+  const [chartMode, setChartMode] = useState<'week' | 'month'>('month')
+
   const [data, setData] = useState<AnalyticsSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -145,10 +126,15 @@ export default function AuswertungView(): React.JSX.Element {
     }
   }, [])
 
+  // Reload when the local day changes too, not only on month navigation:
+  // the same-period comparison (B2) moves with today (Codex + review, PR 4).
+  const dayKey = localDateKey(now)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — asynchroner Datenabruf pro Monatsnavigation
     void load(year, month)
-  }, [year, month, load])
+  }, [year, month, load, dayKey])
+
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
 
   function prevMonth(): void {
     if (month === 1) {
@@ -160,7 +146,6 @@ export default function AuswertungView(): React.JSX.Element {
   }
 
   function nextMonth(): void {
-    const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1
     if (isCurrentMonth) return
     if (month === 12) {
       setYear((y) => y + 1)
@@ -170,253 +155,247 @@ export default function AuswertungView(): React.JSX.Element {
     }
   }
 
-  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1
-
-  // ── Render ──────────────────────────────────────────────────────────────
-
-  const headerLabel = `${DE_MONTHS[month - 1]} ${year}`
+  const monthNames = MONTHS_KEYS.map((k) => t(k))
+  const ready = !loading && !error && data !== null
+  const hasData = ready && data.month.hasData
 
   return (
-    <div
-      className="flex flex-col gap-4 max-w-[920px] mx-auto w-full"
-      style={{ animation: 'fadeIn 0.2s ease' }}
-    >
-      {/* Header + month nav */}
-      <header className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text)' }}>
-          {t('analytics.title')}
-        </h1>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={prevMonth}
-            aria-label={t('analytics.prevMonth')}
-            className="w-7 h-7 rounded-[var(--r-key)] border grid place-items-center transition-colors key-hover"
-            style={{
-              background: 'var(--card-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text2)',
-              cursor: 'pointer'
-            }}
-          >
-            <ChevLeftIcon />
-          </button>
-          <span
-            className="text-sm font-semibold text-center tabular-nums"
-            style={{ color: 'var(--text2)', minWidth: 130 }}
-          >
-            {headerLabel}
-          </span>
-          <button
-            onClick={nextMonth}
-            disabled={isCurrentMonth}
-            aria-label={t('analytics.nextMonth')}
-            className="w-7 h-7 rounded-[var(--r-key)] border grid place-items-center transition-colors key-hover disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{
-              background: 'var(--card-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text2)',
-              cursor: isCurrentMonth ? 'not-allowed' : 'pointer'
-            }}
-          >
-            <ChevRightIcon />
-          </button>
+    <div className="flex w-full flex-col gap-12">
+      {/* Header row (§4.3.1) */}
+      <div className="flex flex-wrap items-end justify-between gap-6">
+        <div className="flex flex-wrap items-end gap-6">
+          <div>
+            <div className={LEGEND} style={{ color: 'var(--ink2)' }}>
+              {t('analytics.title')}
+            </div>
+            <h1
+              className="m-0 mt-1.5 flex items-baseline gap-3.5 text-[44px] leading-none font-semibold tracking-[-0.01em] [font-stretch:112%]"
+              style={{ color: 'var(--ink)' }}
+            >
+              {monthNames[month - 1]}{' '}
+              <span
+                className="font-num text-[28px] font-light tracking-normal"
+                style={{ color: 'var(--ink3)' }}
+              >
+                {year}
+              </span>
+            </h1>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={prevMonth}
+              className={ICON_KEY}
+              aria-label={t('analytics.prevMonth')}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={nextMonth}
+              disabled={isCurrentMonth}
+              className={ICON_KEY}
+              aria-label={t('analytics.nextMonth')}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.6" />
+              </svg>
+            </button>
+          </div>
         </div>
-
-        {data && (
-          <span
-            className="ml-auto text-xs tabular-nums"
-            style={{ color: 'var(--text3)', fontFamily: 'var(--font-mono, monospace)' }}
+        {hasData && (
+          <p
+            className="m-0 max-w-[340px] text-[13px] [text-align:end] max-[1000px]:[text-align:start]"
+            style={{ color: 'var(--ink2)' }}
+            data-testid="compare-note"
           >
-            Tag {data.month.daysElapsed}/{data.month.daysInMonth}
-          </span>
+            {compareNote({
+              comparison: data.month.comparison,
+              prevPeriodDays: data.month.prevPeriodDays,
+              year,
+              month,
+              // "Stand …" is the day the data was computed for, so the note and
+              // the compared span never come from two different days.
+              now: new Date(year, month - 1, data.month.daysElapsed),
+              locale,
+              monthNames,
+              t
+            })}
+          </p>
         )}
-      </header>
+      </div>
 
-      {/* Loading skeleton */}
+      {/* Loading skeleton — hairline blocks */}
       {loading && (
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-3 gap-3">
+        <div className="flex flex-col gap-12" aria-hidden="true">
+          <div
+            className="grid gap-8"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))' }}
+          >
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="rounded-[var(--r-disp)] border h-[120px] animate-pulse"
-                style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+                className="h-[120px] border-t-2 border-[var(--line)] motion-safe:animate-pulse"
               />
             ))}
           </div>
-          <div
-            className="rounded-[var(--r-disp)] border h-56 animate-pulse"
-            style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
-          />
+          <div className="h-56 border-t-2 border-[var(--line)] motion-safe:animate-pulse" />
         </div>
       )}
 
       {/* Error */}
       {!loading && error && (
         <div
-          className="rounded-[var(--r-disp)] border px-4 py-3 text-sm"
-          style={{
-            borderColor: 'var(--danger)',
-            color: 'var(--danger)',
-            background: 'var(--danger-bg)'
-          }}
+          role="alert"
+          className="border-t-2 border-[var(--danger)] pt-3.5 text-sm"
+          style={{ color: 'var(--danger)' }}
         >
           {error}
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && !error && data && !data.month.hasData && (
-        <div
-          className="rounded-[var(--r-disp)] border p-14 flex flex-col items-center gap-4 text-center"
-          style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
-        >
+      {/* Empty state — existing strings, restyled */}
+      {ready && !data.month.hasData && (
+        <section className="flex flex-col items-start gap-4 border-t-2 border-[var(--ink)] pt-3.5">
           <EmptyIcon />
           <div>
-            <p className="text-base font-bold mb-1.5" style={{ color: 'var(--text)' }}>
+            <p className="m-0 mb-1.5 text-xl font-semibold [font-stretch:108%]">
               {t('analytics.empty.title')}
             </p>
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--text2)', maxWidth: 320 }}>
+            <p className="m-0 max-w-[320px] text-sm" style={{ color: 'var(--ink2)' }}>
               {t('analytics.empty.subtitle')}
             </p>
           </div>
-        </div>
+        </section>
       )}
 
       {/* Data */}
-      {!loading && !error && data && data.month.hasData && (
+      {hasData && (
         <>
-          {/* Section 1 — Stat cards */}
-          <div className="grid grid-cols-3 gap-3">
-            <StatCard
-              label={t('analytics.month.hours')}
-              value={fmtHours(roundDuration(data.month.hours, roundMinutes))}
-              foot={
-                <DeltaPill
-                  value={deltaRatio(data.month.hours, data.month.hoursPrev)}
-                  label={t('analytics.vsLastMonth')}
-                />
+          {/* KPI row (§4.3.2) */}
+          <section
+            aria-label={t('analytics.title')}
+            className="grid gap-8"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))' }}
+          >
+            <KpiReadout
+              legend={t('analytics.month.hours')}
+              value={hm(data.month.hours)}
+              unit="h"
+              delta={pctDelta(
+                data.month.hours,
+                data.month.hoursPrev,
+                `${hm(data.month.hoursPrev)} h`,
+                locale
+              )}
+              sub={
+                data.month.hoursRounded !== null
+                  ? t('analytics.month.rounded', {
+                      total: hm(data.month.hoursRounded),
+                      step: roundMinutes
+                    })
+                  : undefined
               }
             />
             {data.month.hasRateConfigured ? (
-              <StatCard
-                label={t('analytics.month.revenue')}
-                value={fmtEUR(data.month.revenue)}
-                accent="var(--ink)"
-                foot={
-                  <DeltaPill
-                    value={deltaRatio(data.month.revenue, data.month.revenuePrev)}
-                    label={t('analytics.vsLastMonth')}
-                  />
-                }
+              <KpiReadout
+                legend={t('analytics.month.revenue')}
+                value={wholeEurDigits(data.month.revenue)}
+                unit="€"
+                delta={pctDelta(
+                  data.month.revenue,
+                  data.month.revenuePrev,
+                  `${wholeEurDigits(data.month.revenuePrev)} €`,
+                  locale
+                )}
               />
             ) : (
-              <StatCard
-                label={t('analytics.month.revenue')}
+              <KpiReadout
+                legend={t('analytics.month.revenue')}
                 value="—"
-                foot={
-                  <span className="text-xs" style={{ color: 'var(--text3)' }}>
-                    {t('analytics.noRate')}
-                  </span>
-                }
+                sub={t('analytics.noRate')}
               />
             )}
-            <StatCard
-              label={t('analytics.month.billable')}
-              value={fmtPct(data.month.billable)}
-              foot={
-                <DeltaPill value={data.month.billable - data.month.billablePrev} label="pp" isPp />
-              }
+            <BillableKpi
+              legend={t('analytics.month.billable')}
+              ratio={data.month.billable}
+              ratioPrev={data.month.billablePrev}
+              hasBase={data.month.hoursPrev > 0}
             />
+          </section>
+
+          {/* Middle row (§4.3.3) */}
+          <div className="flex flex-wrap items-start gap-12">
+            <ClientHours
+              clients={data.byClient}
+              isCurrentMonth={isCurrentMonth}
+              showRevenue={data.month.hasRateConfigured}
+            />
+            <WeekdayAverage weekday={data.weekday} />
           </div>
 
-          {/* Section 2 — Trend chart */}
-          <div
-            className="rounded-[var(--r-disp)] border p-4 flex flex-col gap-3"
-            style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
-          >
+          {/* Verlauf (§4.3.4, B3) */}
+          {TREND_TWO_BANDS ? (
+            <TrendBands
+              weeks={data.weeks}
+              months={data.months}
+              mode={chartMode}
+              onModeChange={setChartMode}
+              anchor={{ year, month }}
+              showRevenue={data.month.hasRateConfigured}
+            />
+          ) : (
             <TrendChart
               weeks={data.weeks}
               months={data.months}
               mode={chartMode}
               onModeChange={setChartMode}
             />
-          </div>
-
-          {/* Section 3 — Distribution */}
-          <div className="grid gap-3" style={{ gridTemplateColumns: '1.4fr 1fr' }}>
-            <div
-              className="rounded-[var(--r-disp)] border p-4 flex flex-col gap-3"
-              style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
-            >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>
-                  {t('analytics.clients.title')}
-                </span>
-                <span className="text-xs" style={{ color: 'var(--text3)' }}>
-                  {t('analytics.clients.period')}
-                </span>
-              </div>
-              <ClientBars clients={data.byClient} />
-            </div>
-
-            <div
-              className="rounded-[var(--r-disp)] border p-4 flex flex-col gap-3"
-              style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
-            >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>
-                  {t('analytics.weekday.title')}
-                </span>
-                <span className="text-xs" style={{ color: 'var(--text3)' }}>
-                  {t('analytics.weekday.period')}
-                </span>
-              </div>
-              <WeekdayBars weekday={data.weekday} />
-            </div>
-          </div>
+          )}
         </>
       )}
     </div>
   )
 }
 
+/** ABRECHENBAR: whole percent, delta in percentage points ("−2 pp"). */
+function BillableKpi({
+  legend,
+  ratio,
+  ratioPrev,
+  hasBase
+}: {
+  legend: string
+  ratio: number
+  ratioPrev: number
+  /** false when the comparison period has no time: no change, like pctDelta. */
+  hasBase: boolean
+}): React.JSX.Element {
+  const pct = Math.round(ratio * 100)
+  const pctPrev = Math.round(ratioPrev * 100)
+  // Points between the two shown percentages, so "89 % vs. 91 %" reads −2 pp.
+  const pp = pct - pctPrev
+  return (
+    <KpiReadout
+      legend={legend}
+      value={String(pct)}
+      unit="%"
+      delta={
+        hasBase
+          ? {
+              direction: direction(pp),
+              change: `${sign(pp)}${Math.abs(pp)} pp`,
+              vs: `${pctPrev} %`
+            }
+          : { direction: 'flat', change: null, vs: `${pctPrev} %` }
+      }
+    />
+  )
+}
+
 // ── Inline SVG icons ───────────────────────────────────────────────────────
-
-function ChevLeftIcon(): React.JSX.Element {
-  return (
-    <svg
-      width={14}
-      height={14}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M10 12L6 8l4-4" />
-    </svg>
-  )
-}
-
-function ChevRightIcon(): React.JSX.Element {
-  return (
-    <svg
-      width={14}
-      height={14}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M6 4l4 4-4 4" />
-    </svg>
-  )
-}
 
 function EmptyIcon(): React.JSX.Element {
   return (
@@ -427,11 +406,11 @@ function EmptyIcon(): React.JSX.Element {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ color: 'var(--text3)', opacity: 0.7 }}
+      strokeLinecap="square"
+      aria-hidden="true"
+      style={{ color: 'var(--ink3)' }}
     >
-      <rect x="10" y="22" width="44" height="32" rx="4" />
+      <rect x="10" y="22" width="44" height="32" />
       <path d="M18 44V36M26 44V32M34 44V38M42 44V30M50 44V34" />
       <circle cx="48" cy="16" r="6" />
       <path d="M48 13v6M45 16h6" />

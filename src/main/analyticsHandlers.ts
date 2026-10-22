@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { IpcResult, MonthQuery, AnalyticsSummary } from '../shared/types'
-import { feeCentSql } from '../shared/currency'
+import { billedMinutesSql, feeCentSql } from '../shared/currency'
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -30,13 +30,26 @@ const DE_MONTH_SHORT = [
   'Dez'
 ]
 
+/** The weekday average covers this many completed days, ending yesterday. */
+export const WEEKDAY_SPAN_DAYS = 90
+
+/**
+ * B2 switch (HANDOFF §6): while the selected month is the current one, the
+ * previous-month figures cover only its first `daysElapsed` days, so a
+ * half-finished month is not measured against a complete one. `false` brings
+ * back full month against full month.
+ */
+export const SAME_PERIOD_COMPARISON = true
+
 /**
  * Core analytics computation — extracted so it can be tested without Electron IPC.
  * Returns `IpcResult<AnalyticsSummary>` so callers get the same shape as the IPC handler.
+ * `now` decides which month is the current one; injectable for tests.
  */
 export function buildAnalyticsSummary(
   db: Database.Database,
-  query: MonthQuery
+  query: MonthQuery,
+  now: Date = new Date()
 ): IpcResult<AnalyticsSummary> {
   try {
     const { year, month } = query
@@ -68,14 +81,12 @@ export function buildAnalyticsSummary(
         .get() as { value: string } | undefined
       const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
 
-      // Hours are worked time: per-entry seconds, rounded up to `roundStep` minutes when
-      // set. Revenue follows the invoice rule (FEE_CENT); with no step the two may differ
-      // by the seconds the invoice ceils to a minute (owner decision 2026-10-22).
-      const RAW_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
-      const ENTRY_SEC =
-        roundStep > 0
-          ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
-          : RAW_SEC
+      // Hours are worked time, to the second (owner decision 2026-10-22, HANDOFF
+      // §2.2 — supersedes the per-entry rounded hours of v1.21). The rounded
+      // figure exists once, for the month, as `hoursRounded`: per entry like the
+      // invoice, then summed. Revenue follows the invoice rule (FEE_CENT).
+      const ENTRY_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
+      const BILLED_SEC = `(${billedMinutesSql(roundStep)} * 60)`
       // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
       const FEE_CENT = feeCentSql(roundStep)
 
@@ -84,6 +95,7 @@ export function buildAnalyticsSummary(
         total_sec: number
         billable_sec: number
         revenue_cent: number
+        billed_sec: number
       }
 
       const monthSql = `
@@ -98,22 +110,29 @@ export function buildAnalyticsSummary(
           ), 0) AS billable_sec,
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
-          ), 0) AS revenue_cent
+          ), 0) AS revenue_cent,
+          COALESCE(SUM(${BILLED_SEC}), 0) AS billed_sec
         FROM entries e
         JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id = e.project_id
         WHERE e.deleted_at IS NULL
           AND e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?`
-
-      const mCur = db.prepare(monthSql).get(selMonthKey) as MonthRow
-      const mPrev = db.prepare(monthSql).get(prevMonthKey) as MonthRow
+          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
+          AND CAST(strftime('%d', e.started_at, 'localtime') AS INTEGER) <= ?`
 
       // Days in selected month + days elapsed (for current month ETA)
-      const today = new Date()
-      const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month
+      const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month
       const daysInMonth = new Date(year, month, 0).getDate()
-      const daysElapsed = isCurrentMonth ? today.getDate() : daysInMonth
+      const daysElapsed = isCurrentMonth ? now.getDate() : daysInMonth
+
+      // B2: the current month is compared with the same days of the previous
+      // one (1…daysElapsed, clamped to its length); a past month with all of it.
+      const prevDaysInMonth = new Date(prevYear, prevMonth, 0).getDate()
+      const samePeriod = SAME_PERIOD_COMPARISON && isCurrentMonth
+      const prevPeriodDays = samePeriod ? Math.min(daysElapsed, prevDaysInMonth) : prevDaysInMonth
+
+      const mCur = db.prepare(monthSql).get(selMonthKey, 31) as MonthRow
+      const mPrev = db.prepare(monthSql).get(prevMonthKey, prevPeriodDays) as MonthRow
 
       // A sub-second entry has no whole second of hours but bills a minute.
       const hasData = (mCur.total_sec ?? 0) > 0 || (mCur.revenue_cent ?? 0) > 0
@@ -138,6 +157,7 @@ export function buildAnalyticsSummary(
         name: string
         color: string
         h: number
+        b: number
         rev: number
       }
 
@@ -149,6 +169,7 @@ export function buildAnalyticsSummary(
           COALESCE(SUM(
             ${ENTRY_SEC}
           ), 0) AS h,
+          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${ENTRY_SEC} ELSE 0 END), 0) AS b,
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS rev
@@ -166,11 +187,12 @@ export function buildAnalyticsSummary(
         name: r.name,
         color: r.color,
         h: Math.round(r.h ?? 0),
+        b: Math.round(r.b ?? 0),
         rev: Math.round(r.rev ?? 0)
       }))
 
       // ── 3. 12 weeks trailing to end of selected month ─────────────
-      type WeekRow = { week_start: string; b: number; n: number }
+      type WeekRow = { week_start: string; b: number; n: number; r: number }
 
       const weekSql = `
         SELECT
@@ -184,8 +206,13 @@ export function buildAnalyticsSummary(
             CASE WHEN e.billable = 0 THEN
               ${ENTRY_SEC}
             ELSE 0 END
-          ), 0) AS n
+          ), 0) AS n,
+          COALESCE(SUM(
+            CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
+          ), 0) AS r
         FROM entries e
+        JOIN clients c ON c.id = e.client_id
+        LEFT JOIN projects p ON p.id = e.project_id
         WHERE e.deleted_at IS NULL
           AND e.stopped_at IS NOT NULL
           AND DATE(e.started_at, 'localtime') <= ${anchorEnd}
@@ -220,12 +247,13 @@ export function buildAnalyticsSummary(
         weeks.push({
           lbl: `KW${pad(weekNum)}`,
           b: Math.round(row?.b ?? 0),
-          n: Math.round(row?.n ?? 0)
+          n: Math.round(row?.n ?? 0),
+          r: Math.round(row?.r ?? 0)
         })
       }
 
       // ── 4. 12 months trailing to end of selected month ────────────
-      type MonthTrendRow = { month_key: string; h: number; r: number }
+      type MonthTrendRow = { month_key: string; h: number; b: number; n: number; r: number }
 
       const monthTrendSql = `
         SELECT
@@ -233,6 +261,8 @@ export function buildAnalyticsSummary(
           COALESCE(SUM(
             ${ENTRY_SEC}
           ), 0) AS h,
+          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${ENTRY_SEC} ELSE 0 END), 0) AS b,
+          COALESCE(SUM(CASE WHEN e.billable = 0 THEN ${ENTRY_SEC} ELSE 0 END), 0) AS n,
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS r
@@ -262,28 +292,49 @@ export function buildAnalyticsSummary(
         months.push({
           lbl: DE_MONTH_SHORT[m - 1],
           h: Math.round(row?.h ?? 0),
+          b: Math.round(row?.b ?? 0),
+          n: Math.round(row?.n ?? 0),
           r: Math.round(row?.r ?? 0)
         })
       }
 
-      // ── 5. Weekday average (last 90 days global) ───────────────────
-      type WeekdayRow = { dow: number; avg_sec: number }
+      // ── 5. Weekday average (last 90 completed days, global) ────────
+      // Per calendar day (owner decision 2026-10-22): for each weekday, the
+      // worked seconds of the last 90 completed days (up to yesterday — today
+      // is still running) divided by how often that weekday occurs in the span
+      // (12 or 13). Days off count, so the seven values add up to the average
+      // week. It used to be AVG over entries — the average entry length.
+      type WeekdayRow = { dow: number; sec: number }
+      const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+      const spanStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - WEEKDAY_SPAN_DAYS
+      )
+      const ymd = (d: Date): string =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
       const weekdaySql = `
         SELECT
           CAST(strftime('%w', e.started_at, 'localtime') AS INTEGER) AS dow,
-          AVG(
-            ${ENTRY_SEC}
-          ) AS avg_sec
+          COALESCE(SUM(${ENTRY_SEC}), 0) AS sec
         FROM entries e
         WHERE e.deleted_at IS NULL
           AND e.stopped_at IS NOT NULL
-          AND DATE(e.started_at, 'localtime') >= DATE('now', 'localtime', '-90 days')
-        GROUP BY dow
-        ORDER BY dow ASC`
+          AND DATE(e.started_at, 'localtime') BETWEEN ? AND ?
+        GROUP BY dow`
 
-      const weekdayRows = db.prepare(weekdaySql).all() as WeekdayRow[]
-      const dowMap = new Map(weekdayRows.map((r) => [r.dow, r.avg_sec]))
+      const weekdayRows = db.prepare(weekdaySql).all(ymd(spanStart), ymd(yesterday)) as WeekdayRow[]
+      const secByDow = new Map(weekdayRows.map((r) => [r.dow, r.sec]))
+      // How often each weekday (0 = Sunday … 6) occurs in the span.
+      const daysByDow = new Map<number, number>()
+      for (let i = 1; i <= WEEKDAY_SPAN_DAYS; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+        daysByDow.set(d.getDay(), (daysByDow.get(d.getDay()) ?? 0) + 1)
+      }
+      const dowMap = new Map(
+        [...secByDow].map(([dow, sec]) => [dow, sec / (daysByDow.get(dow) ?? 1)])
+      )
 
       // Map SQLite %w (0=Sun,1=Mon…6=Sat) to Mon-Sun order
       const DOW_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
@@ -296,6 +347,7 @@ export function buildAnalyticsSummary(
       return {
         month: {
           hours: Math.round(totalSec),
+          hoursRounded: roundStep > 0 ? Math.round(mCur.billed_sec ?? 0) : null,
           hoursPrev: Math.round(mPrev.total_sec ?? 0),
           revenue: Math.round(mCur.revenue_cent ?? 0),
           revenuePrev: Math.round(mPrev.revenue_cent ?? 0),
@@ -304,6 +356,8 @@ export function buildAnalyticsSummary(
             (mPrev.total_sec ?? 0) > 0 ? (mPrev.billable_sec ?? 0) / (mPrev.total_sec ?? 0) : 0,
           daysElapsed,
           daysInMonth,
+          comparison: samePeriod ? 'samePeriod' : 'fullMonth',
+          prevPeriodDays,
           hasData,
           hasRateConfigured
         },

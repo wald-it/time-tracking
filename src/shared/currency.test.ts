@@ -5,7 +5,10 @@ import {
   feeCent,
   formatEur,
   roundMinutes,
-  formatHoursMinutes
+  formatHoursMinutes,
+  formatSecondsHm,
+  formatEurWholeDigits,
+  formatEurWhole
 } from './currency'
 
 describe('feeCent', () => {
@@ -125,5 +128,21 @@ describe('effectiveRateCent', () => {
   })
   it('keeps a deliberate project rate of 0 (goodwill), never the client rate', () => {
     expect(effectiveRateCent(0, 10000)).toBe(0)
+  })
+})
+
+describe('whole-euro and H:MM formatters (one each, PR 4)', () => {
+  it('formatSecondsHm drops seconds below a minute and never goes negative', () => {
+    expect(formatSecondsHm(3599)).toBe('0:59')
+    expect(formatSecondsHm(126 * 3600 + 2 * 60 + 30)).toBe('126:02')
+    expect(formatSecondsHm(-5)).toBe('0:00')
+    expect(formatSecondsHm(Number.NaN)).toBe('0:00')
+  })
+
+  it('formatEurWhole rounds cents half-up to whole euros with thousands dots', () => {
+    expect(formatEurWholeDigits(1_307_849)).toBe('13.078')
+    expect(formatEurWholeDigits(1_307_850)).toBe('13.079')
+    expect(formatEurWhole(30_000)).toBe('300 €')
+    expect(formatEurWhole(0)).toBe('0 €')
   })
 })
