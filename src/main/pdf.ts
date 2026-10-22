@@ -302,7 +302,10 @@ export function buildPdfPayload(
     const minutes = billedMinutes(rawMs, roundStep)
     // v1.13 #120: project rate overrides client rate when set.
     const effectiveRate = effectiveRateCent(e.project_rate_cent, client.rate_cent)
-    const fee = effectiveRate > 0 ? feeCent(minutes, effectiveRate) : null
+    // A goodwill project (explicit 0) is billed at 0 € and keeps the fee
+    // column; null means no rate applies anywhere.
+    const fee =
+      effectiveRate > 0 || e.project_rate_cent === 0 ? feeCent(minutes, effectiveRate) : null
     // When rounding is on, we also adjust the displayed times so the
     // visible "Von / Bis / Dauer" arithmetic adds up for the recipient.
     // Rule: snap the start to the nearest step, then derive the stop as
