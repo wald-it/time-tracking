@@ -65,7 +65,12 @@ export function StartTimerModal({
       if (useTimerStore.getState().selectedClientId === null) setSelectedProjectId(null)
       return
     }
-    void window.api.projects.getAll({ clientId: selectedClientId }).then((res) => {
+    const requestedFor = selectedClientId
+    void window.api.projects.getAll({ clientId: requestedFor }).then((res) => {
+      // A prefill can switch the client between request and response (the
+      // effect also ran once with the previous client) — an answer for a
+      // client that is no longer selected must not touch the selection.
+      if (useTimerStore.getState().selectedClientId !== requestedFor) return
       if (res.ok) {
         const active = res.data.filter((p) => p.active === 1)
         setProjects(active)

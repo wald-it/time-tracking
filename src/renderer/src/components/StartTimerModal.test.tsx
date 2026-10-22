@@ -140,6 +140,21 @@ describe('StartTimerModal — prefill (B6)', () => {
     }
   })
 
+  it('a stale project load for the previous client does not undo the prefill', async () => {
+    setup()
+    // Client 1 is still selected from earlier; the prefill switches to client 2.
+    useTimerStore.setState({ selectedClientId: 1, selectedProjectId: null })
+    render(
+      <I18nProvider>
+        <StartTimerModal open onClose={() => {}} prefill={{ clientId: 2, projectId: 8 }} />
+      </I18nProvider>
+    )
+    await waitFor(() => expect(screen.getAllByRole('combobox')).toHaveLength(2))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(useTimerStore.getState().selectedClientId).toBe(2)
+    expect(useTimerStore.getState().selectedProjectId).toBe(8)
+  })
+
   it('leaves the current selection alone without a prefill', async () => {
     setup()
     useTimerStore.setState({ selectedClientId: 1, selectedProjectId: null })
