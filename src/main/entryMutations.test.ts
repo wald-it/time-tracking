@@ -207,6 +207,28 @@ describe('entryMutations', () => {
     expect(running.n).toBe(1)
   })
 
+  it('startTimer stores the start as UTC with milliseconds, whatever form it came in', () => {
+    // An MCP client may send an offset. Range queries compare started_at as a
+    // string, so `2026-10-01T00:30:00+02:00` kept as is would count for
+    // October although it is 30 Sep, 22:30 UTC.
+    const r = startTimer(db, {
+      client_id: 1,
+      description: 'offset',
+      started_at: '2026-10-01T00:30:00+02:00'
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.data.started_at).toBe('2026-09-30T22:30:00.000Z')
+    expect(r.data.heartbeat_at).toBe('2026-09-30T22:30:00.000Z')
+  })
+
+  it('startTimer rejects a start time it cannot read', () => {
+    const r = startTimer(db, { client_id: 1, description: 'x', started_at: 'gestern früh' })
+    expect(r).toEqual({ ok: false, error: 'Startzeit ist ungültig' })
+    const n = db.prepare(`SELECT COUNT(*) AS n FROM entries`).get() as { n: number }
+    expect(n.n).toBe(0)
+  })
+
   it('startTimer rejects unknown client', () => {
     const r = startTimer(db, {
       client_id: 42,

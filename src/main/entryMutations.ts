@@ -234,6 +234,13 @@ export function startTimer(db: Db, input: CreateEntryInput): IpcResult<Entry> {
     const pErr = validateProjectForClient(db, input.project_id, input.client_id)
     if (pErr) return fail(pErr)
   }
+  // Stored like every other write path: UTC with milliseconds and `Z`. Range
+  // queries compare `started_at` as strings against such instants, so a value
+  // kept as sent (`…T00:30:00+02:00` from an MCP client) would sort into the
+  // wrong day or month.
+  const start = new Date(input.started_at)
+  if (Number.isNaN(start.getTime())) return fail('Startzeit ist ungültig')
+  const startedAt = start.toISOString()
   const tx = db.transaction((): Entry => {
     db.prepare(`UPDATE entries SET stopped_at = ? WHERE stopped_at IS NULL`).run(
       new Date().toISOString()
@@ -243,13 +250,7 @@ export function startTimer(db: Db, input: CreateEntryInput): IpcResult<Entry> {
         `INSERT INTO entries (client_id, description, started_at, heartbeat_at, project_id)
          VALUES (?, ?, ?, ?, ?)`
       )
-      .run(
-        input.client_id,
-        input.description,
-        input.started_at,
-        input.started_at,
-        input.project_id ?? null
-      )
+      .run(input.client_id, input.description, startedAt, startedAt, input.project_id ?? null)
     return db.prepare(`SELECT * FROM entries WHERE id = ?`).get(info.lastInsertRowid) as Entry
   })
   return ok(tx())

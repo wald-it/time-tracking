@@ -28,6 +28,7 @@ import {
 import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
+import { localDateKey } from '../shared/dateRanges'
 import {
   WINDOW_BOUNDS_KEY,
   createWindowStateKeeper,
@@ -613,9 +614,12 @@ app.whenReady().then(async () => {
           `INSERT OR IGNORE INTO clients (id, name, color, rate_cent)
              VALUES (9999, '__smoke__', '#4f46e5', 0)`
         ).run()
-        const today = new Date().toISOString().slice(0, 10)
-        const startIso = `${today}T08:00:00.000Z`
-        const stopIso = `${today}T09:00:00.000Z`
+        // 08:00–09:00 local today, asked for as today's local day: the PDF
+        // range is local, so the row lands in the attachment in any zone.
+        const now = new Date()
+        const today = localDateKey(now)
+        const startIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8).toISOString()
+        const stopIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9).toISOString()
         db.prepare(
           `INSERT INTO entries (client_id, description, started_at, stopped_at)
              VALUES (9999, 'smoke', ?, ?)`
