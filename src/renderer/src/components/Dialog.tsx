@@ -13,7 +13,7 @@ export const Z_MODAL = 50
 export const Z_TOAST = 60
 
 const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 
 /**
  * Open dialogs, innermost last. Only the top one reacts to Tab and Escape, so
@@ -71,7 +71,12 @@ export function Dialog({
   const t = useT()
   const titleId = useId()
   const containerRef = useRef<HTMLDivElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
   const previouslyFocused = useRef<Element | null>(null)
+  // A press that starts in the panel and is released on the backdrop (a text
+  // selection dragged past the edge) makes the browser fire `click` on the
+  // backdrop. Only a press that started on the backdrop may close.
+  const pressOnBackdrop = useRef(false)
   // Keep latest onClose in a ref so the focus/keydown effect doesn't re-run
   // every time the parent re-renders (which would re-focus the close button
   // on every tick — e.g. Today's running-timer pill ticks once per second).
@@ -87,6 +92,14 @@ export function Dialog({
     if (!open) return
     const token = Symbol('dialog')
     openStack.push(token)
+    // Paint in the same order the keyboard follows: the dialog opened last is
+    // on top even when it comes earlier in the DOM (the idle prompt opening
+    // over the start modal). Kept below the toasts.
+    if (overlayRef.current) {
+      overlayRef.current.style.zIndex = String(
+        Math.min(Z_MODAL + openStack.length - 1, Z_TOAST - 1)
+      )
+    }
     previouslyFocused.current = document.activeElement
 
     const handler = (e: KeyboardEvent): void => {
@@ -146,14 +159,20 @@ export function Dialog({
 
   return (
     <div
+      ref={overlayRef}
       className="fixed inset-0 flex items-center justify-center bg-[rgb(0_0_0/0.35)] p-6"
       style={{ zIndex: Z_MODAL }}
       role={role}
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={describedBy}
+      onPointerDown={(e) => {
+        pressOnBackdrop.current = e.target === e.currentTarget
+      }}
       onClick={(e) => {
-        if (closeOnBackdrop && e.target === e.currentTarget) onClose()
+        const fromBackdrop = pressOnBackdrop.current
+        pressOnBackdrop.current = false
+        if (closeOnBackdrop && fromBackdrop && e.target === e.currentTarget) onClose()
       }}
     >
       <div

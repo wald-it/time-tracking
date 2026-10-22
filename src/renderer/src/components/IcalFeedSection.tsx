@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useT } from '../contexts/I18nContext'
 import { Toggle } from './Toggle'
 import { FIELD_LABEL, INPUT, KEY, READOUT } from './instrumentClasses'
@@ -23,6 +23,7 @@ export function IcalFeedSection({
   onPortChange: (v: string) => void
 }): React.JSX.Element {
   const t = useT()
+  const labelId = useId()
   const [url, setUrl] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -48,14 +49,14 @@ export function IcalFeedSection({
     <div className="flex min-w-0 flex-col gap-3 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm" style={{ color: 'var(--ink)' }}>
+          <p id={labelId} className="text-sm" style={{ color: 'var(--ink)' }}>
             {t('settings.icalFeed.enable')}
           </p>
           <p className="text-xs" style={{ color: 'var(--ink3)' }}>
             {t('settings.icalFeed.enableHint')}
           </p>
         </div>
-        <Toggle checked={enabled} onChange={onEnabledChange} />
+        <Toggle checked={enabled} onChange={onEnabledChange} labelledBy={labelId} />
       </div>
 
       {enabled && (

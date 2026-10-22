@@ -1,4 +1,5 @@
 import { useToastStore } from '../store/toastStore'
+import { useT } from '../contexts/I18nContext'
 import { Z_TOAST } from './Dialog'
 import { FOCUS } from './instrumentClasses'
 
@@ -11,6 +12,7 @@ export function ToastTray(): React.ReactElement | null {
   const toasts = useToastStore((s) => s.toasts)
   const dismiss = useToastStore((s) => s.dismiss)
   const executeAction = useToastStore((s) => s.executeAction)
+  const tr = useT()
 
   if (toasts.length === 0) return null
 
@@ -44,7 +46,7 @@ export function ToastTray(): React.ReactElement | null {
           <button
             type="button"
             onClick={() => dismiss(t.id)}
-            aria-label="Schließen"
+            aria-label={tr('common.close')}
             className={`grid h-8 w-8 place-items-center rounded-[var(--r-fine)] hover:bg-[var(--disp-line)] hover:text-[var(--disp-ink)] ${FOCUS}`}
             style={{ color: 'var(--disp-dim)' }}
           >

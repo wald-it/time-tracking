@@ -12,7 +12,8 @@ import { useState } from 'react'
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
-import { Toggle, ToggleLabelContext } from './Toggle'
+import { Toggle } from './Toggle'
+import { ToggleLabelContext } from './toggleLabelContext'
 
 afterEach(cleanup)
 

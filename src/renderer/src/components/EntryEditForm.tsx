@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { Client, Entry, Project } from '../../../shared/types'
 import { formatTimeHHMM, parseTimeToDate } from '../../../shared/date'
 import { useEntriesStore } from '../store/entriesStore'
@@ -50,6 +50,7 @@ export function EntryEditForm({
   onCancel
 }: Props): React.ReactElement {
   const t = useT()
+  const billableLabelId = useId()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const initialStart = entry ? new Date(entry.started_at) : (defaultDate ?? new Date())
   const initialStop = entry?.stopped_at
@@ -289,7 +290,9 @@ export function EntryEditForm({
       </label>
 
       <div className="flex items-center justify-between">
-        <span className={FIELD_LABEL}>{t('entry.billable.label')}</span>
+        <span id={billableLabelId} className={FIELD_LABEL}>
+          {t('entry.billable.label')}
+        </span>
         <div className="flex items-center gap-2">
           {billable === 0 && (
             <span className="text-xs" style={{ color: 'var(--ink)' }}>
@@ -300,6 +303,7 @@ export function EntryEditForm({
             checked={billable === 1}
             onChange={(v) => setBillable(v ? 1 : 0)}
             disabled={isSaving}
+            labelledBy={billableLabelId}
           />
         </div>
       </div>

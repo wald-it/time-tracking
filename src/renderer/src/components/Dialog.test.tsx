@@ -102,8 +102,25 @@ describe('Dialog — open/close', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
     expect(onClose).not.toHaveBeenCalled()
 
+    fireEvent.pointerDown(screen.getByRole('dialog'))
     fireEvent.click(screen.getByRole('dialog'))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('5b — a press that starts in the panel and ends on the backdrop does not close', async () => {
+    const onClose = vi.fn()
+    renderDialog(
+      <Dialog open onClose={onClose} title="Eintrag">
+        {FIELDS}
+      </Dialog>
+    )
+    await flushFocus()
+
+    // A text selection dragged out of the field: the browser fires the click
+    // on the common ancestor, the backdrop.
+    fireEvent.pointerDown(screen.getByRole('textbox', { name: 'Feld eins' }))
+    fireEvent.click(screen.getByRole('dialog'))
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
 
@@ -254,6 +271,51 @@ describe('Dialog — focus trap and stacking (PR 5)', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(inner).toHaveBeenCalledTimes(1)
     expect(outer).not.toHaveBeenCalled()
+  })
+
+  it('13b — the dialog opened last is painted on top, even earlier in the DOM', async () => {
+    const { rerender } = renderDialog(
+      <>
+        <Dialog open={false} onClose={() => {}} title="Leerlauf">
+          <button type="button">Ok</button>
+        </Dialog>
+        <Dialog open onClose={() => {}} title="Timer starten">
+          {FIELDS}
+        </Dialog>
+      </>
+    )
+    await flushFocus()
+    rerender(
+      <I18nProvider>
+        <Dialog open onClose={() => {}} title="Leerlauf">
+          <button type="button">Ok</button>
+        </Dialog>
+        <Dialog open onClose={() => {}} title="Timer starten">
+          {FIELDS}
+        </Dialog>
+      </I18nProvider>
+    )
+    await flushFocus()
+    const z = (name: string): number => Number(screen.getByRole('dialog', { name }).style.zIndex)
+    expect(z('Leerlauf')).toBeGreaterThan(z('Timer starten'))
+  })
+
+  it('13c — a <summary> counts as the last control of the trap', async () => {
+    renderDialog(
+      <Dialog open onClose={() => {}} title="Import">
+        <button type="button">Laden</button>
+        <details>
+          <summary>Übersprungen</summary>
+          <p>Grund</p>
+        </details>
+      </Dialog>
+    )
+    await flushFocus()
+    act(() => screen.getByRole('button', { name: 'Laden' }).focus())
+    fireEvent.keyDown(window, { key: 'Tab' })
+    // Laden is not the last control: the trap must let Tab move on to the
+    // summary instead of wrapping back to ×.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Laden' }))
   })
 
   it('14 — the title row carries the 2 px ink rule (HANDOFF §5)', () => {

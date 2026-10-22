@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { useT } from '../contexts/I18nContext'
 import { Toggle } from './Toggle'
 import { FIELD_LABEL, FOCUS, INPUT_FRAME, KEY, KEY_INV } from './instrumentClasses'
@@ -24,6 +24,7 @@ const PRESENCE_SCOPE = 'Presence.ReadWrite'
  */
 export function GraphAccountSection(): React.JSX.Element {
   const t = useT()
+  const labelId = useId()
   const [status, setStatus] = useState<AccountStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -159,14 +160,18 @@ export function GraphAccountSection(): React.JSX.Element {
             <div className="flex flex-col gap-2 border-y border-[var(--line)] py-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm" style={{ color: 'var(--ink)' }}>
+                  <p id={`${labelId}-presence`} className="text-sm" style={{ color: 'var(--ink)' }}>
                     {t('settings.presence.enable')}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--ink3)' }}>
                     {t('settings.presence.enableHint')}
                   </p>
                 </div>
-                <Toggle checked={presenceEnabled} onChange={(v) => void onPresenceEnabled(v)} />
+                <Toggle
+                  checked={presenceEnabled}
+                  onChange={(v) => void onPresenceEnabled(v)}
+                  labelledBy={`${labelId}-presence`}
+                />
               </div>
               {presenceEnabled && (
                 <>
@@ -189,7 +194,11 @@ export function GraphAccountSection(): React.JSX.Element {
                   )}
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm" style={{ color: 'var(--ink)' }}>
+                      <p
+                        id={`${labelId}-showClient`}
+                        className="text-sm"
+                        style={{ color: 'var(--ink)' }}
+                      >
                         {t('settings.presence.showClient')}
                       </p>
                       <p className="text-xs" style={{ color: 'var(--ink3)' }}>
@@ -199,6 +208,7 @@ export function GraphAccountSection(): React.JSX.Element {
                     <Toggle
                       checked={presenceShowClient}
                       onChange={(v) => void onPresenceShowClient(v)}
+                      labelledBy={`${labelId}-showClient`}
                     />
                   </div>
                 </>

@@ -1,12 +1,6 @@
-import { createContext, useContext } from 'react'
+import { useContext } from 'react'
 import { FOCUS } from './instrumentClasses'
-
-/**
- * Id of the label of the row a switch sits in. A settings row provides it, so
- * every Toggle in such a row is named by that label without each call site
- * passing `labelledBy`.
- */
-export const ToggleLabelContext = createContext<string | undefined>(undefined)
+import { ToggleLabelContext } from './toggleLabelContext'
 
 interface ToggleProps {
   checked: boolean
