@@ -138,6 +138,12 @@ function EntryRow({
   const start = clockTime(entry.started_at)
   const timeRange = running ? `${start}–` : `${start}–${clockTime(entry.stopped_at as string)}`
   const tags = deserializeTags(entry.tags)
+  const projectLabel = project
+    ? project.name +
+      (showProjectNumber && project.external_project_number
+        ? ` [${project.external_project_number}]`
+        : '')
+    : undefined
 
   let durationText: string
   let durationTitle: string | undefined
@@ -165,16 +171,18 @@ function EntryRow({
             className="h-[10px] w-[10px] flex-none"
             style={{ background: project?.color || client?.color || 'var(--tick)' }}
           />
-          <div className="min-w-0">
-            <div className="whitespace-nowrap text-sm font-semibold text-[var(--ink)]">
+          {/* Capped and ellipsised: long project names otherwise force the
+              table wider than its column at 1280 px (full text in the title). */}
+          <div className="min-w-0 max-w-[220px]">
+            <div
+              className="truncate text-sm font-semibold text-[var(--ink)]"
+              title={client?.name ?? undefined}
+            >
               {client?.name ?? t('common.unknown')}
             </div>
             {project && (
-              <div className="whitespace-nowrap text-xs text-[var(--ink2)]">
-                {project.name}
-                {showProjectNumber && project.external_project_number
-                  ? ` [${project.external_project_number}]`
-                  : ''}
+              <div className="truncate text-xs text-[var(--ink2)]" title={projectLabel}>
+                {projectLabel}
               </div>
             )}
           </div>
@@ -183,7 +191,10 @@ function EntryRow({
       <td className="px-3">
         <div className="flex flex-wrap items-center gap-2">
           {entry.description ? (
-            <span className="line-clamp-2 text-sm text-[var(--ink)]" title={entry.description}>
+            <span
+              className="line-clamp-2 text-sm text-[var(--ink)] [overflow-wrap:anywhere]"
+              title={entry.description}
+            >
               {entry.description}
             </span>
           ) : (
