@@ -103,6 +103,43 @@ describe('StartTimerModal — prefill (B6)', () => {
     }
   })
 
+  it('a closed second instance (App) does not override the prefill', async () => {
+    setup()
+    PROJECTS.push({
+      id: 9,
+      client_id: 3,
+      name: 'Only',
+      color: '',
+      rate_cent: null,
+      active: 1,
+      created_at: ''
+    })
+    CLIENTS.push({
+      id: 3,
+      name: 'Gamma',
+      color: '#333333',
+      active: 1,
+      rate_cent: 0,
+      created_at: ''
+    })
+    useTimerStore.setState({ clients: CLIENTS })
+    try {
+      render(
+        <I18nProvider>
+          <StartTimerModal open={false} onClose={() => {}} />
+          <StartTimerModal open onClose={() => {}} prefill={{ clientId: 3, projectId: null }} />
+        </I18nProvider>
+      )
+      await waitFor(() => expect(screen.getAllByRole('combobox')).toHaveLength(2))
+      // Let every pending project load settle.
+      await new Promise((r) => setTimeout(r, 50))
+      expect(useTimerStore.getState().selectedProjectId).toBeNull()
+    } finally {
+      PROJECTS.pop()
+      CLIENTS.pop()
+    }
+  })
+
   it('leaves the current selection alone without a prefill', async () => {
     setup()
     useTimerStore.setState({ selectedClientId: 1, selectedProjectId: null })

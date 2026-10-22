@@ -52,8 +52,11 @@ export function StartTimerModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on opening; a new prefill object per render must not reset the user's choice
   }, [open])
 
-  // Load projects when client selection changes
+  // Load projects when client selection changes — only while open: App and
+  // Heute each mount a modal, and a closed one must not rewrite the shared
+  // selection (it would override the other one's prefill).
   useEffect(() => {
+    if (!open) return
     if (!selectedClientId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — Teilfix möglich, der asynchrone Zweig bleibt Effect
       setProjects([])
@@ -79,7 +82,7 @@ export function StartTimerModal({
         }
       }
     })
-  }, [selectedClientId])
+  }, [selectedClientId, open])
 
   if (!open) return null
 
