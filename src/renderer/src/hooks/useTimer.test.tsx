@@ -305,7 +305,10 @@ describe('useTimer — start/stop', () => {
 describe('useTimer — elapsed clock', () => {
   // NOTE: fake timers go on AFTER setup() — the dynamic import inside setup
   // runs through vitest's module runner, which needs real timers to resolve.
-  it('elapsedSeconds follows the clock while running and resets on stop', async () => {
+  // Live times come from the shared clock (NowContext). A per-second write to
+  // the timer store re-rendered App and every useTimer consumer each second
+  // for a value nobody reads, so the engine keeps only the 30 s heartbeat.
+  it('does not tick elapsedSeconds every second, and resets it on stop', async () => {
     const { hook } = await setup()
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-26T10:00:00.000Z'))
@@ -316,7 +319,7 @@ describe('useTimer — elapsed clock', () => {
     act(() => {
       vi.advanceTimersByTime(3000)
     })
-    expect(hook.result.current.elapsedSeconds).toBe(3)
+    expect(hook.result.current.elapsedSeconds).toBe(0)
 
     await act(async () => {
       await hook.result.current.stop()

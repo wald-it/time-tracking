@@ -107,7 +107,6 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
 
   const clientsVersion = useClientsStore((s) => s.version)
 
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Re-fetch client list whenever clientsVersion is bumped (create/update/delete
@@ -149,16 +148,13 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     installGlobalListenersOnce(setIdleEvent)
   }, [])
 
-  // Tick interval when running — engine instance only (see above).
+  // Heartbeat while running — engine instance only (see above). There is no
+  // per-second tick any more: live times read the shared clock (NowContext),
+  // and a 1 s store write re-rendered every useTimer consumer for a value
+  // nobody reads. elapsedSeconds is set on start/resync and reset on stop.
   useEffect(() => {
     if (!engine) return
     if (runningEntry) {
-      tickRef.current = setInterval(() => {
-        setElapsedSeconds(
-          Math.floor((Date.now() - new Date(runningEntry.started_at).getTime()) / 1000)
-        )
-      }, 1000)
-
       // Heartbeat every 30s — also refreshes the tray today-total so the
       // tooltip stays current without a second timer (v1.2 plan, E5).
       heartbeatRef.current = setInterval(() => {
@@ -172,7 +168,6 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     }
 
     return () => {
-      if (tickRef.current) clearInterval(tickRef.current)
       if (heartbeatRef.current) clearInterval(heartbeatRef.current)
     }
   }, [runningEntry, engine])
