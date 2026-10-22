@@ -314,7 +314,8 @@ export function buildServer(): McpServer {
     const r = await sendWrite(op, args, preview === true)
     if (!r.ok) return errorResult(r.error ?? 'Unbekannter Fehler')
     if (preview === true) {
-      return jsonResult({ hinweis: PREVIEW_NOTE, ...(r.data as Record<string, unknown>) })
+      // The note goes last so no field of the planned change can overwrite it.
+      return jsonResult({ ...(r.data as Record<string, unknown>), hinweis: PREVIEW_NOTE })
     }
     return jsonResult(r.data ?? { ok: true })
   }

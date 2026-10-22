@@ -40,16 +40,22 @@ describe('write tool preview replies', () => {
     await client.close()
   })
 
-  it('a preview states that nothing was written and how to execute', async () => {
-    const res = await client.callTool({
-      name: 'create_manual_entry',
-      arguments: { ...ARGS, preview: true }
+  const TOOLS: Record<string, Record<string, unknown>> = {
+    create_manual_entry: ARGS,
+    update_entry_fields: { id: 1, ...ARGS },
+    start_timer: { client_id: 1, description: 'x' },
+    stop_running_timer: {}
+  }
+
+  for (const [name, args] of Object.entries(TOOLS)) {
+    it(`${name}: a preview states that nothing was written and how to execute`, async () => {
+      const res = await client.callTool({ name, arguments: { ...args, preview: true } })
+      const body = JSON.parse(text(res))
+      expect(body.hinweis).toMatch(/nichts angelegt/)
+      expect(body.hinweis).toMatch(/ohne preview/)
+      expect(body.preview).toBe(true)
     })
-    const body = JSON.parse(text(res))
-    expect(body.hinweis).toMatch(/nichts angelegt/)
-    expect(body.hinweis).toMatch(/ohne preview/)
-    expect(body.preview).toBe(true)
-  })
+  }
 
   it('a real write carries no preview note', async () => {
     const res = await client.callTool({ name: 'create_manual_entry', arguments: ARGS })
