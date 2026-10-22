@@ -98,10 +98,10 @@ Duration formats stay as today: `H:MM` for completed durations, `H:MM:SS` for th
 
 - **Radii:** keys 4 px · display 6 px · tags/marks 0–2 px. Nothing is pill-shaped any more.
 - **Elevation:** none, except the keycap edges: `inset 0 -2px 0 var(--key-edge)` on keys and `inset 0 -4px 0 rgb(0 0 0 / .3)` on the big STOPP/START key.
-- **Content column:** `max-width: 1200px`, side padding 40 px, top 36–40 px, bottom 64 px. Gap between sections 48 px (Heute) / 32 px (header → body).
+- **Content column:** `max-width: 1440px` (up to 1360 px of content; changed from 1200 px during implementation, owner 2026-10-22 — the 1280 px screenshots remain the reference), side padding 40 px, top 36–40 px, bottom 64 px. Header and views share one column class (`.mi-column`). Gap between sections 48 px (Heute) / 32 px (header → body).
 - **Section pattern:** `border-top: 2px solid var(--ink); padding-top: 14px;` → legend row (legend left, meta right) → content.
 - **Rows:** 56–58 px tall in tables, 1 px `--line` between rows.
-- **Wrapping:** two-column areas use `flex-wrap` with `flex: 999 1 <min>` (main) / `flex: 1 1 <min>` (side). They stack below roughly 900 px window width, so nothing needs a breakpoint.
+- **Wrapping:** two-column areas use `flex-wrap` with `flex: 999 1 <min>` (main) / `flex: 1 1 <min>` (side). They stack below roughly 900 px window width, so nothing needs a breakpoint. **Rule: the flex basis is at least the content's minimum width** — otherwise the content scrolls before its neighbour wraps (the entry table: basis 640 px = its `min-width`).
 
 ### 2.4 Interaction states
 
@@ -235,7 +235,7 @@ Match against `screens/*.png` (1280 px wide). All copy is German in the mockups;
 ### 4.1 Heute — `screens/heute-papier.png`, `screens/heute-graphit.png`
 1. **Hero row** (flex-wrap, gap 24): Display (`flex: 999 1 520px`) · BigKey (`0 0 148px`) · Summen column (`1 1 260px`, section pattern): **HEUTE** readout L + "gerundet … · 15-min-Takt" → 1 px `--line` → **WOCHE · KW nn** readout M → WeekMeter.
 2. **Tagesverlauf** (section pattern): legend + date title on the left, client legend on the right → DayScale.
-3. **Lower row** (flex-wrap, gap 40): EntryTable section (`999 1 560px`; header: legend "EINTRÄGE HEUTE" + count, key "+ Eintrag nachtragen" on the right) · QuickStart aside (`1 1 300px`; legend "SCHNELLSTART", meta "h · 30 Tage").
+3. **Lower row** (flex-wrap, gap 40): EntryTable section (`999 1 640px` — the table's min-width; header: legend "EINTRÄGE HEUTE" + count, key "+ Eintrag nachtragen" on the right) · QuickStart aside (`1 1 300px`; legend "SCHNELLSTART", meta "h · 30 Tage").
 4. **Empty/idle states:** no timer → Display "BEREIT" + START key, DayScale needle in `--ink`. No entries today → table replaced by the existing empty strings (`today.recent.empty` / `emptyHint`). Loading → keep the skeleton, re-styled as hairline blocks.
 
 **Data needed**
@@ -279,7 +279,7 @@ These get the new look through the tokens (PR 1) and are then aligned by hand in
 
 ## 6. Behaviour changes (approved with the design)
 
-Put each change in its **own commit** so it can be reverted on its own. They are part of the approved design, but they change behaviour, not just looks.
+They are part of the approved design, but they change behaviour, not just looks, so **each one stays switchable on its own: one clearly named switch point in the code, documented in the PR description** (where to change what to get the old behaviour back). Changed from "own commit" during implementation (owner 2026-10-22): the repo squash-merges, so individual commits do not survive the merge anyway, and review fixes spread a change over several commits. Applies to B1–B6.
 
 - **B1 — Quick start while a timer runs = switch.** Today the quick-start pills are disabled while running. New: a click stops the running entry and starts the chosen client/project, via the same code path as stop + start, so the QuickNote-on-empty-description still fires. Press-and-hold project fan (#96) unchanged in behaviour. Restyle: remove the blur from `.qs-backdrop` (plain `rgb(0 0 0 / .18)`), and replace the glowing `qs-pill-pulse` with a static 2 px `--ink` ring.
 - **B2 — Fair month comparison.** While viewing the *current* month, deltas compare against the same day span of the previous month (see §4.3). Past months compare full month to full month. The header note says which comparison applies.

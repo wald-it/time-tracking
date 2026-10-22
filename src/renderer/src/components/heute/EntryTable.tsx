@@ -45,7 +45,9 @@ export function EntryTable({
     <section
       aria-labelledby={headingId}
       className="min-w-0 border-t-2 border-[var(--ink)] pt-[14px]"
-      style={{ flex: '999 1 560px' }}
+      // Basis = the table's min-width (640px), so the quick start wraps below
+      // before the table has to scroll (HANDOFF §2.3: basis ≥ content minimum).
+      style={{ flex: '999 1 640px' }}
     >
       <div className="mb-[10px] flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-[10px]">

@@ -41,10 +41,11 @@ textarea {
 }
 
 /* The content column (HANDOFF §2.3): header and views share it, so their
-   left edges line up at every window width. */
+   left edges line up at every window width. 1440px wide = up to 1360px of
+   content; the 1280px screenshots stay the reference. */
 .mi-column {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1440px;
   margin-inline: auto;
   padding-inline: 40px;
 }

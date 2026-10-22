@@ -7,6 +7,7 @@ import {
   Menu,
   ipcMain,
   dialog,
+  screen,
   type MenuItemConstructorOptions
 } from 'electron'
 import log from 'electron-log/main'
@@ -373,10 +374,21 @@ function loadStartupSettings(): void {
   }
 }
 
+/**
+ * Default window size: the 1280px the Messinstrument screens are drawn for,
+ * clamped to the primary display's work area (taskbar excluded). Minimum
+ * 760 × 600 — at 760 the content column still fits the entry table's 640px.
+ */
+const DEFAULT_WINDOW = { width: 1280, height: 860 }
+const MIN_WINDOW = { width: 760, height: 600 }
+
 function createWindow(): void {
+  const work = screen.getPrimaryDisplay().workAreaSize
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: Math.min(DEFAULT_WINDOW.width, work.width),
+    height: Math.min(DEFAULT_WINDOW.height, work.height),
+    minWidth: Math.min(MIN_WINDOW.width, work.width),
+    minHeight: Math.min(MIN_WINDOW.height, work.height),
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
