@@ -1,7 +1,8 @@
-import { useId, useMemo, useRef, useState } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Client, DashboardSummary, Project } from '../../../../shared/types'
 import { useUiPrefsStore } from '../../store/uiPrefsStore'
 import { useT } from '../../contexts/I18nContext'
+import { fanShift } from './fanShift'
 
 /**
  * Heute — "Schnellstart" side column (HANDOFF §3.11, §4.1).
@@ -124,6 +125,11 @@ function QuickStartKey({
   const [holdProgress, setHoldProgress] = useState(0)
   const [fanOpen, setFanOpen] = useState(false)
   const [hoveredKey, setHoveredKey] = useState<string | null>(null)
+  // Sideways shift that keeps the open fan inside the window — the key now
+  // sits in the right-hand column (Messinstrument), and a 180 px ring around
+  // it reaches past the edge at 1000–1200 px.
+  const [shiftX, setShiftX] = useState(0)
+  const rootRef = useRef<HTMLDivElement>(null)
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isPressingRef = useRef(false)
@@ -253,8 +259,22 @@ function QuickStartKey({
       ? `inset 0 -2px 0 var(--key-edge), 0 0 0 ${(holdProgress * 3).toFixed(1)}px ${color}50`
       : 'inset 0 -2px 0 var(--key-edge)'
 
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!fanOpen || !root) {
+      setShiftX(0)
+      return
+    }
+    const rect = root.getBoundingClientRect()
+    const items = [...root.querySelectorAll<HTMLElement>('[data-fan-x]')].map((el) => ({
+      x: Number(el.dataset.fanX),
+      width: el.offsetWidth
+    }))
+    setShiftX(fanShift(rect.left + rect.width / 2, items, window.innerWidth))
+  }, [fanOpen, ring])
+
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={rootRef} style={{ position: 'relative' }}>
       {fanOpen && (
         <div
           className="qs-backdrop"
@@ -274,7 +294,7 @@ function QuickStartKey({
             style={
               {
                 position: 'absolute',
-                left: '50%',
+                left: `calc(50% + ${shiftX}px)`,
                 top: '50%',
                 transform: 'translate(-50%, -50%)',
                 pointerEvents: 'none',
@@ -335,6 +355,7 @@ function QuickStartKey({
             return (
               <button
                 key={item.key}
+                data-fan-x={item.pos.x}
                 type="button"
                 onClick={() => {
                   setFanOpen(false)
@@ -347,7 +368,7 @@ function QuickStartKey({
                 style={
                   {
                     position: 'absolute',
-                    left: `calc(50% + ${item.pos.x}px)`,
+                    left: `calc(50% + ${item.pos.x + shiftX}px)`,
                     top: `calc(50% + ${item.pos.y}px)`,
                     zIndex: 51,
                     whiteSpace: 'nowrap',
