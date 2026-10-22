@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNow } from '../contexts/NowContext'
 import { useT } from '../contexts/I18nContext'
 import type { TranslationKey } from '../../../shared/locales/de'
 import {
@@ -36,6 +37,9 @@ import { billedMinutes, effectiveRateCent, feeCent, formatEur } from '../../../s
  */
 export default function CalendarView(): React.JSX.Element {
   const t = useT()
+  // Running entries are measured at render time; subscribing to the shared
+  // clock re-renders this view every second while a timer runs.
+  useNow()
   const { clients } = useTimer()
   const { roundMinutes } = useRounding()
   const weekStart = useWeekStart()

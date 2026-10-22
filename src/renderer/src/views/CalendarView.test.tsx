@@ -15,6 +15,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import { fireEvent } from '@testing-library/dom'
 import CalendarView from './CalendarView'
 import { I18nProvider } from '../contexts/I18nContext'
+import { NowProvider } from '../contexts/NowContext'
 import { useTimerStore } from '../store/timerStore'
 import type { Client, Entry, Project } from '../../../shared/types'
 
@@ -89,6 +90,8 @@ async function setup(
     byMonth?: Record<string, Entry[]>
     clients?: Client[]
     projects?: Project[]
+    /** Wrap in a ticking NowProvider (as App does while a timer runs). */
+    clock?: boolean
   } = {}
 ): Promise<Setup> {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -130,7 +133,13 @@ async function setup(
 
   render(
     <I18nProvider>
-      <CalendarView />
+      {opts.clock ? (
+        <NowProvider running>
+          <CalendarView />
+        </NowProvider>
+      ) : (
+        <CalendarView />
+      )}
     </I18nProvider>
   )
   await waitFor(() => expect(getByMonth).toHaveBeenCalled())
@@ -272,6 +281,24 @@ describe('CalendarView — day revenue', () => {
     await setup({ byMonth: { '2026-8': entries }, clients: RATED, projects: [project] })
     await waitFor(() =>
       expect(within(cell('2026-08-10')).getByTestId('day-revenue').textContent).toBe('225,00 €')
+    )
+  })
+})
+
+describe('CalendarView — live running entry', () => {
+  // The cell recomputes a running entry's duration at render time. It used to
+  // be re-rendered by the timer store's 1 s tick; with that tick gone it must
+  // follow the shared clock (NowContext), or the day total freezes.
+  it("today's total keeps counting while a timer runs", async () => {
+    const running = makeEntry({ id: 9, started_at: '2026-08-15T11:00:00.000Z', stopped_at: null })
+    await setup({ byMonth: { '2026-8': [running] }, clock: true })
+    const before = within(cell('2026-08-15')).getByText(/^\d\d:\d\d$/).textContent
+
+    vi.setSystemTime(new Date('2026-08-15T12:02:00.000Z'))
+    await waitFor(
+      () =>
+        expect(within(cell('2026-08-15')).getByText(/^\d\d:\d\d$/).textContent).not.toBe(before),
+      { timeout: 2500 }
     )
   })
 })
