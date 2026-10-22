@@ -71,14 +71,21 @@ export default function CalendarView(): React.JSX.Element {
   const projectsVersion = useProjectsStore((s) => s.version)
   const wide = useMediaQuery(DAY_PANEL_MEDIA_QUERY)
 
-  // null until the first load: no amount is computed before the project rates
-  // are known, otherwise goodwill projects would be priced at the client rate.
+  // null until loaded: amounts need the project rates (a goodwill project
+  // must not be priced at the client rate), so without them no amount is
+  // shown. Hours, scales and totals do not depend on them.
   const [loadedProjects, setLoadedProjects] = useState<Project[] | null>(null)
+  const [projectsError, setProjectsError] = useState<string | null>(null)
   const projects = loadedProjects ?? NO_PROJECTS
 
   useEffect(() => {
     void window.api.projects.getAll({}).then((res) => {
-      if (res.ok) setLoadedProjects(res.data)
+      if (res.ok) {
+        setLoadedProjects(res.data)
+        setProjectsError(null)
+      } else {
+        setProjectsError(res.error)
+      }
     })
   }, [projectsVersion])
 
@@ -138,9 +145,8 @@ export default function CalendarView(): React.JSX.Element {
   }, [cursor, version])
 
   const entries = useMemo(
-    () =>
-      loaded && loaded.month === monthKey(cursor) && loadedProjects ? loaded.entries : NO_ENTRIES,
-    [loaded, cursor, loadedProjects]
+    () => (loaded && loaded.month === monthKey(cursor) ? loaded.entries : NO_ENTRIES),
+    [loaded, cursor]
   )
 
   // Group entries by local YYYY-MM-DD of their start (the local-day key).
@@ -293,11 +299,11 @@ export default function CalendarView(): React.JSX.Element {
               {t('calendar.status.loading')}
             </span>
           )}
-          {status === 'error' && (
+          {(status === 'error' || projectsError !== null) && (
             <span
               className="self-center text-xs"
               style={{ color: 'var(--danger)' }}
-              title={errorMsg ?? ''}
+              title={(status === 'error' ? errorMsg : projectsError) ?? ''}
             >
               {t('calendar.status.error')}
             </span>
@@ -379,7 +385,7 @@ export default function CalendarView(): React.JSX.Element {
                 cursor={cursor}
                 byDay={byDay}
                 clients={clients}
-                projects={projects}
+                projects={loadedProjects}
                 clientsById={clientsById}
                 projectsById={projectsById}
                 range={range}
@@ -409,7 +415,7 @@ export default function CalendarView(): React.JSX.Element {
               dateISO={selectedKey}
               entries={selectedEntries}
               clients={clients}
-              projects={projects}
+              projects={loadedProjects}
             />
           )}
           <ClientBreakdown
@@ -427,7 +433,7 @@ export default function CalendarView(): React.JSX.Element {
         dateISO={selectedKey}
         entries={selectedEntries}
         clients={clients}
-        projects={projects}
+        projects={loadedProjects}
         onClose={() => setDrawerOpen(false)}
       />
 
@@ -463,7 +469,8 @@ function Week({
   cursor: Date
   byDay: Map<string, Entry[]>
   clients: Client[]
-  projects: Project[]
+  /** null while the project rates are unknown: then no amount is shown. */
+  projects: Project[] | null
   clientsById: Map<number, Client>
   projectsById: Map<number, Project>
   range: DayRange
@@ -515,7 +522,9 @@ function Week({
         const totalSeconds = dayEntries.reduce((sum, e) => sum + entryDurationSeconds(e, nowMs), 0)
         // One rounding rule (HANDOFF §2.2): each entry rounded like the invoice.
         const roundedSeconds = dayRoundedSeconds(dayEntries, roundMinutes, nowMs)
-        const revenueCent = dayRevenueCent(dayEntries, clients, projects, roundMinutes, nowMs)
+        const revenueCent = projects
+          ? dayRevenueCent(dayEntries, clients, projects, roundMinutes, nowMs)
+          : 0
         const date = dateFmt.format(day)
         // The amount is part of the label: narrow cells hide the euro line.
         const ariaLabel =

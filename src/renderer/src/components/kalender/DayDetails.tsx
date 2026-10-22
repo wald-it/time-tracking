@@ -42,11 +42,11 @@ export function DayDetails({
   entries: Entry[]
   clients: Client[]
   /**
-   * All projects, from the caller. Not loaded here: a fresh load per selected
-   * day would price the day at client rates until it arrives (goodwill
-   * projects included).
+   * All projects, from the caller; null while they are not loaded (then no
+   * amount is shown). Not loaded here: a fresh load per selected day would
+   * price the day at client rates until it arrives (goodwill included).
    */
-  projects: Project[]
+  projects: Project[] | null
   /** Escape with nothing left to cancel here. The drawer passes `onClose`. */
   onEscape?: () => void
 }): React.JSX.Element {
@@ -95,7 +95,7 @@ export function DayDetails({
     return m
   }, [clients])
 
-  const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
+  const projectsById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects])
 
   // Collect all unique tags from the day's entries for the filter keys.
   const allDayTags = useMemo(() => {
@@ -141,7 +141,9 @@ export function DayDetails({
   const totalSeconds = filteredEntries.reduce((sum, e) => sum + durationSeconds(e, nowMs), 0)
   // Same entries as the hours beside it: under a tag filter both show the
   // filtered part of the day, never hours of one set next to euros of another.
-  const revenueCent = dayRevenueCent(filteredEntries, clients, projects, roundMinutes, nowMs)
+  const revenueCent = projects
+    ? dayRevenueCent(filteredEntries, clients, projects, roundMinutes, nowMs)
+    : 0
 
   return (
     <section

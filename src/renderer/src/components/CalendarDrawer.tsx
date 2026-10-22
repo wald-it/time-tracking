@@ -10,7 +10,8 @@ interface Props {
   /** Entries for this day (caller filters from getByMonth). */
   entries: Entry[]
   clients: Client[]
-  projects: Project[]
+  /** null while not loaded: the details then show no amount. */
+  projects: Project[] | null
   onClose: () => void
 }
 

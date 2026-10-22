@@ -21,7 +21,7 @@ export function DayPanel({
   dateISO: string
   entries: Entry[]
   clients: Client[]
-  projects: Project[]
+  projects: Project[] | null
 }): React.JSX.Element {
   return (
     <DayDetails

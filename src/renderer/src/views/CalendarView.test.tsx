@@ -116,6 +116,8 @@ async function setup(
     pendingMonths?: string[]
     /** projects.getAll answers only once this settles. */
     projectsGate?: Promise<void>
+    /** projects.getAll answers with an error. */
+    projectsFail?: boolean
   } = {}
 ): Promise<Setup> {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -139,6 +141,7 @@ async function setup(
     projects: {
       getAll: async () => {
         await opts.projectsGate
+        if (opts.projectsFail) return { ok: false as const, error: 'projects down' }
         return { ok: true as const, data: opts.projects ?? [] }
       }
     },
@@ -633,14 +636,30 @@ describe('CalendarView — final review fixes (PR 3)', () => {
       projectsGate
     })
     // Without the project rates the goodwill day would read as 250 € at the
-    // client rate.
+    // client rate. The hours do not wait for them.
     expect(within(cell('2026-08-10')).queryByTestId('day-revenue')).toBeNull()
+    expect(within(cell('2026-08-12')).queryByTestId('day-revenue')).toBeNull()
+    expect(within(cell('2026-08-10')).getByTestId('day-total').textContent).toBe('2:30')
+    expect(screen.getByTestId('month-total').textContent).toBe('4:30')
 
     await act(async () => release())
     await waitFor(() =>
       expect(within(cell('2026-08-12')).getByTestId('day-revenue').textContent).toBe('200,00 €')
     )
     expect(within(cell('2026-08-10')).queryByTestId('day-revenue')).toBeNull()
+  })
+
+  it('a failed project load keeps the hours, drops the amounts and says so', async () => {
+    await setup({ byMonth: { '2026-8': MIXED }, clients: RATED, projectsFail: true })
+    await waitFor(() => expect(screen.getByText('Fehler beim Laden')).toBeTruthy())
+    expect(screen.getByTestId('month-total').textContent).toBe('4:30')
+    expect(within(cell('2026-08-12')).getByTestId('day-total').textContent).toBe('2:00')
+    expect(within(cell('2026-08-12')).queryByTestId('day-revenue')).toBeNull()
+    expect(cell('2026-08-12').getAttribute('aria-label')).not.toContain('€')
+
+    fireEvent.click(cell('2026-08-12'))
+    const drawer = screen.getByRole('dialog', { name: 'Einträge für 12.08.2026' })
+    expect(within(drawer).queryByTestId('details-revenue')).toBeNull()
   })
 
   it('the day panel prices a goodwill day right from the first render', async () => {
