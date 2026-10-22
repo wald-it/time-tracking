@@ -29,6 +29,12 @@ import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
 import {
+  WINDOW_BOUNDS_KEY,
+  parseWindowState,
+  resolveWindow,
+  serializeWindowState
+} from './windowBounds'
+import {
   startMcpBridge,
   stopMcpBridge,
   generateWriteToken,
@@ -378,17 +384,78 @@ function loadStartupSettings(): void {
  * Default window size: the 1280px the Messinstrument screens are drawn for,
  * clamped to the primary display's work area (taskbar excluded). Minimum
  * 760 × 600 — at 760 the content column still fits the entry table's 640px.
+ * A size and position from the last session wins when it is still on screen
+ * (`windowBounds.ts`).
  */
 const DEFAULT_WINDOW = { width: 1280, height: 860 }
 const MIN_WINDOW = { width: 760, height: 600 }
+/** Resizing and moving fire continuously; store once the window has settled. */
+const WINDOW_SAVE_DEBOUNCE_MS = 500
+
+function loadWindowState(): ReturnType<typeof parseWindowState> {
+  try {
+    const row = getDb()
+      .prepare('SELECT value FROM settings WHERE key = ?')
+      .get(WINDOW_BOUNDS_KEY) as { value: string } | undefined
+    return parseWindowState(row?.value)
+  } catch (err) {
+    console.warn('[window] bounds load failed (using default):', err)
+    return null
+  }
+}
+
+/**
+ * Store the main window's normal bounds and maximized flag. Called debounced
+ * while it is resized or moved, and right away when it hides to the tray and
+ * when the app quits — so neither a crash nor a kill loses more than the last
+ * half second.
+ */
+function saveWindowState(): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed() || win.isMinimized()) return
+  try {
+    const value = serializeWindowState({
+      bounds: win.getNormalBounds(),
+      maximized: win.isMaximized()
+    })
+    getDb()
+      .prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`)
+      .run(WINDOW_BOUNDS_KEY, value)
+  } catch (err) {
+    console.warn('[window] bounds save failed:', err)
+  }
+}
+
+let windowSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function saveWindowStateSoon(): void {
+  if (windowSaveTimer) clearTimeout(windowSaveTimer)
+  windowSaveTimer = setTimeout(() => {
+    windowSaveTimer = null
+    saveWindowState()
+  }, WINDOW_SAVE_DEBOUNCE_MS)
+}
+
+function saveWindowStateNow(): void {
+  if (windowSaveTimer) {
+    clearTimeout(windowSaveTimer)
+    windowSaveTimer = null
+  }
+  saveWindowState()
+}
 
 function createWindow(): void {
-  const work = screen.getPrimaryDisplay().workAreaSize
+  const placed = resolveWindow(
+    loadWindowState(),
+    screen.getAllDisplays().map((d) => d.workArea),
+    screen.getPrimaryDisplay().workArea,
+    DEFAULT_WINDOW,
+    MIN_WINDOW
+  )
   mainWindow = new BrowserWindow({
-    width: Math.min(DEFAULT_WINDOW.width, work.width),
-    height: Math.min(DEFAULT_WINDOW.height, work.height),
-    minWidth: Math.min(MIN_WINDOW.width, work.width),
-    minHeight: Math.min(MIN_WINDOW.height, work.height),
+    ...placed.bounds,
+    minWidth: placed.minSize.width,
+    minHeight: placed.minSize.height,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -401,12 +468,22 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow!.show()
+    // maximize() shows a hidden window by itself; calling it here instead of
+    // show() opens the window maximized in one step, without a visible jump
+    // from the normal size, and only once there is content to show.
+    if (placed.maximized) mainWindow!.maximize()
+    else mainWindow!.show()
   })
+
+  mainWindow.on('resize', saveWindowStateSoon)
+  mainWindow.on('move', saveWindowStateSoon)
+  mainWindow.on('maximize', saveWindowStateSoon)
+  mainWindow.on('unmaximize', saveWindowStateSoon)
 
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault()
+      saveWindowStateNow()
       mainWindow?.hide()
     }
   })
@@ -789,6 +866,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true
+  saveWindowStateNow()
 })
 
 app.on('will-quit', () => {
