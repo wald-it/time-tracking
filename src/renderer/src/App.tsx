@@ -8,6 +8,7 @@ import ExportView from './views/ExportView'
 import { IdleModal } from './components/IdleModal'
 import { QuickNoteModal } from './components/QuickNoteModal'
 import { StartTimerModal } from './components/StartTimerModal'
+import { useStartTimerModalStore } from './store/startTimerModalStore'
 import { ToastTray } from './components/Toast'
 import { UpdateBanner } from './components/UpdateBanner'
 import { OnboardingWizard } from './components/OnboardingWizard'
@@ -22,7 +23,8 @@ function App(): React.JSX.Element {
   const onboardingCompleted = useSettingsStore((s) => s.settings?.onboarding_completed)
   const [view, setView] = useState<View>('today')
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [showTimerModal, setShowTimerModal] = useState(false)
+  // The one start modal (header key + Heute's START key), prefilled (B6).
+  const startModal = useStartTimerModalStore()
   const {
     idleEvent,
     idleKeep,
@@ -51,7 +53,11 @@ function App(): React.JSX.Element {
         style={{ background: 'var(--page-bg)', color: 'var(--text)' }}
       >
         <UpdateBanner />
-        <AppHeader view={view} onNavigate={setView} onStartTimer={() => setShowTimerModal(true)} />
+        <AppHeader
+          view={view}
+          onNavigate={setView}
+          onStartTimer={() => void startModal.openStart()}
+        />
 
         {/* Content */}
         <main className="relative z-10 flex-1 overflow-y-auto flex flex-col">
@@ -82,7 +88,11 @@ function App(): React.JSX.Element {
 
         <OnboardingWizard open={showOnboarding} onFinish={() => void finishOnboarding()} />
 
-        <StartTimerModal open={showTimerModal} onClose={() => setShowTimerModal(false)} />
+        <StartTimerModal
+          open={startModal.open}
+          onClose={startModal.close}
+          prefill={startModal.prefill}
+        />
       </div>
     </NowProvider>
   )

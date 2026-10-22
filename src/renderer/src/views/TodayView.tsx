@@ -10,7 +10,7 @@ import { useWeekStart, weekNumberOf } from '../hooks/useWeekStart'
 import { Dialog } from '../components/Dialog'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { EntryEditForm } from '../components/EntryEditForm'
-import { StartTimerModal } from '../components/StartTimerModal'
+import { useStartTimerModalStore } from '../store/startTimerModalStore'
 import { TimerDisplay } from '../components/heute/TimerDisplay'
 import { BigKey } from '../components/heute/BigKey'
 import { SummaryColumn } from '../components/heute/SummaryColumn'
@@ -52,11 +52,10 @@ export default function TodayView(): React.JSX.Element {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [projectsById, setProjectsById] = useState<Map<number, Project>>(new Map())
 
-  // Edit / create / delete / start dialog state
+  // Edit / create / delete dialog state
   const [createOpen, setCreateOpen] = useState(false)
   const [editEntry, setEditEntry] = useState<Entry | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
-  const [startOpen, setStartOpen] = useState(false)
 
   // The local date; a change re-fetches, so a view left open across midnight
   // does not show yesterday's entries under today's date.
@@ -125,13 +124,6 @@ export default function TodayView(): React.JSX.Element {
     }, 0)
   }, [summary, roundMinutes, nowMs])
 
-  // Only an active client can be started; the modal lists active ones only.
-  const lastEntry = summary?.recentEntries[0]
-  const lastUsed =
-    lastEntry && clientsById.get(lastEntry.client_id)?.active === 1
-      ? { clientId: lastEntry.client_id, projectId: lastEntry.project_id ?? null }
-      : null
-
   const runningClient = runningEntry ? clientsById.get(runningEntry.client_id) : undefined
   const runningProject =
     runningEntry?.project_id != null ? projectsById.get(runningEntry.project_id) : undefined
@@ -169,7 +161,8 @@ export default function TodayView(): React.JSX.Element {
           <BigKey
             running={runningEntry !== null}
             hotkey={hotkey}
-            onStart={() => setStartOpen(true)}
+            // B6: the one start modal in App, prefilled with the last used pair.
+            onStart={() => void useStartTimerModalStore.getState().openStart()}
             onStop={() => void stop()}
           />
         </div>
@@ -236,9 +229,6 @@ export default function TodayView(): React.JSX.Element {
           </div>
         </>
       )}
-
-      {/* B6: START offers the last used client + project, so Enter starts it. */}
-      <StartTimerModal open={startOpen} onClose={() => setStartOpen(false)} prefill={lastUsed} />
 
       <Dialog
         open={createOpen}
