@@ -15,6 +15,12 @@ All notable changes to TimeTrack are documented here.
 
 - **The Stream Deck dial shows worked time, like the app** — The Heute page now shows the time you actually worked as its large number and the rounded value only as a sub-line ("gerundet 7:45 h"), so the dial's stats face follows: it shows the raw today and week totals instead of the rounded ones. With no rounding step set, nothing changes. An installed plugin keeps showing the rounded values until the plugin itself is updated. `get_summary` also sends `today_rounded_seconds` / `week_rounded_seconds`, rounded per entry exactly like the invoice and the "gerundet" line; `today_display_seconds` / `week_display_seconds` keep their old meaning (the total rounded in one piece) for plugin builds that already read them.
 
+### Fixed
+
+- **PDF attachment, CSV and iCal export, the calendar and MCP `list_entries` cut days and months at local midnight** — Five places cut at midnight UTC instead of local midnight. The PDF time attachment and the CSV and iCal exports took their date range in UTC. East of UTC, an entry started shortly after midnight on the first day of the range was missing, and one started shortly after midnight on the day after the range was included — in Germany that is the first one or two hours after midnight, so a month's invoice attachment could miss its first night's work and carry the next month's. West of UTC the same happened late in the evening. The calendar's month and MCP `list_entries` with `year` + `month` had the same cut, so the calendar could count an entry of 1 November in October. All five now use one rule for the local calendar day and month, including the days the clocks change; `list_entries` documents `month` as the local calendar month. Ranges already built from local time (analytics, `get_analytics`, the Heute totals, the export quick ranges) are unchanged.
+
+- **A timer started through MCP with a time-zone offset is stored like every other entry** — `start_timer` kept its start time exactly as the client sent it (`2026-10-01T00:30:00+02:00`), while every other way of writing an entry stores UTC (`2026-09-30T22:30:00.000Z`). Day and month ranges compare these timestamps as text, so such an entry could land on the wrong day. The start is now stored in the common form, a start time that cannot be read is refused, and a database migration rewrites timestamps already stored in another form (a backup is taken before, as for every migration).
+
 ## [1.21.0] — 2026-10-22
 
 ### Added

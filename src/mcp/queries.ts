@@ -14,6 +14,7 @@
  * `rate = project.rate ?? client.rate` precedence.
  */
 import { feeCentSql } from '../shared/currency'
+import { localMonthRange } from '../shared/dateRanges'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
 import type { PrivacyConfig } from './privacy'
@@ -321,13 +322,12 @@ export interface ListEntriesResult {
   entries?: McpEntry[]
 }
 
-/** Resolve month → [startISO, endISO) UTC window, matching entries:getByMonth. */
+/**
+ * Resolve month → [startISO, endISO) window of the LOCAL calendar month (the
+ * machine's time zone), matching entries:getByMonth and the calendar.
+ */
 export function monthWindow(year: number, month: number): { start: string; end: string } {
-  const start = `${year}-${String(month).padStart(2, '0')}-01T00:00:00.000Z`
-  const nextMonth = month === 12 ? 1 : month + 1
-  const nextYear = month === 12 ? year + 1 : year
-  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00.000Z`
-  return { start, end }
+  return localMonthRange(year, month)
 }
 
 const ISO_TIMESTAMP =

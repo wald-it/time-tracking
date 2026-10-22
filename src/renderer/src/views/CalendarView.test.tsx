@@ -518,8 +518,8 @@ describe('CalendarView — selection follows the shown month', () => {
 
 describe('CalendarView — review fixes (PR 3)', () => {
   it('an entry of the next local month in the response counts nowhere', async () => {
-    // getByMonth cuts at UTC boundaries; 1 Sep 00:30 local can come back for
-    // August in timezones east of UTC. It has no cell, so it must not count.
+    // getByMonth cuts at local boundaries now; should it ever return an entry
+    // of the next month again, it has no cell and must not count.
     const stray = makeEntry({
       id: 99,
       started_at: new Date(2026, 8, 1, 0, 30).toISOString(),

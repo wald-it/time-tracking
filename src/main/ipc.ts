@@ -42,6 +42,7 @@ import type {
   DashboardSummary,
   LicenseEntry
 } from '../shared/types'
+import { monthEntries } from './entryRanges'
 
 export interface IpcHooks {
   refreshTrayClients(): void
@@ -237,18 +238,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('entries:getByMonth', (_e, query: MonthQuery): IpcResult<Entry[]> => {
     try {
-      const start = `${query.year}-${String(query.month).padStart(2, '0')}-01T00:00:00.000Z`
-      const nextMonth = query.month === 12 ? 1 : query.month + 1
-      const nextYear = query.month === 12 ? query.year + 1 : query.year
-      const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00.000Z`
-      const rows = db
-        .prepare(
-          `SELECT * FROM entries
-             WHERE started_at >= ? AND started_at < ? AND deleted_at IS NULL
-             ORDER BY started_at ASC`
-        )
-        .all(start, end) as Entry[]
-      return ok(rows)
+      // The local calendar month: 00:30 on the 1st and 23:30 on the last day
+      // belong to it, wherever the user lives.
+      return ok(monthEntries(db, query.year, query.month))
     } catch (e) {
       return fail(e)
     }

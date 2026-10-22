@@ -131,11 +131,19 @@ describe('durationSeconds (pure)', () => {
 })
 
 describe('monthWindow', () => {
-  it('builds a UTC month window with December rollover', () => {
-    expect(monthWindow(2026, 12)).toEqual({
-      start: '2026-12-01T00:00:00.000Z',
-      end: '2027-01-01T00:00:00.000Z'
-    })
+  it('builds the LOCAL month window with December rollover', () => {
+    // Pinned off UTC: on a UTC runner a UTC window would pass as well.
+    const previousTz = process.env.TZ
+    process.env.TZ = 'Europe/Berlin'
+    try {
+      expect(monthWindow(2026, 12)).toEqual({
+        start: '2026-11-30T23:00:00.000Z',
+        end: '2026-12-31T23:00:00.000Z'
+      })
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ
+      else process.env.TZ = previousTz
+    }
   })
 })
 

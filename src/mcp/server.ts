@@ -165,7 +165,8 @@ export function buildServer(): McpServer {
     {
       title: 'Zeiteinträge auflisten',
       description:
-        'Zeiteinträge in einem Zeitraum — entweder per year+month oder per from/to ' +
+        'Zeiteinträge in einem Zeitraum — entweder per year+month (lokaler Kalendermonat, ' +
+        'wie im Kalender der App) oder per from/to ' +
         '(ISO-Zeitstempel, from inklusive, to exklusiv). Zusätzliche Filter: client_id, ' +
         'project_id, tag. count und total_seconds decken immer ALLE Treffer ab, auch wenn ' +
         'entries durch limit gekürzt ist; summary_only=true liefert nur count + total_seconds. ' +
@@ -173,7 +174,13 @@ export function buildServer(): McpServer {
         'gerundete Abrechnungszahlen (PDF-Logik) get_analytics verwenden.',
       inputSchema: {
         year: z.number().int().optional().describe('Jahr (mit month kombinieren)'),
-        month: z.number().int().min(1).max(12).optional().describe('Monat 1–12 (mit year)'),
+        month: z
+          .number()
+          .int()
+          .min(1)
+          .max(12)
+          .optional()
+          .describe('Monat 1–12 (mit year), lokaler Kalendermonat'),
         from: z
           .string()
           .optional()

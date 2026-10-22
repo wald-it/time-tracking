@@ -171,11 +171,17 @@ describe('buildPdfPayload', () => {
     expect(p.rows).toHaveLength(0)
   })
 
-  it('range is inclusive — captures entries on the last day', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (1, '2026-04-30T22:00:00.000Z', '2026-04-30T23:00:00.000Z')`
-    ).run()
+  it('range is inclusive — captures entries on the last LOCAL day, not the day after', () => {
+    // 22:00–23:00 local on 30 Apr is in; 00:30 local on 1 May is not. (The
+    // old fixture used 22:00Z, which is already 1 May in Berlin.)
+    const insert = db.prepare(
+      `INSERT INTO entries (client_id, started_at, stopped_at) VALUES (1, ?, ?)`
+    )
+    insert.run(
+      new Date(2026, 3, 30, 22, 0).toISOString(),
+      new Date(2026, 3, 30, 23, 0).toISOString()
+    )
+    insert.run(new Date(2026, 4, 1, 0, 30).toISOString(), new Date(2026, 4, 1, 1, 0).toISOString())
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows).toHaveLength(1)
   })

@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3'
 import { migration001 } from './001-initial'
 import { migration002 } from './002-v11-settings'
 import { migration003 } from './003-v12-data'
@@ -24,6 +25,7 @@ import { migration023 } from './023-v117-hardware-keys'
 import { migration024 } from './024-v117-presence'
 import { migration025 } from './025-v117-ical-feed'
 import { migration026 } from './026-v118-week-start'
+import { migration027 } from './027-normalise-entry-timestamps'
 
 export interface Migration {
   /** Monotonically increasing integer. Never reused, never reordered. */
@@ -32,6 +34,18 @@ export interface Migration {
   name: string
   /** Raw SQL executed inside a transaction. Must be idempotent-safe. */
   up: string
+  /**
+   * Optional code run after `up`, in the same transaction — for a data rewrite
+   * SQL cannot express exactly (027 parses timestamps the way the app's
+   * `new Date(…)` did). A throw rolls back like a failing `up`.
+   */
+  run?: (db: Database.Database) => void
+}
+
+/** Apply one migration's body (`up`, then `run`). The caller owns the transaction. */
+export function executeMigration(db: Database.Database, m: Migration): void {
+  db.exec(m.up)
+  m.run?.(db)
 }
 
 /**
@@ -64,5 +78,6 @@ export const migrations: Migration[] = [
   migration023,
   migration024,
   migration025,
-  migration026
+  migration026,
+  migration027
 ].sort((a, b) => a.version - b.version)

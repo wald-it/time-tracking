@@ -13,7 +13,8 @@ import { dialog } from 'electron'
 import { writeFileSync } from 'fs'
 import type Database from 'better-sqlite3'
 import { formatCsv, type CsvOptions } from '../shared/csv'
-import type { Client, Entry, IpcResult } from '../shared/types'
+import type { Client, IpcResult } from '../shared/types'
+import { exportEntries } from './entryRanges'
 
 export interface CsvRequest {
   clientId: number
@@ -52,24 +53,7 @@ export async function handleCsvExport(
       .get(req.clientId) as Client | undefined
     if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
 
-    const entries = db
-      .prepare(
-        `SELECT * FROM entries
-         WHERE client_id = ?
-           AND date(started_at) >= date(?)
-           AND date(started_at) <= date(?)
-           AND (? IS NULL OR project_id = ?)
-           AND deleted_at IS NULL
-           AND stopped_at IS NOT NULL
-         ORDER BY started_at ASC`
-      )
-      .all(
-        req.clientId,
-        req.fromIso,
-        req.toIso,
-        req.projectId ?? null,
-        req.projectId ?? null
-      ) as Entry[]
+    const entries = exportEntries(db, req)
 
     const rangeHint = `${req.fromIso.slice(0, 7)}`
     const safeName = client.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Kunde'

@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
-import { migrations } from './migrations'
+import { executeMigration, migrations } from './migrations'
 import { normaliseBudgetMinutes } from './ipc'
 import {
   createMigratedTemplate,
@@ -860,7 +860,7 @@ describe('dashboard:summary — duration precision', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-duration-'))
     db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
     for (const m of migrations) {
-      db.exec(m.up)
+      executeMigration(db, m)
     }
   })
 
