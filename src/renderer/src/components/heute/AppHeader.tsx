@@ -42,7 +42,7 @@ export function AppHeader({
 
   return (
     <header className="shrink-0 border-b border-[var(--line)] bg-[var(--bg)]">
-      <div className="mx-auto flex min-h-16 max-w-[1200px] flex-wrap items-center gap-8 px-10">
+      <div className="mi-column flex min-h-16 flex-wrap items-center gap-8">
         <div className="flex items-center gap-2.5 text-[var(--ink)]">
           <LogoMark />
           <span

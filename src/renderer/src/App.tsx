@@ -54,8 +54,8 @@ function App(): React.JSX.Element {
         <AppHeader view={view} onNavigate={setView} onStartTimer={() => setShowTimerModal(true)} />
 
         {/* Content */}
-        <main className="relative z-10 flex-1 overflow-y-auto p-6 flex flex-col">
-          <div key={view} className="view-enter flex-1 flex flex-col">
+        <main className="relative z-10 flex-1 overflow-y-auto flex flex-col">
+          <div key={view} className="view-enter mi-column flex-1 flex flex-col pt-9 pb-16">
             {view === 'today' && <TodayView />}
             {view === 'calendar' && <CalendarView />}
             {view === 'clients' && <ClientsView />}

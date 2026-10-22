@@ -153,7 +153,7 @@ export default function TodayView(): React.JSX.Element {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-12 px-4 pb-10 pt-3">
+    <div className="flex w-full flex-col gap-12">
       {/* 1 — Hero row */}
       <div className="flex flex-wrap items-stretch gap-6">
         <div className="flex min-w-0 flex-[999_1_520px]">
