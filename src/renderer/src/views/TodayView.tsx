@@ -202,7 +202,7 @@ export default function TodayView(): React.JSX.Element {
           {/* 3 — Lower row */}
           <div className="flex flex-wrap items-start gap-10">
             <EntryTable
-              entries={summary.recentEntries}
+              entries={summary.todayEntries}
               clientsById={clientsById}
               projectsById={projectsById}
               nowMs={nowMs}
