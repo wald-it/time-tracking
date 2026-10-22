@@ -8,7 +8,7 @@ import { entrySecondsToday, formatClock, formatHm, layoutDayScale } from './dayS
  *
  * Section pattern (2 px ink rule → legend + date title, client legend on the
  * right), then the scale: entry bars as buttons, baseline, 15-min ticks, hour
- * labels and the needle. All geometry comes from `dayScale.ts`; this file only
+ * labels and the needle. All geometry comes from `dayScaleLayout.ts`; this file only
  * places it with absolute positions in %. `nowMs` is the shared clock from
  * `useNow()` — no interval here.
  */
