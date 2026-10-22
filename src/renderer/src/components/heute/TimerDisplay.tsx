@@ -1,4 +1,5 @@
 import { useT } from '../../contexts/I18nContext'
+import { useUiPrefsStore } from '../../store/uiPrefsStore'
 import { roundDuration } from '../../../../shared/duration'
 import { formatHoursMinutes } from '../../../../shared/currency'
 import { formatTimeHHMM } from '../../../../shared/date'
@@ -35,6 +36,7 @@ export function TimerDisplay({
   hotkey: string
 }): React.JSX.Element {
   const t = useT()
+  const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const running = runningEntry !== null
 
   const startedMs = runningEntry ? new Date(runningEntry.started_at).getTime() : NaN
@@ -115,7 +117,14 @@ export function TimerDisplay({
                 style={{ background: project?.color || (client?.color ?? 'var(--disp-dim)') }}
               />
               <span className="text-[15px] font-semibold">{client?.name ?? ''}</span>
-              {project && <span className="text-sm text-[var(--disp-dim)]">· {project.name}</span>}
+              {project && (
+                <span className="text-sm text-[var(--disp-dim)]">
+                  · {project.name}
+                  {showProjectNumber && project.external_project_number
+                    ? ` [${project.external_project_number}]`
+                    : ''}
+                </span>
+              )}
             </div>
             {/* Row 4 — description + tags */}
             <div className="flex flex-wrap items-center gap-2.5">
