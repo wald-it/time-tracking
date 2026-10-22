@@ -99,10 +99,19 @@ export function entrySpan(entry: ScaleEntry, nowMs: number): { startSec: number;
   return { startSec, endSec }
 }
 
-/** Seconds of the entry that fall on today (running entries count up to now). */
+/**
+ * Seconds of the entry that fall on today (running entries count up to now).
+ * Elapsed time between timestamps clipped to today's midnights — not the
+ * distance on the wall clock, which is an hour off on a DST switch night.
+ */
 export function entrySecondsToday(entry: ScaleEntry, nowMs: number): number {
-  const { startSec, endSec } = entrySpan(entry, nowMs)
-  return endSec - startSec
+  const dayStart = dayStartMs(nowMs)
+  const next = new Date(dayStart)
+  next.setDate(next.getDate() + 1)
+  const start = Math.max(new Date(entry.started_at).getTime(), dayStart)
+  const endRaw = entry.stopped_at === null ? nowMs : new Date(entry.stopped_at).getTime()
+  const end = Math.min(endRaw, next.getTime())
+  return Math.max(0, Math.floor((end - start) / 1000))
 }
 
 /**

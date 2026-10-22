@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   barGeometry,
   clockSeconds,
   dayRange,
+  entrySecondsToday,
   formatClock,
   formatHm,
   hourLabels,
@@ -163,5 +164,35 @@ describe('formatting', () => {
     expect(formatClock(at(8, 5))).toBe('08:05')
     expect(formatHm(4 * 3600 + 52 * 60 + 59)).toBe('4:52')
     expect(formatHm(0)).toBe('0:00')
+  })
+})
+
+// Durations are elapsed time, not distance on the wall clock: on the night the
+// clocks go back (Europe/Berlin, Sunday 25 Oct 2026, 03:00 → 02:00) an entry
+// from 00:00 to 04:00 lasts five hours. The legend has to say 5:00, like the
+// table and the totals. Bar placement keeps wall-clock coordinates.
+describe('entrySecondsToday across a DST switch', () => {
+  const previousTz = process.env.TZ
+  beforeAll(() => {
+    process.env.TZ = 'Europe/Berlin'
+  })
+  afterAll(() => {
+    process.env.TZ = previousTz
+  })
+
+  it('counts elapsed seconds on the night the clocks go back', () => {
+    const entry: ScaleEntry = {
+      started_at: '2026-10-24T22:00:00.000Z', // 00:00 CEST, 25 Oct
+      stopped_at: '2026-10-25T03:00:00.000Z' // 04:00 CET
+    }
+    expect(entrySecondsToday(entry, Date.parse('2026-10-25T10:00:00.000Z'))).toBe(5 * 3600)
+  })
+
+  it('still clips an entry from yesterday at midnight', () => {
+    const entry: ScaleEntry = {
+      started_at: '2026-10-24T20:00:00.000Z', // 22:00 CEST, 24 Oct
+      stopped_at: '2026-10-24T23:00:00.000Z' // 01:00 CEST, 25 Oct
+    }
+    expect(entrySecondsToday(entry, Date.parse('2026-10-25T10:00:00.000Z'))).toBe(3600)
   })
 })
