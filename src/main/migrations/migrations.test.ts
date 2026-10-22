@@ -846,7 +846,17 @@ describe('migration SQL execution', () => {
     ins.run(3, '2026-10-03T08:00:00.000Z', '2026-10-03T09:00:00.000Z', '2026-10-03T08:00:00.000Z')
     // unreadable: left as it is rather than nulled
     ins.run(4, 'kaputt', null, null)
+    // no zone: the app read this as LOCAL time (new Date), so must the rewrite.
+    // SQLite's 'utc' modifier uses the system zone, which process.env.TZ does
+    // not reliably change; on a UTC runner (CI) this case cannot go red, on a
+    // machine off UTC (the owner's, Europe/Berlin) it does.
+    ins.run(5, '2026-10-01T00:30:00', null, null)
     applyVersion(27)
+    const local = db.prepare('SELECT started_at FROM entries WHERE id = 5').get() as {
+      started_at: string
+    }
+    expect(local.started_at).toBe(new Date('2026-10-01T00:30:00').toISOString())
+    db.prepare('DELETE FROM entries WHERE id = 5').run()
     const rows = db
       .prepare('SELECT id, started_at, stopped_at, heartbeat_at FROM entries ORDER BY id')
       .all()
