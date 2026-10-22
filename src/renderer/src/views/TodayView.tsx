@@ -118,6 +118,11 @@ export default function TodayView(): React.JSX.Element {
     }, 0)
   }, [summary, roundMinutes, nowMs])
 
+  const lastEntry = summary?.recentEntries[0]
+  const lastUsed = lastEntry
+    ? { clientId: lastEntry.client_id, projectId: lastEntry.project_id ?? null }
+    : null
+
   const runningClient = runningEntry ? clientsById.get(runningEntry.client_id) : undefined
   const runningProject =
     runningEntry?.project_id != null ? projectsById.get(runningEntry.project_id) : undefined
@@ -223,7 +228,8 @@ export default function TodayView(): React.JSX.Element {
         </>
       )}
 
-      <StartTimerModal open={startOpen} onClose={() => setStartOpen(false)} />
+      {/* B6: START offers the last used client + project, so Enter starts it. */}
+      <StartTimerModal open={startOpen} onClose={() => setStartOpen(false)} prefill={lastUsed} />
 
       <Dialog
         open={createOpen}

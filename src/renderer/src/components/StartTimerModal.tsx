@@ -9,9 +9,19 @@ import type { Project } from '../../../shared/types'
 interface StartTimerModalProps {
   open: boolean
   onClose: () => void
+  /**
+   * Preselect a client and project when the modal opens (B6: the START key
+   * offers the last used pair, so Enter starts it). Omitted ⇒ the current
+   * selection stays as it is.
+   */
+  prefill?: { clientId: number; projectId: number | null } | null
 }
 
-export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.JSX.Element | null {
+export function StartTimerModal({
+  open,
+  onClose,
+  prefill
+}: StartTimerModalProps): React.JSX.Element | null {
   const t = useT()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const {
@@ -28,12 +38,23 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
 
   const [projects, setProjects] = useState<Project[]>([])
 
+  // B6: apply the prefill once per opening. Project first, so the project
+  // loader below finds a valid preselection and keeps it.
+  useEffect(() => {
+    if (!open || !prefill) return
+    useTimerStore.getState().setSelectedProjectId(prefill.projectId)
+    useTimerStore.getState().setSelectedClientId(prefill.clientId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on opening; a new prefill object per render must not reset the user's choice
+  }, [open])
+
   // Load projects when client selection changes
   useEffect(() => {
     if (!selectedClientId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — Teilfix möglich, der asynchrone Zweig bleibt Effect
       setProjects([])
-      setSelectedProjectId(null)
+      // The closure can be stale: a prefill applied in this same commit has
+      // already chosen a client, and resetting its project here would undo it.
+      if (useTimerStore.getState().selectedClientId === null) setSelectedProjectId(null)
       return
     }
     void window.api.projects.getAll({ clientId: selectedClientId }).then((res) => {
