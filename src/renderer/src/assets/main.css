@@ -40,8 +40,19 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* Key hover (HANDOFF §2.4): an outline instead of a colour change. */
-.key-hover:hover {
+/* The content column (HANDOFF §2.3): header and views share it, so their
+   left edges line up at every window width. 1440px wide = up to 1360px of
+   content; the 1280px screenshots stay the reference. */
+.mi-column {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  padding-inline: 40px;
+}
+
+/* Key hover (HANDOFF §2.4): an outline instead of a colour change. Not while
+   the key has keyboard focus — the 2px focus ring must stay visible. */
+.key-hover:hover:not(:focus-visible) {
   outline: 1px solid var(--ink3);
   outline-offset: 2px;
 }

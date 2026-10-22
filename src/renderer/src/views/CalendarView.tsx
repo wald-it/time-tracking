@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNow } from '../contexts/NowContext'
 import { useT } from '../contexts/I18nContext'
 import type { TranslationKey } from '../../../shared/locales/de'
 import {
   addMonths,
   endOfMonth,
   endOfWeek,
-  getISOWeek,
   isSameDay,
   isSameMonth,
   startOfMonth,
@@ -16,7 +16,7 @@ import type { Client, Project } from '../../../shared/types'
 import { useProjectsStore } from '../store/projectsStore'
 import { localDateKey } from '../../../shared/dateRanges'
 import { weekStartsOn, type WeekStart } from '../../../shared/weekStart'
-import { useWeekStart } from '../hooks/useWeekStart'
+import { useWeekStart, weekNumberOf } from '../hooks/useWeekStart'
 import { useEntriesStore } from '../store/entriesStore'
 import { useTimer } from '../hooks/useTimer'
 import { CalendarDrawer } from '../components/CalendarDrawer'
@@ -37,6 +37,9 @@ import { billedMinutes, effectiveRateCent, feeCent, formatEur } from '../../../s
  */
 export default function CalendarView(): React.JSX.Element {
   const t = useT()
+  // Running entries are measured at render time; subscribing to the shared
+  // clock re-renders this view every second while a timer runs.
+  useNow()
   const { clients } = useTimer()
   const { roundMinutes } = useRounding()
   const weekStart = useWeekStart()
@@ -467,7 +470,7 @@ function buildMonthWeeks(cursor: Date, week: WeekStart): WeekData[] {
     }
     weeks.push({
       weekKey: localDateKey(days[0]),
-      weekNumber: getISOWeek(days[0]),
+      weekNumber: weekNumberOf(days[0], week),
       days
     })
   }

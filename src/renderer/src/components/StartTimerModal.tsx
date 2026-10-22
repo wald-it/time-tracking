@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTimer } from '../hooks/useTimer'
 import { useT } from '../contexts/I18nContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
@@ -9,9 +9,19 @@ import type { Project } from '../../../shared/types'
 interface StartTimerModalProps {
   open: boolean
   onClose: () => void
+  /**
+   * Preselect a client and project when the modal opens (B6: the START key
+   * offers the last used pair, so Enter starts it). Omitted ⇒ the current
+   * selection stays as it is.
+   */
+  prefill?: { clientId: number; projectId: number | null } | null
 }
 
-export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.JSX.Element | null {
+export function StartTimerModal({
+  open,
+  onClose,
+  prefill
+}: StartTimerModalProps): React.JSX.Element | null {
   const t = useT()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const {
@@ -27,22 +37,49 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
   } = useTimer()
 
   const [projects, setProjects] = useState<Project[]>([])
+  // A prefill that says "this client, no project" must not be overridden by
+  // the single-project default below. Holds that client's id until another
+  // client is chosen.
+  const explicitNoProjectFor = useRef<number | null>(null)
 
-  // Load projects when client selection changes
+  // B6: apply the prefill once per opening. Project first, so the project
+  // loader below finds a valid preselection and keeps it.
   useEffect(() => {
+    if (!open || !prefill) return
+    explicitNoProjectFor.current = prefill.projectId === null ? prefill.clientId : null
+    useTimerStore.getState().setSelectedProjectId(prefill.projectId)
+    useTimerStore.getState().setSelectedClientId(prefill.clientId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on opening; a new prefill object per render must not reset the user's choice
+  }, [open])
+
+  // Load projects when client selection changes — only while open: App and
+  // Heute each mount a modal, and a closed one must not rewrite the shared
+  // selection (it would override the other one's prefill).
+  useEffect(() => {
+    if (!open) return
     if (!selectedClientId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — Teilfix möglich, der asynchrone Zweig bleibt Effect
       setProjects([])
-      setSelectedProjectId(null)
+      // The closure can be stale: a prefill applied in this same commit has
+      // already chosen a client, and resetting its project here would undo it.
+      if (useTimerStore.getState().selectedClientId === null) setSelectedProjectId(null)
       return
     }
-    void window.api.projects.getAll({ clientId: selectedClientId }).then((res) => {
+    const requestedFor = selectedClientId
+    void window.api.projects.getAll({ clientId: requestedFor }).then((res) => {
+      // A prefill can switch the client between request and response (the
+      // effect also ran once with the previous client) — an answer for a
+      // client that is no longer selected must not touch the selection.
+      if (useTimerStore.getState().selectedClientId !== requestedFor) return
       if (res.ok) {
         const active = res.data.filter((p) => p.active === 1)
         setProjects(active)
         const currentId = useTimerStore.getState().selectedProjectId
         if (currentId !== null && active.some((p) => p.id === currentId)) {
           // keep valid pre-selection — don't reset
+        } else if (explicitNoProjectFor.current === selectedClientId) {
+          // prefilled "no project" for this client — keep it
+          setSelectedProjectId(null)
         } else if (active.length === 1) {
           setSelectedProjectId(active[0].id)
         } else {
@@ -50,7 +87,7 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
         }
       }
     })
-  }, [selectedClientId])
+  }, [selectedClientId, open])
 
   if (!open) return null
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNow } from '../contexts/NowContext'
 import type { Client, Entry, Project } from '../../../shared/types'
 import { deserializeTags, entryHasTag } from '../../../shared/tags'
 import { useEntriesStore } from '../store/entriesStore'
@@ -38,6 +39,9 @@ export function CalendarDrawer({
 }: Props): React.ReactElement | null {
   const showToast = useToastStore((s) => s.show)
   const t = useT()
+  // Running entries are measured at render time; subscribing to the shared
+  // clock re-renders this view every second while a timer runs.
+  useNow()
   const projectsVersion = useProjectsStore((s) => s.version)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)

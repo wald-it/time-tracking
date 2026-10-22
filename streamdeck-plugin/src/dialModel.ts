@@ -107,16 +107,16 @@ export function isRunning(target: DialTarget, running: RunningTimer | null): boo
 }
 
 /**
- * What the stats face puts on screen.
+ * What the stats face puts on screen: the worked (raw) seconds — the same
+ * large number the app's Heute page shows since the Messinstrument UI (owner
+ * decision 2026-10-22: hours are worked time; the rounded value is only a
+ * sub-line there). The dial must keep matching the page: the first version
+ * showed 6:24 against 6:30 in the app, back when the page showed the rounded
+ * value.
  *
- * The app rounds durations before showing them (`pdf_round_minutes`, ceiling),
- * so the raw seconds disagree with the app window by up to one step — that is
- * how this went wrong the first time: 6:24 on the strip against 6:30 in the
- * app. The rounded values come from the bridge.
- *
- * Plugin and app ship separately and can be out of step: an older app answers
- * `get_summary` without the display fields. Falling back to the raw seconds
- * keeps that combination at "slightly off" instead of "NaN:NaN".
+ * The bridge also sends the rounded pair (`*_rounded_seconds`, legacy
+ * `*_display_seconds`); this face deliberately ignores it. A garbage value
+ * still renders as 0 instead of "NaN:NaN".
  */
 export interface SummaryTotals {
   today_seconds: number
@@ -126,14 +126,8 @@ export interface SummaryTotals {
 }
 
 export function displayTotals(s: SummaryTotals): { today: number; week: number } {
-  const pick = (display: number | undefined, raw: number): number => {
-    if (typeof display === 'number' && Number.isFinite(display)) return display
-    return Number.isFinite(raw) ? raw : 0
-  }
-  return {
-    today: pick(s.today_display_seconds, s.today_seconds),
-    week: pick(s.week_display_seconds, s.week_seconds)
-  }
+  const safe = (raw: number): number => (Number.isFinite(raw) ? raw : 0)
+  return { today: safe(s.today_seconds), week: safe(s.week_seconds) }
 }
 
 /** h:mm — the minute is the unit on the faces; the ring carries the seconds. */

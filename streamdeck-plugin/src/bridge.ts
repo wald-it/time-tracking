@@ -144,10 +144,12 @@ export interface Summary {
    */
   round_minutes?: number
   /**
-   * What the app's "Heute" page puts on screen: raw, rounded up to
-   * `round_minutes`. The dial shows these — rendering the raw seconds made it
-   * disagree with the app by up to one rounding step (6:24 vs. 6:30).
+   * As the invoice bills it: each entry rounded up to `round_minutes`, the
+   * same number as the app's "gerundet … h". The dial shows the raw seconds.
    */
+  today_rounded_seconds?: number
+  week_rounded_seconds?: number
+  /** Legacy: the total rounded in one piece, kept for older plugin builds. */
   today_display_seconds?: number
   week_display_seconds?: number
 }

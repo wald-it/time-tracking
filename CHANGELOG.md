@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Stream Deck dial shows worked time, like the app** — The Heute page now shows the time you actually worked as its large number and the rounded value only as a sub-line ("gerundet 7:45 h"), so the dial's stats face follows: it shows the raw today and week totals instead of the rounded ones. With no rounding step set, nothing changes. An installed plugin keeps showing the rounded values until the plugin itself is updated. `get_summary` also sends `today_rounded_seconds` / `week_rounded_seconds`, rounded per entry exactly like the invoice and the "gerundet" line; `today_display_seconds` / `week_display_seconds` keep their old meaning (the total rounded in one piece) for plugin builds that already read them.
+
 ## [1.21.0] — 2026-10-22
 
 ### Added

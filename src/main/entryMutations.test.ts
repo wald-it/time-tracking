@@ -216,6 +216,24 @@ describe('entryMutations', () => {
     expect(r.ok).toBe(false)
   })
 
+  // Codex on #242: the renderer could start client B with client A's project
+  // (stale selection), and startTimer stored the pair. createManualEntry
+  // already refuses a project of another client; starting must as well — it
+  // also guards the MCP and Stream Deck start paths.
+  it('startTimer rejects a project that belongs to another client', () => {
+    const r = startTimer(db, {
+      client_id: 2,
+      project_id: 10, // belongs to client 1
+      description: 'x',
+      started_at: '2026-06-10T09:00:00.000Z'
+    })
+    expect(r.ok).toBe(false)
+    const running = db
+      .prepare(`SELECT COUNT(*) AS n FROM entries WHERE stopped_at IS NULL`)
+      .get() as { n: number }
+    expect(running.n).toBe(0)
+  })
+
   it('stopRunningTimer stops the open entry and returns null when none run', () => {
     expect(stopRunningTimer(db)).toEqual({ ok: true, data: null })
     startTimer(db, { client_id: 1, description: 'run', started_at: '2026-06-10T09:00:00.000Z' })

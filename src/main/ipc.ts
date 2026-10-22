@@ -23,7 +23,7 @@ import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
-import { readTotals } from './dashboardTotals'
+import { readTodayEntries, readTotals, readWeekDaySeconds } from './dashboardTotals'
 import type {
   Client,
   Entry,
@@ -584,7 +584,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         return {
           todaySeconds: totals.today_seconds,
           weekSeconds: totals.week_seconds,
+          weekDaySeconds: readWeekDaySeconds(db),
           recentEntries,
+          todayEntries: readTodayEntries(db),
           topClients30d: topClients30d.map((r) => ({
             ...r,
             seconds: Math.max(0, Math.floor(r.seconds ?? 0)),

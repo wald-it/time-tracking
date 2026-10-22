@@ -23,7 +23,7 @@ import type {
   CreateEntryInput
 } from '../shared/types'
 import type { McpAuditEntry } from './mcpAudit'
-import { readRoundMinutes, readTotals } from './dashboardTotals'
+import { readRoundMinutes, readRoundedTotals, readTotals } from './dashboardTotals'
 import { roundDuration } from '../shared/duration'
 
 type Db = Database.Database
@@ -346,10 +346,15 @@ async function handleControllerRequest(
   // "Heute" page shows. Superset of get_timer_status; that op stays for the
   // key action, which does not need the totals.
   //
-  // Raw *and* display seconds: the page shows the rounded value
-  // (`pdf_round_minutes`, ceiling), so a surface that renders the raw number
-  // disagrees with the app by up to one rounding step. Rounding here rather
-  // than in the plugin keeps the rule in one place.
+  // Raw and rounded seconds. Since the Messinstrument UI (owner decision
+  // 2026-10-22) the app shows the RAW worked time large; surfaces that mirror
+  // the page show the raw seconds.
+  // - `*_rounded_seconds`: as the invoice bills it — each entry rounded up to
+  //   `pdf_round_minutes` (readRoundedTotals), the same number as Heute's
+  //   "gerundet … h". One rounding rule in the product.
+  // - `*_display_seconds`: LEGACY, unchanged meaning — the total rounded in
+  //   one piece, as the page showed it before. Kept only for plugin builds
+  //   that already read it (the plugin ships separately); not the invoice rule.
   if (op === 'get_summary') {
     const totals = readTotals(db)
     const round_minutes = readRoundMinutes(db)
@@ -359,6 +364,8 @@ async function handleControllerRequest(
         running: readRunning(db),
         ...totals,
         round_minutes,
+        ...readRoundedTotals(db),
+        // Legacy: the total rounded in one piece — see above.
         today_display_seconds: roundDuration(totals.today_seconds, round_minutes),
         week_display_seconds: roundDuration(totals.week_seconds, round_minutes)
       }

@@ -147,7 +147,6 @@
 *::before,
 *::after {
   box-sizing: border-box;
-  font-weight: normal;
 }
 
 ul {
@@ -260,4 +259,27 @@ body {
 
 .view-enter {
   animation: fadeIn 0.18s ease both;
+}
+
+/* ── Messinstrument PR 2: running indicator (HANDOFF §2.5) ─────────────────
+   Hard blink, 1 s steps(1), 100 % → 25 % opacity. Off under reduced motion. */
+@keyframes tt-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.tt-blink {
+  animation: tt-blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-blink {
+    animation: none;
+  }
 }
