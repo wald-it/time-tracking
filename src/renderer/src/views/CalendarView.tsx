@@ -15,7 +15,6 @@ import { DayPanel } from '../components/kalender/DayPanel'
 import { ClientBreakdown } from '../components/kalender/ClientBreakdown'
 import { GraphImportModal } from '../components/GraphImportModal'
 import { useRounding } from '../contexts/RoundingContext'
-import { roundDuration } from '../../../shared/duration'
 import { billedMinutes, effectiveRateCent, feeCent, formatEur } from '../../../shared/currency'
 import { formatHm, type DayRange } from '../components/heute/dayScaleLayout'
 import { MiniDayScale } from '../components/kalender/MiniDayScale'
@@ -28,7 +27,9 @@ import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
  * drawer-only behaviour back, make this a query that never matches
  * (e.g. `'(min-width: 100000px)'`).
  */
-export const DAY_PANEL_MEDIA_QUERY = '(min-width: 1100px)'
+// 1120, not 1100: the grid + panel row actually wraps at ~1108px once the
+// column padding and the scrollbar are counted (owner pre-review of PR 3).
+export const DAY_PANEL_MEDIA_QUERY = '(min-width: 1120px)'
 
 /** 2 px `--focus` outline, offset 2 px (HANDOFF §2.4). */
 const FOCUS =
@@ -88,6 +89,12 @@ export default function CalendarView(): React.JSX.Element {
   // The overlay drawer is only the narrow-width fallback; at wide widths it
   // never opens (the aside panel shows the selected day instead).
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Widening to the panel layout closes the drawer for good; otherwise it would
+  // reappear by itself when the window narrows again.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reacts to an external signal (window width via matchMedia); no render-time equivalent
+    if (wide) setDrawerOpen(false)
+  }, [wide])
   const [focusDay, setFocusDay] = useState<Date>(() => new Date())
   const [importOpen, setImportOpen] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -102,7 +109,11 @@ export default function CalendarView(): React.JSX.Element {
       })
       if (cancelled) return
       if (res.ok) {
-        setEntries(res.data)
+        // getByMonth still cuts the month at UTC boundaries, so it can return
+        // entries of the neighbouring LOCAL month; none of them has a cell, so
+        // none may count in week/month totals, the range or the breakdown.
+        // (The query itself moves to local boundaries in its own fix PR.)
+        setEntries(res.data.filter((e) => isSameMonth(new Date(e.started_at), cursor)))
         setStatus('ready')
         setErrorMsg(null)
       } else {
@@ -478,12 +489,15 @@ function Week({
         const isSelected = inMonth && key === selectedKey
         const weekend = isWeekend(day)
         const totalSeconds = dayEntries.reduce((sum, e) => sum + entryDurationSeconds(e, nowMs), 0)
-        const roundedSeconds = roundDuration(totalSeconds, roundMinutes)
+        // One rounding rule (HANDOFF §2.2): each entry rounded like the invoice.
+        const roundedSeconds = dayRoundedSeconds(dayEntries, roundMinutes, nowMs)
         const revenueCent = dayRevenueCent(dayEntries, clients, projects, roundMinutes, nowMs)
         const date = dateFmt.format(day)
+        // The amount is part of the label: narrow cells hide the euro line.
         const ariaLabel =
           totalSeconds > 0
-            ? t('calendar.cellAria', { date, hours: formatHm(totalSeconds) })
+            ? t('calendar.cellAria', { date, hours: formatHm(totalSeconds) }) +
+              (revenueCent > 0 ? ` · ${formatEur(revenueCent)}` : '')
             : t('calendar.cellAriaEmpty', { date })
         const numberInk = isToday
           ? 'var(--sig-ink)'
@@ -662,6 +676,15 @@ function entryDurationSeconds(e: Entry, nowMs: number): number {
  * to the step, project rate over client rate (#120), project rate 0 =
  * goodwill. A running entry counts up to now, like the hour total next to it.
  */
+/** Day total as the invoice bills it (each entry rounded up); raw when rounding is off. */
+function dayRoundedSeconds(entries: Entry[], roundStep: number, nowMs: number): number {
+  return entries.reduce((sum, e) => {
+    const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : nowMs
+    const rawMs = Math.max(0, stop - new Date(e.started_at).getTime())
+    return sum + (roundStep > 0 ? billedMinutes(rawMs, roundStep) * 60 : Math.floor(rawMs / 1000))
+  }, 0)
+}
+
 function dayRevenueCent(
   entries: Entry[],
   clients: Client[],

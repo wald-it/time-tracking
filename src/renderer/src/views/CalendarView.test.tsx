@@ -15,9 +15,9 @@
  * grouping key is the local date.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
-import CalendarView from './CalendarView'
+import CalendarView, { DAY_PANEL_MEDIA_QUERY } from './CalendarView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { NowProvider } from '../contexts/NowContext'
 import { RoundingProvider } from '../contexts/RoundingContext'
@@ -33,10 +33,10 @@ afterEach(() => {
   useSettingsStore.setState({ settings: null })
 })
 
-/** Pretend the window is (not) at least 1100 px wide. */
+/** Pretend the window is (not) wide enough for the day panel (DAY_PANEL_MEDIA_QUERY). */
 function installMatchMedia(wide: boolean): void {
   ;(window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
-    matches: wide && query.includes('min-width: 1100px'),
+    matches: wide && query === DAY_PANEL_MEDIA_QUERY,
     media: query,
     addEventListener: () => {},
     removeEventListener: () => {}
@@ -378,7 +378,7 @@ describe('CalendarView — selection state (§4.2.3)', () => {
 })
 
 describe('CalendarView — wide layout (B4)', () => {
-  it('from 1100 px on, a click selects the day but opens no drawer', async () => {
+  it('from the panel width on, a click selects the day but opens no drawer', async () => {
     installMatchMedia(true)
     await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
 
@@ -398,7 +398,7 @@ describe('CalendarView — wide layout (B4)', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('below 1100 px the drawer stays the fallback', async () => {
+  it('below the panel width the drawer stays the fallback', async () => {
     installMatchMedia(false)
     await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
     fireEvent.click(cell('2026-08-10'))
@@ -495,5 +495,54 @@ describe('CalendarView — selection follows the shown month', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Vorheriger Monat' }))
     await waitFor(() => expect(cell('2026-08-15').getAttribute('aria-pressed')).toBe('true'))
+  })
+})
+
+describe('CalendarView — review fixes (PR 3)', () => {
+  it('an entry of the next local month in the response counts nowhere', async () => {
+    // getByMonth cuts at UTC boundaries; 1 Sep 00:30 local can come back for
+    // August in timezones east of UTC. It has no cell, so it must not count.
+    const stray = makeEntry({
+      id: 99,
+      started_at: new Date(2026, 8, 1, 0, 30).toISOString(),
+      stopped_at: new Date(2026, 8, 1, 2, 30).toISOString()
+    })
+    await setup({ byMonth: { '2026-8': [...AUGUST_ENTRIES, stray] } })
+    // 1:30 + 1:00 + 2:00 — the stray two hours stay out.
+    expect(screen.getByTestId('month-total').textContent).toBe('4:30')
+  })
+
+  it('widening to the panel closes the drawer for good', async () => {
+    let wide = false
+    const listeners = new Set<() => void>()
+    ;(window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+      get matches() {
+        return wide && query === DAY_PANEL_MEDIA_QUERY
+      },
+      media: query,
+      addEventListener: (_: string, cb: () => void) => listeners.add(cb),
+      removeEventListener: (_: string, cb: () => void) => listeners.delete(cb)
+    })
+    const flip = (w: boolean): void => {
+      wide = w
+      act(() => listeners.forEach((cb) => cb()))
+    }
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    expect(screen.queryByRole('dialog')).not.toBeNull()
+
+    flip(true)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    flip(false)
+    // Not reopened by itself.
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it("the cell's accessible name carries the amount (narrow cells hide the euro line)", async () => {
+    await setup({
+      byMonth: { '2026-8': AUGUST_ENTRIES },
+      clients: [{ ...CLIENTS[0], rate_cent: 10000 }]
+    })
+    expect(cell('2026-08-10').getAttribute('aria-label')).toContain('250,00 €')
   })
 })
