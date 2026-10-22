@@ -192,6 +192,10 @@ export const en: Record<TranslationKey, string> = {
   'today.quickstart.meta': 'h · 30 days',
   'today.quickstart.hintIdle': 'Click starts right away. Press and hold to pick a project.',
   'today.quickstart.hintRunningLocked': 'Quick start is locked while a timer runs.',
+  'header.navAria': 'Main navigation',
+  'today.table.editAria': 'Edit entry {time}',
+  'today.table.deleteAria': 'Delete entry {time}',
+  'today.dayscale.running': 'running',
 
   // ── CalendarView ──────────────────────────────────────────────────────────
   'calendar.nav.prev': 'Previous month',

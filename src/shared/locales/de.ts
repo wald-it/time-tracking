@@ -192,6 +192,10 @@ export const de = {
   'today.quickstart.meta': 'h · 30 Tage',
   'today.quickstart.hintIdle': 'Klick startet sofort. Gedrückt halten für Projektwahl.',
   'today.quickstart.hintRunningLocked': 'Während ein Timer läuft, ist der Schnellstart gesperrt.',
+  'header.navAria': 'Hauptnavigation',
+  'today.table.editAria': 'Eintrag {time} bearbeiten',
+  'today.table.deleteAria': 'Eintrag {time} löschen',
+  'today.dayscale.running': 'läuft',
 
   // ── CalendarView ─────────────────────────────────────────────────────────
   'calendar.nav.prev': 'Vorheriger Monat',
