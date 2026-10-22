@@ -78,17 +78,6 @@ export function TrendChart({
 
       {/* SVG chart */}
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
-        <defs>
-          <linearGradient id="tt-barGrad" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.55" />
-          </linearGradient>
-          <linearGradient id="tt-barGradN" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--text3)" stopOpacity="0.55" />
-            <stop offset="100%" stopColor="var(--text3)" stopOpacity="0.25" />
-          </linearGradient>
-        </defs>
-
         {/* Grid + Y-axis labels */}
         {tickVals.map((tv, i) => {
           const y = P.t + innerH - (tv / maxVal) * innerH
@@ -154,10 +143,10 @@ export function TrendChart({
                   y={yTotal + billH}
                   width={bw}
                   height={nbillH}
-                  fill="url(#tt-barGradN)"
+                  fill="var(--tick)"
                   rx="2"
                 />
-                <rect x={x} y={yTotal} width={bw} height={billH} fill="url(#tt-barGrad)" rx="2" />
+                <rect x={x} y={yTotal} width={bw} height={billH} fill="var(--ink)" rx="2" />
                 <text
                   x={x + bw / 2}
                   y={H - 10}
@@ -189,7 +178,7 @@ export function TrendChart({
             const y = P.t + innerH - h
             return (
               <g key={i}>
-                <rect x={x} y={y} width={bw} height={h} fill="url(#tt-barGrad)" rx="2" />
+                <rect x={x} y={y} width={bw} height={h} fill="var(--ink)" rx="2" />
                 <text
                   x={x + bw / 2}
                   y={H - 10}
@@ -239,15 +228,15 @@ export function TrendChart({
           <>
             <span className="inline-flex items-center gap-1.5">
               <span
-                className="w-2.5 h-2.5 rounded-[var(--r-key)]"
-                style={{ background: 'var(--accent)' }}
+                className="w-2.5 h-2.5 rounded-[var(--r-fine)]"
+                style={{ background: 'var(--ink)' }}
               />
               {t('analytics.chart.billable')}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span
-                className="w-2.5 h-2.5 rounded-[var(--r-key)]"
-                style={{ background: 'var(--text3)', opacity: 0.6 }}
+                className="w-2.5 h-2.5 rounded-[var(--r-fine)]"
+                style={{ background: 'var(--tick)' }}
               />
               {t('analytics.chart.nonBillable')}
             </span>
@@ -256,8 +245,8 @@ export function TrendChart({
           <>
             <span className="inline-flex items-center gap-1.5">
               <span
-                className="w-2.5 h-2.5 rounded-[var(--r-key)]"
-                style={{ background: 'var(--accent)' }}
+                className="w-2.5 h-2.5 rounded-[var(--r-fine)]"
+                style={{ background: 'var(--ink)' }}
               />
               {t('analytics.chart.hoursLabel')}
             </span>
