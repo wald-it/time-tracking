@@ -31,7 +31,7 @@ function App(): React.JSX.Element {
     quickNoteEntry,
     setQuickNoteEntry,
     runningEntry
-  } = useTimer()
+  } = useTimer({ engine: true })
   // Check onboarding flag — show wizard only for fresh installs.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — zweiter Schreiber finishOnboarding(); Ableitung würde den Wizard nach Abschluss erneut öffnen

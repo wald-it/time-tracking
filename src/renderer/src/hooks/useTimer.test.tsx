@@ -163,7 +163,8 @@ async function setup(opts: { clients?: Client[]; running?: Entry | null } = {}):
   vi.resetModules()
   const api = mockApi(opts)
   const { useTimer } = await import('./useTimer')
-  const hook = renderHook(() => useTimer())
+  // The hook under test owns the clock, as App does (one engine per window).
+  const hook = renderHook(() => useTimer({ engine: true }))
   await waitFor(() => expect(api.trayUpdate).toHaveBeenCalled())
   return { api, hook }
 }
@@ -336,6 +337,25 @@ describe('useTimer — elapsed clock', () => {
     })
     expect(api.heartbeat).toHaveBeenCalledTimes(1)
     expect(api.heartbeat).toHaveBeenCalledWith(entry.id)
+  })
+})
+
+describe('useTimer — one engine per window', () => {
+  // Every view calls useTimer(); before, each mounted instance ran its own
+  // 1 s tick and 30 s heartbeat, so the main process got one heartbeat (and
+  // one tray update) per mounted view. Only the engine instance runs them now.
+  it('a second, non-engine instance adds no heartbeat', async () => {
+    const { api, hook } = await setup()
+    const { useTimer } = await import('./useTimer')
+    renderHook(() => useTimer())
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-26T10:00:00.000Z'))
+
+    await startTimer(hook)
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(api.heartbeat).toHaveBeenCalledTimes(1)
   })
 })
 

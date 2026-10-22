@@ -76,7 +76,14 @@ function installGlobalListenersOnce(
 
 let initRan = false
 
-export function useTimer(): UseTimerResult {
+/**
+ * `engine: true` marks the one instance that runs the 1 s elapsed tick and
+ * the 30 s heartbeat (+ tray refresh) — App, which is always mounted. Every
+ * other caller only reads the shared store; before, each mounted view ran its
+ * own pair of intervals and the heartbeat went out once per view.
+ */
+export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
+  const engine = opts.engine === true
   const {
     clients,
     runningEntry,
@@ -142,8 +149,9 @@ export function useTimer(): UseTimerResult {
     installGlobalListenersOnce(setIdleEvent)
   }, [])
 
-  // Tick interval when running
+  // Tick interval when running — engine instance only (see above).
   useEffect(() => {
+    if (!engine) return
     if (runningEntry) {
       tickRef.current = setInterval(() => {
         setElapsedSeconds(
@@ -167,7 +175,7 @@ export function useTimer(): UseTimerResult {
       if (tickRef.current) clearInterval(tickRef.current)
       if (heartbeatRef.current) clearInterval(heartbeatRef.current)
     }
-  }, [runningEntry])
+  }, [runningEntry, engine])
 
   const start = useCallback(async () => {
     // Resolve which client to start. If the user hasn't picked one (e.g. the
