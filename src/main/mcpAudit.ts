@@ -26,6 +26,11 @@ export interface McpAuditEntry {
   hasPrivateNote?: boolean
 }
 
+/** Where the audit log is written; lets the tests check it is never the real file (#243). */
+export function auditLogPath(): string {
+  return mcpLog.transports.file.getFile().path
+}
+
 /** Append one committed mutation to the audit log. */
 export function auditWrite(entry: McpAuditEntry): void {
   try {

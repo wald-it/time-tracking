@@ -26,7 +26,9 @@ export default defineConfig({
             // src/test holds the shared test bootstrap and the meta-test that
             // checks these very patterns still cover every test file.
             'src/test/**/*.test.ts'
-          ]
+          ],
+          // No test writes into the real userData logs (#243).
+          setupFiles: ['./src/test/isolateLogs.ts']
         }
       },
       {
