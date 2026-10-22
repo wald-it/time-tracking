@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MIN_VISIBLE,
+  captureWindowState,
+  createWindowStateKeeper,
   parseWindowState,
   resolveWindow,
   serializeWindowState,
-  type Rect
+  showPlacedWindow,
+  type Rect,
+  type WindowStateSource
 } from './windowBounds'
 
 const DEF = { width: 1280, height: 860 }
@@ -118,5 +122,129 @@ describe('resolveWindow', () => {
     const bounds = { x: -1700, y: -100, width: 1200, height: 800 }
     const r = resolveWindow(saved(bounds), [PRIMARY, left], PRIMARY, DEF, MIN)
     expect(r.bounds).toEqual(bounds)
+  })
+})
+
+/** A window whose state the test sets; getBounds() is the maximized rect. */
+function fakeWindow(normal: Rect): WindowStateSource & {
+  set: (s: Partial<{ normal: Rect; maximized: boolean; minimized: boolean }>) => void
+  getBounds: () => Rect
+} {
+  let state = { normal, maximized: false, minimized: false, destroyed: false }
+  return {
+    set: (s) => {
+      state = { ...state, ...s }
+    },
+    isDestroyed: () => state.destroyed,
+    isMinimized: () => state.minimized,
+    // Windows reports a minimized window as not maximized.
+    isMaximized: () => state.maximized && !state.minimized,
+    getNormalBounds: () => state.normal,
+    getBounds: () => (state.maximized ? PRIMARY : state.normal)
+  }
+}
+
+describe('captureWindowState', () => {
+  it('stores the size a maximized window restores to, not the maximized rect', () => {
+    const win = fakeWindow({ x: 100, y: 100, width: 1000, height: 700 })
+    win.set({ maximized: true })
+    expect(captureWindowState(win)).toEqual({
+      bounds: { x: 100, y: 100, width: 1000, height: 700 },
+      maximized: true
+    })
+  })
+
+  it('reads nothing from a minimized or missing window', () => {
+    const win = fakeWindow({ x: -32000, y: -32000, width: 160, height: 28 })
+    win.set({ minimized: true })
+    expect(captureWindowState(win)).toBeNull()
+    expect(captureWindowState(null)).toBeNull()
+  })
+})
+
+describe('createWindowStateKeeper', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function keeper(): { writes: string[]; k: ReturnType<typeof createWindowStateKeeper> } {
+    const writes: string[] = []
+    return { writes, k: createWindowStateKeeper({ write: (v) => writes.push(v), delayMs: 500 }) }
+  }
+
+  it('writes once the window has settled, with the latest state', () => {
+    vi.useFakeTimers()
+    const { writes, k } = keeper()
+    const win = fakeWindow({ x: 0, y: 0, width: 900, height: 700 })
+    k.changed(win)
+    win.set({ normal: { x: 10, y: 0, width: 900, height: 700 } })
+    k.changed(win)
+    vi.advanceTimersByTime(499)
+    expect(writes).toEqual([])
+    vi.advanceTimersByTime(1)
+    expect(writes.map((w) => parseWindowState(w)?.bounds.x)).toEqual([10])
+  })
+
+  it('a change followed by a minimize inside the debounce is written, maximized flag included', () => {
+    vi.useFakeTimers()
+    const { writes, k } = keeper()
+    const win = fakeWindow({ x: 50, y: 60, width: 900, height: 700 })
+    win.set({ maximized: true })
+    k.changed(win)
+    win.set({ minimized: true })
+    k.flush() // the 'minimize' event
+    expect(writes.map(parseWindowState)).toEqual([
+      { bounds: { x: 50, y: 60, width: 900, height: 700 }, maximized: true }
+    ])
+  })
+
+  it('quitting while minimized writes the state from before the minimize', () => {
+    vi.useFakeTimers()
+    const { writes, k } = keeper()
+    const win = fakeWindow({ x: 50, y: 60, width: 900, height: 700 })
+    k.changed(win)
+    win.set({ minimized: true })
+    k.flush(win) // before-quit: the window is minimized, nothing readable
+    expect(parseWindowState(writes.at(-1))?.bounds).toEqual({
+      x: 50,
+      y: 60,
+      width: 900,
+      height: 700
+    })
+    // and the pending debounce does not write again afterwards
+    vi.advanceTimersByTime(1000)
+    expect(writes).toHaveLength(1)
+  })
+
+  it('writes nothing when it never saw a readable state (e.g. no window yet)', () => {
+    const { writes, k } = keeper()
+    k.flush(null)
+    expect(writes).toEqual([])
+  })
+})
+
+describe('showPlacedWindow', () => {
+  function target(): { calls: string[]; win: Parameters<typeof showPlacedWindow>[0] } {
+    const calls: string[] = []
+    return {
+      calls,
+      win: {
+        show: () => calls.push('show'),
+        maximize: () => calls.push('maximize'),
+        focus: () => calls.push('focus')
+      }
+    }
+  }
+
+  it('shows a normal window', () => {
+    const { calls, win } = target()
+    showPlacedWindow(win, false)
+    expect(calls).toEqual(['show'])
+  })
+
+  it('maximizes without showing the normal size first, then focuses', () => {
+    const { calls, win } = target()
+    showPlacedWindow(win, true)
+    expect(calls).toEqual(['maximize', 'focus'])
   })
 })

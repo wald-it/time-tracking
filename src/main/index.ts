@@ -30,9 +30,10 @@ import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
 import {
   WINDOW_BOUNDS_KEY,
+  createWindowStateKeeper,
   parseWindowState,
   resolveWindow,
-  serializeWindowState
+  showPlacedWindow
 } from './windowBounds'
 import {
   startMcpBridge,
@@ -405,44 +406,22 @@ function loadWindowState(): ReturnType<typeof parseWindowState> {
 }
 
 /**
- * Store the main window's normal bounds and maximized flag. Called debounced
- * while it is resized or moved, and right away when it hides to the tray and
- * when the app quits — so neither a crash nor a kill loses more than the last
- * half second.
+ * Stores the main window's normal bounds and maximized flag: debounced while it
+ * is resized or moved, at once when it minimizes, hides to the tray or the app
+ * quits — so neither a crash nor a kill loses more than the last half second.
  */
-function saveWindowState(): void {
-  const win = mainWindow
-  if (!win || win.isDestroyed() || win.isMinimized()) return
-  try {
-    const value = serializeWindowState({
-      bounds: win.getNormalBounds(),
-      maximized: win.isMaximized()
-    })
-    getDb()
-      .prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`)
-      .run(WINDOW_BOUNDS_KEY, value)
-  } catch (err) {
-    console.warn('[window] bounds save failed:', err)
+const windowState = createWindowStateKeeper({
+  delayMs: WINDOW_SAVE_DEBOUNCE_MS,
+  write: (value) => {
+    try {
+      getDb()
+        .prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`)
+        .run(WINDOW_BOUNDS_KEY, value)
+    } catch (err) {
+      console.warn('[window] bounds save failed:', err)
+    }
   }
-}
-
-let windowSaveTimer: ReturnType<typeof setTimeout> | null = null
-
-function saveWindowStateSoon(): void {
-  if (windowSaveTimer) clearTimeout(windowSaveTimer)
-  windowSaveTimer = setTimeout(() => {
-    windowSaveTimer = null
-    saveWindowState()
-  }, WINDOW_SAVE_DEBOUNCE_MS)
-}
-
-function saveWindowStateNow(): void {
-  if (windowSaveTimer) {
-    clearTimeout(windowSaveTimer)
-    windowSaveTimer = null
-  }
-  saveWindowState()
-}
+})
 
 function createWindow(): void {
   const placed = resolveWindow(
@@ -467,23 +446,26 @@ function createWindow(): void {
     }
   })
 
+  // Windows can size a window created with x/y on a monitor whose scaling
+  // differs from the primary's wrongly; setting the bounds once more after
+  // creation puts it right (owner review).
+  mainWindow.setBounds(placed.bounds)
+
   mainWindow.on('ready-to-show', () => {
-    // maximize() shows a hidden window by itself; calling it here instead of
-    // show() opens the window maximized in one step, without a visible jump
-    // from the normal size, and only once there is content to show.
-    if (placed.maximized) mainWindow!.maximize()
-    else mainWindow!.show()
+    showPlacedWindow(mainWindow!, placed.maximized)
   })
 
-  mainWindow.on('resize', saveWindowStateSoon)
-  mainWindow.on('move', saveWindowStateSoon)
-  mainWindow.on('maximize', saveWindowStateSoon)
-  mainWindow.on('unmaximize', saveWindowStateSoon)
+  const changed = (): void => windowState.changed(mainWindow)
+  mainWindow.on('resize', changed)
+  mainWindow.on('move', changed)
+  mainWindow.on('maximize', changed)
+  mainWindow.on('unmaximize', changed)
+  mainWindow.on('minimize', () => windowState.flush())
 
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault()
-      saveWindowStateNow()
+      windowState.flush(mainWindow)
       mainWindow?.hide()
     }
   })
@@ -866,7 +848,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true
-  saveWindowStateNow()
+  windowState.flush(mainWindow)
 })
 
 app.on('will-quit', () => {
