@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>TimeTrack – Kalender</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.tt{--bg:#E8E6DF;--key:#F3F2EC;--key-edge:#C9C6BC;--ink:#191917;--ink2:#4A4843;--ink3:#5E5B54;--line:#CBC8BE;--tick:#8F8B80;--disp:#1B1B19;--disp-ink:#EDEBE4;--disp-dim:#8F8C83;--disp-line:#3A3935;--inv:#191917;--inv-ink:#F3F2EC;--inv-dim:#8F8C83;--sig-ink:#191917;--c1:#1F4FA6;--c2:#D4A017;--c3:#13805C;--c4:#E07AA6;color-scheme:light}
+.tt[data-theme="Graphit"]{--bg:#141413;--key:#1E1E1C;--key-edge:#34332F;--ink:#E9E7E0;--ink2:#B5B2A8;--ink3:#8E8B82;--line:#2E2D2A;--tick:#66635C;--disp:#0B0B0A;--disp-line:#2A2926;--inv:#E9E7E0;--inv-ink:#141413;--inv-dim:#55534D;--c1:#3A70C8;--c2:#BC8C14;--c3:#118058;--c4:#D36A95;color-scheme:dark}
+.tt *{box-sizing:border-box}
+.tt .mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.tt .lg{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-stretch:118%}
+.tt button,.tt a{font:inherit;color:inherit}
+.tt button{cursor:pointer}
+.tt button:disabled{cursor:default}
+.tt .nl:hover{color:var(--ink)}
+.tt .k:hover{outline:1px solid var(--ink3);outline-offset:2px}
+.tt .k:active{transform:translateY(1px)}
+.tt .day:not(:disabled):hover{background:var(--key) !important}
+.tt :focus-visible{outline:2px solid var(--sig);outline-offset:2px}
+a{color:#4A4843}a:hover{color:#191917}
+</style>
+</helmet>
+<div class="tt" data-theme="{{theme}}" style="--sig: {{signal}}; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: 'Archivo Variable', Archivo, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="border-bottom: 1px solid var(--line)">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 40px; min-height: 64px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="9.5" stroke="currentColor" stroke-width="1.5"></circle><path d="M11 2.5v2.5M19.5 11H17M11 19.5V17M2.5 11H5" stroke="currentColor" stroke-width="1.5"></path><path d="M11 11l4.2-4.2" style="stroke: var(--sig)" stroke-width="2" stroke-linecap="round"></path><circle cx="11" cy="11" r="1.6" fill="currentColor"></circle></svg>
+<span class="lg" style="font-size: 12px; font-weight: 800; letter-spacing: .2em; font-stretch: 125%">TimeTrack</span>
+</div>
+<nav aria-label="Hauptnavigation" style="display: flex; gap: 2px; flex-wrap: wrap; flex: 1 1 auto">
+<a href="Main.dc.html" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Heute</a>
+<a href="Kalender.dc.html" aria-current="page" class="nl" style="position: relative; display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--ink); text-decoration: none">Kalender<span aria-hidden="true" style="position: absolute; left: 14px; right: 14px; bottom: -10px; height: 3px; background: var(--sig)"></span></a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Kunden</button>
+<a href="Auswertung.dc.html" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Auswertung</a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Export</button>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Einstellungen</button>
+</nav>
+<div style="display: flex; align-items: center; gap: 12px">
+<span class="blink" aria-hidden="true" style="width: 8px; height: 8px; background: var(--sig)"></span>
+<span style="font-size: 13px; color: var(--ink2)">Nordlicht</span>
+<span class="mono" style="font-size: 15px; font-weight: 500">2:47:13</span>
+<a href="Main.dc.html" class="k" aria-label="Timer stoppen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px"><span style="width: 12px; height: 12px; background: var(--ink); border-radius: 1px"></span></a>
+</div>
+</div>
+</header>
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 36px 40px 64px; display: flex; flex-direction: column; gap: 32px">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+<div style="display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+<div>
+<div class="lg" style="color: var(--ink2)">Kalender</div>
+<h1 style="margin: 6px 0 0; display: flex; align-items: baseline; gap: 14px; font-size: 44px; line-height: 1; font-weight: 600; font-stretch: 112%; letter-spacing: -0.01em">Oktober<span class="mono" style="font-size: 28px; font-weight: 300; color: var(--ink3); letter-spacing: 0">2026</span></h1>
+</div>
+<div style="display: flex; gap: 8px">
+<button type="button" class="k" aria-label="Vorheriger Monat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.6"></path></svg></button>
+<button type="button" class="k" aria-label="Nächster Monat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 2l5 5-5 5" stroke="currentColor" stroke-width="1.6"></path></svg></button>
+<button type="button" class="k" onClick="{{goToday}}" style="min-height: 44px; padding: 0 16px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge); font-size: 13px; font-weight: 600">Heute</button>
+</div>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap">
+<button type="button" class="k" style="min-height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge); font-size: 13px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="3" width="13" height="11.5" stroke="currentColor" stroke-width="1.4"></rect><path d="M1.5 6.5h13M5 1v3.5M11 1v3.5" stroke="currentColor" stroke-width="1.4"></path></svg>Termine übernehmen</button>
+<div style="text-align: right">
+<div class="lg" style="color: var(--ink2)">Summe Oktober</div>
+<div style="display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; margin-top: 6px">
+<span class="mono" style="font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -0.02em">126:02</span>
+<span style="font-size: 13px; color: var(--ink2)">h</span>
+</div>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start">
+
+<section aria-label="Monatsraster Oktober 2026" style="flex: 999 1 680px; min-width: 0; overflow-x: auto">
+<div style="min-width: 660px; display: grid; grid-template-columns: 72px repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--line)">
+<div class="lg" style="padding: 0 0 10px; font-size: 10px; color: var(--ink3); border-bottom: 2px solid var(--ink)">KW</div>
+<sc-for list="{{heads}}" as="h" hint-placeholder-count="7">
+<div class="lg" style="padding: 0 0 10px 10px; font-size: 10px; color: {{h.c}}; border-bottom: 2px solid var(--ink)">{{h.t}}</div>
+</sc-for>
+<sc-for list="{{weeks}}" as="w" hint-placeholder-count="5">
+<div style="display: contents">
+<div style="min-height: 104px; padding: 10px 10px 10px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between">
+<span class="mono" style="font-size: 20px; font-weight: 300; line-height: 1">{{w.kw}}</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">{{w.total}}</span>
+</div>
+<sc-for list="{{w.days}}" as="d" hint-placeholder-count="7">
+<button type="button" class="day" onClick="{{d.pick}}" disabled="{{d.out}}" aria-pressed="{{d.pressed}}" aria-label="{{d.aria}}" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: {{d.topBorder}}; border-left: 1px solid var(--line); border-radius: 0; background: {{d.bg}}; box-shadow: {{d.ring}}; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: {{d.numBg}}; color: {{d.numInk}}">{{d.n}}</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">{{d.total}}</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+<sc-for list="{{d.segs}}" as="s" hint-placeholder-count="3">
+<span style="position: absolute; top: 0; height: 8px; left: {{s.left}}; width: {{s.width}}; background: {{s.bg}}; box-shadow: {{s.ring}}"></span>
+</sc-for>
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: {{d.base}}"></span>
+<sc-for list="{{marks}}" as="m" hint-placeholder-count="6">
+<span style="position: absolute; top: 10px; left: {{m}}; width: 1px; height: 4px; background: var(--tick)"></span>
+</sc-for>
+<sc-if value="{{d.isToday}}" hint-placeholder-val="{{ false }}">
+<span style="position: absolute; top: -3px; left: {{nowPct}}; width: 2px; height: 17px; background: var(--sig)"></span>
+</sc-if>
+</span>
+</button>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<p style="margin: 12px 0 0; font-size: 12px; color: var(--ink3)">Skala je Tag 07–20 Uhr · schraffiert = läuft</p>
+</section>
+
+<aside style="flex: 1 1 300px; display: flex; flex-direction: column; gap: 36px">
+
+<section aria-labelledby="h-day" style="border-top: 2px solid var(--ink); padding-top: 14px">
+<h2 id="h-day" class="lg" style="margin: 0; color: var(--ink2)">Ausgewählter Tag</h2>
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 6px">
+<span style="font-size: 18px; font-weight: 600; font-stretch: 106%">{{selTitle}}</span>
+<span class="mono" style="font-size: 24px; font-weight: 300">{{selTotal}}</span>
+</div>
+<sc-if value="{{selEmpty}}" hint-placeholder-val="{{ false }}">
+<p style="margin: 16px 0 0; padding: 16px 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink3)">Keine Einträge an diesem Tag.</p>
+</sc-if>
+<ol style="list-style: none; margin: 14px 0 0; padding: 0">
+<sc-for list="{{selEntries}}" as="e" hint-placeholder-count="5">
+<li style="border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 3px">
+<div style="display: flex; justify-content: space-between; gap: 10px">
+<span class="mono" style="font-size: 12px; color: var(--ink2)">{{e.range}}</span>
+<span class="mono" style="font-size: 13px; font-weight: {{e.fw}}">{{e.dur}}</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 8px; height: 8px; flex: none; background: {{e.color}}"></span>
+<span style="font-size: 13px; font-weight: 600">{{e.client}}</span>
+<span style="font-size: 12px; color: var(--ink2)">· {{e.project}}</span>
+</div>
+<div style="font-size: 13px; color: var(--ink)">{{e.desc}}</div>
+</li>
+</sc-for>
+</ol>
+<button type="button" class="k" style="margin-top: 6px; width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge); font-size: 13px; font-weight: 600"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6"></path></svg>{{selAdd}}</button>
+</section>
+
+<section aria-labelledby="h-month" style="border-top: 2px solid var(--ink); padding-top: 14px">
+<h2 id="h-month" class="lg" style="margin: 0; color: var(--ink2)">Oktober nach Kunde</h2>
+<ul style="list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px">
+<sc-for list="{{clients}}" as="c" hint-placeholder-count="4">
+<li style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: {{c.color}}"></span>
+<span style="flex: 1; font-size: 13px; font-weight: 600">{{c.name}}</span>
+<span class="mono" style="font-size: 12px; color: var(--ink3)">{{c.share}}</span>
+<span class="mono" style="font-size: 13px; min-width: 48px; text-align: right">{{c.hm}}</span>
+</div>
+<div aria-hidden="true" style="height: 4px; background: var(--line)">
+<div style="height: 4px; width: {{c.width}}; background: {{c.color}}"></div>
+</div>
+</li>
+</sc-for>
+</ul>
+</section>
+
+</aside>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["Papier","Graphit"],"default":"Papier","section":"Look"},"signal":{"editor":"color","default":"#E2551F","section":"Look"},"$preview":{"width":1280,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const sel = st.sel != null ? st.sel : 21;
+    const TODAY = 22;
+    const NOW = 1012;
+    const C = [
+      { name: 'Nordlicht Energie GmbH', color: 'var(--c1)', proj: ['S/4 Rollenkonzept', 'Fiori-Berechtigungen'], desc: ['Rollenschnitt Vertrieb abstimmen', 'Kachelkataloge zuordnen'] },
+      { name: 'Brandt & Partner', color: 'var(--c2)', proj: ['IAS-SSO'], desc: ['Entra-ID-Gruppen mappen'] },
+      { name: 'Kessler Logistik AG', color: 'var(--c3)', proj: ['BTP-Audit'], desc: ['Subaccount-Berechtigungen prüfen'] },
+      { name: 'wald-it intern', color: 'var(--c4)', proj: ['Verwaltung'], desc: ['Rechnungen & Belege'] }
+    ];
+    const DAYS = {"1":[[495,645,1],[660,750,2],[795,1035,0],[1050,1110,3]],"2":[[480,690,0],[720,840,1],[840,885,3]],"5":[[480,600,0],[615,750,0],[795,915,2],[930,1020,3]],"6":[[510,720,1],[765,900,0],[915,1065,0]],"7":[[465,540,3],[540,735,2],[780,990,0]],"8":[[540,750,2],[810,960,2],[975,1050,1]],"9":[[480,690,0],[720,840,1],[840,885,3]],"10":[[600,690,3]],"12":[[510,720,1],[765,900,0],[915,1065,0]],"13":[[495,645,1],[660,750,2],[795,1035,0],[1050,1110,3]],"14":[[480,600,0],[615,750,0],[795,915,2],[930,1020,3]],"15":[[465,540,3],[540,735,2],[780,990,0]],"16":[[480,690,0],[720,840,1],[840,885,3]],"19":[[480,630,0],[645,750,0],[795,945,2],[960,1050,1]],"20":[[510,540,3],[540,730,1],[780,930,0],[945,1035,2]],"21":[[465,555,0],[570,720,0],[765,855,1],[870,1010,2],[1020,1095,3]],"22":[[490,580,1],[590,620,3],[630,755,0],[795,835,2],[845,1012,0]]};
+    const DETAIL = {
+      21: [
+        ['S/4 Rollenkonzept', 'Workshop Rollenschnitt Einkauf'],
+        ['S/4 Rollenkonzept', 'SU24-Vorschlagswerte bereinigen'],
+        ['IAS-SSO', 'Conditional-Access-Policies abstimmen'],
+        ['BTP-Audit', 'Subaccount-Berechtigungen prüfen'],
+        ['Verwaltung', 'Rechnungen & Belege']
+      ],
+      22: [
+        ['IAS-SSO', 'SAML-Trust zu Entra ID testen'],
+        ['Akquise', 'Angebot Kessler Phase 2 ausarbeiten'],
+        ['S/4 Rollenkonzept', 'SoD-Konflikte FI/MM auswerten'],
+        ['BTP-Audit', 'Abstimmung Audit-Umfang'],
+        ['Fiori-Berechtigungen', 'Berechtigungskonzept Fiori-Kacheln überarbeiten']
+      ]
+    };
+    const WD = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+    const pad = (n) => String(n).padStart(2, '0');
+    const hmM = (m) => Math.floor(m / 60) + ':' + pad(m % 60);
+    const clk = (m) => pad(Math.floor(m / 60)) + ':' + pad(m % 60);
+    const S0 = 420, SPAN = 780;
+    const pc = (m) => Math.max(0, Math.min(100, ((m - S0) / SPAN) * 100));
+    const isOpen = (d, k, segs) => d === TODAY && k === segs.length - 1;
+
+    const heads = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((t, i) => ({ t: t, c: i >= 5 ? 'var(--ink3)' : 'var(--ink2)' }));
+    const marks = [480, 600, 720, 840, 960, 1080].map((m) => pc(m).toFixed(2) + '%');
+
+    const kws = [40, 41, 42, 43, 44];
+    const weeks = kws.map((kw, wi) => {
+      let wsum = 0;
+      const days = [];
+      for (let j = 0; j < 7; j++) {
+        const i = wi * 7 + j;
+        let n, out;
+        if (i < 3) { n = 28 + i; out = true; }
+        else if (i <= 33) { n = i - 2; out = false; }
+        else { n = i - 33; out = true; }
+        const segs = !out && DAYS[n] ? DAYS[n] : [];
+        const tot = segs.reduce((a, s) => a + (s[1] - s[0]), 0);
+        wsum += tot;
+        const isToday = !out && n === TODAY;
+        const isSel = !out && n === sel;
+        const weekend = j >= 5;
+        days.push({
+          n: String(n),
+          out: out,
+          pressed: isSel ? 'true' : 'false',
+          aria: out ? n + '. (anderer Monat)' : WD[j] + ', ' + n + '. Oktober' + (tot ? ', ' + hmM(tot) + ' Stunden' : ', keine Einträge'),
+          total: tot ? hmM(tot) : '',
+          isToday: isToday,
+          bg: isSel ? 'var(--key)' : 'transparent',
+          ring: isSel ? 'inset 0 0 0 1px var(--ink)' : 'none',
+          topBorder: isToday ? '2px solid var(--ink)' : '1px solid var(--line)',
+          numBg: isToday ? 'var(--sig)' : 'transparent',
+          numInk: isToday ? 'var(--sig-ink)' : out ? 'var(--ink3)' : weekend ? 'var(--ink2)' : 'var(--ink)',
+          base: out ? 'transparent' : 'var(--line)',
+          segs: segs.map((s, k) => {
+            const col = C[s[2]].color;
+            const open = isOpen(n, k, segs);
+            return {
+              left: pc(s[0]).toFixed(2) + '%',
+              width: Math.max(0.8, pc(s[1]) - pc(s[0])).toFixed(2) + '%',
+              bg: open ? 'repeating-linear-gradient(135deg, ' + col + ' 0 3px, transparent 3px 5px)' : col,
+              ring: open ? 'inset 0 0 0 1px ' + col : 'none'
+            };
+          }),
+          pick: () => { if (!out) this.setState({ sel: n }); }
+        });
+      }
+      return { kw: String(kw), total: wsum ? hmM(wsum) : '–', days: days };
+    });
+
+    const selSegs = DAYS[sel] || [];
+    const selTot = selSegs.reduce((a, s) => a + (s[1] - s[0]), 0);
+    const selEntries = selSegs.map((s, k) => {
+      const c = C[s[2]];
+      const open = isOpen(sel, k, selSegs);
+      const det = DETAIL[sel] ? DETAIL[sel][k] : null;
+      const vi = (sel + k) % c.proj.length;
+      return {
+        range: clk(s[0]) + '–' + (open ? 'läuft' : clk(s[1])),
+        dur: hmM(s[1] - s[0]),
+        fw: open ? '600' : '400',
+        color: c.color,
+        client: c.name,
+        project: det ? det[0] : c.proj[vi],
+        desc: det ? det[1] : c.desc[vi]
+      };
+    });
+    const wdIdx = (sel + 2) % 7;
+
+    const MON = [3547, 1615, 1590, 810];
+    const TOTAL = 7562;
+    const clients = C.map((c, i) => ({
+      name: c.name,
+      color: c.color,
+      hm: hmM(MON[i]),
+      share: Math.round((MON[i] / TOTAL) * 100) + ' %',
+      width: ((MON[i] / TOTAL) * 100).toFixed(1) + '%'
+    }));
+
+    return {
+      theme: this.props.theme ?? 'Papier',
+      signal: this.props.signal ?? '#E2551F',
+      heads: heads,
+      marks: marks,
+      weeks: weeks,
+      nowPct: pc(NOW).toFixed(2) + '%',
+      goToday: () => this.setState({ sel: TODAY }),
+      selTitle: WD[wdIdx] + ', ' + sel + '. Oktober',
+      selTotal: selTot ? hmM(selTot) : '0:00',
+      selEmpty: selSegs.length === 0,
+      selEntries: selEntries,
+      selAdd: 'Eintrag für ' + pad(sel) + '.10. nachtragen',
+      clients: clients
+    };
+  }
+}
+</script>
+</body>
+</html>

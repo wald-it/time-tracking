@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>TimeTrack – Auswertung</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.tt{--bg:#E8E6DF;--key:#F3F2EC;--key-edge:#C9C6BC;--ink:#191917;--ink2:#4A4843;--ink3:#5E5B54;--line:#CBC8BE;--tick:#8F8B80;--disp:#1B1B19;--disp-ink:#EDEBE4;--disp-dim:#8F8C83;--disp-line:#3A3935;--inv:#191917;--inv-ink:#F3F2EC;--inv-dim:#8F8C83;--sig-ink:#191917;--c1:#1F4FA6;--c2:#D4A017;--c3:#13805C;--c4:#E07AA6;color-scheme:light}
+.tt[data-theme="Graphit"]{--bg:#141413;--key:#1E1E1C;--key-edge:#34332F;--ink:#E9E7E0;--ink2:#B5B2A8;--ink3:#8E8B82;--line:#2E2D2A;--tick:#66635C;--disp:#0B0B0A;--disp-line:#2A2926;--inv:#E9E7E0;--inv-ink:#141413;--inv-dim:#55534D;--c1:#3A70C8;--c2:#BC8C14;--c3:#118058;--c4:#D36A95;color-scheme:dark}
+.tt *{box-sizing:border-box}
+.tt .mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.tt .lg{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-stretch:118%}
+.tt button,.tt a{font:inherit;color:inherit}
+.tt button{cursor:pointer}
+.tt .nl:hover{color:var(--ink)}
+.tt .k:hover{outline:1px solid var(--ink3);outline-offset:2px}
+.tt .k:active{transform:translateY(1px)}
+.tt .bar:hover{outline:1px solid var(--ink);outline-offset:1px}
+.tt :focus-visible{outline:2px solid var(--sig);outline-offset:2px}
+a{color:#4A4843}a:hover{color:#191917}
+</style>
+</helmet>
+<div class="tt" data-theme="{{theme}}" style="--sig: {{signal}}; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: 'Archivo Variable', Archivo, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="border-bottom: 1px solid var(--line)">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 40px; min-height: 64px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="9.5" stroke="currentColor" stroke-width="1.5"></circle><path d="M11 2.5v2.5M19.5 11H17M11 19.5V17M2.5 11H5" stroke="currentColor" stroke-width="1.5"></path><path d="M11 11l4.2-4.2" style="stroke: var(--sig)" stroke-width="2" stroke-linecap="round"></path><circle cx="11" cy="11" r="1.6" fill="currentColor"></circle></svg>
+<span class="lg" style="font-size: 12px; font-weight: 800; letter-spacing: .2em; font-stretch: 125%">TimeTrack</span>
+</div>
+<nav aria-label="Hauptnavigation" style="display: flex; gap: 2px; flex-wrap: wrap; flex: 1 1 auto">
+<a href="Main.dc.html" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Heute</a>
+<a href="Kalender.dc.html" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Kalender</a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Kunden</button>
+<a href="Auswertung.dc.html" aria-current="page" class="nl" style="position: relative; display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--ink); text-decoration: none">Auswertung<span aria-hidden="true" style="position: absolute; left: 14px; right: 14px; bottom: -10px; height: 3px; background: var(--sig)"></span></a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Export</button>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Einstellungen</button>
+</nav>
+<div style="display: flex; align-items: center; gap: 12px">
+<span aria-hidden="true" style="width: 8px; height: 8px; background: var(--sig)"></span>
+<span style="font-size: 13px; color: var(--ink2)">Nordlicht</span>
+<span class="mono" style="font-size: 15px; font-weight: 500">2:47:13</span>
+<a href="Main.dc.html" class="k" aria-label="Timer stoppen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px"><span style="width: 12px; height: 12px; background: var(--ink); border-radius: 1px"></span></a>
+</div>
+</div>
+</header>
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 36px 40px 64px; display: flex; flex-direction: column; gap: 48px">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+<div style="display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+<div>
+<div class="lg" style="color: var(--ink2)">Auswertung</div>
+<h1 style="margin: 6px 0 0; display: flex; align-items: baseline; gap: 14px; font-size: 44px; line-height: 1; font-weight: 600; font-stretch: 112%; letter-spacing: -0.01em">Oktober<span class="mono" style="font-size: 28px; font-weight: 300; color: var(--ink3); letter-spacing: 0">2026</span></h1>
+</div>
+<div style="display: flex; gap: 8px">
+<button type="button" class="k" aria-label="Vorheriger Monat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.6"></path></svg></button>
+<button type="button" class="k" aria-label="Nächster Monat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 2l5 5-5 5" stroke="currentColor" stroke-width="1.6"></path></svg></button>
+</div>
+</div>
+<p style="margin: 0; max-width: 340px; font-size: 13px; color: var(--ink2); text-align: right">Stand Do 22.10. · verglichen mit dem gleichen Zeitraum im Vormonat (1.–22. September)</p>
+</div>
+
+<section aria-label="Kennzahlen" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 32px">
+<sc-for list="{{kpis}}" as="k" hint-placeholder-count="3">
+<div style="border-top: 2px solid var(--ink); padding-top: 14px; display: flex; flex-direction: column; gap: 10px">
+<div class="lg" style="color: var(--ink2)">{{k.label}}</div>
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span class="mono" style="font-size: 56px; font-weight: 300; line-height: 1; letter-spacing: -0.03em">{{k.value}}</span>
+<span style="font-size: 15px; color: var(--ink2)">{{k.unit}}</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<svg width="10" height="8" viewBox="0 0 10 8" aria-hidden="true" style="transform: {{k.rot}}"><path d="M5 0l5 8H0z" fill="currentColor"></path></svg>
+<span class="mono" style="font-weight: 600">{{k.delta}}</span>
+<span style="color: var(--ink3)">{{k.prev}}</span>
+</div>
+</div>
+</sc-for>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start">
+
+<section aria-labelledby="h-clients" style="flex: 3 1 520px; min-width: 0; border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap">
+<h2 id="h-clients" class="lg" style="margin: 0; color: var(--ink2)">Stunden nach Kunde</h2>
+<span style="font-size: 12px; color: var(--ink3)">laufender Monat · Umsatz rechts</span>
+</div>
+<div style="margin-top: 22px; display: grid; grid-template-columns: 170px minmax(0, 1fr) 72px 88px; column-gap: 0; row-gap: 0; align-items: center">
+<span></span>
+<div aria-hidden="true" style="position: relative; height: 26px; margin: 0 16px; border-bottom: 1px solid var(--ink)">
+<sc-for list="{{rulerMinor}}" as="r" hint-placeholder-count="13">
+<span style="position: absolute; bottom: 0; left: {{r.left}}; width: 1px; height: {{r.h}}; background: var(--tick)"></span>
+</sc-for>
+<sc-for list="{{rulerMajor}}" as="r" hint-placeholder-count="7">
+<span class="mono" style="position: absolute; top: 0; left: {{r.left}}; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">{{r.t}}</span>
+</sc-for>
+</div>
+<span class="lg" style="font-size: 10px; color: var(--ink3); text-align: right">h</span>
+<span class="lg" style="font-size: 10px; color: var(--ink3); text-align: right">€</span>
+<sc-for list="{{clientRows}}" as="c" hint-placeholder-count="4">
+<div style="display: contents">
+<div style="display: flex; align-items: center; gap: 8px; min-height: 52px; border-bottom: 1px solid var(--line)">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: {{c.color}}"></span>
+<span style="font-size: 13px; font-weight: 600">{{c.name}}</span>
+</div>
+<div style="min-height: 52px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line)">
+<div class="bar" title="{{c.title}}" style="height: 18px; width: {{c.width}}; background: {{c.color}}"></div>
+</div>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 14px; border-bottom: 1px solid var(--line)">{{c.hm}}</span>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 13px; color: {{c.revColor}}; border-bottom: 1px solid var(--line)">{{c.rev}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section aria-labelledby="h-week" style="flex: 2 1 340px; min-width: 0; border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap">
+<h2 id="h-week" class="lg" style="margin: 0; color: var(--ink2)">Wochentag-Schnitt</h2>
+<span style="font-size: 12px; color: var(--ink3)">Ø h/Tag · 90 Tage</span>
+</div>
+<div style="margin-top: 22px; display: grid; grid-template-columns: 28px repeat(7, minmax(0, 1fr)); grid-template-rows: 180px 28px; column-gap: 8px">
+<div aria-hidden="true" style="grid-column: 1; grid-row: 1; position: relative">
+<sc-for list="{{wdAxis}}" as="a" hint-placeholder-count="6">
+<span class="mono" style="position: absolute; right: 0; bottom: {{a.b}}; transform: translateY(50%); font-size: 11px; color: var(--ink3)">{{a.t}}</span>
+</sc-for>
+</div>
+<div aria-hidden="true" style="grid-column: 2 / -1; grid-row: 1; position: relative; border-bottom: 1px solid var(--ink)">
+<sc-for list="{{wdAxis}}" as="a" hint-placeholder-count="6">
+<span style="position: absolute; left: 0; right: 0; bottom: {{a.b}}; height: 1px; background: {{a.line}}"></span>
+</sc-for>
+</div>
+<sc-for list="{{weekdays}}" as="d" hint-placeholder-count="7">
+<div style="display: contents">
+<div style="grid-column: {{d.col}}; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; position: relative">
+<span class="mono" style="font-size: 11px; color: var(--ink2)">{{d.hm}}</span>
+<div class="bar" title="{{d.title}}" style="width: 56%; height: {{d.h}}; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="grid-column: {{d.col}}; grid-row: 2; align-self: end; text-align: center; font-size: 12px; color: {{d.lc}}">{{d.l}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+</div>
+
+<section aria-labelledby="h-trend" style="border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+<h2 id="h-trend" class="lg" style="margin: 0; color: var(--ink2)">Verlauf</h2>
+<span style="font-size: 12px; color: var(--ink3)">12 Monate · Zeiger über eine Spalte bewegen</span>
+</div>
+<div role="group" aria-label="Zeitraster" style="display: flex; border: 1px solid var(--key-edge); border-radius: 4px; padding: 3px; gap: 3px; background: var(--key)">
+<button type="button" aria-pressed="false" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 2px; background: transparent; color: var(--ink2); font-size: 13px; font-weight: 600">Wochen</button>
+<button type="button" aria-pressed="true" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 2px; background: var(--inv); color: var(--inv-ink); font-size: 13px; font-weight: 600">Monate</button>
+</div>
+</div>
+
+<div aria-live="polite" style="margin-top: 18px; display: flex; flex-wrap: wrap; align-items: stretch; background: var(--disp); color: var(--disp-ink); border: 1px solid var(--disp-line); border-radius: 6px">
+<div style="padding: 12px 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-right: 1px solid var(--disp-line)">
+<span class="lg" style="font-size: 10px; color: var(--sig)">Zeiger</span>
+<span style="font-size: 15px; font-weight: 600">{{cur.label}}</span>
+</div>
+<sc-for list="{{cur.cells}}" as="x" hint-placeholder-count="4">
+<div style="padding: 12px 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-right: 1px solid var(--disp-line)">
+<span class="lg" style="font-size: 10px; color: var(--disp-dim)">{{x.l}}</span>
+<span class="mono" style="font-size: 20px; font-weight: 400">{{x.v}}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="margin-top: 18px; display: flex; gap: 24px; flex-wrap: wrap; font-size: 12px; color: var(--ink2)">
+<span style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 12px; height: 12px; background: var(--ink)"></span>abrechenbar</span>
+<span style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 12px; height: 12px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>nicht abrechenbar</span>
+<span style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 16px; height: 2px; background: var(--ink2)"></span>Umsatz</span>
+</div>
+
+<div style="margin-top: 14px; overflow-x: auto">
+<div style="min-width: 760px; display: grid; grid-template-columns: 56px repeat(12, minmax(0, 1fr)); grid-template-rows: 200px 36px 100px 40px">
+<div aria-hidden="true" style="grid-column: 1; grid-row: 1; position: relative">
+<sc-for list="{{hAxis}}" as="a" hint-placeholder-count="5">
+<span class="mono" style="position: absolute; right: 12px; bottom: {{a.b}}; transform: translateY(50%); font-size: 11px; color: var(--ink3)">{{a.t}}</span>
+</sc-for>
+<span class="lg" style="position: absolute; right: 12px; top: -22px; font-size: 10px; color: var(--ink3)">h</span>
+</div>
+<div aria-hidden="true" style="grid-column: 2 / -1; grid-row: 1; position: relative; border-bottom: 1px solid var(--ink)">
+<sc-for list="{{hAxis}}" as="a" hint-placeholder-count="5">
+<span style="position: absolute; left: 0; right: 0; bottom: {{a.b}}; height: 0; border-top: 1px dotted {{a.line}}"></span>
+</sc-for>
+</div>
+<div aria-hidden="true" style="grid-column: 1; grid-row: 3; position: relative">
+<sc-for list="{{rAxis}}" as="a" hint-placeholder-count="3">
+<span class="mono" style="position: absolute; right: 12px; bottom: {{a.b}}; transform: translateY(50%); font-size: 11px; color: var(--ink3)">{{a.t}}</span>
+</sc-for>
+<span class="lg" style="position: absolute; right: 12px; top: -22px; font-size: 10px; color: var(--ink3)">T€</span>
+</div>
+<div aria-hidden="true" style="grid-column: 2 / -1; grid-row: 3; position: relative; border-bottom: 1px solid var(--ink)">
+<sc-for list="{{rAxis}}" as="a" hint-placeholder-count="3">
+<span style="position: absolute; left: 0; right: 0; bottom: {{a.b}}; height: 0; border-top: 1px dotted {{a.line}}"></span>
+</sc-for>
+<svg viewBox="0 0 120 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible"><polyline points="{{revPoints}}" fill="none" style="stroke: var(--ink2)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"></polyline></svg>
+</div>
+<sc-for list="{{months}}" as="m" hint-placeholder-count="12">
+<button type="button" class="col" onMouseEnter="{{m.hover}}" onFocus="{{m.hover}}" onClick="{{m.hover}}" aria-label="{{m.aria}}" style="grid-column: {{m.col}}; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: {{m.bg}}; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: {{m.nb}}; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: {{m.b}}; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: {{m.rb}}; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: {{m.fw}}; color: {{m.lc}}">{{m.l}}</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)">{{m.y}}</span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: {{m.cursor}}"></span>
+</button>
+</sc-for>
+</div>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["Papier","Graphit"],"default":"Papier","section":"Look"},"signal":{"editor":"color","default":"#E2551F","section":"Look"},"$preview":{"width":1280,"height":1380}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const pad = (n) => String(n).padStart(2, '0');
+    const hmM = (m) => Math.floor(m / 60) + ':' + pad(Math.round(m % 60));
+    const eur = (v) => Math.round(v).toLocaleString('de-DE') + ' €';
+
+    const kpis = [
+      { label: 'Stunden', value: '126:02', unit: 'h', delta: '+6,1 %', prev: 'vs. 118:45 h', rot: 'none' },
+      { label: 'Umsatz', value: '13.078', unit: '€', delta: '+7,7 %', prev: 'vs. 12.140 €', rot: 'none' },
+      { label: 'Abrechenbar', value: '89', unit: '%', delta: '−2 pp', prev: 'vs. 91 %', rot: 'rotate(180deg)' }
+    ];
+
+    const C = [
+      { name: 'Nordlicht Energie GmbH', color: 'var(--c1)', min: 3547, rate: 115 },
+      { name: 'Brandt & Partner', color: 'var(--c2)', min: 1615, rate: 125 },
+      { name: 'Kessler Logistik AG', color: 'var(--c3)', min: 1590, rate: 110 },
+      { name: 'wald-it intern', color: 'var(--c4)', min: 810, rate: 0 }
+    ];
+    const MAXH = 60;
+    const clientRows = C.map((c) => {
+      const rev = (c.min / 60) * c.rate;
+      return {
+        name: c.name,
+        color: c.color,
+        width: ((c.min / 60 / MAXH) * 100).toFixed(2) + '%',
+        hm: hmM(c.min),
+        rev: c.rate ? eur(Math.floor(rev)) : 'intern',
+        revColor: c.rate ? 'var(--ink)' : 'var(--ink3)',
+        title: c.name + ': ' + hmM(c.min) + ' h' + (c.rate ? ' · ' + eur(Math.floor(rev)) + ' · ' + c.rate + ' €/h' : ' · nicht abrechenbar')
+      };
+    });
+    const rulerMajor = [];
+    const rulerMinor = [];
+    for (let v = 0; v <= MAXH; v += 5) {
+      const left = ((v / MAXH) * 100).toFixed(2) + '%';
+      rulerMinor.push({ left: left, h: v % 10 === 0 ? '8px' : '4px' });
+      if (v % 10 === 0) rulerMajor.push({ left: left, t: String(v) });
+    }
+
+    const WDV = [475, 490, 515, 485, 380, 30, 5];
+    const WDL = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    const weekdays = WDV.map((v, i) => ({
+      col: String(i + 2),
+      l: WDL[i],
+      lc: i >= 5 ? 'var(--ink3)' : 'var(--ink2)',
+      hm: hmM(v),
+      h: Math.max(1, (v / 600) * 160).toFixed(1) + 'px',
+      title: WDL[i] + ': Ø ' + hmM(v) + ' h'
+    }));
+    const wdAxis = [0, 2, 4, 6, 8, 10].map((v) => ({ t: String(v), b: ((v / 10) * 160).toFixed(1) + 'px', line: v === 0 ? 'transparent' : 'var(--line)' }));
+
+    const M = [
+      ['Nov', '2025', 7935, 7230, 14120],
+      ['Dez', '', 5790, 5160, 10080],
+      ['Jan', '2026', 7725, 7035, 13715],
+      ['Feb', '', 8400, 7710, 15040],
+      ['Mär', '', 9090, 8355, 16290],
+      ['Apr', '', 8295, 7545, 14705],
+      ['Mai', '', 7320, 6615, 12880],
+      ['Jun', '', 8865, 8070, 15735],
+      ['Jul', '', 9375, 8565, 16690],
+      ['Aug', '', 5670, 5055, 9880],
+      ['Sep', '', 9075, 8340, 16270],
+      ['Okt', '', 7562, 6752, 13078]
+    ];
+    const FULL = ['November 2025', 'Dezember 2025', 'Januar 2026', 'Februar 2026', 'März 2026', 'April 2026', 'Mai 2026', 'Juni 2026', 'Juli 2026', 'August 2026', 'September 2026', 'Oktober 2026 · laufend'];
+    const HMAX = 160 * 60, HPX = 184, RMAX = 20, RPX = 92;
+    const hov = st.hov != null ? st.hov : 11;
+    const months = M.map((m, i) => {
+      const non = m[2] - m[3];
+      const active = i === hov;
+      return {
+        col: String(i + 2),
+        l: m[0],
+        y: m[1],
+        b: ((m[3] / HMAX) * HPX).toFixed(1) + 'px',
+        nb: Math.max(0, (non / HMAX) * HPX - 2).toFixed(1) + 'px',
+        rb: ((m[4] / 1000 / RMAX) * RPX).toFixed(1) + 'px',
+        bg: active ? 'color-mix(in srgb, var(--ink) 6%, transparent)' : 'transparent',
+        cursor: active ? 'var(--sig)' : 'transparent',
+        fw: active ? '600' : '400',
+        lc: active ? 'var(--ink)' : 'var(--ink2)',
+        aria: FULL[i] + ': ' + hmM(m[2]) + ' h, davon ' + hmM(m[3]) + ' abrechenbar, Umsatz ' + eur(m[4]),
+        hover: () => this.setState({ hov: i })
+      };
+    });
+    const revPoints = M.map((m, i) => ((i + 0.5) * 10).toFixed(1) + ',' + (100 - (m[4] / 1000 / RMAX) * RPX).toFixed(1)).join(' ');
+    const hAxis = [0, 40, 80, 120, 160].map((v) => ({ t: String(v), b: ((v / 160) * HPX).toFixed(1) + 'px', line: v === 0 ? 'transparent' : 'var(--line)' }));
+    const rAxis = [0, 10, 20].map((v) => ({ t: String(v), b: ((v / RMAX) * RPX).toFixed(1) + 'px', line: v === 0 ? 'transparent' : 'var(--line)' }));
+
+    const h = M[hov];
+    const cur = {
+      label: FULL[hov],
+      cells: [
+        { l: 'Stunden', v: hmM(h[2]) },
+        { l: 'Abrechenbar', v: hmM(h[3]) },
+        { l: 'Quote', v: Math.round((h[3] / h[2]) * 100) + ' %' },
+        { l: 'Umsatz', v: eur(h[4]) }
+      ]
+    };
+
+    return {
+      theme: this.props.theme ?? 'Papier',
+      signal: this.props.signal ?? '#E2551F',
+      kpis: kpis,
+      clientRows: clientRows,
+      rulerMajor: rulerMajor,
+      rulerMinor: rulerMinor,
+      weekdays: weekdays,
+      wdAxis: wdAxis,
+      months: months,
+      revPoints: revPoints,
+      hAxis: hAxis,
+      rAxis: rAxis,
+      cur: cur
+    };
+  }
+}
+</script>
+</body>
+</html>

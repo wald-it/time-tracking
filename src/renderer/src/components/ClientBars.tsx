@@ -58,7 +58,7 @@ export function ClientBars({ clients }: ClientBarsProps): React.JSX.Element {
           <div key={it.rest ? 'rest' : (it.client_id ?? i)} className="flex flex-col gap-1">
             <div className="flex items-center gap-2 text-xs">
               <span
-                className="w-2 h-2 rounded-full shrink-0"
+                className="w-2 h-2 rounded-[var(--r-fine)] shrink-0"
                 style={{
                   background: color,
                   opacity: it.rest ? 0.5 : 1
@@ -77,7 +77,7 @@ export function ClientBars({ clients }: ClientBarsProps): React.JSX.Element {
               <span
                 className="tabular-nums"
                 style={{
-                  fontFamily: 'var(--font-mono, monospace)',
+                  fontFamily: 'var(--font-num)',
                   fontSize: '11.5px',
                   color: 'var(--text2)'
                 }}
@@ -87,7 +87,7 @@ export function ClientBars({ clients }: ClientBarsProps): React.JSX.Element {
               <span
                 className="tabular-nums text-right"
                 style={{
-                  fontFamily: 'var(--font-mono, monospace)',
+                  fontFamily: 'var(--font-num)',
                   fontSize: '11px',
                   color: 'var(--text3)',
                   minWidth: 36
@@ -104,9 +104,7 @@ export function ClientBars({ clients }: ClientBarsProps): React.JSX.Element {
                 className="h-full rounded transition-[width] duration-400"
                 style={{
                   width: `${pct}%`,
-                  background: it.rest
-                    ? 'var(--text3)'
-                    : `linear-gradient(90deg, ${color}, ${color}cc)`
+                  background: it.rest ? 'var(--text3)' : color
                 }}
               />
             </div>

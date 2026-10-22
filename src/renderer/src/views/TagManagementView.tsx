@@ -16,14 +16,14 @@ interface MergeConfirm {
 }
 
 const inputClass =
-  'rounded-lg px-3 py-1.5 text-sm border backdrop-blur-xl ' +
+  'rounded-[var(--r-key)] px-3 py-1.5 text-sm border ' +
   '[background:var(--input-bg)] [border-color:var(--card-border)] [color:var(--text)] ' +
-  'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent'
+  'focus:outline-none focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent'
 
 const btnClass =
-  'rounded-md px-3 py-1.5 text-sm font-medium hover:bg-white/10 ' +
+  'rounded-[var(--r-key)] px-3 py-1.5 text-sm font-medium key-hover ' +
   'border [background:var(--card-bg)] [border-color:var(--card-border)] [color:var(--text)] ' +
-  'focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed'
+  'focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-40 disabled:cursor-not-allowed'
 
 export default function TagManagementView(): React.JSX.Element {
   const t = useT()
@@ -152,7 +152,7 @@ export default function TagManagementView(): React.JSX.Element {
 
       {/* Tag list */}
       <div
-        className="overflow-hidden rounded-[14px] border"
+        className="overflow-hidden rounded-[var(--r-disp)] border"
         style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}
       >
         {loading && (
@@ -231,7 +231,7 @@ export default function TagManagementView(): React.JSX.Element {
                   <button
                     type="button"
                     onClick={() => startRename(tag.name)}
-                    className="rounded p-1 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors"
+                    className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] transition-colors"
                     style={{ color: 'var(--text2)' }}
                     aria-label={t('settings.tags.rename')}
                     title={t('settings.tags.rename')}
@@ -271,7 +271,7 @@ export default function TagManagementView(): React.JSX.Element {
                       ? t('settings.tags.deleteCannotHint', { count: String(tag.count) })
                       : t('settings.tags.deleteTitle')
                   }
-                  className="rounded p-1 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-30 transition-colors shrink-0"
+                  className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-30 transition-colors shrink-0"
                   style={{ color: 'var(--danger)' }}
                   aria-label={t('settings.tags.delete')}
                 >

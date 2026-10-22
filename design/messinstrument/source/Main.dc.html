@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>TimeTrack – Heute</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.tt{--bg:#E8E6DF;--key:#F3F2EC;--key-edge:#C9C6BC;--ink:#191917;--ink2:#4A4843;--ink3:#5E5B54;--line:#CBC8BE;--tick:#8F8B80;--disp:#1B1B19;--disp-ink:#EDEBE4;--disp-dim:#8F8C83;--disp-line:#3A3935;--inv:#191917;--inv-ink:#F3F2EC;--inv-dim:#8F8C83;--sig-ink:#191917;--c1:#1F4FA6;--c2:#D4A017;--c3:#13805C;--c4:#E07AA6;color-scheme:light}
+.tt[data-theme="Graphit"]{--bg:#141413;--key:#1E1E1C;--key-edge:#34332F;--ink:#E9E7E0;--ink2:#B5B2A8;--ink3:#8E8B82;--line:#2E2D2A;--tick:#66635C;--disp:#0B0B0A;--disp-line:#2A2926;--inv:#E9E7E0;--inv-ink:#141413;--inv-dim:#55534D;--c1:#3A70C8;--c2:#BC8C14;--c3:#118058;--c4:#D36A95;color-scheme:dark}
+.tt *{box-sizing:border-box}
+.tt .mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.tt .lg{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-stretch:118%}
+.tt button,.tt a{font:inherit;color:inherit}
+.tt button{cursor:pointer}
+.tt .nl:hover{color:var(--ink)}
+.tt .k:hover{outline:1px solid var(--ink3);outline-offset:2px}
+.tt .k:active{transform:translateY(1px)}
+.tt .ib:hover{color:var(--ink);background:var(--key)}
+.tt :focus-visible{outline:2px solid var(--sig);outline-offset:2px}
+.tt tbody tr:hover{background:var(--key)}
+@keyframes tt-blink{0%,55%{opacity:1}56%,100%{opacity:.25}}
+.tt .blink{animation:tt-blink 1s steps(1) infinite}
+@media (prefers-reduced-motion: reduce){.tt .blink{animation:none}}
+a{color:#4A4843}a:hover{color:#191917}
+</style>
+</helmet>
+<div class="tt" data-theme="{{theme}}" style="--sig: {{signal}}; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: 'Archivo Variable', Archivo, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="border-bottom: 1px solid var(--line)">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 40px; min-height: 64px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="9.5" stroke="currentColor" stroke-width="1.5"></circle><path d="M11 2.5v2.5M19.5 11H17M11 19.5V17M2.5 11H5" stroke="currentColor" stroke-width="1.5"></path><path d="M11 11l4.2-4.2" style="stroke: var(--sig)" stroke-width="2" stroke-linecap="round"></path><circle cx="11" cy="11" r="1.6" fill="currentColor"></circle></svg>
+<span class="lg" style="font-size: 12px; font-weight: 800; letter-spacing: .2em; font-stretch: 125%">TimeTrack</span>
+</div>
+<nav aria-label="Hauptnavigation" style="display: flex; gap: 2px; flex-wrap: wrap; flex: 1 1 auto">
+<a href="Main.dc.html" aria-current="page" class="nl" style="position: relative; display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--ink); text-decoration: none">Heute<span aria-hidden="true" style="position: absolute; left: 14px; right: 14px; bottom: -10px; height: 3px; background: var(--sig)"></span></a>
+<a href="Kalender.dc.html" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Kalender</a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Kunden</button>
+<a href="Auswertung.dc.html" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Auswertung</a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Export</button>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Einstellungen</button>
+</nav>
+<sc-if value="{{running}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: center; gap: 12px">
+<span class="blink" aria-hidden="true" style="width: 8px; height: 8px; background: var(--sig)"></span>
+<span style="font-size: 13px; color: var(--ink2)">{{navClient}}</span>
+<span class="mono" style="font-size: 15px; font-weight: 500">{{navClock}}</span>
+<button type="button" class="k" onClick="{{toggle}}" aria-label="Timer stoppen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px"><span style="width: 12px; height: 12px; background: var(--ink); border-radius: 1px"></span></button>
+</div>
+</sc-if>
+<sc-if value="{{stopped}}" hint-placeholder-val="{{ false }}">
+<button type="button" class="k" onClick="{{toggle}}" style="min-height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; font-size: 13px; font-weight: 600"><svg width="10" height="12" viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0l10 6-10 6z" fill="currentColor"></path></svg>Timer starten</button>
+</sc-if>
+</div>
+</header>
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 40px 40px 64px; display: flex; flex-direction: column; gap: 48px">
+
+<section aria-label="Laufender Timer" style="display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch">
+
+<div style="flex: 999 1 520px; min-width: 0; background: var(--disp); color: var(--disp-ink); border: 1px solid var(--disp-line); border-radius: 6px; padding: 22px 28px 24px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<span class="{{blinkClass}}" aria-hidden="true" style="width: 8px; height: 8px; background: {{statusColor}}"></span>
+<span class="lg" style="color: {{statusColor}}">{{statusLabel}}</span>
+</div>
+<span class="lg" style="color: var(--disp-dim); font-weight: 500">{{dispRight}}</span>
+</div>
+<div role="timer" aria-label="Laufzeit" style="display: flex; align-items: flex-end; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span class="mono" style="font-size: clamp(64px, 9vw, 128px); font-weight: 300; line-height: .86; letter-spacing: -0.03em">{{dH}}</span>
+<span class="lg" style="color: var(--disp-dim); font-size: 10px; padding-left: 4px">Std</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span class="mono" aria-hidden="true" style="font-size: clamp(64px, 9vw, 128px); font-weight: 300; line-height: .86; color: var(--disp-dim)">:</span>
+<span class="lg" aria-hidden="true" style="font-size: 10px; visibility: hidden">·</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span class="mono" style="font-size: clamp(64px, 9vw, 128px); font-weight: 300; line-height: .86; letter-spacing: -0.03em">{{dM}}</span>
+<span class="lg" style="color: var(--disp-dim); font-size: 10px; padding-left: 4px">Min</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; margin-left: 10px">
+<span class="mono" style="font-size: clamp(30px, 4vw, 52px); font-weight: 300; line-height: .9; color: var(--disp-dim)">{{dS}}</span>
+<span class="lg" style="color: var(--disp-dim); font-size: 10px; padding-left: 2px">Sek</span>
+</div>
+</div>
+<div style="height: 1px; background: var(--disp-line)"></div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: {{dispColor}}"></span>
+<span style="font-size: 15px; font-weight: 600">{{dispClient}}</span>
+<span style="font-size: 14px; color: var(--disp-dim)">{{dispProject}}</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<span style="font-size: 14px; color: {{dispDescColor}}">{{dispDesc}}</span>
+<sc-if value="{{hasDispTag}}" hint-placeholder-val="{{ true }}">
+<span class="lg" style="font-size: 10px; color: var(--disp-dim); border: 1px solid var(--disp-line); padding: 3px 6px">{{dispTag}}</span>
+</sc-if>
+</div>
+</div>
+</div>
+
+<button type="button" class="k" onClick="{{toggle}}" aria-label="{{keyAria}}" style="flex: 0 0 148px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; border: 0; border-radius: 6px; background: {{keyBg}}; color: {{keyInk}}; box-shadow: inset 0 -4px 0 rgba(0,0,0,.3)">
+<sc-if value="{{running}}" hint-placeholder-val="{{ true }}">
+<span aria-hidden="true" style="display: block; width: 30px; height: 30px; background: var(--sig); border-radius: 2px"></span>
+</sc-if>
+<sc-if value="{{stopped}}" hint-placeholder-val="{{ false }}">
+<svg width="28" height="32" viewBox="0 0 28 32" aria-hidden="true"><path d="M0 0l28 16L0 32z" fill="currentColor"></path></svg>
+</sc-if>
+<span class="lg" style="font-size: 13px; letter-spacing: .22em">{{keyLabel}}</span>
+<span class="mono" style="font-size: 11px; color: {{keyDim}}">Alt ⇧ S</span>
+</button>
+
+<div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 18px; border-top: 2px solid var(--ink); padding-top: 14px">
+<div>
+<div class="lg" style="color: var(--ink2)">Heute</div>
+<div style="display: flex; align-items: baseline; gap: 6px; margin-top: 8px">
+<span class="mono" style="font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -0.02em">{{todayHM}}</span>
+<span style="font-size: 13px; color: var(--ink2)">h</span>
+</div>
+<div style="font-size: 12px; color: var(--ink3); margin-top: 6px">gerundet {{todayRounded}} h · 15-min-Takt</div>
+</div>
+<div style="height: 1px; background: var(--line)"></div>
+<div>
+<div class="lg" style="color: var(--ink2)">Woche · KW 43</div>
+<div style="display: flex; align-items: baseline; gap: 6px; margin-top: 8px">
+<span class="mono" style="font-size: 28px; font-weight: 300; line-height: 1">{{weekHM}}</span>
+<span style="font-size: 13px; color: var(--ink2)">h</span>
+</div>
+<div style="display: flex; gap: 6px; margin-top: 14px" aria-label="Stunden je Wochentag">
+<sc-for list="{{week}}" as="d" hint-placeholder-count="7">
+<div style="flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px">
+<div title="{{d.title}}" style="height: 60px; display: flex; align-items: flex-end; background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 12px)">
+<div style="width: 100%; height: {{d.h}}; background: {{d.bg}}"></div>
+</div>
+<span class="mono" style="font-size: 11px; text-align: center; color: {{d.lc}}">{{d.l}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+
+</section>
+
+<section aria-label="Tagesverlauf" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; border-top: 2px solid var(--ink); padding-top: 14px">
+<div>
+<h2 class="lg" style="margin: 0; color: var(--ink2)">Tagesverlauf</h2>
+<div style="font-size: 20px; font-weight: 600; margin-top: 4px; font-stretch: 108%">Donnerstag, 22. Oktober</div>
+</div>
+<ul style="display: flex; gap: 22px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0">
+<sc-for list="{{legend}}" as="c" hint-placeholder-count="4">
+<li style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<span aria-hidden="true" style="width: 10px; height: 10px; background: {{c.color}}"></span>
+<span>{{c.short}}</span>
+<span class="mono" style="color: var(--ink2)">{{c.hm}}</span>
+</li>
+</sc-for>
+</ul>
+</div>
+<div style="position: relative; height: 100px; margin: 0 12px">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="5">
+<button type="button" title="{{b.title}}" aria-label="{{b.title}}" style="position: absolute; top: 22px; height: 40px; left: {{b.left}}; width: {{b.width}}; padding: 0; border: 0; border-radius: 1px; background: {{b.bg}}; box-shadow: {{b.ring}}"></button>
+</sc-for>
+<div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 62px; height: 1px; background: var(--ink)"></div>
+<sc-for list="{{ticks}}" as="t" hint-placeholder-count="53">
+<div aria-hidden="true" style="position: absolute; top: 63px; left: {{t.left}}; width: 1px; height: {{t.h}}; background: var(--tick); opacity: {{t.op}}"></div>
+</sc-for>
+<sc-for list="{{hours}}" as="h" hint-placeholder-count="14">
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: {{h.left}}; transform: translateX(-50%); font-size: 11px; color: {{h.c}}">{{h.t}}</span>
+</sc-for>
+<div aria-hidden="true" style="position: absolute; top: 0; left: {{needle}}; width: 0; height: 78px">
+<div style="position: absolute; left: -1px; top: 16px; width: 2px; height: 62px; background: {{needleBg}}"></div>
+<span class="mono" style="position: absolute; top: -4px; left: 0; transform: translateX(-50%); background: {{needleBg}}; color: {{needleInk}}; font-size: 11px; font-weight: 600; padding: 2px 6px; white-space: nowrap">{{nowClock}}</span>
+</div>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start">
+
+<section aria-labelledby="h-entries" style="flex: 999 1 560px; min-width: 0; border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px">
+<div style="display: flex; align-items: baseline; gap: 10px">
+<h2 id="h-entries" class="lg" style="margin: 0; color: var(--ink2)">Einträge heute</h2>
+<span class="mono" style="font-size: 11px; color: var(--ink3)">{{entryCount}}</span>
+</div>
+<button type="button" class="k" style="min-height: 40px; padding: 0 16px; display: flex; align-items: center; gap: 8px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; font-size: 13px; font-weight: 600; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6"></path></svg>Eintrag nachtragen</button>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 640px; border-collapse: collapse">
+<thead>
+<tr>
+<th scope="col" class="lg" style="text-align: left; font-size: 10px; color: var(--ink3); padding: 0 12px 10px 0">Zeit</th>
+<th scope="col" class="lg" style="text-align: left; font-size: 10px; color: var(--ink3); padding: 0 12px 10px">Kunde · Projekt</th>
+<th scope="col" class="lg" style="text-align: left; font-size: 10px; color: var(--ink3); padding: 0 12px 10px">Beschreibung</th>
+<th scope="col" class="lg" style="text-align: right; font-size: 10px; color: var(--ink3); padding: 0 12px 10px">Dauer</th>
+<th scope="col" style="padding: 0"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Aktionen</span></th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<tr style="border-top: 1px solid var(--line)">
+<td class="mono" style="height: 58px; padding: 0 12px 0 0; font-size: 13px; white-space: nowrap; color: var(--ink2)">{{r.range}}</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: {{r.color}}"></span>
+<div style="min-width: 0">
+<div style="font-size: 14px; font-weight: 600; white-space: nowrap">{{r.client}}</div>
+<div style="font-size: 12px; color: var(--ink2); white-space: nowrap">{{r.project}}</div>
+</div>
+</div>
+</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span style="font-size: 14px; color: {{r.descColor}}">{{r.desc}}</span>
+<sc-if value="{{r.hasTag}}" hint-placeholder-val="{{ false }}">
+<span class="lg" style="font-size: 10px; color: var(--ink2); border: 1px solid var(--line); padding: 3px 6px">{{r.tag}}</span>
+</sc-if>
+</div>
+</td>
+<td class="mono" style="padding: 0 12px; text-align: right; font-size: 14px; font-weight: {{r.fw}}; white-space: nowrap">{{r.dur}}</td>
+<td style="padding: 0; width: 96px">
+<div style="display: flex; justify-content: flex-end; gap: 4px">
+<button type="button" class="ib" aria-label="{{r.editLabel}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path></svg></button>
+<sc-if value="{{r.canDelete}}" hint-placeholder-val="{{ true }}">
+<button type="button" class="ib" aria-label="{{r.deleteLabel}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path></svg></button>
+</sc-if>
+<sc-if value="{{r.isRunning}}" hint-placeholder-val="{{ false }}">
+<span style="width: 44px; height: 44px"></span>
+</sc-if>
+</div>
+</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</section>
+
+<aside aria-labelledby="h-quick" style="flex: 1 1 300px; border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-height: 40px; margin-bottom: 10px">
+<h2 id="h-quick" class="lg" style="margin: 0; color: var(--ink2)">Schnellstart</h2>
+<span class="mono" style="font-size: 11px; color: var(--ink3)">h · 30 Tage</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<sc-for list="{{quick}}" as="q" hint-placeholder-count="3">
+<button type="button" class="k" onClick="{{q.start}}" aria-label="{{q.aria}}" style="min-height: 64px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 16px; text-align: left; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)">
+<span aria-hidden="true" style="width: 12px; height: 12px; flex: none; background: {{q.color}}"></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{q.name}}</span>
+<span style="font-size: 12px; color: var(--ink2)">{{q.project}}</span>
+</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">{{q.hm}}</span>
+<span aria-hidden="true" style="width: 32px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--key-edge); border-radius: 3px"><svg width="9" height="10" viewBox="0 0 9 10"><path d="M0 0l9 5-9 5z" fill="currentColor"></path></svg></span>
+</button>
+</sc-for>
+</div>
+<p style="margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink3)">{{quickHint}}</p>
+</aside>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["Papier","Graphit"],"default":"Papier","section":"Look"},"signal":{"editor":"color","default":"#E2551F","section":"Look"},"$preview":{"width":1280,"height":1160}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this._tick = setInterval(() => {
+      const s = this.state || {};
+      this.setState({ now: (s.now != null ? s.now : 60733) + 1 });
+    }, 1000);
+  }
+  componentWillUnmount() {
+    clearInterval(this._tick);
+  }
+  renderVals() {
+    const st = this.state || {};
+    const now = st.now != null ? st.now : 60733;
+    const C = [
+      { name: 'Nordlicht Energie GmbH', short: 'Nordlicht', color: 'var(--c1)' },
+      { name: 'Brandt & Partner', short: 'Brandt & Partner', color: 'var(--c2)' },
+      { name: 'Kessler Logistik AG', short: 'Kessler', color: 'var(--c3)' },
+      { name: 'wald-it intern', short: 'intern', color: 'var(--c4)' }
+    ];
+    const BASE = [
+      { start: 29400, end: 34800, c: 1, p: 'IAS-SSO', d: 'SAML-Trust zu Entra ID testen', tag: '' },
+      { start: 35400, end: 37200, c: 3, p: 'Akquise', d: 'Angebot Kessler Phase 2 ausarbeiten', tag: '' },
+      { start: 37800, end: 45300, c: 0, p: 'S/4 Rollenkonzept', d: 'SoD-Konflikte FI/MM auswerten', tag: '' },
+      { start: 47700, end: 50100, c: 2, p: 'BTP-Audit', d: 'Abstimmung Audit-Umfang', tag: 'Meeting' }
+    ];
+    const sessions = st.sessions || [
+      { start: 50700, end: null, c: 0, p: 'Fiori-Berechtigungen', d: 'Berechtigungskonzept Fiori-Kacheln überarbeiten', tag: 'Konzept' }
+    ];
+    const all = BASE.concat(sessions);
+    const run = sessions.find((e) => e.end == null) || null;
+    const last = sessions[sessions.length - 1];
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const hm = (s) => Math.floor(s / 3600) + ':' + pad(Math.floor((s % 3600) / 60));
+    const hms = (s) => Math.floor(s / 3600) + ':' + pad(Math.floor((s % 3600) / 60)) + ':' + pad(s % 60);
+    const clk = (s) => pad(Math.floor(s / 3600)) + ':' + pad(Math.floor((s % 3600) / 60));
+    const endOf = (e) => (e.end == null ? now : e.end);
+    const dur = (e) => Math.max(0, endOf(e) - e.start);
+    const ceil15 = (s) => Math.ceil(s / 900) * 900;
+
+    const S0 = 7 * 3600, S1 = 20 * 3600, SPAN = S1 - S0;
+    const p = (s) => Math.max(0, Math.min(1, (s - S0) / SPAN)) * 100;
+    const pct = (s) => p(s).toFixed(3) + '%';
+
+    const startFor = (ci, proj) => {
+      const closed = sessions.map((e) => (e.end == null ? Object.assign({}, e, { end: now }) : e));
+      this.setState({ sessions: closed.concat([{ start: now, end: null, c: ci, p: proj, d: '', tag: '' }]) });
+    };
+    const stop = () => {
+      this.setState({ sessions: sessions.map((e) => (e.end == null ? Object.assign({}, e, { end: now }) : e)) });
+    };
+    const toggle = run ? stop : () => startFor(last.c, last.p);
+
+    const el = run ? now - run.start : 0;
+    const total = all.reduce((a, e) => a + dur(e), 0);
+    const rounded = all.reduce((a, e) => a + ceil15(dur(e)), 0);
+
+    const weekBase = [29700, 27600, 32700];
+    const weekVals = weekBase.concat([total, 0, 0, 0]);
+    const dayL = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    const week = weekVals.map((v, i) => ({
+      l: dayL[i],
+      h: Math.min(60, (v / 36000) * 60).toFixed(1) + 'px',
+      bg: i === 3 ? 'var(--sig)' : 'var(--ink2)',
+      lc: i === 3 ? 'var(--ink)' : 'var(--ink3)',
+      title: dayL[i] + ' ' + hm(v) + ' h'
+    }));
+
+    const perClient = [0, 0, 0, 0];
+    all.forEach((e) => { perClient[e.c] += dur(e); });
+    const legend = C.map((c, i) => ({ short: c.short, color: c.color, hm: hm(perClient[i]), v: perClient[i] })).filter((c) => c.v > 0);
+
+    const bars = all.map((e) => {
+      const col = C[e.c].color;
+      const open = e.end == null;
+      return {
+        left: pct(e.start),
+        width: Math.max(0.3, p(endOf(e)) - p(e.start)).toFixed(3) + '%',
+        bg: open ? 'repeating-linear-gradient(135deg, ' + col + ' 0 5px, transparent 5px 8px)' : col,
+        ring: open ? 'inset 0 0 0 1px ' + col : 'none',
+        title: clk(e.start) + '–' + (open ? 'läuft' : clk(e.end)) + ' · ' + C[e.c].name + ' · ' + e.p
+      };
+    });
+
+    const ticks = [];
+    for (let t = S0; t <= S1; t += 900) {
+      ticks.push({ left: pct(t), h: t % 3600 === 0 ? '14px' : t % 1800 === 0 ? '9px' : '5px', op: t > now ? '0.35' : '1' });
+    }
+    const hours = [];
+    for (let h = 7; h <= 20; h++) {
+      hours.push({ t: pad(h), left: pct(h * 3600), c: h * 3600 > now ? 'var(--ink3)' : 'var(--ink2)' });
+    }
+
+    const rows = all.slice().sort((a, b) => b.start - a.start).map((e) => {
+      const open = e.end == null;
+      return {
+        range: clk(e.start) + '–' + (open ? '' : clk(e.end)),
+        color: C[e.c].color,
+        client: C[e.c].name,
+        project: e.p,
+        desc: e.d || 'Ohne Beschreibung – wird beim Stopp abgefragt',
+        descColor: e.d ? 'var(--ink)' : 'var(--ink3)',
+        hasTag: !!e.tag,
+        tag: e.tag,
+        dur: open ? hms(dur(e)) : hm(dur(e)),
+        fw: open ? '600' : '400',
+        canDelete: !open,
+        isRunning: open,
+        editLabel: 'Eintrag ' + clk(e.start) + ' bearbeiten',
+        deleteLabel: 'Eintrag ' + clk(e.start) + ' löschen'
+      };
+    });
+
+    const Q = [
+      { c: 0, p: 'S/4 Rollenkonzept', hm: '48:20' },
+      { c: 1, p: 'IAS-SSO', hm: '41:05' },
+      { c: 2, p: 'BTP-Audit', hm: '37:40' }
+    ];
+    const quick = Q.map((q) => ({
+      name: C[q.c].name,
+      project: q.p,
+      color: C[q.c].color,
+      hm: q.hm,
+      aria: (run ? 'Wechseln zu ' : 'Timer starten für ') + C[q.c].name + ', ' + q.p,
+      start: () => startFor(q.c, q.p)
+    }));
+
+    const rc = run ? C[run.c] : null;
+    return {
+      theme: this.props.theme ?? 'Papier',
+      signal: this.props.signal ?? '#E2551F',
+      running: !!run,
+      stopped: !run,
+      toggle: toggle,
+      navClient: rc ? rc.short : '',
+      navClock: hms(el),
+      blinkClass: run ? 'blink' : '',
+      statusColor: run ? 'var(--sig)' : 'var(--disp-dim)',
+      statusLabel: run ? 'Läuft · seit ' + clk(run.start) : 'Bereit',
+      dispRight: run ? 'Takt 15 min · gerundet ' + hm(ceil15(el)) + ' h' : 'Taste oder Alt ⇧ S startet',
+      dH: pad(Math.floor(el / 3600)),
+      dM: pad(Math.floor((el % 3600) / 60)),
+      dS: ':' + pad(el % 60),
+      dispColor: rc ? rc.color : 'var(--disp-line)',
+      dispClient: rc ? rc.name : 'Kein Timer läuft',
+      dispProject: run ? '· ' + run.p : '',
+      dispDesc: run ? (run.d || 'Ohne Beschreibung – wird beim Stopp abgefragt') : 'Startet mit ' + C[last.c].short + ' · ' + last.p + ' – oder Schnellstart wählen.',
+      dispDescColor: run && run.d ? 'var(--disp-ink)' : 'var(--disp-dim)',
+      hasDispTag: !!(run && run.tag),
+      dispTag: run ? run.tag : '',
+      keyBg: run ? 'var(--inv)' : 'var(--sig)',
+      keyInk: run ? 'var(--inv-ink)' : 'var(--sig-ink)',
+      keyDim: run ? 'var(--inv-dim)' : 'var(--sig-ink)',
+      keyLabel: run ? 'Stopp' : 'Start',
+      keyAria: run ? 'Timer stoppen' : 'Timer starten',
+      todayHM: hm(total),
+      todayRounded: hm(rounded),
+      weekHM: hm(90000 + total),
+      week: week,
+      legend: legend,
+      bars: bars,
+      ticks: ticks,
+      hours: hours,
+      needle: pct(now),
+      needleBg: run ? 'var(--sig)' : 'var(--ink)',
+      needleInk: run ? 'var(--sig-ink)' : 'var(--bg)',
+      nowClock: clk(now),
+      rows: rows,
+      entryCount: String(all.length),
+      quick: quick,
+      quickHint: run ? 'Klick wechselt den laufenden Timer. Gedrückt halten für Projektwahl.' : 'Klick startet sofort. Gedrückt halten für Projektwahl.'
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,2463 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TimeTrack — Messinstrument reference</title>
+<!-- Fonts: local packages first (after `pnpm add @fontsource-variable/archivo @fontsource/ibm-plex-mono`), Google Fonts as fallback when opened elsewhere. -->
+<link rel="stylesheet" href="../../node_modules/@fontsource-variable/archivo/wdth.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ibm-plex-mono/300.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ibm-plex-mono/400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ibm-plex-mono/500.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ibm-plex-mono/600.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap">
+<style>
+
+body{margin:0}
+.tt{--bg:#E8E6DF;--key:#F3F2EC;--key-edge:#C9C6BC;--ink:#191917;--ink2:#4A4843;--ink3:#5E5B54;--line:#CBC8BE;--tick:#8F8B80;--disp:#1B1B19;--disp-ink:#EDEBE4;--disp-dim:#8F8C83;--disp-line:#3A3935;--inv:#191917;--inv-ink:#F3F2EC;--inv-dim:#8F8C83;--sig-ink:#191917;--c1:#1F4FA6;--c2:#D4A017;--c3:#13805C;--c4:#E07AA6;color-scheme:light}
+.tt[data-theme="Graphit"]{--bg:#141413;--key:#1E1E1C;--key-edge:#34332F;--ink:#E9E7E0;--ink2:#B5B2A8;--ink3:#8E8B82;--line:#2E2D2A;--tick:#66635C;--disp:#0B0B0A;--disp-line:#2A2926;--inv:#E9E7E0;--inv-ink:#141413;--inv-dim:#55534D;--c1:#3A70C8;--c2:#BC8C14;--c3:#118058;--c4:#D36A95;color-scheme:dark}
+.tt *{box-sizing:border-box}
+.tt .mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.tt .lg{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-stretch:118%}
+.tt button,.tt a{font:inherit;color:inherit}
+.tt button{cursor:pointer}
+.tt .nl:hover{color:var(--ink)}
+.tt .k:hover{outline:1px solid var(--ink3);outline-offset:2px}
+.tt .k:active{transform:translateY(1px)}
+.tt .ib:hover{color:var(--ink);background:var(--key)}
+.tt :focus-visible{outline:2px solid var(--sig);outline-offset:2px}
+.tt tbody tr:hover{background:var(--key)}
+@keyframes tt-blink{0%,55%{opacity:1}56%,100%{opacity:.25}}
+.tt .blink{animation:tt-blink 1s steps(1) infinite}
+@media (prefers-reduced-motion: reduce){.tt .blink{animation:none}}
+a{color:#4A4843}a:hover{color:#191917}
+.tt button:disabled{cursor:default}
+.tt .day:not(:disabled):hover{background:var(--key) !important}
+.tt .bar:hover{outline:1px solid var(--ink);outline-offset:1px}
+.ref-bar{position:sticky;top:0;z-index:10;display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#111;color:#eee;font:13px/1.4 system-ui,sans-serif}
+.ref-bar a{color:#eee}.ref-bar button{font:inherit;padding:6px 12px;border:1px solid #555;background:#222;color:#eee;border-radius:4px;cursor:pointer}
+.ref-sec{border-bottom:8px solid #111}
+</style>
+</head>
+<body>
+<div class="ref-bar">
+<strong>TimeTrack — Messinstrument</strong>
+<span>static reference (no behaviour) · sample data</span>
+<a href="#heute">Heute</a><a href="#kalender">Kalender</a><a href="#auswertung">Auswertung</a>
+<button type="button" id="ref-theme">Theme: Papier ⇄ Graphit</button>
+</div>
+<section class="ref-sec" id="heute">
+<div class="tt" data-theme="Papier" style="--sig: #E2551F; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: 'Archivo Variable', Archivo, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="border-bottom: 1px solid var(--line)">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 40px; min-height: 64px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="9.5" stroke="currentColor" stroke-width="1.5" /><path d="M11 2.5v2.5M19.5 11H17M11 19.5V17M2.5 11H5" stroke="currentColor" stroke-width="1.5" /><path d="M11 11l4.2-4.2" style="stroke: var(--sig)" stroke-width="2" stroke-linecap="round" /><circle cx="11" cy="11" r="1.6" fill="currentColor" /></svg>
+<span class="lg" style="font-size: 12px; font-weight: 800; letter-spacing: .2em; font-stretch: 125%">TimeTrack</span>
+</div>
+<nav aria-label="Hauptnavigation" style="display: flex; gap: 2px; flex-wrap: wrap; flex: 1 1 auto">
+<a href="#heute" aria-current="page" class="nl" style="position: relative; display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--ink); text-decoration: none">Heute<span aria-hidden="true" style="position: absolute; left: 14px; right: 14px; bottom: -10px; height: 3px; background: var(--sig)"></span></a>
+<a href="#kalender" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Kalender</a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Kunden</button>
+<a href="#auswertung" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Auswertung</a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Export</button>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Einstellungen</button>
+</nav>
+
+<div style="display: flex; align-items: center; gap: 12px">
+<span class="blink" aria-hidden="true" style="width: 8px; height: 8px; background: var(--sig)"></span>
+<span style="font-size: 13px; color: var(--ink2)">Nordlicht</span>
+<span class="mono" style="font-size: 15px; font-weight: 500">2:47:13</span>
+<button type="button" class="k" aria-label="Timer stoppen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px"><span style="width: 12px; height: 12px; background: var(--ink); border-radius: 1px"></span></button>
+</div>
+
+
+</div>
+</header>
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 40px 40px 64px; display: flex; flex-direction: column; gap: 48px">
+
+<section aria-label="Laufender Timer" style="display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch">
+
+<div style="flex: 999 1 520px; min-width: 0; background: var(--disp); color: var(--disp-ink); border: 1px solid var(--disp-line); border-radius: 6px; padding: 22px 28px 24px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<span class="blink" aria-hidden="true" style="width: 8px; height: 8px; background: var(--sig)"></span>
+<span class="lg" style="color: var(--sig)">Läuft · seit 14:05</span>
+</div>
+<span class="lg" style="color: var(--disp-dim); font-weight: 500">Takt 15 min · gerundet 3:00 h</span>
+</div>
+<div role="timer" aria-label="Laufzeit" style="display: flex; align-items: flex-end; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span class="mono" style="font-size: clamp(64px, 9vw, 128px); font-weight: 300; line-height: .86; letter-spacing: -0.03em">02</span>
+<span class="lg" style="color: var(--disp-dim); font-size: 10px; padding-left: 4px">Std</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span class="mono" aria-hidden="true" style="font-size: clamp(64px, 9vw, 128px); font-weight: 300; line-height: .86; color: var(--disp-dim)">:</span>
+<span class="lg" aria-hidden="true" style="font-size: 10px; visibility: hidden">·</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span class="mono" style="font-size: clamp(64px, 9vw, 128px); font-weight: 300; line-height: .86; letter-spacing: -0.03em">47</span>
+<span class="lg" style="color: var(--disp-dim); font-size: 10px; padding-left: 4px">Min</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; margin-left: 10px">
+<span class="mono" style="font-size: clamp(30px, 4vw, 52px); font-weight: 300; line-height: .9; color: var(--disp-dim)">:13</span>
+<span class="lg" style="color: var(--disp-dim); font-size: 10px; padding-left: 2px">Sek</span>
+</div>
+</div>
+<div style="height: 1px; background: var(--disp-line)"></div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c1)"></span>
+<span style="font-size: 15px; font-weight: 600">Nordlicht Energie GmbH</span>
+<span style="font-size: 14px; color: var(--disp-dim)">· Fiori-Berechtigungen</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<span style="font-size: 14px; color: var(--disp-ink)">Berechtigungskonzept Fiori-Kacheln überarbeiten</span>
+
+<span class="lg" style="font-size: 10px; color: var(--disp-dim); border: 1px solid var(--disp-line); padding: 3px 6px">Konzept</span>
+
+</div>
+</div>
+</div>
+
+<button type="button" class="k" aria-label="Timer stoppen" style="flex: 0 0 148px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; border: 0; border-radius: 6px; background: var(--inv); color: var(--inv-ink); box-shadow: inset 0 -4px 0 rgba(0,0,0,.3)">
+
+<span aria-hidden="true" style="display: block; width: 30px; height: 30px; background: var(--sig); border-radius: 2px"></span>
+
+
+<span class="lg" style="font-size: 13px; letter-spacing: .22em">Stopp</span>
+<span class="mono" style="font-size: 11px; color: var(--inv-dim)">Alt ⇧ S</span>
+</button>
+
+<div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 18px; border-top: 2px solid var(--ink); padding-top: 14px">
+<div>
+<div class="lg" style="color: var(--ink2)">Heute</div>
+<div style="display: flex; align-items: baseline; gap: 6px; margin-top: 8px">
+<span class="mono" style="font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -0.02em">7:32</span>
+<span style="font-size: 13px; color: var(--ink2)">h</span>
+</div>
+<div style="font-size: 12px; color: var(--ink3); margin-top: 6px">gerundet 8:00 h · 15-min-Takt</div>
+</div>
+<div style="height: 1px; background: var(--line)"></div>
+<div>
+<div class="lg" style="color: var(--ink2)">Woche · KW 43</div>
+<div style="display: flex; align-items: baseline; gap: 6px; margin-top: 8px">
+<span class="mono" style="font-size: 28px; font-weight: 300; line-height: 1">32:32</span>
+<span style="font-size: 13px; color: var(--ink2)">h</span>
+</div>
+<div style="display: flex; gap: 6px; margin-top: 14px" aria-label="Stunden je Wochentag">
+
+<div style="flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px">
+<div title="Mo 8:15 h" style="height: 60px; display: flex; align-items: flex-end; background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 12px)">
+<div style="width: 100%; height: 49.5px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="font-size: 11px; text-align: center; color: var(--ink3)">Mo</span>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px">
+<div title="Di 7:40 h" style="height: 60px; display: flex; align-items: flex-end; background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 12px)">
+<div style="width: 100%; height: 46.0px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="font-size: 11px; text-align: center; color: var(--ink3)">Di</span>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px">
+<div title="Mi 9:05 h" style="height: 60px; display: flex; align-items: flex-end; background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 12px)">
+<div style="width: 100%; height: 54.5px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="font-size: 11px; text-align: center; color: var(--ink3)">Mi</span>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px">
+<div title="Do 7:32 h" style="height: 60px; display: flex; align-items: flex-end; background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 12px)">
+<div style="width: 100%; height: 45.2px; background: var(--sig)"></div>
+</div>
+<span class="mono" style="font-size: 11px; text-align: center; color: var(--ink)">Do</span>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px">
+<div title="Fr 0:00 h" style="height: 60px; display: flex; align-items: flex-end; background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 12px)">
+<div style="width: 100%; height: 0.0px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="font-size: 11px; text-align: center; color: var(--ink3)">Fr</span>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px">
+<div title="Sa 0:00 h" style="height: 60px; display: flex; align-items: flex-end; background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 12px)">
+<div style="width: 100%; height: 0.0px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="font-size: 11px; text-align: center; color: var(--ink3)">Sa</span>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px">
+<div title="So 0:00 h" style="height: 60px; display: flex; align-items: flex-end; background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 12px)">
+<div style="width: 100%; height: 0.0px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="font-size: 11px; text-align: center; color: var(--ink3)">So</span>
+</div>
+
+</div>
+</div>
+</div>
+
+</section>
+
+<section aria-label="Tagesverlauf" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; border-top: 2px solid var(--ink); padding-top: 14px">
+<div>
+<h2 class="lg" style="margin: 0; color: var(--ink2)">Tagesverlauf</h2>
+<div style="font-size: 20px; font-weight: 600; margin-top: 4px; font-stretch: 108%">Donnerstag, 22. Oktober</div>
+</div>
+<ul style="display: flex; gap: 22px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0">
+
+<li style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<span aria-hidden="true" style="width: 10px; height: 10px; background: var(--c1)"></span>
+<span>Nordlicht</span>
+<span class="mono" style="color: var(--ink2)">4:52</span>
+</li>
+
+<li style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<span aria-hidden="true" style="width: 10px; height: 10px; background: var(--c2)"></span>
+<span>Brandt &amp; Partner</span>
+<span class="mono" style="color: var(--ink2)">1:30</span>
+</li>
+
+<li style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<span aria-hidden="true" style="width: 10px; height: 10px; background: var(--c3)"></span>
+<span>Kessler</span>
+<span class="mono" style="color: var(--ink2)">0:40</span>
+</li>
+
+<li style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<span aria-hidden="true" style="width: 10px; height: 10px; background: var(--c4)"></span>
+<span>intern</span>
+<span class="mono" style="color: var(--ink2)">0:30</span>
+</li>
+
+</ul>
+</div>
+<div style="position: relative; height: 100px; margin: 0 12px">
+
+<button type="button" title="08:10–09:40 · Brandt & Partner · IAS-SSO" aria-label="08:10–09:40 · Brandt & Partner · IAS-SSO" style="position: absolute; top: 22px; height: 40px; left: 8.974%; width: 11.538%; padding: 0; border: 0; border-radius: 1px; background: var(--c2); box-shadow: none"></button>
+
+<button type="button" title="09:50–10:20 · wald-it intern · Akquise" aria-label="09:50–10:20 · wald-it intern · Akquise" style="position: absolute; top: 22px; height: 40px; left: 21.795%; width: 3.846%; padding: 0; border: 0; border-radius: 1px; background: var(--c4); box-shadow: none"></button>
+
+<button type="button" title="10:30–12:35 · Nordlicht Energie GmbH · S/4 Rollenkonzept" aria-label="10:30–12:35 · Nordlicht Energie GmbH · S/4 Rollenkonzept" style="position: absolute; top: 22px; height: 40px; left: 26.923%; width: 16.026%; padding: 0; border: 0; border-radius: 1px; background: var(--c1); box-shadow: none"></button>
+
+<button type="button" title="13:15–13:55 · Kessler Logistik AG · BTP-Audit" aria-label="13:15–13:55 · Kessler Logistik AG · BTP-Audit" style="position: absolute; top: 22px; height: 40px; left: 48.077%; width: 5.128%; padding: 0; border: 0; border-radius: 1px; background: var(--c3); box-shadow: none"></button>
+
+<button type="button" title="14:05–läuft · Nordlicht Energie GmbH · Fiori-Berechtigungen" aria-label="14:05–läuft · Nordlicht Energie GmbH · Fiori-Berechtigungen" style="position: absolute; top: 22px; height: 40px; left: 54.487%; width: 21.438%; padding: 0; border: 0; border-radius: 1px; background: repeating-linear-gradient(135deg, var(--c1) 0 5px, transparent 5px 8px); box-shadow: inset 0 0 0 1px var(--c1)"></button>
+
+<div aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 62px; height: 1px; background: var(--ink)"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 0.000%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 1.923%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 3.846%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 5.769%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 7.692%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 9.615%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 11.538%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 13.462%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 15.385%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 17.308%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 19.231%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 21.154%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 23.077%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 25.000%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 26.923%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 28.846%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 30.769%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 32.692%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 34.615%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 36.538%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 38.462%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 40.385%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 42.308%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 44.231%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 46.154%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 48.077%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 50.000%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 51.923%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 53.846%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 55.769%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 57.692%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 59.615%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 61.538%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 63.462%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 65.385%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 67.308%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 69.231%; width: 1px; height: 14px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 71.154%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 73.077%; width: 1px; height: 9px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 75.000%; width: 1px; height: 5px; background: var(--tick); opacity: 1"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 76.923%; width: 1px; height: 14px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 78.846%; width: 1px; height: 5px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 80.769%; width: 1px; height: 9px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 82.692%; width: 1px; height: 5px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 84.615%; width: 1px; height: 14px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 86.538%; width: 1px; height: 5px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 88.462%; width: 1px; height: 9px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 90.385%; width: 1px; height: 5px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 92.308%; width: 1px; height: 14px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 94.231%; width: 1px; height: 5px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 96.154%; width: 1px; height: 9px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 98.077%; width: 1px; height: 5px; background: var(--tick); opacity: 0.35"></div>
+
+<div aria-hidden="true" style="position: absolute; top: 63px; left: 100.000%; width: 1px; height: 14px; background: var(--tick); opacity: 0.35"></div>
+
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 0.000%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">07</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 7.692%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">08</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 15.385%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">09</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 23.077%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">10</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 30.769%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">11</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 38.462%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">12</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 46.154%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">13</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 53.846%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">14</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 61.538%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">15</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 69.231%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">16</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 76.923%; transform: translateX(-50%); font-size: 11px; color: var(--ink3)">17</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 84.615%; transform: translateX(-50%); font-size: 11px; color: var(--ink3)">18</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 92.308%; transform: translateX(-50%); font-size: 11px; color: var(--ink3)">19</span>
+
+<span class="mono" aria-hidden="true" style="position: absolute; top: 80px; left: 100.000%; transform: translateX(-50%); font-size: 11px; color: var(--ink3)">20</span>
+
+<div aria-hidden="true" style="position: absolute; top: 0; left: 75.925%; width: 0; height: 78px">
+<div style="position: absolute; left: -1px; top: 16px; width: 2px; height: 62px; background: var(--sig)"></div>
+<span class="mono" style="position: absolute; top: -4px; left: 0; transform: translateX(-50%); background: var(--sig); color: var(--sig-ink); font-size: 11px; font-weight: 600; padding: 2px 6px; white-space: nowrap">16:52</span>
+</div>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start">
+
+<section aria-labelledby="h-entries" style="flex: 999 1 560px; min-width: 0; border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px">
+<div style="display: flex; align-items: baseline; gap: 10px">
+<h2 id="h-entries" class="lg" style="margin: 0; color: var(--ink2)">Einträge heute</h2>
+<span class="mono" style="font-size: 11px; color: var(--ink3)">5</span>
+</div>
+<button type="button" class="k" style="min-height: 40px; padding: 0 16px; display: flex; align-items: center; gap: 8px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; font-size: 13px; font-weight: 600; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" /></svg>Eintrag nachtragen</button>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 640px; border-collapse: collapse">
+<thead>
+<tr>
+<th scope="col" class="lg" style="text-align: left; font-size: 10px; color: var(--ink3); padding: 0 12px 10px 0">Zeit</th>
+<th scope="col" class="lg" style="text-align: left; font-size: 10px; color: var(--ink3); padding: 0 12px 10px">Kunde · Projekt</th>
+<th scope="col" class="lg" style="text-align: left; font-size: 10px; color: var(--ink3); padding: 0 12px 10px">Beschreibung</th>
+<th scope="col" class="lg" style="text-align: right; font-size: 10px; color: var(--ink3); padding: 0 12px 10px">Dauer</th>
+<th scope="col" style="padding: 0"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Aktionen</span></th>
+</tr>
+</thead>
+<tbody>
+
+<tr style="border-top: 1px solid var(--line)">
+<td class="mono" style="height: 58px; padding: 0 12px 0 0; font-size: 13px; white-space: nowrap; color: var(--ink2)">14:05–</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c1)"></span>
+<div style="min-width: 0">
+<div style="font-size: 14px; font-weight: 600; white-space: nowrap">Nordlicht Energie GmbH</div>
+<div style="font-size: 12px; color: var(--ink2); white-space: nowrap">Fiori-Berechtigungen</div>
+</div>
+</div>
+</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span style="font-size: 14px; color: var(--ink)">Berechtigungskonzept Fiori-Kacheln überarbeiten</span>
+
+<span class="lg" style="font-size: 10px; color: var(--ink2); border: 1px solid var(--line); padding: 3px 6px">Konzept</span>
+
+</div>
+</td>
+<td class="mono" style="padding: 0 12px; text-align: right; font-size: 14px; font-weight: 600; white-space: nowrap">2:47:13</td>
+<td style="padding: 0; width: 96px">
+<div style="display: flex; justify-content: flex-end; gap: 4px">
+<button type="button" class="ib" aria-label="Eintrag 14:05 bearbeiten" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+
+<span style="width: 44px; height: 44px"></span>
+
+</div>
+</td>
+</tr>
+
+<tr style="border-top: 1px solid var(--line)">
+<td class="mono" style="height: 58px; padding: 0 12px 0 0; font-size: 13px; white-space: nowrap; color: var(--ink2)">13:15–13:55</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c3)"></span>
+<div style="min-width: 0">
+<div style="font-size: 14px; font-weight: 600; white-space: nowrap">Kessler Logistik AG</div>
+<div style="font-size: 12px; color: var(--ink2); white-space: nowrap">BTP-Audit</div>
+</div>
+</div>
+</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span style="font-size: 14px; color: var(--ink)">Abstimmung Audit-Umfang</span>
+
+<span class="lg" style="font-size: 10px; color: var(--ink2); border: 1px solid var(--line); padding: 3px 6px">Meeting</span>
+
+</div>
+</td>
+<td class="mono" style="padding: 0 12px; text-align: right; font-size: 14px; font-weight: 400; white-space: nowrap">0:40</td>
+<td style="padding: 0; width: 96px">
+<div style="display: flex; justify-content: flex-end; gap: 4px">
+<button type="button" class="ib" aria-label="Eintrag 13:15 bearbeiten" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+<button type="button" class="ib" aria-label="Eintrag 13:15 löschen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+
+</div>
+</td>
+</tr>
+
+<tr style="border-top: 1px solid var(--line)">
+<td class="mono" style="height: 58px; padding: 0 12px 0 0; font-size: 13px; white-space: nowrap; color: var(--ink2)">10:30–12:35</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c1)"></span>
+<div style="min-width: 0">
+<div style="font-size: 14px; font-weight: 600; white-space: nowrap">Nordlicht Energie GmbH</div>
+<div style="font-size: 12px; color: var(--ink2); white-space: nowrap">S/4 Rollenkonzept</div>
+</div>
+</div>
+</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span style="font-size: 14px; color: var(--ink)">SoD-Konflikte FI/MM auswerten</span>
+
+</div>
+</td>
+<td class="mono" style="padding: 0 12px; text-align: right; font-size: 14px; font-weight: 400; white-space: nowrap">2:05</td>
+<td style="padding: 0; width: 96px">
+<div style="display: flex; justify-content: flex-end; gap: 4px">
+<button type="button" class="ib" aria-label="Eintrag 10:30 bearbeiten" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+<button type="button" class="ib" aria-label="Eintrag 10:30 löschen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+
+</div>
+</td>
+</tr>
+
+<tr style="border-top: 1px solid var(--line)">
+<td class="mono" style="height: 58px; padding: 0 12px 0 0; font-size: 13px; white-space: nowrap; color: var(--ink2)">09:50–10:20</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c4)"></span>
+<div style="min-width: 0">
+<div style="font-size: 14px; font-weight: 600; white-space: nowrap">wald-it intern</div>
+<div style="font-size: 12px; color: var(--ink2); white-space: nowrap">Akquise</div>
+</div>
+</div>
+</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span style="font-size: 14px; color: var(--ink)">Angebot Kessler Phase 2 ausarbeiten</span>
+
+</div>
+</td>
+<td class="mono" style="padding: 0 12px; text-align: right; font-size: 14px; font-weight: 400; white-space: nowrap">0:30</td>
+<td style="padding: 0; width: 96px">
+<div style="display: flex; justify-content: flex-end; gap: 4px">
+<button type="button" class="ib" aria-label="Eintrag 09:50 bearbeiten" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+<button type="button" class="ib" aria-label="Eintrag 09:50 löschen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+
+</div>
+</td>
+</tr>
+
+<tr style="border-top: 1px solid var(--line)">
+<td class="mono" style="height: 58px; padding: 0 12px 0 0; font-size: 13px; white-space: nowrap; color: var(--ink2)">08:10–09:40</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c2)"></span>
+<div style="min-width: 0">
+<div style="font-size: 14px; font-weight: 600; white-space: nowrap">Brandt &amp; Partner</div>
+<div style="font-size: 12px; color: var(--ink2); white-space: nowrap">IAS-SSO</div>
+</div>
+</div>
+</td>
+<td style="padding: 0 12px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span style="font-size: 14px; color: var(--ink)">SAML-Trust zu Entra ID testen</span>
+
+</div>
+</td>
+<td class="mono" style="padding: 0 12px; text-align: right; font-size: 14px; font-weight: 400; white-space: nowrap">1:30</td>
+<td style="padding: 0; width: 96px">
+<div style="display: flex; justify-content: flex-end; gap: 4px">
+<button type="button" class="ib" aria-label="Eintrag 08:10 bearbeiten" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.5 2.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+<button type="button" class="ib" aria-label="Eintrag 08:10 löschen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 4px; color: var(--ink3)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" /></svg></button>
+
+
+</div>
+</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+</section>
+
+<aside aria-labelledby="h-quick" style="flex: 1 1 300px; border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-height: 40px; margin-bottom: 10px">
+<h2 id="h-quick" class="lg" style="margin: 0; color: var(--ink2)">Schnellstart</h2>
+<span class="mono" style="font-size: 11px; color: var(--ink3)">h · 30 Tage</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+
+<button type="button" class="k" aria-label="Wechseln zu Nordlicht Energie GmbH, S/4 Rollenkonzept" style="min-height: 64px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 16px; text-align: left; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)">
+<span aria-hidden="true" style="width: 12px; height: 12px; flex: none; background: var(--c1)"></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Nordlicht Energie GmbH</span>
+<span style="font-size: 12px; color: var(--ink2)">S/4 Rollenkonzept</span>
+</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">48:20</span>
+<span aria-hidden="true" style="width: 32px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--key-edge); border-radius: 3px"><svg width="9" height="10" viewBox="0 0 9 10"><path d="M0 0l9 5-9 5z" fill="currentColor" /></svg></span>
+</button>
+
+<button type="button" class="k" aria-label="Wechseln zu Brandt & Partner, IAS-SSO" style="min-height: 64px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 16px; text-align: left; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)">
+<span aria-hidden="true" style="width: 12px; height: 12px; flex: none; background: var(--c2)"></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Brandt &amp; Partner</span>
+<span style="font-size: 12px; color: var(--ink2)">IAS-SSO</span>
+</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">41:05</span>
+<span aria-hidden="true" style="width: 32px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--key-edge); border-radius: 3px"><svg width="9" height="10" viewBox="0 0 9 10"><path d="M0 0l9 5-9 5z" fill="currentColor" /></svg></span>
+</button>
+
+<button type="button" class="k" aria-label="Wechseln zu Kessler Logistik AG, BTP-Audit" style="min-height: 64px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 16px; text-align: left; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)">
+<span aria-hidden="true" style="width: 12px; height: 12px; flex: none; background: var(--c3)"></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Kessler Logistik AG</span>
+<span style="font-size: 12px; color: var(--ink2)">BTP-Audit</span>
+</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">37:40</span>
+<span aria-hidden="true" style="width: 32px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--key-edge); border-radius: 3px"><svg width="9" height="10" viewBox="0 0 9 10"><path d="M0 0l9 5-9 5z" fill="currentColor" /></svg></span>
+</button>
+
+</div>
+<p style="margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink3)">Klick wechselt den laufenden Timer. Gedrückt halten für Projektwahl.</p>
+</aside>
+
+</div>
+</main>
+</div>
+</section>
+<section class="ref-sec" id="kalender">
+<div class="tt" data-theme="Papier" style="--sig: #E2551F; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: 'Archivo Variable', Archivo, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="border-bottom: 1px solid var(--line)">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 40px; min-height: 64px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="9.5" stroke="currentColor" stroke-width="1.5" /><path d="M11 2.5v2.5M19.5 11H17M11 19.5V17M2.5 11H5" stroke="currentColor" stroke-width="1.5" /><path d="M11 11l4.2-4.2" style="stroke: var(--sig)" stroke-width="2" stroke-linecap="round" /><circle cx="11" cy="11" r="1.6" fill="currentColor" /></svg>
+<span class="lg" style="font-size: 12px; font-weight: 800; letter-spacing: .2em; font-stretch: 125%">TimeTrack</span>
+</div>
+<nav aria-label="Hauptnavigation" style="display: flex; gap: 2px; flex-wrap: wrap; flex: 1 1 auto">
+<a href="#heute" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Heute</a>
+<a href="#kalender" aria-current="page" class="nl" style="position: relative; display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--ink); text-decoration: none">Kalender<span aria-hidden="true" style="position: absolute; left: 14px; right: 14px; bottom: -10px; height: 3px; background: var(--sig)"></span></a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Kunden</button>
+<a href="#auswertung" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Auswertung</a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Export</button>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Einstellungen</button>
+</nav>
+<div style="display: flex; align-items: center; gap: 12px">
+<span class="blink" aria-hidden="true" style="width: 8px; height: 8px; background: var(--sig)"></span>
+<span style="font-size: 13px; color: var(--ink2)">Nordlicht</span>
+<span class="mono" style="font-size: 15px; font-weight: 500">2:47:13</span>
+<a href="#heute" class="k" aria-label="Timer stoppen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px"><span style="width: 12px; height: 12px; background: var(--ink); border-radius: 1px"></span></a>
+</div>
+</div>
+</header>
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 36px 40px 64px; display: flex; flex-direction: column; gap: 32px">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+<div style="display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+<div>
+<div class="lg" style="color: var(--ink2)">Kalender</div>
+<h1 style="margin: 6px 0 0; display: flex; align-items: baseline; gap: 14px; font-size: 44px; line-height: 1; font-weight: 600; font-stretch: 112%; letter-spacing: -0.01em">Oktober<span class="mono" style="font-size: 28px; font-weight: 300; color: var(--ink3); letter-spacing: 0">2026</span></h1>
+</div>
+<div style="display: flex; gap: 8px">
+<button type="button" class="k" aria-label="Vorheriger Monat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.6" /></svg></button>
+<button type="button" class="k" aria-label="Nächster Monat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 2l5 5-5 5" stroke="currentColor" stroke-width="1.6" /></svg></button>
+<button type="button" class="k" style="min-height: 44px; padding: 0 16px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge); font-size: 13px; font-weight: 600">Heute</button>
+</div>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap">
+<button type="button" class="k" style="min-height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge); font-size: 13px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="3" width="13" height="11.5" stroke="currentColor" stroke-width="1.4" /><path d="M1.5 6.5h13M5 1v3.5M11 1v3.5" stroke="currentColor" stroke-width="1.4" /></svg>Termine übernehmen</button>
+<div style="text-align: right">
+<div class="lg" style="color: var(--ink2)">Summe Oktober</div>
+<div style="display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; margin-top: 6px">
+<span class="mono" style="font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -0.02em">126:02</span>
+<span style="font-size: 13px; color: var(--ink2)">h</span>
+</div>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start">
+
+<section aria-label="Monatsraster Oktober 2026" style="flex: 999 1 680px; min-width: 0; overflow-x: auto">
+<div style="min-width: 660px; display: grid; grid-template-columns: 72px repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--line)">
+<div class="lg" style="padding: 0 0 10px; font-size: 10px; color: var(--ink3); border-bottom: 2px solid var(--ink)">KW</div>
+
+<div class="lg" style="padding: 0 0 10px 10px; font-size: 10px; color: var(--ink2); border-bottom: 2px solid var(--ink)">Mo</div>
+
+<div class="lg" style="padding: 0 0 10px 10px; font-size: 10px; color: var(--ink2); border-bottom: 2px solid var(--ink)">Di</div>
+
+<div class="lg" style="padding: 0 0 10px 10px; font-size: 10px; color: var(--ink2); border-bottom: 2px solid var(--ink)">Mi</div>
+
+<div class="lg" style="padding: 0 0 10px 10px; font-size: 10px; color: var(--ink2); border-bottom: 2px solid var(--ink)">Do</div>
+
+<div class="lg" style="padding: 0 0 10px 10px; font-size: 10px; color: var(--ink2); border-bottom: 2px solid var(--ink)">Fr</div>
+
+<div class="lg" style="padding: 0 0 10px 10px; font-size: 10px; color: var(--ink3); border-bottom: 2px solid var(--ink)">Sa</div>
+
+<div class="lg" style="padding: 0 0 10px 10px; font-size: 10px; color: var(--ink3); border-bottom: 2px solid var(--ink)">So</div>
+
+
+<div style="display: contents">
+<div style="min-height: 104px; padding: 10px 10px 10px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between">
+<span class="mono" style="font-size: 20px; font-weight: 300; line-height: 1">40</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">15:15</span>
+</div>
+
+<button type="button" class="day" disabled aria-pressed="false" aria-label="28. (anderer Monat)" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink3)">28</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: transparent"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" disabled aria-pressed="false" aria-label="29. (anderer Monat)" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink3)">29</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: transparent"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" disabled aria-pressed="false" aria-label="30. (anderer Monat)" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink3)">30</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: transparent"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Donnerstag, 1. Oktober, 9:00 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">1</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">9:00</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 9.62%; width: 19.23%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 30.77%; width: 11.54%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 48.08%; width: 30.77%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 80.77%; width: 7.69%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Freitag, 2. Oktober, 6:15 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">2</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">6:15</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 7.69%; width: 26.92%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 38.46%; width: 15.38%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 53.85%; width: 5.77%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Samstag, 3. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">3</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Sonntag, 4. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">4</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+</div>
+
+<div style="display: contents">
+<div style="min-height: 104px; padding: 10px 10px 10px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between">
+<span class="mono" style="font-size: 20px; font-weight: 300; line-height: 1">41</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">39:00</span>
+</div>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Montag, 5. Oktober, 7:45 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">5</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">7:45</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 7.69%; width: 15.38%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 25.00%; width: 17.31%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 48.08%; width: 15.38%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 65.38%; width: 11.54%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Dienstag, 6. Oktober, 8:15 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">6</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">8:15</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 11.54%; width: 26.92%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 44.23%; width: 17.31%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 63.46%; width: 19.23%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Mittwoch, 7. Oktober, 8:00 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">7</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">8:00</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 5.77%; width: 9.62%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 15.38%; width: 25.00%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 46.15%; width: 26.92%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Donnerstag, 8. Oktober, 7:15 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">8</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">7:15</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 15.38%; width: 26.92%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 50.00%; width: 19.23%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 71.15%; width: 9.62%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Freitag, 9. Oktober, 6:15 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">9</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">6:15</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 7.69%; width: 26.92%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 38.46%; width: 15.38%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 53.85%; width: 5.77%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Samstag, 10. Oktober, 1:30 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">10</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">1:30</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 23.08%; width: 11.54%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Sonntag, 11. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">11</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+</div>
+
+<div style="display: contents">
+<div style="min-height: 104px; padding: 10px 10px 10px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between">
+<span class="mono" style="font-size: 20px; font-weight: 300; line-height: 1">42</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">39:15</span>
+</div>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Montag, 12. Oktober, 8:15 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">12</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">8:15</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 11.54%; width: 26.92%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 44.23%; width: 17.31%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 63.46%; width: 19.23%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Dienstag, 13. Oktober, 9:00 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">13</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">9:00</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 9.62%; width: 19.23%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 30.77%; width: 11.54%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 48.08%; width: 30.77%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 80.77%; width: 7.69%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Mittwoch, 14. Oktober, 7:45 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">14</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">7:45</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 7.69%; width: 15.38%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 25.00%; width: 17.31%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 48.08%; width: 15.38%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 65.38%; width: 11.54%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Donnerstag, 15. Oktober, 8:00 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">15</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">8:00</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 5.77%; width: 9.62%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 15.38%; width: 25.00%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 46.15%; width: 26.92%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Freitag, 16. Oktober, 6:15 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">16</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">6:15</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 7.69%; width: 26.92%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 38.46%; width: 15.38%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 53.85%; width: 5.77%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Samstag, 17. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">17</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Sonntag, 18. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">18</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+</div>
+
+<div style="display: contents">
+<div style="min-height: 104px; padding: 10px 10px 10px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between">
+<span class="mono" style="font-size: 20px; font-weight: 300; line-height: 1">43</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">32:32</span>
+</div>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Montag, 19. Oktober, 8:15 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">19</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">8:15</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 7.69%; width: 19.23%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 28.85%; width: 13.46%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 48.08%; width: 19.23%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 69.23%; width: 11.54%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Dienstag, 20. Oktober, 7:40 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">20</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">7:40</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 11.54%; width: 3.85%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 15.38%; width: 24.36%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 46.15%; width: 19.23%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 67.31%; width: 11.54%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="true" aria-label="Mittwoch, 21. Oktober, 9:05 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: var(--key); box-shadow: inset 0 0 0 1px var(--ink); display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">21</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">9:05</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 5.77%; width: 11.54%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 19.23%; width: 19.23%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 44.23%; width: 11.54%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 57.69%; width: 17.95%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 76.92%; width: 9.62%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Donnerstag, 22. Oktober, 7:32 Stunden" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 2px solid var(--ink); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: var(--sig); color: var(--sig-ink)">22</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">7:32</span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; top: 0; height: 8px; left: 8.97%; width: 11.54%; background: var(--c2); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 21.79%; width: 3.85%; background: var(--c4); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 26.92%; width: 16.03%; background: var(--c1); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 48.08%; width: 5.13%; background: var(--c3); box-shadow: none"></span>
+
+<span style="position: absolute; top: 0; height: 8px; left: 54.49%; width: 21.41%; background: repeating-linear-gradient(135deg, var(--c1) 0 3px, transparent 3px 5px); box-shadow: inset 0 0 0 1px var(--c1)"></span>
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+<span style="position: absolute; top: -3px; left: 75.90%; width: 2px; height: 17px; background: var(--sig)"></span>
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Freitag, 23. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">23</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Samstag, 24. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">24</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Sonntag, 25. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">25</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+</div>
+
+<div style="display: contents">
+<div style="min-height: 104px; padding: 10px 10px 10px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between">
+<span class="mono" style="font-size: 20px; font-weight: 300; line-height: 1">44</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)">–</span>
+</div>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Montag, 26. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">26</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Dienstag, 27. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">27</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Mittwoch, 28. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">28</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Donnerstag, 29. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">29</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Freitag, 30. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink)">30</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" aria-pressed="false" aria-label="Samstag, 31. Oktober, keine Einträge" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink2)">31</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+<button type="button" class="day" disabled aria-pressed="false" aria-label="1. (anderer Monat)" style="min-height: 104px; padding: 10px; text-align: left; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+<span style="display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%">
+<span class="mono" style="font-size: 13px; font-weight: 500; padding: 1px 5px; margin-left: -5px; background: transparent; color: var(--ink3)">1</span>
+<span class="mono" style="font-size: 12px; color: var(--ink2)"></span>
+</span>
+<span aria-hidden="true" style="position: relative; display: block; width: 100%; height: 14px">
+
+<span style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: transparent"></span>
+
+<span style="position: absolute; top: 10px; left: 7.69%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 23.08%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 38.46%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 53.85%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 69.23%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; top: 10px; left: 84.62%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+
+</span>
+</button>
+
+</div>
+
+</div>
+<p style="margin: 12px 0 0; font-size: 12px; color: var(--ink3)">Skala je Tag 07–20 Uhr · schraffiert = läuft</p>
+</section>
+
+<aside style="flex: 1 1 300px; display: flex; flex-direction: column; gap: 36px">
+
+<section aria-labelledby="h-day" style="border-top: 2px solid var(--ink); padding-top: 14px">
+<h2 id="h-day" class="lg" style="margin: 0; color: var(--ink2)">Ausgewählter Tag</h2>
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 6px">
+<span style="font-size: 18px; font-weight: 600; font-stretch: 106%">Mittwoch, 21. Oktober</span>
+<span class="mono" style="font-size: 24px; font-weight: 300">9:05</span>
+</div>
+
+<ol style="list-style: none; margin: 14px 0 0; padding: 0">
+
+<li style="border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 3px">
+<div style="display: flex; justify-content: space-between; gap: 10px">
+<span class="mono" style="font-size: 12px; color: var(--ink2)">07:45–09:15</span>
+<span class="mono" style="font-size: 13px; font-weight: 400">1:30</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 8px; height: 8px; flex: none; background: var(--c1)"></span>
+<span style="font-size: 13px; font-weight: 600">Nordlicht Energie GmbH</span>
+<span style="font-size: 12px; color: var(--ink2)">· S/4 Rollenkonzept</span>
+</div>
+<div style="font-size: 13px; color: var(--ink)">Workshop Rollenschnitt Einkauf</div>
+</li>
+
+<li style="border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 3px">
+<div style="display: flex; justify-content: space-between; gap: 10px">
+<span class="mono" style="font-size: 12px; color: var(--ink2)">09:30–12:00</span>
+<span class="mono" style="font-size: 13px; font-weight: 400">2:30</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 8px; height: 8px; flex: none; background: var(--c1)"></span>
+<span style="font-size: 13px; font-weight: 600">Nordlicht Energie GmbH</span>
+<span style="font-size: 12px; color: var(--ink2)">· S/4 Rollenkonzept</span>
+</div>
+<div style="font-size: 13px; color: var(--ink)">SU24-Vorschlagswerte bereinigen</div>
+</li>
+
+<li style="border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 3px">
+<div style="display: flex; justify-content: space-between; gap: 10px">
+<span class="mono" style="font-size: 12px; color: var(--ink2)">12:45–14:15</span>
+<span class="mono" style="font-size: 13px; font-weight: 400">1:30</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 8px; height: 8px; flex: none; background: var(--c2)"></span>
+<span style="font-size: 13px; font-weight: 600">Brandt &amp; Partner</span>
+<span style="font-size: 12px; color: var(--ink2)">· IAS-SSO</span>
+</div>
+<div style="font-size: 13px; color: var(--ink)">Conditional-Access-Policies abstimmen</div>
+</li>
+
+<li style="border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 3px">
+<div style="display: flex; justify-content: space-between; gap: 10px">
+<span class="mono" style="font-size: 12px; color: var(--ink2)">14:30–16:50</span>
+<span class="mono" style="font-size: 13px; font-weight: 400">2:20</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 8px; height: 8px; flex: none; background: var(--c3)"></span>
+<span style="font-size: 13px; font-weight: 600">Kessler Logistik AG</span>
+<span style="font-size: 12px; color: var(--ink2)">· BTP-Audit</span>
+</div>
+<div style="font-size: 13px; color: var(--ink)">Subaccount-Berechtigungen prüfen</div>
+</li>
+
+<li style="border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 3px">
+<div style="display: flex; justify-content: space-between; gap: 10px">
+<span class="mono" style="font-size: 12px; color: var(--ink2)">17:00–18:15</span>
+<span class="mono" style="font-size: 13px; font-weight: 400">1:15</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 8px; height: 8px; flex: none; background: var(--c4)"></span>
+<span style="font-size: 13px; font-weight: 600">wald-it intern</span>
+<span style="font-size: 12px; color: var(--ink2)">· Verwaltung</span>
+</div>
+<div style="font-size: 13px; color: var(--ink)">Rechnungen &amp; Belege</div>
+</li>
+
+</ol>
+<button type="button" class="k" style="margin-top: 6px; width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge); font-size: 13px; font-weight: 600"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" /></svg>Eintrag für 21.10. nachtragen</button>
+</section>
+
+<section aria-labelledby="h-month" style="border-top: 2px solid var(--ink); padding-top: 14px">
+<h2 id="h-month" class="lg" style="margin: 0; color: var(--ink2)">Oktober nach Kunde</h2>
+<ul style="list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px">
+
+<li style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c1)"></span>
+<span style="flex: 1; font-size: 13px; font-weight: 600">Nordlicht Energie GmbH</span>
+<span class="mono" style="font-size: 12px; color: var(--ink3)">47 %</span>
+<span class="mono" style="font-size: 13px; min-width: 48px; text-align: right">59:07</span>
+</div>
+<div aria-hidden="true" style="height: 4px; background: var(--line)">
+<div style="height: 4px; width: 46.9%; background: var(--c1)"></div>
+</div>
+</li>
+
+<li style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c2)"></span>
+<span style="flex: 1; font-size: 13px; font-weight: 600">Brandt &amp; Partner</span>
+<span class="mono" style="font-size: 12px; color: var(--ink3)">21 %</span>
+<span class="mono" style="font-size: 13px; min-width: 48px; text-align: right">26:55</span>
+</div>
+<div aria-hidden="true" style="height: 4px; background: var(--line)">
+<div style="height: 4px; width: 21.4%; background: var(--c2)"></div>
+</div>
+</li>
+
+<li style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c3)"></span>
+<span style="flex: 1; font-size: 13px; font-weight: 600">Kessler Logistik AG</span>
+<span class="mono" style="font-size: 12px; color: var(--ink3)">21 %</span>
+<span class="mono" style="font-size: 13px; min-width: 48px; text-align: right">26:30</span>
+</div>
+<div aria-hidden="true" style="height: 4px; background: var(--line)">
+<div style="height: 4px; width: 21.0%; background: var(--c3)"></div>
+</div>
+</li>
+
+<li style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c4)"></span>
+<span style="flex: 1; font-size: 13px; font-weight: 600">wald-it intern</span>
+<span class="mono" style="font-size: 12px; color: var(--ink3)">11 %</span>
+<span class="mono" style="font-size: 13px; min-width: 48px; text-align: right">13:30</span>
+</div>
+<div aria-hidden="true" style="height: 4px; background: var(--line)">
+<div style="height: 4px; width: 10.7%; background: var(--c4)"></div>
+</div>
+</li>
+
+</ul>
+</section>
+
+</aside>
+</div>
+</main>
+</div>
+</section>
+<section class="ref-sec" id="auswertung">
+<div class="tt" data-theme="Papier" style="--sig: #E2551F; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: 'Archivo Variable', Archivo, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="border-bottom: 1px solid var(--line)">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 40px; min-height: 64px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="9.5" stroke="currentColor" stroke-width="1.5" /><path d="M11 2.5v2.5M19.5 11H17M11 19.5V17M2.5 11H5" stroke="currentColor" stroke-width="1.5" /><path d="M11 11l4.2-4.2" style="stroke: var(--sig)" stroke-width="2" stroke-linecap="round" /><circle cx="11" cy="11" r="1.6" fill="currentColor" /></svg>
+<span class="lg" style="font-size: 12px; font-weight: 800; letter-spacing: .2em; font-stretch: 125%">TimeTrack</span>
+</div>
+<nav aria-label="Hauptnavigation" style="display: flex; gap: 2px; flex-wrap: wrap; flex: 1 1 auto">
+<a href="#heute" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Heute</a>
+<a href="#kalender" class="nl" style="display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none">Kalender</a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Kunden</button>
+<a href="#auswertung" aria-current="page" class="nl" style="position: relative; display: flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--ink); text-decoration: none">Auswertung<span aria-hidden="true" style="position: absolute; left: 14px; right: 14px; bottom: -10px; height: 3px; background: var(--sig)"></span></a>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Export</button>
+<button type="button" class="nl" style="min-height: 44px; padding: 0 14px; font-size: 14px; font-weight: 500; color: var(--ink2); background: none; border: 0">Einstellungen</button>
+</nav>
+<div style="display: flex; align-items: center; gap: 12px">
+<span aria-hidden="true" style="width: 8px; height: 8px; background: var(--sig)"></span>
+<span style="font-size: 13px; color: var(--ink2)">Nordlicht</span>
+<span class="mono" style="font-size: 15px; font-weight: 500">2:47:13</span>
+<a href="#heute" class="k" aria-label="Timer stoppen" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px"><span style="width: 12px; height: 12px; background: var(--ink); border-radius: 1px"></span></a>
+</div>
+</div>
+</header>
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 36px 40px 64px; display: flex; flex-direction: column; gap: 48px">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+<div style="display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+<div>
+<div class="lg" style="color: var(--ink2)">Auswertung</div>
+<h1 style="margin: 6px 0 0; display: flex; align-items: baseline; gap: 14px; font-size: 44px; line-height: 1; font-weight: 600; font-stretch: 112%; letter-spacing: -0.01em">Oktober<span class="mono" style="font-size: 28px; font-weight: 300; color: var(--ink3); letter-spacing: 0">2026</span></h1>
+</div>
+<div style="display: flex; gap: 8px">
+<button type="button" class="k" aria-label="Vorheriger Monat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.6" /></svg></button>
+<button type="button" class="k" aria-label="Nächster Monat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--key-edge); border-radius: 4px; box-shadow: inset 0 -2px 0 var(--key-edge)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M5 2l5 5-5 5" stroke="currentColor" stroke-width="1.6" /></svg></button>
+</div>
+</div>
+<p style="margin: 0; max-width: 340px; font-size: 13px; color: var(--ink2); text-align: right">Stand Do 22.10. · verglichen mit dem gleichen Zeitraum im Vormonat (1.–22. September)</p>
+</div>
+
+<section aria-label="Kennzahlen" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 32px">
+
+<div style="border-top: 2px solid var(--ink); padding-top: 14px; display: flex; flex-direction: column; gap: 10px">
+<div class="lg" style="color: var(--ink2)">Stunden</div>
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span class="mono" style="font-size: 56px; font-weight: 300; line-height: 1; letter-spacing: -0.03em">126:02</span>
+<span style="font-size: 15px; color: var(--ink2)">h</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<svg width="10" height="8" viewBox="0 0 10 8" aria-hidden="true" style="transform: none"><path d="M5 0l5 8H0z" fill="currentColor" /></svg>
+<span class="mono" style="font-weight: 600">+6,1 %</span>
+<span style="color: var(--ink3)">vs. 118:45 h</span>
+</div>
+</div>
+
+<div style="border-top: 2px solid var(--ink); padding-top: 14px; display: flex; flex-direction: column; gap: 10px">
+<div class="lg" style="color: var(--ink2)">Umsatz</div>
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span class="mono" style="font-size: 56px; font-weight: 300; line-height: 1; letter-spacing: -0.03em">13.078</span>
+<span style="font-size: 15px; color: var(--ink2)">€</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<svg width="10" height="8" viewBox="0 0 10 8" aria-hidden="true" style="transform: none"><path d="M5 0l5 8H0z" fill="currentColor" /></svg>
+<span class="mono" style="font-weight: 600">+7,7 %</span>
+<span style="color: var(--ink3)">vs. 12.140 €</span>
+</div>
+</div>
+
+<div style="border-top: 2px solid var(--ink); padding-top: 14px; display: flex; flex-direction: column; gap: 10px">
+<div class="lg" style="color: var(--ink2)">Abrechenbar</div>
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span class="mono" style="font-size: 56px; font-weight: 300; line-height: 1; letter-spacing: -0.03em">89</span>
+<span style="font-size: 15px; color: var(--ink2)">%</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+<svg width="10" height="8" viewBox="0 0 10 8" aria-hidden="true" style="transform: rotate(180deg)"><path d="M5 0l5 8H0z" fill="currentColor" /></svg>
+<span class="mono" style="font-weight: 600">−2 pp</span>
+<span style="color: var(--ink3)">vs. 91 %</span>
+</div>
+</div>
+
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start">
+
+<section aria-labelledby="h-clients" style="flex: 3 1 520px; min-width: 0; border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap">
+<h2 id="h-clients" class="lg" style="margin: 0; color: var(--ink2)">Stunden nach Kunde</h2>
+<span style="font-size: 12px; color: var(--ink3)">laufender Monat · Umsatz rechts</span>
+</div>
+<div style="margin-top: 22px; display: grid; grid-template-columns: 170px minmax(0, 1fr) 72px 88px; column-gap: 0; row-gap: 0; align-items: center">
+<span></span>
+<div aria-hidden="true" style="position: relative; height: 26px; margin: 0 16px; border-bottom: 1px solid var(--ink)">
+
+<span style="position: absolute; bottom: 0; left: 0.00%; width: 1px; height: 8px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 8.33%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 16.67%; width: 1px; height: 8px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 25.00%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 33.33%; width: 1px; height: 8px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 41.67%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 50.00%; width: 1px; height: 8px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 58.33%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 66.67%; width: 1px; height: 8px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 75.00%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 83.33%; width: 1px; height: 8px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 91.67%; width: 1px; height: 4px; background: var(--tick)"></span>
+
+<span style="position: absolute; bottom: 0; left: 100.00%; width: 1px; height: 8px; background: var(--tick)"></span>
+
+
+<span class="mono" style="position: absolute; top: 0; left: 0.00%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">0</span>
+
+<span class="mono" style="position: absolute; top: 0; left: 16.67%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">10</span>
+
+<span class="mono" style="position: absolute; top: 0; left: 33.33%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">20</span>
+
+<span class="mono" style="position: absolute; top: 0; left: 50.00%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">30</span>
+
+<span class="mono" style="position: absolute; top: 0; left: 66.67%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">40</span>
+
+<span class="mono" style="position: absolute; top: 0; left: 83.33%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">50</span>
+
+<span class="mono" style="position: absolute; top: 0; left: 100.00%; transform: translateX(-50%); font-size: 11px; color: var(--ink2)">60</span>
+
+</div>
+<span class="lg" style="font-size: 10px; color: var(--ink3); text-align: right">h</span>
+<span class="lg" style="font-size: 10px; color: var(--ink3); text-align: right">€</span>
+
+<div style="display: contents">
+<div style="display: flex; align-items: center; gap: 8px; min-height: 52px; border-bottom: 1px solid var(--line)">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c1)"></span>
+<span style="font-size: 13px; font-weight: 600">Nordlicht Energie GmbH</span>
+</div>
+<div style="min-height: 52px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line)">
+<div class="bar" title="Nordlicht Energie GmbH: 59:07 h · 6.798 € · 115 €/h" style="height: 18px; width: 98.53%; background: var(--c1)"></div>
+</div>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 14px; border-bottom: 1px solid var(--line)">59:07</span>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 13px; color: var(--ink); border-bottom: 1px solid var(--line)">6.798 €</span>
+</div>
+
+<div style="display: contents">
+<div style="display: flex; align-items: center; gap: 8px; min-height: 52px; border-bottom: 1px solid var(--line)">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c2)"></span>
+<span style="font-size: 13px; font-weight: 600">Brandt &amp; Partner</span>
+</div>
+<div style="min-height: 52px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line)">
+<div class="bar" title="Brandt & Partner: 26:55 h · 3.364 € · 125 €/h" style="height: 18px; width: 44.86%; background: var(--c2)"></div>
+</div>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 14px; border-bottom: 1px solid var(--line)">26:55</span>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 13px; color: var(--ink); border-bottom: 1px solid var(--line)">3.364 €</span>
+</div>
+
+<div style="display: contents">
+<div style="display: flex; align-items: center; gap: 8px; min-height: 52px; border-bottom: 1px solid var(--line)">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c3)"></span>
+<span style="font-size: 13px; font-weight: 600">Kessler Logistik AG</span>
+</div>
+<div style="min-height: 52px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line)">
+<div class="bar" title="Kessler Logistik AG: 26:30 h · 2.915 € · 110 €/h" style="height: 18px; width: 44.17%; background: var(--c3)"></div>
+</div>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 14px; border-bottom: 1px solid var(--line)">26:30</span>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 13px; color: var(--ink); border-bottom: 1px solid var(--line)">2.915 €</span>
+</div>
+
+<div style="display: contents">
+<div style="display: flex; align-items: center; gap: 8px; min-height: 52px; border-bottom: 1px solid var(--line)">
+<span aria-hidden="true" style="width: 10px; height: 10px; flex: none; background: var(--c4)"></span>
+<span style="font-size: 13px; font-weight: 600">wald-it intern</span>
+</div>
+<div style="min-height: 52px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line)">
+<div class="bar" title="wald-it intern: 13:30 h · nicht abrechenbar" style="height: 18px; width: 22.50%; background: var(--c4)"></div>
+</div>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 14px; border-bottom: 1px solid var(--line)">13:30</span>
+<span class="mono" style="min-height: 52px; display: flex; align-items: center; justify-content: flex-end; font-size: 13px; color: var(--ink3); border-bottom: 1px solid var(--line)">intern</span>
+</div>
+
+</div>
+</section>
+
+<section aria-labelledby="h-week" style="flex: 2 1 340px; min-width: 0; border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap">
+<h2 id="h-week" class="lg" style="margin: 0; color: var(--ink2)">Wochentag-Schnitt</h2>
+<span style="font-size: 12px; color: var(--ink3)">Ø h/Tag · 90 Tage</span>
+</div>
+<div style="margin-top: 22px; display: grid; grid-template-columns: 28px repeat(7, minmax(0, 1fr)); grid-template-rows: 180px 28px; column-gap: 8px">
+<div aria-hidden="true" style="grid-column: 1; grid-row: 1; position: relative">
+
+<span class="mono" style="position: absolute; right: 0; bottom: 0.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">0</span>
+
+<span class="mono" style="position: absolute; right: 0; bottom: 32.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">2</span>
+
+<span class="mono" style="position: absolute; right: 0; bottom: 64.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">4</span>
+
+<span class="mono" style="position: absolute; right: 0; bottom: 96.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">6</span>
+
+<span class="mono" style="position: absolute; right: 0; bottom: 128.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">8</span>
+
+<span class="mono" style="position: absolute; right: 0; bottom: 160.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">10</span>
+
+</div>
+<div aria-hidden="true" style="grid-column: 2 / -1; grid-row: 1; position: relative; border-bottom: 1px solid var(--ink)">
+
+<span style="position: absolute; left: 0; right: 0; bottom: 0.0px; height: 1px; background: transparent"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 32.0px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 64.0px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 96.0px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 128.0px; height: 1px; background: var(--line)"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 160.0px; height: 1px; background: var(--line)"></span>
+
+</div>
+
+<div style="display: contents">
+<div style="grid-column: 2; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; position: relative">
+<span class="mono" style="font-size: 11px; color: var(--ink2)">7:55</span>
+<div class="bar" title="Mo: Ø 7:55 h" style="width: 56%; height: 126.7px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="grid-column: 2; grid-row: 2; align-self: end; text-align: center; font-size: 12px; color: var(--ink2)">Mo</span>
+</div>
+
+<div style="display: contents">
+<div style="grid-column: 3; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; position: relative">
+<span class="mono" style="font-size: 11px; color: var(--ink2)">8:10</span>
+<div class="bar" title="Di: Ø 8:10 h" style="width: 56%; height: 130.7px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="grid-column: 3; grid-row: 2; align-self: end; text-align: center; font-size: 12px; color: var(--ink2)">Di</span>
+</div>
+
+<div style="display: contents">
+<div style="grid-column: 4; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; position: relative">
+<span class="mono" style="font-size: 11px; color: var(--ink2)">8:35</span>
+<div class="bar" title="Mi: Ø 8:35 h" style="width: 56%; height: 137.3px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="grid-column: 4; grid-row: 2; align-self: end; text-align: center; font-size: 12px; color: var(--ink2)">Mi</span>
+</div>
+
+<div style="display: contents">
+<div style="grid-column: 5; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; position: relative">
+<span class="mono" style="font-size: 11px; color: var(--ink2)">8:05</span>
+<div class="bar" title="Do: Ø 8:05 h" style="width: 56%; height: 129.3px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="grid-column: 5; grid-row: 2; align-self: end; text-align: center; font-size: 12px; color: var(--ink2)">Do</span>
+</div>
+
+<div style="display: contents">
+<div style="grid-column: 6; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; position: relative">
+<span class="mono" style="font-size: 11px; color: var(--ink2)">6:20</span>
+<div class="bar" title="Fr: Ø 6:20 h" style="width: 56%; height: 101.3px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="grid-column: 6; grid-row: 2; align-self: end; text-align: center; font-size: 12px; color: var(--ink2)">Fr</span>
+</div>
+
+<div style="display: contents">
+<div style="grid-column: 7; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; position: relative">
+<span class="mono" style="font-size: 11px; color: var(--ink2)">0:30</span>
+<div class="bar" title="Sa: Ø 0:30 h" style="width: 56%; height: 8.0px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="grid-column: 7; grid-row: 2; align-self: end; text-align: center; font-size: 12px; color: var(--ink3)">Sa</span>
+</div>
+
+<div style="display: contents">
+<div style="grid-column: 8; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; position: relative">
+<span class="mono" style="font-size: 11px; color: var(--ink2)">0:05</span>
+<div class="bar" title="So: Ø 0:05 h" style="width: 56%; height: 1.3px; background: var(--ink2)"></div>
+</div>
+<span class="mono" style="grid-column: 8; grid-row: 2; align-self: end; text-align: center; font-size: 12px; color: var(--ink3)">So</span>
+</div>
+
+</div>
+</section>
+
+</div>
+
+<section aria-labelledby="h-trend" style="border-top: 2px solid var(--ink); padding-top: 14px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+<h2 id="h-trend" class="lg" style="margin: 0; color: var(--ink2)">Verlauf</h2>
+<span style="font-size: 12px; color: var(--ink3)">12 Monate · Zeiger über eine Spalte bewegen</span>
+</div>
+<div role="group" aria-label="Zeitraster" style="display: flex; border: 1px solid var(--key-edge); border-radius: 4px; padding: 3px; gap: 3px; background: var(--key)">
+<button type="button" aria-pressed="false" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 2px; background: transparent; color: var(--ink2); font-size: 13px; font-weight: 600">Wochen</button>
+<button type="button" aria-pressed="true" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 2px; background: var(--inv); color: var(--inv-ink); font-size: 13px; font-weight: 600">Monate</button>
+</div>
+</div>
+
+<div aria-live="polite" style="margin-top: 18px; display: flex; flex-wrap: wrap; align-items: stretch; background: var(--disp); color: var(--disp-ink); border: 1px solid var(--disp-line); border-radius: 6px">
+<div style="padding: 12px 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-right: 1px solid var(--disp-line)">
+<span class="lg" style="font-size: 10px; color: var(--sig)">Zeiger</span>
+<span style="font-size: 15px; font-weight: 600">Oktober 2026 · laufend</span>
+</div>
+
+<div style="padding: 12px 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-right: 1px solid var(--disp-line)">
+<span class="lg" style="font-size: 10px; color: var(--disp-dim)">Stunden</span>
+<span class="mono" style="font-size: 20px; font-weight: 400">126:02</span>
+</div>
+
+<div style="padding: 12px 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-right: 1px solid var(--disp-line)">
+<span class="lg" style="font-size: 10px; color: var(--disp-dim)">Abrechenbar</span>
+<span class="mono" style="font-size: 20px; font-weight: 400">112:32</span>
+</div>
+
+<div style="padding: 12px 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-right: 1px solid var(--disp-line)">
+<span class="lg" style="font-size: 10px; color: var(--disp-dim)">Quote</span>
+<span class="mono" style="font-size: 20px; font-weight: 400">89 %</span>
+</div>
+
+<div style="padding: 12px 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px; border-right: 1px solid var(--disp-line)">
+<span class="lg" style="font-size: 10px; color: var(--disp-dim)">Umsatz</span>
+<span class="mono" style="font-size: 20px; font-weight: 400">13.078 €</span>
+</div>
+
+</div>
+
+<div style="margin-top: 18px; display: flex; gap: 24px; flex-wrap: wrap; font-size: 12px; color: var(--ink2)">
+<span style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 12px; height: 12px; background: var(--ink)"></span>abrechenbar</span>
+<span style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 12px; height: 12px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>nicht abrechenbar</span>
+<span style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 16px; height: 2px; background: var(--ink2)"></span>Umsatz</span>
+</div>
+
+<div style="margin-top: 14px; overflow-x: auto">
+<div style="min-width: 760px; display: grid; grid-template-columns: 56px repeat(12, minmax(0, 1fr)); grid-template-rows: 200px 36px 100px 40px">
+<div aria-hidden="true" style="grid-column: 1; grid-row: 1; position: relative">
+
+<span class="mono" style="position: absolute; right: 12px; bottom: 0.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">0</span>
+
+<span class="mono" style="position: absolute; right: 12px; bottom: 46.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">40</span>
+
+<span class="mono" style="position: absolute; right: 12px; bottom: 92.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">80</span>
+
+<span class="mono" style="position: absolute; right: 12px; bottom: 138.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">120</span>
+
+<span class="mono" style="position: absolute; right: 12px; bottom: 184.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">160</span>
+
+<span class="lg" style="position: absolute; right: 12px; top: -22px; font-size: 10px; color: var(--ink3)">h</span>
+</div>
+<div aria-hidden="true" style="grid-column: 2 / -1; grid-row: 1; position: relative; border-bottom: 1px solid var(--ink)">
+
+<span style="position: absolute; left: 0; right: 0; bottom: 0.0px; height: 0; border-top: 1px dotted transparent"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 46.0px; height: 0; border-top: 1px dotted var(--line)"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 92.0px; height: 0; border-top: 1px dotted var(--line)"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 138.0px; height: 0; border-top: 1px dotted var(--line)"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 184.0px; height: 0; border-top: 1px dotted var(--line)"></span>
+
+</div>
+<div aria-hidden="true" style="grid-column: 1; grid-row: 3; position: relative">
+
+<span class="mono" style="position: absolute; right: 12px; bottom: 0.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">0</span>
+
+<span class="mono" style="position: absolute; right: 12px; bottom: 46.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">10</span>
+
+<span class="mono" style="position: absolute; right: 12px; bottom: 92.0px; transform: translateY(50%); font-size: 11px; color: var(--ink3)">20</span>
+
+<span class="lg" style="position: absolute; right: 12px; top: -22px; font-size: 10px; color: var(--ink3)">T€</span>
+</div>
+<div aria-hidden="true" style="grid-column: 2 / -1; grid-row: 3; position: relative; border-bottom: 1px solid var(--ink)">
+
+<span style="position: absolute; left: 0; right: 0; bottom: 0.0px; height: 0; border-top: 1px dotted transparent"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 46.0px; height: 0; border-top: 1px dotted var(--line)"></span>
+
+<span style="position: absolute; left: 0; right: 0; bottom: 92.0px; height: 0; border-top: 1px dotted var(--line)"></span>
+
+<svg viewBox="0 0 120 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible"><polyline points="5.0,35.0 15.0,53.6 25.0,36.9 35.0,30.8 45.0,25.1 55.0,32.4 65.0,40.8 75.0,27.6 85.0,23.2 95.0,54.6 105.0,25.2 115.0,39.8" fill="none" style="stroke: var(--ink2)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" /></svg>
+</div>
+
+<button type="button" class="col" aria-label="November 2025: 132:15 h, davon 120:30 abrechenbar, Umsatz 14.120 €" style="grid-column: 2; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 11.5px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 138.6px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 65.0px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Nov</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)">2025</span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="Dezember 2025: 96:30 h, davon 86:00 abrechenbar, Umsatz 10.080 €" style="grid-column: 3; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 10.1px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 98.9px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 46.4px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Dez</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="Januar 2026: 128:45 h, davon 117:15 abrechenbar, Umsatz 13.715 €" style="grid-column: 4; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 11.2px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 134.8px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 63.1px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Jan</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)">2026</span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="Februar 2026: 140:00 h, davon 128:30 abrechenbar, Umsatz 15.040 €" style="grid-column: 5; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 11.2px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 147.8px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 69.2px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Feb</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="März 2026: 151:30 h, davon 139:15 abrechenbar, Umsatz 16.290 €" style="grid-column: 6; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 12.1px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 160.1px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 74.9px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Mär</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="April 2026: 138:15 h, davon 125:45 abrechenbar, Umsatz 14.705 €" style="grid-column: 7; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 12.4px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 144.6px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 67.6px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Apr</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="Mai 2026: 122:00 h, davon 110:15 abrechenbar, Umsatz 12.880 €" style="grid-column: 8; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 11.5px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 126.8px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 59.2px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Mai</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="Juni 2026: 147:45 h, davon 134:30 abrechenbar, Umsatz 15.735 €" style="grid-column: 9; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 13.2px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 154.7px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 72.4px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Jun</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="Juli 2026: 156:15 h, davon 142:45 abrechenbar, Umsatz 16.690 €" style="grid-column: 10; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 13.5px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 164.2px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 76.8px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Jul</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="August 2026: 94:30 h, davon 84:15 abrechenbar, Umsatz 9.880 €" style="grid-column: 11; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 9.8px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 96.9px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 45.4px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Aug</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="September 2026: 151:15 h, davon 139:00 abrechenbar, Umsatz 16.270 €" style="grid-column: 12; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: transparent; display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 12.1px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 159.8px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 74.8px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 400; color: var(--ink2)">Sep</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: transparent"></span>
+</button>
+
+<button type="button" class="col" aria-label="Oktober 2026 · laufend: 126:02 h, davon 112:32 abrechenbar, Umsatz 13.078 €" style="grid-column: 13; grid-row: 1 / 5; position: relative; padding: 0; border: 0; border-radius: 0; background: color-mix(in srgb, var(--ink) 6%, transparent); display: grid; grid-template-rows: 200px 36px 100px 40px">
+<span style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px">
+<span style="display: block; width: 38%; height: 13.5px; background: repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--tick)"></span>
+<span style="display: block; width: 38%; height: 129.4px; background: var(--ink)"></span>
+</span>
+<span></span>
+<span style="position: relative">
+<span style="position: absolute; left: 50%; bottom: 60.2px; width: 10px; height: 10px; transform: translate(-50%, 50%); border-radius: 50%; background: var(--ink2); box-shadow: 0 0 0 2px var(--bg)"></span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; padding-bottom: 2px">
+<span class="mono" style="font-size: 12px; font-weight: 600; color: var(--ink)">Okt</span>
+<span class="mono" style="font-size: 10px; color: var(--ink3)"></span>
+</span>
+<span aria-hidden="true" style="position: absolute; top: 0; bottom: 40px; left: 50%; width: 1px; background: var(--sig)"></span>
+</button>
+
+</div>
+</div>
+</section>
+
+</main>
+</div>
+</section>
+<script>
+document.getElementById('ref-theme').addEventListener('click', function () {
+  document.querySelectorAll('.tt').forEach(function (el) {
+    el.setAttribute('data-theme', el.getAttribute('data-theme') === 'Graphit' ? 'Papier' : 'Graphit');
+  });
+});
+</script>
+</body>
+</html>

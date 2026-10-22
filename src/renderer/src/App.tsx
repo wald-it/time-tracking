@@ -71,40 +71,10 @@ function App(): React.JSX.Element {
       className="h-screen flex flex-col overflow-hidden"
       style={{ background: 'var(--page-bg)', color: 'var(--text)' }}
     >
-      {/* Ambient glow blobs — placed directly on the viewport (no clipping
-          wrapper) and tinted with already-dilute *-bg tokens so they fade
-          into the page bg instead of forming a visible frame. */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed rounded-full"
-        style={{
-          top: -100,
-          right: '20%',
-          width: 400,
-          height: 400,
-          background: 'var(--accent-bg)',
-          filter: 'blur(80px)',
-          zIndex: 0
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none fixed rounded-full"
-        style={{
-          bottom: -50,
-          left: '10%',
-          width: 300,
-          height: 300,
-          background: 'var(--green-bg)',
-          filter: 'blur(80px)',
-          zIndex: 0
-        }}
-      />
-
       <UpdateBanner />
       {/* Nav */}
       <nav
-        className="relative z-10 flex items-center gap-1 px-3 py-2 shrink-0 border-b backdrop-blur-xl"
+        className="relative z-10 flex items-center gap-1 px-3 py-2 shrink-0 border-b"
         style={{
           background: 'var(--nav-bg)',
           borderColor: 'var(--card-border)'
@@ -115,9 +85,9 @@ function App(): React.JSX.Element {
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500
-              ${view === v ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'}`}
+              className={`px-4 py-1.5 rounded-[var(--r-key)] text-sm font-medium transition-colors
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]
+              ${view === v ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:bg-[var(--key)]'}`}
               style={view !== v ? { color: 'var(--text2)' } : undefined}
             >
               {t(('nav.' + v) as `nav.${View}`)}
@@ -130,7 +100,7 @@ function App(): React.JSX.Element {
           <button
             type="button"
             onClick={() => setShowTimerModal(true)}
-            className="ml-auto flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="ml-auto flex items-center gap-1.5 rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--key)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
             style={{ borderColor: 'var(--card-border)', color: 'var(--text2)' }}
             aria-label={t('timer.modal.title')}
           >
@@ -236,25 +206,25 @@ function RunningPill({
 
   return (
     <div
-      className="ml-auto flex items-center gap-2 rounded-full border pl-3 pr-1 py-1 text-xs"
-      style={{ background: 'var(--green-bg)', borderColor: 'var(--green)', color: 'var(--green)' }}
+      className="ml-auto flex items-center gap-2 rounded-[var(--r-key)] border pl-3 pr-1 py-1 text-xs"
+      style={{ background: 'var(--key)', borderColor: 'var(--sig)', color: 'var(--ink)' }}
     >
       <span
-        className="h-2 w-2 animate-pulse rounded-full"
-        style={{ backgroundColor: projectColor || (clientColor ?? 'var(--green)') }}
+        className="h-2 w-2 animate-pulse rounded-[var(--r-fine)]"
+        style={{ backgroundColor: projectColor || (clientColor ?? 'var(--sig)') }}
       />
       {clientName && (
         <span className="font-medium" style={{ color: 'var(--text)' }}>
           {clientName}
         </span>
       )}
-      <span className="tabular-nums" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+      <span className="tabular-nums" style={{ fontFamily: 'var(--font-num)' }}>
         {label}
       </span>
       <button
         type="button"
         onClick={onStop}
-        className="ml-1 flex items-center justify-center rounded-full p-1.5 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+        className="ml-1 flex items-center justify-center rounded-[var(--r-key)] p-1.5 transition-colors hover:bg-[var(--danger-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
         style={{ color: 'var(--danger)' }}
         aria-label="Timer stoppen"
       >

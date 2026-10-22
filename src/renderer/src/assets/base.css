@@ -1,50 +1,113 @@
-/* ── v1.8 #76: Glass theme tokens ──────────────────────────────────────────
-   :root  = Light mode (default)
-   .dark  = Dark mode (toggled by ThemeContext / preload FOUC fix)
-   All rgba values intentionally kept in CSS — Tailwind arbitrary values with
-   two parameters (rgba(r,g,b,a)) become unreadable as utility classes.
+/* ── Messinstrument design tokens (replaces v1.8 Glass, #76) ──────────────
+   Source of truth: design/messinstrument/tokens.css (contrast table there)
+   and design/messinstrument/HANDOFF.md.
+   :root  = "Papier" (light, default)
+   .dark  = "Graphit" (dark; toggled by ThemeContext / preload FOUC fix)
+   The demo client palette from tokens.css is deliberately left out:
+   client colours are user data.
 ───────────────────────────────────────────────────────────────────────────── */
+/* ── NEW TOKENS ──────────────────────────────────────────────────────────── */
 :root {
-  --page-bg: linear-gradient(145deg, #dde4f8 0%, #e8edfb 100%);
-  --card-bg: rgba(255, 255, 255, 0.7);
-  --card-hover: rgba(255, 255, 255, 0.85);
-  --card-border: rgba(0, 0, 0, 0.07);
-  --nav-bg: rgba(255, 255, 255, 0.75);
-  --modal-bg: rgba(255, 255, 255, 0.96);
-  --input-bg: rgba(255, 255, 255, 0.9);
-  --shadow: 0 8px 32px rgba(100, 120, 200, 0.12);
-  --accent-glow: rgba(91, 78, 240, 0.18);
-  --blur: blur(20px);
-  --text: #1a1c2e;
-  --text2: #5b6080;
-  --text3: #9098b8;
-  --accent: #5b4ef0;
-  --accent-bg: rgba(91, 78, 240, 0.08);
-  --green: #16a34a;
-  --green-bg: rgba(22, 163, 74, 0.07);
-  --danger: #dc2626;
-  --danger-bg: rgba(220, 38, 38, 0.07);
+  /* Surfaces */
+  --bg: #e8e6df; /* chassis — the page. Solid, never a gradient */
+  --key: #f3f2ec; /* raised key, hovered row, selected cell, inputs */
+  --key-edge: #c9c6bc; /* key border + 2px bottom "keycap" edge */
+  --line: #cbc8be; /* hairlines between rows / cells */
+  --tick: #8f8b80; /* scale ticks, graticule, non-billable hatch */
+
+  /* Ink (text) */
+  --ink: #191917; /* primary text, 2px section rules, baselines */
+  --ink2: #4a4843; /* secondary text, legends */
+  --ink3: #5e5b54; /* hints, metadata — the lightest text colour allowed */
+
+  /* Display window (the dark readout — stays dark in BOTH themes) */
+  --disp: #1b1b19;
+  --disp-ink: #edebe4;
+  --disp-dim: #8f8c83;
+  --disp-line: #3a3935;
+
+  /* Inverse key (primary / STOPP key, active segment) */
+  --inv: #191917;
+  --inv-ink: #f3f2ec;
+  --inv-dim: #8f8c83;
+
+  /* Signal — reserved for "running / now". Not a generic accent. */
+  --sig: #e2551f;
+  --sig-ink: #191917; /* text on --sig (white on --sig fails: 3.8) */
+
+  /* Destructive — deliberately a different hue than --sig */
+  --danger: #a8261b;
+
+  /* Focus */
+  --focus: var(--sig);
+
+  /* Typography */
+  --font-ui: 'Archivo Variable', 'Archivo', 'Segoe UI', Arial, sans-serif;
+  --font-num: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+
+  /* Shape */
+  --r-key: 4px;
+  --r-disp: 6px;
+  --r-fine: 2px;
+  --edge-key: inset 0 -2px 0 var(--key-edge);
+  --edge-bigkey: inset 0 -4px 0 rgb(0 0 0 / 0.3);
+
+  color-scheme: light;
 }
 
 .dark {
-  --page-bg: linear-gradient(145deg, #0d0f1e 0%, #080c1a 100%);
-  --card-bg: rgba(255, 255, 255, 0.045);
-  --card-hover: rgba(255, 255, 255, 0.07);
-  --card-border: rgba(255, 255, 255, 0.08);
-  --nav-bg: rgba(10, 12, 28, 0.8);
-  --modal-bg: rgba(15, 17, 35, 0.95);
-  --input-bg: rgba(0, 0, 0, 0.3);
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --accent-glow: rgba(139, 124, 248, 0.25);
-  --text: #e8eaf6;
-  --text2: #8b93bc;
-  --text3: #4a5270;
-  --accent: #8b7cf8;
-  --accent-bg: rgba(139, 124, 248, 0.12);
-  --green: #4ade80;
-  --green-bg: rgba(74, 222, 128, 0.1);
-  --danger: #f87171;
-  --danger-bg: rgba(248, 113, 113, 0.1);
+  --bg: #141413;
+  --key: #1e1e1c;
+  --key-edge: #34332f;
+  --line: #2e2d2a;
+  --tick: #66635c;
+
+  --ink: #e9e7e0;
+  --ink2: #b5b2a8;
+  --ink3: #8e8b82;
+
+  --disp: #0b0b0a;
+  --disp-line: #2a2926;
+  /* --disp-ink / --disp-dim unchanged */
+
+  --inv: #e9e7e0; /* STOPP key turns light on the dark chassis */
+  --inv-ink: #141413;
+  --inv-dim: #55534d;
+
+  /* --sig / --sig-ink unchanged */
+  --danger: #ef7a72;
+
+  color-scheme: dark;
+}
+
+/* ── LEGACY ALIASES (v1.8 Glass names → new values) ─────────────────────────
+   Lets every existing component pick up the new look in PR 1 without touching
+   its markup. Glass effects are neutralised here (no blur, no glow, no
+   gradient, no shadow). Delete this block in the cleanup PR. */
+:root,
+.dark {
+  --page-bg: var(--bg);
+  --card-bg: var(--key);
+  --card-hover: var(--bg);
+  --card-border: var(--line);
+  --nav-bg: var(--bg);
+  --modal-bg: var(--key);
+  --input-bg: var(--key);
+  --shadow: none;
+  --accent-glow: transparent;
+  --blur: none;
+
+  --text: var(--ink);
+  --text2: var(--ink2);
+  --text3: var(--ink3); /* old --text3 failed contrast (≈2:1); this one passes */
+
+  --accent: var(--inv); /* primary actions become ink keys, not violet */
+  --accent-bg: color-mix(in srgb, var(--ink) 6%, transparent);
+
+  --green: var(--sig); /* "running" moves from green to the signal colour */
+  --green-bg: color-mix(in srgb, var(--sig) 10%, transparent);
+
+  --danger-bg: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
 :root {
@@ -154,12 +217,10 @@ body {
   animation: qs-ring-draw 320ms ease-out both;
 }
 
-/* Modal-style backdrop for the open fan: subtle dark wash + blur on the   */
-/* page behind, so the pill + ring sit on a quiet stage.                   */
+/* Modal-style backdrop for the open fan: a plain dark wash (no blur, per the */
+/* Messinstrument rules), so the pill + ring sit on a quiet stage.          */
 .qs-backdrop {
-  background: rgba(0, 0, 0, 0.18);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background: rgb(0 0 0 / 0.18);
   animation: fadeIn 180ms ease-out both;
 }
 

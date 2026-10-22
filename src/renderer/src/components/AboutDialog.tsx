@@ -57,8 +57,8 @@ export function AboutDialog({ open, onClose, version }: Props): React.JSX.Elemen
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-lg font-semibold text-slate-100">TimeTrack</p>
-            <p className="text-sm text-slate-400">
+            <p className="text-lg font-semibold text-[var(--ink)]">TimeTrack</p>
+            <p className="text-sm text-[var(--ink2)]">
               {t('about.version')} {version}
             </p>
           </div>
@@ -70,67 +70,67 @@ export function AboutDialog({ open, onClose, version }: Props): React.JSX.Elemen
               e.preventDefault()
               void window.api.shell.openExternal('https://github.com/wald-it/time-tracking')
             }}
-            className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+            className="text-xs text-[var(--ink)] hover:text-[var(--ink)] underline"
           >
             GitHub
           </a>
         </div>
 
         {/* Own license */}
-        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <div className="rounded-[var(--r-key)] border border-[var(--line)] bg-[var(--key)] p-3">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--ink2)]">
             {t('about.ownLicense')}
           </p>
-          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-slate-300">
+          <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-[var(--ink)]">
             {MIT_TEXT}
           </pre>
         </div>
 
         {/* Third-party licenses */}
-        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <div className="rounded-[var(--r-key)] border border-[var(--line)] bg-[var(--key)] p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--ink2)]">
             {t('about.thirdParty')} ({licenses.length})
           </p>
 
-          {loading && <p className="text-xs text-slate-500">{t('about.loading')}</p>}
+          {loading && <p className="text-xs text-[var(--ink3)]">{t('about.loading')}</p>}
 
           <div className="max-h-64 overflow-y-auto flex flex-col gap-1">
             {licenses.map((pkg) => (
-              <div key={pkg.name} className="rounded-md border border-slate-700/50">
+              <div key={pkg.name} className="rounded-[var(--r-key)] border border-[var(--line)]">
                 <button
                   type="button"
                   onClick={() => toggleExpand(pkg.name)}
-                  className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-700/40 rounded-md"
+                  className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-[var(--key)] rounded-[var(--r-key)]"
                 >
-                  <span className="text-sm text-slate-200 font-medium">{pkg.name}</span>
+                  <span className="text-sm text-[var(--ink)] font-medium">{pkg.name}</span>
                   <span className="flex items-center gap-3">
-                    <span className="text-xs text-slate-400">{pkg.version}</span>
-                    <span className="rounded bg-slate-700 px-1.5 py-0.5 text-xs text-slate-300">
+                    <span className="text-xs text-[var(--ink2)]">{pkg.version}</span>
+                    <span className="rounded bg-[var(--key)] px-1.5 py-0.5 text-xs text-[var(--ink)]">
                       {pkg.license}
                     </span>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-[var(--ink3)]">
                       {expanded === pkg.name ? '▲' : '▼'}
                     </span>
                   </span>
                 </button>
 
                 {expanded === pkg.name && (
-                  <div className="border-t border-slate-700/50 px-3 py-2 flex flex-col gap-2">
+                  <div className="border-t border-[var(--line)] px-3 py-2 flex flex-col gap-2">
                     {pkg.repository && (
                       <button
                         type="button"
                         onClick={() => void window.api.shell.openExternal(pkg.repository!)}
-                        className="text-left text-xs text-indigo-400 hover:text-indigo-300 underline truncate"
+                        className="text-left text-xs text-[var(--ink)] hover:text-[var(--ink)] underline truncate"
                       >
                         {pkg.repository}
                       </button>
                     )}
                     {pkg.licenseText ? (
-                      <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-slate-400">
+                      <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-[var(--ink2)]">
                         {pkg.licenseText}
                       </pre>
                     ) : (
-                      <p className="text-xs text-slate-500">{t('about.noLicenseText')}</p>
+                      <p className="text-xs text-[var(--ink3)]">{t('about.noLicenseText')}</p>
                     )}
                   </div>
                 )}
@@ -144,7 +144,7 @@ export function AboutDialog({ open, onClose, version }: Props): React.JSX.Elemen
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-4 py-2 text-sm font-medium text-[var(--ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
           >
             {t('about.close')}
           </button>

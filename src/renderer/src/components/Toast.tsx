@@ -18,11 +18,11 @@ export function ToastTray(): React.ReactElement | null {
         <div
           key={t.id}
           role="status"
-          className="pointer-events-auto flex min-w-[280px] max-w-[420px] items-center gap-3 rounded-lg px-4 py-3 text-sm shadow-lg border backdrop-blur-xl"
+          className="pointer-events-auto flex min-w-[280px] max-w-[420px] items-center gap-3 rounded-[var(--r-key)] px-4 py-3 text-sm border"
           style={{
-            background: 'var(--card-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
+            background: 'var(--disp)',
+            borderColor: 'var(--disp-line)',
+            color: 'var(--disp-ink)'
           }}
         >
           <span className="flex-1">{t.message}</span>
@@ -30,8 +30,8 @@ export function ToastTray(): React.ReactElement | null {
             <button
               type="button"
               onClick={() => void executeAction(t.id)}
-              className="rounded px-2 py-1 text-sm font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              style={{ color: 'var(--accent)' }}
+              className="rounded px-2 py-1 text-sm font-medium underline hover:bg-[var(--disp-line)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
+              style={{ color: 'var(--disp-ink)' }}
             >
               {t.action.label}
             </button>
@@ -40,8 +40,8 @@ export function ToastTray(): React.ReactElement | null {
             type="button"
             onClick={() => dismiss(t.id)}
             aria-label="Schließen"
-            className="grid h-7 w-7 place-items-center rounded hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            style={{ color: 'var(--text3)' }}
+            className="grid h-7 w-7 place-items-center rounded hover:bg-[var(--disp-line)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
+            style={{ color: 'var(--disp-dim)' }}
           >
             ×
           </button>

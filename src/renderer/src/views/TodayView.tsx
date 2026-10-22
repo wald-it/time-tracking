@@ -110,12 +110,12 @@ export default function TodayView(): React.JSX.Element {
 
       {status === 'loading' && <SummarySkeleton />}
       {status === 'error' && (
-        <div className="rounded-[14px] border border-red-700/50 bg-red-900/20 p-4 text-sm text-red-200">
+        <div className="rounded-[var(--r-disp)] border border-[var(--danger)] bg-[var(--danger-bg)] p-4 text-sm text-[var(--danger)]">
           <p className="mb-2 font-medium">{t('today.error.title')}</p>
-          {errorMsg && <p className="mb-2 text-xs text-red-300/80">{errorMsg}</p>}
+          {errorMsg && <p className="mb-2 text-xs text-[var(--danger)]">{errorMsg}</p>}
           <button
             type="button"
-            className="rounded bg-red-800 px-3 py-1 text-xs hover:bg-red-700"
+            className="rounded bg-[var(--danger)] text-[var(--bg)] px-3 py-1 text-xs key-hover"
             onClick={() => useEntriesStore.getState().bumpVersion()}
           >
             {t('common.retry')}
@@ -135,7 +135,7 @@ export default function TodayView(): React.JSX.Element {
               label={t('today.stats.week')}
               seconds={roundDuration(summary.weekSeconds, roundMinutes)}
               rawSeconds={summary.weekSeconds}
-              accentColor="var(--green)"
+              accentColor="var(--ink)"
             />
           </div>
 
@@ -162,7 +162,7 @@ export default function TodayView(): React.JSX.Element {
         type="button"
         onClick={() => setCreateOpen(true)}
         disabled={clients.length === 0}
-        className="self-start flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+        className="self-start flex items-center gap-2 rounded-[var(--r-key)] px-4 py-2 text-sm font-medium text-[var(--inv-ink)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
         style={{ background: 'var(--accent)' }}
       >
         <Icons.Plus />
@@ -249,7 +249,7 @@ function ActiveTimerPill({
   if (!runningEntry) {
     return (
       <div
-        className="rounded-[14px] border px-4 py-2 text-sm backdrop-blur-xl"
+        className="rounded-[var(--r-disp)] border px-4 py-2 text-sm"
         style={{
           background: 'var(--card-bg)',
           borderColor: 'var(--card-border)',
@@ -265,15 +265,15 @@ function ActiveTimerPill({
     runningEntry.project_id != null ? projectsById.get(runningEntry.project_id) : undefined
   return (
     <div
-      className="flex items-center gap-3 rounded-[14px] border px-4 py-2 text-sm backdrop-blur-xl"
+      className="flex items-center gap-3 rounded-[var(--r-disp)] border px-4 py-2 text-sm"
       style={{
-        background: 'linear-gradient(90deg, var(--green-bg), var(--card-bg))',
-        borderColor: 'var(--green)',
+        background: 'var(--key)',
+        borderColor: 'var(--sig)',
         color: 'var(--text)'
       }}
     >
       <span
-        className="h-2.5 w-2.5 animate-pulse rounded-full"
+        className="h-2.5 w-2.5 animate-pulse rounded-[var(--r-fine)]"
         style={{ backgroundColor: runningProject?.color || (client?.color ?? '#10b981') }}
       />
       <span className="font-medium" style={{ color: 'var(--text)' }}>
@@ -294,14 +294,14 @@ function ActiveTimerPill({
       )}
       <span
         className="ml-auto tabular-nums"
-        style={{ color: 'var(--green)', fontFamily: "'JetBrains Mono', monospace" }}
+        style={{ color: 'var(--ink)', fontFamily: 'var(--font-num)' }}
       >
         {formatDuration(tickSeconds)}
       </span>
       <button
         type="button"
         onClick={onStop}
-        className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-red-500/20 focus:outline-none focus:ring-2 focus:ring-red-400"
+        className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--r-key)] transition-colors hover:bg-[var(--danger-bg)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
         style={{ color: 'var(--danger)' }}
         title="Timer stoppen"
         aria-label="Timer stoppen"
@@ -325,7 +325,7 @@ function StatCard({
 }): React.JSX.Element {
   return (
     <div
-      className="rounded-[14px] border p-4 backdrop-blur-xl"
+      className="rounded-[var(--r-disp)] border p-4"
       style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
     >
       <p
@@ -337,7 +337,7 @@ function StatCard({
       <p
         className="mt-2 tabular-nums"
         style={{
-          fontFamily: "'JetBrains Mono', monospace",
+          fontFamily: 'var(--font-num)',
           fontSize: 40,
           fontWeight: 700,
           lineHeight: 1,
@@ -660,7 +660,7 @@ function QuickStartPill({
                 }}
                 onMouseEnter={() => setHoveredKey(item.key)}
                 onMouseLeave={() => setHoveredKey(null)}
-                className={`qs-fan-item flex items-center gap-1.5 rounded-full ${item.isNoProject ? 'border-dashed' : ''} border px-2.5 py-1 text-xs font-medium backdrop-blur-xl transition-colors hover:border-indigo-400`}
+                className={`qs-fan-item flex items-center gap-1.5 rounded-[var(--r-key)] ${item.isNoProject ? 'border-dashed' : ''} border px-2.5 py-1 text-xs font-medium transition-colors hover:border-[var(--ink)]`}
                 style={
                   {
                     position: 'absolute',
@@ -669,10 +669,8 @@ function QuickStartPill({
                     zIndex: 51,
                     whiteSpace: 'nowrap',
                     background: 'var(--modal-bg)',
-                    backdropFilter: 'blur(20px)',
                     borderColor: item.isNoProject ? 'var(--text3)' : 'var(--card-border)',
                     color: item.isNoProject ? 'var(--text3)' : 'var(--text)',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
                     animationDelay: `${delay}ms`,
                     ['--qs-dx' as string]: `${(-item.pos.x).toFixed(2)}px`,
                     ['--qs-dy' as string]: `${(-item.pos.y).toFixed(2)}px`
@@ -681,7 +679,7 @@ function QuickStartPill({
               >
                 {!item.isNoProject && (
                   <span
-                    className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                    className="h-1.5 w-1.5 flex-shrink-0 rounded-[var(--r-fine)]"
                     style={{ backgroundColor: item.color }}
                   />
                 )}
@@ -706,7 +704,7 @@ function QuickStartPill({
             setFanOpen(true)
           }
         }}
-        className={`flex flex-col items-start rounded-[14px] border px-3 py-1.5 text-sm backdrop-blur-xl transition-colors hover:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 ${fanOpen ? 'qs-pill-pulse-active' : ''}`}
+        className={`flex flex-col items-start rounded-[var(--r-disp)] border px-3 py-1.5 text-sm transition-colors hover:border-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-50 ${fanOpen ? 'qs-pill-pulse-active' : ''}`}
         style={
           {
             background: 'var(--card-bg)',
@@ -719,7 +717,7 @@ function QuickStartPill({
                 ? `0 0 0 ${(holdProgress * 3).toFixed(1)}px ${color}50`
                 : undefined,
             userSelect: 'none',
-            // When the fan is open, the backdrop sits at z-49 with backdrop-blur.
+            // When the fan is open, the backdrop sits at z-49.
             // Lift the pill above it so the pill itself stays crisp.
             position: fanOpen ? 'relative' : undefined,
             zIndex: fanOpen ? 51 : undefined,
@@ -735,7 +733,10 @@ function QuickStartPill({
         }
       >
         <div className="flex items-center gap-2">
-          <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
+          <span
+            className="h-2 w-2 flex-shrink-0 rounded-[var(--r-fine)]"
+            style={{ backgroundColor: color }}
+          />
           <span className="font-medium">{name}</span>
           {hasProjects && (
             <Icons.ChevronDown
@@ -783,7 +784,7 @@ function RecentList({
   if (entries.length === 0) {
     return (
       <div
-        className="rounded-[14px] border border-dashed px-4 py-8 text-center backdrop-blur-xl"
+        className="rounded-[var(--r-disp)] border border-dashed px-4 py-8 text-center"
         style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
       >
         <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
@@ -797,7 +798,7 @@ function RecentList({
   }
   return (
     <div
-      className="overflow-hidden rounded-[14px] border backdrop-blur-xl text-sm"
+      className="overflow-hidden rounded-[var(--r-disp)] border text-sm"
       style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}
     >
       {/* Header */}
@@ -822,7 +823,7 @@ function RecentList({
         return (
           <div
             key={e.id}
-            className="grid items-center px-3 py-2.5 border-t transition-colors hover:bg-white/5"
+            className="grid items-center px-3 py-2.5 border-t transition-colors hover:bg-[var(--key)]"
             style={{
               gridTemplateColumns: '110px 1.5fr 1fr 70px 72px',
               borderColor: 'var(--card-border)'
@@ -830,7 +831,7 @@ function RecentList({
           >
             <span
               className="text-xs tabular-nums"
-              style={{ color: 'var(--text2)', fontFamily: "'JetBrains Mono', monospace" }}
+              style={{ color: 'var(--text2)', fontFamily: 'var(--font-num)' }}
             >
               {formatTimeRange(e)}
             </span>
@@ -839,7 +840,7 @@ function RecentList({
               style={{ color: 'var(--text)' }}
             >
               <span
-                className="h-2 w-2 shrink-0 rounded-full self-start mt-1.5"
+                className="h-2 w-2 shrink-0 rounded-[var(--r-fine)] self-start mt-1.5"
                 style={{ backgroundColor: project?.color || (client?.color ?? '#64748b') }}
               />
               <span className="flex flex-col min-w-0">
@@ -859,7 +860,7 @@ function RecentList({
             </span>
             <span
               className="text-right text-xs tabular-nums"
-              style={{ color: 'var(--text2)', fontFamily: "'JetBrains Mono', monospace" }}
+              style={{ color: 'var(--text2)', fontFamily: 'var(--font-num)' }}
               title={(() => {
                 const raw = durationSeconds(e)
                 const disp = roundDuration(raw, roundMinutes)
@@ -872,7 +873,7 @@ function RecentList({
               <button
                 type="button"
                 onClick={() => onEdit(e)}
-                className="rounded p-1 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors"
+                className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] transition-colors"
                 style={{ color: 'var(--text2)' }}
                 aria-label={t('common.edit')}
                 title={t('common.edit')}
@@ -883,7 +884,7 @@ function RecentList({
                 type="button"
                 onClick={() => onDelete(e)}
                 disabled={e.stopped_at === null}
-                className="rounded p-1 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-30 transition-colors"
+                className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-30 transition-colors"
                 style={{ color: 'var(--danger)' }}
                 aria-label={t('common.delete')}
                 title={e.stopped_at === null ? t('common.stopRunningFirst') : t('common.delete')}
@@ -902,8 +903,14 @@ function SummarySkeleton(): React.JSX.Element {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4">
-        <div className="h-24 animate-pulse rounded-lg" style={{ background: 'var(--card-bg)' }} />
-        <div className="h-24 animate-pulse rounded-lg" style={{ background: 'var(--card-bg)' }} />
+        <div
+          className="h-24 animate-pulse rounded-[var(--r-key)]"
+          style={{ background: 'var(--card-bg)' }}
+        />
+        <div
+          className="h-24 animate-pulse rounded-[var(--r-key)]"
+          style={{ background: 'var(--card-bg)' }}
+        />
       </div>
       <div className="space-y-2">
         {[0, 1, 2, 3, 4].map((i) => (

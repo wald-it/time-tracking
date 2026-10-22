@@ -51,7 +51,7 @@ export function TrendChart({
         </div>
         {/* Segmented control */}
         <div
-          className="ml-auto inline-flex p-0.5 rounded-3xl border"
+          className="ml-auto inline-flex p-0.5 rounded-[var(--r-key)] border"
           style={{
             background: 'var(--input-bg)',
             borderColor: 'var(--card-border)'
@@ -61,10 +61,10 @@ export function TrendChart({
             <button
               key={v}
               onClick={() => onModeChange(v)}
-              className="px-3.5 py-1 rounded-3xl text-xs font-medium transition-all"
+              className="px-3.5 py-1 rounded-[var(--r-key)] text-xs font-medium transition-all"
               style={{
                 background: mode === v ? 'var(--accent)' : 'transparent',
-                color: mode === v ? '#fff' : 'var(--text2)',
+                color: mode === v ? 'var(--inv-ink)' : 'var(--text2)',
                 border: 'none',
                 cursor: 'pointer',
                 fontWeight: mode === v ? 600 : 500
@@ -78,17 +78,6 @@ export function TrendChart({
 
       {/* SVG chart */}
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
-        <defs>
-          <linearGradient id="tt-barGrad" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.55" />
-          </linearGradient>
-          <linearGradient id="tt-barGradN" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--text3)" stopOpacity="0.55" />
-            <stop offset="100%" stopColor="var(--text3)" stopOpacity="0.25" />
-          </linearGradient>
-        </defs>
-
         {/* Grid + Y-axis labels */}
         {tickVals.map((tv, i) => {
           const y = P.t + innerH - (tv / maxVal) * innerH
@@ -107,7 +96,7 @@ export function TrendChart({
                 x={P.l - 8}
                 y={y + 4}
                 fontSize="9.5"
-                fontFamily="var(--font-mono, monospace)"
+                fontFamily="var(--font-num)"
                 fill="var(--text3)"
                 textAnchor="end"
               >
@@ -128,8 +117,8 @@ export function TrendChart({
                 x={P.l + innerW + 8}
                 y={y + 4}
                 fontSize="9.5"
-                fontFamily="var(--font-mono, monospace)"
-                fill="var(--green)"
+                fontFamily="var(--font-num)"
+                fill="var(--ink2)"
                 textAnchor="start"
               >
                 {Math.round(rv / 100000)}k
@@ -154,15 +143,15 @@ export function TrendChart({
                   y={yTotal + billH}
                   width={bw}
                   height={nbillH}
-                  fill="url(#tt-barGradN)"
+                  fill="var(--tick)"
                   rx="2"
                 />
-                <rect x={x} y={yTotal} width={bw} height={billH} fill="url(#tt-barGrad)" rx="2" />
+                <rect x={x} y={yTotal} width={bw} height={billH} fill="var(--ink)" rx="2" />
                 <text
                   x={x + bw / 2}
                   y={H - 10}
                   fontSize="9.5"
-                  fontFamily="var(--font-mono, monospace)"
+                  fontFamily="var(--font-num)"
                   fill="var(--text3)"
                   textAnchor="middle"
                 >
@@ -173,7 +162,7 @@ export function TrendChart({
                     x={x + bw / 2}
                     y={yTotal - 5}
                     fontSize="9"
-                    fontFamily="var(--font-mono, monospace)"
+                    fontFamily="var(--font-num)"
                     fill="var(--text2)"
                     textAnchor="middle"
                     fontWeight="600"
@@ -189,12 +178,12 @@ export function TrendChart({
             const y = P.t + innerH - h
             return (
               <g key={i}>
-                <rect x={x} y={y} width={bw} height={h} fill="url(#tt-barGrad)" rx="2" />
+                <rect x={x} y={y} width={bw} height={h} fill="var(--ink)" rx="2" />
                 <text
                   x={x + bw / 2}
                   y={H - 10}
                   fontSize="9.5"
-                  fontFamily="var(--font-sans, sans-serif)"
+                  fontFamily="var(--font-ui)"
                   fill="var(--text3)"
                   textAnchor="middle"
                 >
@@ -218,7 +207,7 @@ export function TrendChart({
                 })
                 .join(' ')}
               fill="none"
-              stroke="var(--green)"
+              stroke="var(--ink2)"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -227,7 +216,7 @@ export function TrendChart({
               const cx = P.l + step * i + step / 2
               const cy =
                 P.t + innerH - ((d as AnalyticsSummary['months'][number]).r / maxR) * innerH
-              return <circle key={i} cx={cx} cy={cy} r="2.6" fill="var(--green)" />
+              return <circle key={i} cx={cx} cy={cy} r="2.6" fill="var(--ink2)" />
             })}
           </g>
         )}
@@ -238,13 +227,16 @@ export function TrendChart({
         {mode === 'week' ? (
           <>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'var(--accent)' }} />
+              <span
+                className="w-2.5 h-2.5 rounded-[var(--r-fine)]"
+                style={{ background: 'var(--ink)' }}
+              />
               {t('analytics.chart.billable')}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span
-                className="w-2.5 h-2.5 rounded-sm"
-                style={{ background: 'var(--text3)', opacity: 0.6 }}
+                className="w-2.5 h-2.5 rounded-[var(--r-fine)]"
+                style={{ background: 'var(--tick)' }}
               />
               {t('analytics.chart.nonBillable')}
             </span>
@@ -252,13 +244,16 @@ export function TrendChart({
         ) : (
           <>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'var(--accent)' }} />
+              <span
+                className="w-2.5 h-2.5 rounded-[var(--r-fine)]"
+                style={{ background: 'var(--ink)' }}
+              />
               {t('analytics.chart.hoursLabel')}
             </span>
-            <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--green)' }}>
+            <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--ink2)' }}>
               <span
                 className="inline-block h-0.5 w-3.5 rounded"
-                style={{ background: 'var(--green)' }}
+                style={{ background: 'var(--ink2)' }}
               />
               {t('analytics.chart.revenueLabel')}
             </span>

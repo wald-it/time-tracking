@@ -44,19 +44,19 @@ export function ConfirmDialog({
 
   const confirmClass =
     variant === 'danger'
-      ? 'bg-red-600 hover:bg-red-500 focus:ring-red-400'
-      : 'bg-indigo-600 hover:bg-indigo-500 focus:ring-indigo-400'
+      ? 'bg-[var(--danger)] text-[var(--bg)] key-hover focus:ring-[var(--focus)]'
+      : 'bg-[var(--inv)] text-[var(--inv-ink)] key-hover focus:ring-[var(--focus)]'
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(0_0_0/0.35)]"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
       aria-describedby="confirm-message"
     >
       <div
-        className="w-[440px] rounded-xl border p-6 shadow-2xl backdrop-blur-xl"
+        className="w-[440px] rounded-[var(--r-disp)] border p-6"
         style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
       >
         <h2
@@ -74,7 +74,7 @@ export function ConfirmDialog({
             ref={cancelRef}
             type="button"
             onClick={onCancel}
-            className="rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400 border backdrop-blur-xl"
+            className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] border"
             style={{
               background: 'var(--card-bg)',
               borderColor: 'var(--card-border)',
@@ -86,7 +86,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            className={`rounded-lg px-4 py-2.5 text-sm font-medium text-white focus:outline-none focus:ring-2 ${confirmClass}`}
+            className={`rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 ${confirmClass}`}
           >
             {confirmLabel}
           </button>

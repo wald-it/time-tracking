@@ -64,12 +64,9 @@ function DeltaPill({ value, label, isPp = false }: DeltaPillProps): React.JSX.El
   const up = value >= 0
   return (
     <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
-      style={{
-        background: up ? 'var(--green-bg)' : 'rgba(248,113,113,.1)',
-        border: `1px solid ${up ? 'var(--green-border)' : 'rgba(248,113,113,.22)'}`,
-        color: up ? 'var(--green)' : 'var(--danger)'
-      }}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-key)] text-xs font-semibold"
+      // Deltas stay ink-coloured; the arrow carries the direction (HANDOFF §3.6).
+      style={{ border: '1px solid var(--line)', color: 'var(--ink)' }}
     >
       <span>{up ? '↑' : '↓'}</span>
       {isPp ? fmtPctPP(value) : fmtPct(value, true)}
@@ -88,7 +85,7 @@ interface StatCardProps {
 function StatCard({ label, value, accent, foot }: StatCardProps): React.JSX.Element {
   return (
     <div
-      className="rounded-xl border p-4 flex flex-col gap-2 min-h-[120px]"
+      className="rounded-[var(--r-disp)] border p-4 flex flex-col gap-2 min-h-[120px]"
       style={{
         background: 'var(--card-bg)',
         borderColor: 'var(--card-border)'
@@ -194,7 +191,7 @@ export default function AuswertungView(): React.JSX.Element {
           <button
             onClick={prevMonth}
             aria-label={t('analytics.prevMonth')}
-            className="w-7 h-7 rounded-lg border grid place-items-center transition-colors hover:bg-white/10"
+            className="w-7 h-7 rounded-[var(--r-key)] border grid place-items-center transition-colors key-hover"
             style={{
               background: 'var(--card-bg)',
               borderColor: 'var(--card-border)',
@@ -214,7 +211,7 @@ export default function AuswertungView(): React.JSX.Element {
             onClick={nextMonth}
             disabled={isCurrentMonth}
             aria-label={t('analytics.nextMonth')}
-            className="w-7 h-7 rounded-lg border grid place-items-center transition-colors hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-7 h-7 rounded-[var(--r-key)] border grid place-items-center transition-colors key-hover disabled:opacity-30 disabled:cursor-not-allowed"
             style={{
               background: 'var(--card-bg)',
               borderColor: 'var(--card-border)',
@@ -243,13 +240,13 @@ export default function AuswertungView(): React.JSX.Element {
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="rounded-xl border h-[120px] animate-pulse"
+                className="rounded-[var(--r-disp)] border h-[120px] animate-pulse"
                 style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
               />
             ))}
           </div>
           <div
-            className="rounded-xl border h-56 animate-pulse"
+            className="rounded-[var(--r-disp)] border h-56 animate-pulse"
             style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
           />
         </div>
@@ -258,11 +255,11 @@ export default function AuswertungView(): React.JSX.Element {
       {/* Error */}
       {!loading && error && (
         <div
-          className="rounded-xl border px-4 py-3 text-sm"
+          className="rounded-[var(--r-disp)] border px-4 py-3 text-sm"
           style={{
             borderColor: 'var(--danger)',
             color: 'var(--danger)',
-            background: 'rgba(248,113,113,.08)'
+            background: 'var(--danger-bg)'
           }}
         >
           {error}
@@ -272,7 +269,7 @@ export default function AuswertungView(): React.JSX.Element {
       {/* Empty state */}
       {!loading && !error && data && !data.month.hasData && (
         <div
-          className="rounded-xl border p-14 flex flex-col items-center gap-4 text-center"
+          className="rounded-[var(--r-disp)] border p-14 flex flex-col items-center gap-4 text-center"
           style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
         >
           <EmptyIcon />
@@ -306,7 +303,7 @@ export default function AuswertungView(): React.JSX.Element {
               <StatCard
                 label={t('analytics.month.revenue')}
                 value={fmtEUR(data.month.revenue)}
-                accent="var(--green)"
+                accent="var(--ink)"
                 foot={
                   <DeltaPill
                     value={deltaRatio(data.month.revenue, data.month.revenuePrev)}
@@ -336,7 +333,7 @@ export default function AuswertungView(): React.JSX.Element {
 
           {/* Section 2 — Trend chart */}
           <div
-            className="rounded-xl border p-4 flex flex-col gap-3"
+            className="rounded-[var(--r-disp)] border p-4 flex flex-col gap-3"
             style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
           >
             <TrendChart
@@ -350,7 +347,7 @@ export default function AuswertungView(): React.JSX.Element {
           {/* Section 3 — Distribution */}
           <div className="grid gap-3" style={{ gridTemplateColumns: '1.4fr 1fr' }}>
             <div
-              className="rounded-xl border p-4 flex flex-col gap-3"
+              className="rounded-[var(--r-disp)] border p-4 flex flex-col gap-3"
               style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
             >
               <div className="flex items-baseline justify-between gap-2">
@@ -365,7 +362,7 @@ export default function AuswertungView(): React.JSX.Element {
             </div>
 
             <div
-              className="rounded-xl border p-4 flex flex-col gap-3"
+              className="rounded-[var(--r-disp)] border p-4 flex flex-col gap-3"
               style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
             >
               <div className="flex items-baseline justify-between gap-2">

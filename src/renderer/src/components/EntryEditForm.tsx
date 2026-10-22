@@ -178,7 +178,7 @@ export function EntryEditForm({
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded border px-2 py-1.5 focus:border-indigo-500 focus:outline-none backdrop-blur-xl"
+            className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -195,7 +195,7 @@ export function EntryEditForm({
             type="time"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
-            className="rounded border px-2 py-1.5 focus:border-indigo-500 focus:outline-none backdrop-blur-xl"
+            className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -212,7 +212,7 @@ export function EntryEditForm({
             type="time"
             value={stopTime}
             onChange={(e) => setStopTime(e.target.value)}
-            className="rounded border px-2 py-1.5 focus:border-indigo-500 focus:outline-none backdrop-blur-xl"
+            className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -230,7 +230,7 @@ export function EntryEditForm({
         <select
           value={clientId}
           onChange={(e) => setClientId(parseInt(e.target.value, 10))}
-          className="rounded border px-2 py-1.5 focus:border-indigo-500 focus:outline-none backdrop-blur-xl"
+          className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
           style={{
             background: 'var(--input-bg)',
             borderColor: 'var(--card-border)',
@@ -255,7 +255,7 @@ export function EntryEditForm({
           <select
             value={projectId ?? ''}
             onChange={(e) => setProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
-            className="rounded border px-2 py-1.5 focus:border-indigo-500 focus:outline-none backdrop-blur-xl"
+            className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -291,7 +291,7 @@ export function EntryEditForm({
           onChange={(e) => setDescription(e.target.value)}
           rows={2}
           maxLength={MAX_DESCRIPTION_LEN}
-          className="rounded border px-2 py-1.5 focus:border-indigo-500 focus:outline-none backdrop-blur-xl"
+          className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
           style={{
             background: 'var(--input-bg)',
             borderColor: 'var(--card-border)',
@@ -321,7 +321,7 @@ export function EntryEditForm({
           onChange={(e) => setReference(e.target.value)}
           maxLength={MAX_REFERENCE_LEN}
           placeholder={t('entry.reference.placeholder')}
-          className="rounded border px-2 py-1.5 focus:border-indigo-500 focus:outline-none backdrop-blur-xl"
+          className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
           style={{
             background: 'var(--input-bg)',
             borderColor: 'var(--card-border)',
@@ -340,7 +340,7 @@ export function EntryEditForm({
         </span>
         <div className="flex items-center gap-2">
           {billable === 0 && (
-            <span className="text-xs" style={{ color: '#f59e0b' }}>
+            <span className="text-xs" style={{ color: 'var(--ink)' }}>
               {t('entry.billable.hint')}
             </span>
           )}
@@ -362,7 +362,7 @@ export function EntryEditForm({
           rows={2}
           maxLength={MAX_NOTE_LEN}
           placeholder={t('entry.privateNote.placeholder')}
-          className="rounded border px-2 py-1.5 focus:border-indigo-500 focus:outline-none backdrop-blur-xl"
+          className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
           style={{
             background: 'var(--input-bg)',
             borderColor: 'var(--card-border)',
@@ -381,20 +381,20 @@ export function EntryEditForm({
         </p>
       )}
       {state === 'success' && (
-        <p role="status" className="text-xs" style={{ color: 'var(--green)' }}>
+        <p role="status" className="text-xs" style={{ color: 'var(--ink2)' }}>
           {t('entry.saved')}
         </p>
       )}
 
       <div
-        className="sticky bottom-0 -mx-1 mt-1 flex justify-end gap-2 px-1 pt-2 backdrop-blur border-t"
+        className="sticky bottom-0 -mx-1 mt-1 flex justify-end gap-2 px-1 pt-2 border-t"
         style={{ background: 'var(--nav-bg)', borderColor: 'var(--card-border)' }}
       >
         <button
           type="button"
           onClick={onCancel}
           disabled={isSaving}
-          className="rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 border backdrop-blur-xl"
+          className="rounded-[var(--r-key)] px-3 py-1.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50 border"
           style={{
             background: 'var(--card-bg)',
             borderColor: 'var(--card-border)',
@@ -406,7 +406,7 @@ export function EntryEditForm({
         <button
           type="submit"
           disabled={isSaving || localError !== null}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
+          className="rounded-[var(--r-key)] bg-[var(--inv)] px-3 py-1.5 text-sm font-medium text-[var(--inv-ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50"
         >
           {isSaving ? t('common.saving') : t('common.save')}
         </button>

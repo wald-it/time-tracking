@@ -96,7 +96,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
   const stepLabel = t('onboarding.step', { current: step, total: TOTAL_STEPS })
 
   const inputClass =
-    'rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full'
+    'rounded-[var(--r-key)] border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus)] w-full'
   const inputStyle = {
     background: 'var(--input-bg)',
     borderColor: 'var(--card-border)',
@@ -105,16 +105,16 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
 
   return (
     // Full-screen overlay — sits above everything including UpdateBanner.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(0_0_0/0.35)]">
       <div
-        className="relative flex w-full max-w-md flex-col gap-6 rounded-2xl p-8 shadow-2xl border backdrop-blur-xl"
+        className="relative flex w-full max-w-md flex-col gap-6 rounded-[var(--r-disp)] p-8 border"
         style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
       >
         {/* Skip link */}
         <button
           type="button"
           onClick={onFinish}
-          className="absolute right-5 top-5 text-xs hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded transition-opacity"
+          className="absolute right-5 top-5 text-xs hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--focus)] rounded transition-opacity"
           style={{ color: 'var(--text3)' }}
         >
           {t('onboarding.skip')}
@@ -130,7 +130,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
           <>
             <div className="flex flex-col gap-3">
               {/* Logo / icon placeholder */}
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-600 text-3xl font-black text-white select-none">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[var(--r-disp)] bg-[var(--inv)] text-3xl font-black text-[var(--inv-ink)] select-none">
                 T
               </div>
               <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
@@ -207,7 +207,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                     value={clientRate}
                     onChange={(e) => setClientRate(e.target.value)}
                     placeholder={t('onboarding.client.ratePlaceholder')}
-                    className="rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-28"
+                    className="rounded-[var(--r-key)] border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus)] w-28"
                     style={{
                       background: 'var(--input-bg)',
                       borderColor: 'var(--card-border)',
@@ -232,8 +232,8 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                       type="button"
                       onClick={() => setClientColor(c)}
                       title={c}
-                      className={`h-7 w-7 rounded-full ring-offset-2 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
-                        clientColor === c ? 'ring-2 ring-white scale-110' : 'hover:scale-105'
+                      className={`h-7 w-7 rounded-[var(--r-fine)] ring-offset-2 transition-all focus:outline-none focus:ring-2 focus:ring-[var(--focus)] ${
+                        clientColor === c ? 'ring-2 ring-[var(--ink)] scale-110' : 'hover:scale-105'
                       }`}
                       style={{ background: c }}
                     />
@@ -242,7 +242,10 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
               </div>
 
               {clientError && (
-                <p className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-200" role="alert">
+                <p
+                  className="rounded-[var(--r-key)] bg-[var(--danger-bg)] px-3 py-2 text-sm text-[var(--danger)]"
+                  role="alert"
+                >
                   {clientError}
                 </p>
               )}
@@ -280,7 +283,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
               </p>
 
               {clientCreated && (
-                <p className="rounded-lg bg-emerald-900/30 px-3 py-2 text-sm text-emerald-300">
+                <p className="rounded-[var(--r-key)] bg-[var(--key)] px-3 py-2 text-sm text-[var(--ink2)]">
                   ✓ {clientName} angelegt.
                 </p>
               )}
@@ -309,7 +312,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
 
             <div className="flex flex-col gap-3">
               <div
-                className="rounded-lg border p-3 text-sm"
+                className="rounded-[var(--r-key)] border p-3 text-sm"
                 style={{ borderColor: 'var(--card-border)', background: 'var(--input-bg)' }}
               >
                 <span className="font-medium" style={{ color: 'var(--text2)' }}>
@@ -325,7 +328,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                 <button
                   type="button"
                   onClick={() => setRestoreConfirmed(true)}
-                  className="rounded-lg border px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="rounded-[var(--r-key)] border px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
                   style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
                 >
                   {t('onboarding.restore.restoreBtn')}
@@ -340,7 +343,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                     await window.api.app.relaunch()
                     if (!res.ok) console.error('[onboarding] Restore failed:', res.error)
                   }}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+                  className="rounded-[var(--r-key)] bg-[var(--inv)] px-4 py-2 text-sm font-semibold text-[var(--inv-ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] transition-colors"
                 >
                   {t('onboarding.restore.restoreBtn')}
                 </button>
@@ -351,7 +354,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
               <button
                 type="button"
                 onClick={onFinish}
-                className="text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded transition-opacity hover:opacity-80"
+                className="text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus)] rounded transition-opacity hover:opacity-80"
                 style={{ color: 'var(--text3)' }}
               >
                 {t('onboarding.restore.skip')}
@@ -393,7 +396,7 @@ function WizardFooter({
         type="button"
         onClick={onNext}
         disabled={disabled}
-        className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+        className="rounded-[var(--r-key)] bg-[var(--inv)] px-5 py-2 text-sm font-semibold text-[var(--inv-ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
       >
         {label}
       </button>
@@ -406,16 +409,16 @@ function HotkeyHint({ label }: { label: string }): React.JSX.Element {
   const parts = label.split(/(\b[A-Z][a-zA-Z+]+[A-Z]\b)/)
   return (
     <div
-      className="flex items-start gap-3 rounded-xl border px-4 py-3 backdrop-blur-xl"
+      className="flex items-start gap-3 rounded-[var(--r-disp)] border px-4 py-3"
       style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
     >
-      <span className="mt-0.5 text-indigo-400">⌨</span>
+      <span className="mt-0.5 text-[var(--ink)]">⌨</span>
       <p className="text-sm" style={{ color: 'var(--text2)' }}>
         {parts.map((part, i) =>
           /^[A-Z]/.test(part) && part.includes('+') ? (
             <kbd
               key={i}
-              className="rounded px-1.5 py-0.5 font-mono text-xs border"
+              className="rounded px-1.5 py-0.5 font-num text-xs border"
               style={{
                 background: 'var(--input-bg)',
                 borderColor: 'var(--card-border)',
