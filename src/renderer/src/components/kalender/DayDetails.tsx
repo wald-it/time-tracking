@@ -6,7 +6,6 @@ import { dayRevenueCent } from './dayRevenue'
 import type { Client, Entry, Project } from '../../../../shared/types'
 import { deserializeTags, entryHasTag } from '../../../../shared/tags'
 import { useEntriesStore } from '../../store/entriesStore'
-import { useProjectsStore } from '../../store/projectsStore'
 import { useToastStore } from '../../store/toastStore'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { EntryEditForm } from '../EntryEditForm'
@@ -17,7 +16,7 @@ import type { TFunction } from '../../contexts/I18nContext'
  * Kalender — the selected day (HANDOFF §3.13). The content of the former
  * `CalendarDrawer`, without overlay or focus trap, so it can sit in the
  * persistent day panel (`DayPanel`, wide windows) and inside the overlay
- * drawer (`CalendarDrawer`, the fallback below 1100 px).
+ * drawer (`CalendarDrawer`, the fallback below 1120 px).
  *
  * Behaviour carried over from the drawer: chronological entry list, tag
  * filter, inline edit and backfill via `EntryEditForm`, delete via
@@ -34,6 +33,7 @@ export function DayDetails({
   dateISO,
   entries,
   clients,
+  projects,
   onEscape
 }: {
   /** ISO date YYYY-MM-DD (LOCAL) of the day shown. */
@@ -41,6 +41,12 @@ export function DayDetails({
   /** Entries for this day (caller filters from getByMonth). */
   entries: Entry[]
   clients: Client[]
+  /**
+   * All projects, from the caller. Not loaded here: a fresh load per selected
+   * day would price the day at client rates until it arrives (goodwill
+   * projects included).
+   */
+  projects: Project[]
   /** Escape with nothing left to cancel here. The drawer passes `onClose`. */
   onEscape?: () => void
 }): React.JSX.Element {
@@ -51,12 +57,10 @@ export function DayDetails({
   const { roundMinutes } = useRounding()
   const sectionRef = useRef<HTMLElement>(null)
   const headingId = useId()
-  const projectsVersion = useProjectsStore((s) => s.version)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
-  const [projectsById, setProjectsById] = useState<Map<number, Project>>(new Map())
 
   // Latest values for the Escape handler, so the listener is registered once.
   const escapeState = useRef({ editingId, creating, deleteCandidate, onEscape })
@@ -91,16 +95,7 @@ export function DayDetails({
     return m
   }, [clients])
 
-  // Load all projects for name display in entry rows
-  useEffect(() => {
-    void window.api.projects.getAll({}).then((res) => {
-      if (res.ok) {
-        const map = new Map<number, Project>()
-        for (const p of res.data) map.set(p.id, p)
-        setProjectsById(map)
-      }
-    })
-  }, [projectsVersion])
+  const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
 
   // Collect all unique tags from the day's entries for the filter keys.
   const allDayTags = useMemo(() => {
@@ -144,13 +139,9 @@ export function DayDetails({
   }
 
   const totalSeconds = filteredEntries.reduce((sum, e) => sum + durationSeconds(e, nowMs), 0)
-  const revenueCent = dayRevenueCent(
-    entries,
-    clients,
-    [...projectsById.values()],
-    roundMinutes,
-    nowMs
-  )
+  // Same entries as the hours beside it: under a tag filter both show the
+  // filtered part of the day, never hours of one set next to euros of another.
+  const revenueCent = dayRevenueCent(filteredEntries, clients, projects, roundMinutes, nowMs)
 
   return (
     <section

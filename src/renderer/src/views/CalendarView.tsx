@@ -71,18 +71,24 @@ export default function CalendarView(): React.JSX.Element {
   const projectsVersion = useProjectsStore((s) => s.version)
   const wide = useMediaQuery(DAY_PANEL_MEDIA_QUERY)
 
-  const [projects, setProjects] = useState<Project[]>([])
+  // null until the first load: no amount is computed before the project rates
+  // are known, otherwise goodwill projects would be priced at the client rate.
+  const [loadedProjects, setLoadedProjects] = useState<Project[] | null>(null)
+  const projects = loadedProjects ?? NO_PROJECTS
 
   useEffect(() => {
     void window.api.projects.getAll({}).then((res) => {
-      if (res.ok) setProjects(res.data)
+      if (res.ok) setLoadedProjects(res.data)
     })
   }, [projectsVersion])
 
   const months = MONTHS_KEYS.map((k) => t(k))
 
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()))
-  const [entries, setEntries] = useState<Entry[]>([])
+  // The loaded entries remember their month. While the next month loads, or
+  // when its load fails, the old month's entries must not be summed up under
+  // the new month's name.
+  const [loaded, setLoaded] = useState<{ month: string; entries: Entry[] } | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // Default selection on open = today (§4.2.3).
@@ -114,7 +120,10 @@ export default function CalendarView(): React.JSX.Element {
         // entries of the neighbouring LOCAL month; none of them has a cell, so
         // none may count in week/month totals, the range or the breakdown.
         // (The query itself moves to local boundaries in its own fix PR.)
-        setEntries(res.data.filter((e) => isSameMonth(new Date(e.started_at), cursor)))
+        setLoaded({
+          month: monthKey(cursor),
+          entries: res.data.filter((e) => isSameMonth(new Date(e.started_at), cursor))
+        })
         setStatus('ready')
         setErrorMsg(null)
       } else {
@@ -127,6 +136,12 @@ export default function CalendarView(): React.JSX.Element {
       cancelled = true
     }
   }, [cursor, version])
+
+  const entries = useMemo(
+    () =>
+      loaded && loaded.month === monthKey(cursor) && loadedProjects ? loaded.entries : NO_ENTRIES,
+    [loaded, cursor, loadedProjects]
+  )
 
   // Group entries by local YYYY-MM-DD of their start (the local-day key).
   const byDay = useMemo(() => {
@@ -389,7 +404,14 @@ export default function CalendarView(): React.JSX.Element {
         {/* min-w-0: a flex item's automatic minimum is its min-content width;
             one long description would otherwise push the aside below the grid. */}
         <aside className="flex min-w-0 flex-col gap-9" style={{ flex: '1 1 300px' }}>
-          {wide && <DayPanel dateISO={selectedKey} entries={selectedEntries} clients={clients} />}
+          {wide && (
+            <DayPanel
+              dateISO={selectedKey}
+              entries={selectedEntries}
+              clients={clients}
+              projects={projects}
+            />
+          )}
           <ClientBreakdown
             entries={entries}
             clients={clients}
@@ -405,6 +427,7 @@ export default function CalendarView(): React.JSX.Element {
         dateISO={selectedKey}
         entries={selectedEntries}
         clients={clients}
+        projects={projects}
         onClose={() => setDrawerOpen(false)}
       />
 
@@ -671,12 +694,13 @@ function entryDurationSeconds(e: Entry, nowMs: number): number {
   return Math.max(0, Math.floor((stop - new Date(e.started_at).getTime()) / 1000))
 }
 
-/**
- * Billable revenue of one day in cents, computed per entry exactly like the
- * PDF invoice: billable entries only (#104), minutes ceiled and rounded up
- * to the step, project rate over client rate (#120), project rate 0 =
- * goodwill. A running entry counts up to now, like the hour total next to it.
- */
+const NO_ENTRIES: Entry[] = []
+const NO_PROJECTS: Project[] = []
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth() + 1}`
+}
+
 /** Day total as the invoice bills it (each entry rounded up); raw when rounding is off. */
 function dayRoundedSeconds(entries: Entry[], roundStep: number, nowMs: number): number {
   return entries.reduce((sum, e) => {

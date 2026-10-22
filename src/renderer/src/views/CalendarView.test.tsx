@@ -110,16 +110,24 @@ async function setup(
     projects?: Project[]
     /** The NowProvider ticks every second (as App does while a timer runs). */
     clock?: boolean
+    /** Months (`YYYY-M`) whose load answers with an error. */
+    failMonths?: string[]
+    /** Months (`YYYY-M`) whose load never answers. */
+    pendingMonths?: string[]
+    /** projects.getAll answers only once this settles. */
+    projectsGate?: Promise<void>
   } = {}
 ): Promise<Setup> {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(opts.now ?? '2026-08-15T12:00:00.000Z'))
   const clients = opts.clients ?? CLIENTS
 
-  const getByMonth = vi.fn(async ({ year, month }: { year: number; month: number }) => ({
-    ok: true as const,
-    data: opts.byMonth?.[`${year}-${month}`] ?? []
-  }))
+  const getByMonth = vi.fn(async ({ year, month }: { year: number; month: number }) => {
+    const key = `${year}-${month}`
+    if (opts.pendingMonths?.includes(key)) return new Promise<never>(() => {})
+    if (opts.failMonths?.includes(key)) return { ok: false as const, error: 'boom' }
+    return { ok: true as const, data: opts.byMonth?.[key] ?? [] }
+  })
   const api = {
     entries: {
       getByMonth,
@@ -129,7 +137,10 @@ async function setup(
       getAll: async () => ({ ok: true as const, data: clients })
     },
     projects: {
-      getAll: async () => ({ ok: true as const, data: opts.projects ?? [] })
+      getAll: async () => {
+        await opts.projectsGate
+        return { ok: true as const, data: opts.projects ?? [] }
+      }
     },
     dashboard: {
       todayTotal: async () => ({ ok: true as const, data: 0 })
@@ -570,5 +581,90 @@ describe('CalendarView — day details', () => {
     } finally {
       foreign.remove()
     }
+  })
+})
+
+describe('CalendarView — final review fixes (PR 3)', () => {
+  const RATED: Client[] = [{ ...CLIENTS[0], rate_cent: 10000 }]
+  const GOODWILL: Project = {
+    id: 8,
+    client_id: 1,
+    name: 'Kulanz',
+    color: '',
+    rate_cent: 0,
+    active: 1,
+    created_at: '2026-01-01T00:00:00.000Z'
+  }
+  // 10 Aug on the goodwill project (no amount), 12 Aug at the client rate.
+  const MIXED = [
+    { ...AUGUST_ENTRIES[0], project_id: 8 },
+    { ...AUGUST_ENTRIES[1], project_id: 8 },
+    AUGUST_ENTRIES[2]
+  ]
+
+  function breakdown(): HTMLElement {
+    return screen.getByRole('region', { name: /nach Kunde/ })
+  }
+
+  it("a failed load of the next month does not show the old month's figures under its name", async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES }, failMonths: ['2026-9'] })
+    expect(screen.getByTestId('month-total').textContent).toBe('4:30')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }))
+    await waitFor(() => expect(monthHeading()).toContain('September'))
+    await waitFor(() => expect(screen.getByTestId('month-total').textContent).toBe('0:00'))
+    expect(within(breakdown()).queryByText('Acme')).toBeNull()
+  })
+
+  it("while the next month loads, the old month's figures are gone already", async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES }, pendingMonths: ['2026-9'] })
+    fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }))
+    expect(monthHeading()).toContain('September')
+    expect(screen.getByTestId('month-total').textContent).toBe('0:00')
+  })
+
+  it('prices no day before the project rates are known', async () => {
+    let release!: () => void
+    const projectsGate = new Promise<void>((r) => (release = r))
+    await setup({
+      byMonth: { '2026-8': MIXED },
+      clients: RATED,
+      projects: [GOODWILL],
+      projectsGate
+    })
+    // Without the project rates the goodwill day would read as 250 € at the
+    // client rate.
+    expect(within(cell('2026-08-10')).queryByTestId('day-revenue')).toBeNull()
+
+    await act(async () => release())
+    await waitFor(() =>
+      expect(within(cell('2026-08-12')).getByTestId('day-revenue').textContent).toBe('200,00 €')
+    )
+    expect(within(cell('2026-08-10')).queryByTestId('day-revenue')).toBeNull()
+  })
+
+  it('the day panel prices a goodwill day right from the first render', async () => {
+    installMatchMedia(true)
+    await setup({ byMonth: { '2026-8': MIXED }, clients: RATED, projects: [GOODWILL] })
+    await waitFor(() =>
+      expect(within(cell('2026-08-12')).getByTestId('day-revenue').textContent).toBe('200,00 €')
+    )
+    fireEvent.click(cell('2026-08-10'))
+    // Synchronously after the click: the panel must not start at client rates.
+    expect(screen.queryByTestId('details-revenue')).toBeNull()
+  })
+
+  it('under a tag filter the amount covers the same entries as the hours', async () => {
+    const tagged = [
+      { ...AUGUST_ENTRIES[0], tags: ',konzept,' }, // 1:30 = 150 €
+      AUGUST_ENTRIES[1] // 1:00 = 100 €
+    ]
+    await setup({ byMonth: { '2026-8': tagged }, clients: RATED })
+    fireEvent.click(cell('2026-08-10'))
+    const drawer = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
+    expect(within(drawer).getByTestId('details-revenue').textContent).toBe('250,00 €')
+
+    fireEvent.click(within(drawer).getByRole('button', { name: '#konzept' }))
+    expect(within(drawer).getByTestId('details-revenue').textContent).toBe('150,00 €')
   })
 })

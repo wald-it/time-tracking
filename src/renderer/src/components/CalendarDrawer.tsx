@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { Client, Entry } from '../../../shared/types'
+import type { Client, Entry, Project } from '../../../shared/types'
 import { useT } from '../contexts/I18nContext'
 import { DayDetails } from './kalender/DayDetails'
 
@@ -10,12 +10,13 @@ interface Props {
   /** Entries for this day (caller filters from getByMonth). */
   entries: Entry[]
   clients: Client[]
+  projects: Project[]
   onClose: () => void
 }
 
 /**
  * Right-side overlay drawer for a single day in CalendarView — the fallback
- * below 1100 px window width (HANDOFF §4.2.4). Wide windows show the same
+ * below 1120 px window width (HANDOFF §4.2.4). Wide windows show the same
  * content in the persistent day panel instead (`DayPanel`).
  *
  * The drawer only owns the overlay: backdrop, dialog semantics, initial focus
@@ -29,6 +30,7 @@ export function CalendarDrawer({
   dateISO,
   entries,
   clients,
+  projects,
   onClose
 }: Props): React.ReactElement | null {
   const t = useT()
@@ -74,7 +76,13 @@ export function CalendarDrawer({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-6 pb-6">
-          <DayDetails dateISO={dateISO} entries={entries} clients={clients} onEscape={onClose} />
+          <DayDetails
+            dateISO={dateISO}
+            entries={entries}
+            clients={clients}
+            projects={projects}
+            onEscape={onClose}
+          />
         </div>
       </aside>
     </>
