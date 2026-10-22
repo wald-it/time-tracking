@@ -1,4 +1,4 @@
-import type { Client, Entry } from '../../../../shared/types'
+import type { Client, Entry, Project } from '../../../../shared/types'
 
 /**
  * Pure math behind the month's client breakdown (HANDOFF §3.14).
@@ -8,8 +8,14 @@ import type { Client, Entry } from '../../../../shared/types'
  * to `nowMs` — the caller passes the shared clock from `useNow()`, so there is
  * no own interval. Durations are raw (no rounding): the breakdown shows worked
  * time, like the readouts.
+ *
+ * Grouped by the colour the bars carry (owner pre-review of PR 3), like the
+ * Heute day-scale legend: a project with its own colour is its own row, named
+ * after the project; everything else stays under its client.
  */
 export interface ClientShare {
+  /** Stable row key: `p<projectId>` for a coloured project, `c<clientId>` otherwise. */
+  key: string
   clientId: number
   name: string
   /** Client colour; `null` when the client is unknown or has none. */
@@ -25,32 +31,38 @@ export function entrySeconds(entry: Entry, nowMs: number): number {
   return Math.max(0, Math.floor((stop - start) / 1000))
 }
 
-export function clientShares(entries: Entry[], clients: Client[], nowMs: number): ClientShare[] {
+export function clientShares(
+  entries: Entry[],
+  clients: Client[],
+  nowMs: number,
+  projects: Project[] = []
+): ClientShare[] {
   const clientsById = new Map(clients.map((c) => [c.id, c]))
-  const secondsByClient = new Map<number, number>()
+  const projectsById = new Map(projects.map((p) => [p.id, p]))
+  const groups = new Map<string, ClientShare>()
   for (const e of entries) {
-    secondsByClient.set(
-      e.client_id,
-      (secondsByClient.get(e.client_id) ?? 0) + entrySeconds(e, nowMs)
-    )
+    const project = e.project_id != null ? projectsById.get(e.project_id) : undefined
+    const client = clientsById.get(e.client_id)
+    const key = project?.color ? `p${project.id}` : `c${e.client_id}`
+    const g = groups.get(key) ?? {
+      key,
+      clientId: e.client_id,
+      name: project?.color ? project.name : (client?.name ?? ''),
+      color: (project?.color || client?.color) ?? null,
+      seconds: 0,
+      sharePct: 0
+    }
+    g.seconds += entrySeconds(e, nowMs)
+    groups.set(key, g)
   }
 
-  const total = [...secondsByClient.values()].reduce((sum, s) => sum + s, 0)
+  const total = [...groups.values()].reduce((sum, g) => sum + g.seconds, 0)
   if (total === 0) return []
 
-  return [...secondsByClient.entries()]
-    .filter(([, seconds]) => seconds > 0)
-    .map(([clientId, seconds]) => {
-      const client = clientsById.get(clientId)
-      return {
-        clientId,
-        name: client?.name ?? '',
-        color: client?.color || null,
-        seconds,
-        sharePct: (seconds / total) * 100
-      }
-    })
+  return [...groups.values()]
+    .filter((g) => g.seconds > 0)
+    .map((g) => ({ ...g, color: g.color || null, sharePct: (g.seconds / total) * 100 }))
     .sort(
-      (a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name) || a.clientId - b.clientId
+      (a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name) || a.key.localeCompare(b.key)
     )
 }

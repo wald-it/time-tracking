@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Client, Entry } from '../../../../shared/types'
+import type { Client, Entry, Project } from '../../../../shared/types'
 import { clientShares, entrySeconds } from './clientShares'
 
 const at = (day: number, h: number, m = 0): number => new Date(2026, 9, day, h, m, 0, 0).getTime()
@@ -109,8 +109,22 @@ describe('clientShares', () => {
       at(22, 12)
     )
     expect(rows).toEqual([
-      { clientId: 99, name: '', color: null, seconds: 3600, sharePct: (3600 / 5400) * 100 },
-      { clientId: 3, name: 'Kessler', color: null, seconds: 1800, sharePct: (1800 / 5400) * 100 }
+      {
+        key: 'c99',
+        clientId: 99,
+        name: '',
+        color: null,
+        seconds: 3600,
+        sharePct: (3600 / 5400) * 100
+      },
+      {
+        key: 'c3',
+        clientId: 3,
+        name: 'Kessler',
+        color: null,
+        seconds: 1800,
+        sharePct: (1800 / 5400) * 100
+      }
     ])
   })
 
@@ -121,5 +135,38 @@ describe('clientShares', () => {
       at(22, 12)
     )
     expect(rows.map((r) => r.name)).toEqual(['Acme'])
+  })
+})
+
+// Owner pre-review of PR 3: group by the colour the bars carry, like the
+// Heute day-scale legend — a project with its own colour gets its own row
+// (named after the project), everything else stays under its client.
+describe('clientShares — grouped by bar colour', () => {
+  const PROJECTS: Project[] = [
+    {
+      id: 7,
+      client_id: 1,
+      name: 'Audit',
+      color: '#ff0000',
+      rate_cent: null,
+      active: 1,
+      created_at: ''
+    },
+    { id: 8, client_id: 1, name: 'Rollout', color: '', rate_cent: null, active: 1, created_at: '' }
+  ]
+
+  it('a coloured project is its own row; an uncoloured one stays with the client', () => {
+    const entries = [
+      { ...entry(1, at(1, 9), at(1, 11)), project_id: 7 }, // 2 h Audit (own colour)
+      { ...entry(1, at(2, 9), at(2, 10)), project_id: 8 }, // 1 h Rollout (no colour) → Acme
+      entry(1, at(3, 9), at(3, 10)) // 1 h Acme without project
+    ]
+    const rows = clientShares(entries, CLIENTS, at(31, 12), PROJECTS)
+    // Equal time — ties go by name.
+    expect(rows.map((r) => [r.name, r.color, r.seconds])).toEqual([
+      ['Acme', '#123456', 7200],
+      ['Audit', '#ff0000', 7200]
+    ])
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2)
   })
 })

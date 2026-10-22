@@ -7,19 +7,18 @@ import { clientShares } from './clientShares'
 /**
  * Kalender — "<Monat> nach Kunde" (HANDOFF §3.14), below the day panel.
  *
- * One row per client, largest first: colour square · name · share % · hours,
- * and under it a 4 px `--line` track filled in the client colour, its width
- * the client's share of the month total. Grouped by client, so the colour is
- * the client colour (a project colour would split one client over several
- * rows). `nowMs` is the shared clock from `useNow()`; a running entry counts
- * up to it. All math lives in `clientShares.ts`.
- *
- * `projects` is part of the agreed signature but not used yet: the grouping is
- * by client only.
+ * One row per colour group, largest first: colour square · name · share % ·
+ * hours, and under it a 4 px `--line` track filled in that colour, its width
+ * the share of the month total. Grouped by the colour the bars carry (like
+ * the Heute day-scale legend): a project with its own colour is its own row,
+ * everything else stays under its client. `nowMs` is the shared clock from
+ * `useNow()`; a running entry counts up to it. The maths lives in
+ * `clientShares.ts`.
  */
 export function ClientBreakdown({
   entries,
   clients,
+  projects,
   monthLabel,
   nowMs
 }: {
@@ -32,7 +31,10 @@ export function ClientBreakdown({
 }): React.JSX.Element {
   const t = useT()
   const headingId = useId()
-  const rows = useMemo(() => clientShares(entries, clients, nowMs), [entries, clients, nowMs])
+  const rows = useMemo(
+    () => clientShares(entries, clients, nowMs, projects),
+    [entries, clients, nowMs, projects]
+  )
 
   return (
     <section aria-labelledby={headingId} className="border-t-2 border-[var(--ink)] pt-[14px]">
@@ -47,7 +49,7 @@ export function ClientBreakdown({
             const color = r.color ?? 'var(--tick)'
             const name = r.name || t('common.unknown')
             return (
-              <li key={r.clientId} className="flex flex-col gap-[6px]">
+              <li key={r.key} className="flex flex-col gap-[6px]">
                 <div className="flex items-center gap-2">
                   <span
                     aria-hidden="true"
