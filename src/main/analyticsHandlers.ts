@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { IpcResult, MonthQuery, AnalyticsSummary } from '../shared/types'
+import { feeCentSql } from '../shared/currency'
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -67,13 +68,16 @@ export function buildAnalyticsSummary(
         .get() as { value: string } | undefined
       const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
 
-      // SQL helper: per-entry seconds, optionally rounded up to `roundStep` minutes.
-      // Uses SQLite integer arithmetic for ceiling: (n + d - 1) / d * d
+      // Hours are worked time: per-entry seconds, rounded up to `roundStep` minutes when
+      // set. Revenue follows the invoice rule (FEE_CENT); with no step the two may differ
+      // by the seconds the invoice ceils to a minute (owner decision 2026-10-22).
       const RAW_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
       const ENTRY_SEC =
         roundStep > 0
           ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
           : RAW_SEC
+      // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
+      const FEE_CENT = feeCentSql(roundStep)
 
       // ── 1. Month stats ─────────────────────────────────────────────
       type MonthRow = {
@@ -93,11 +97,7 @@ export function buildAnalyticsSummary(
             ELSE 0 END
           ), 0) AS billable_sec,
           COALESCE(SUM(
-            CASE WHEN e.billable = 1 THEN
-              COALESCE(p.rate_cent, c.rate_cent, 0)
-              * ${ENTRY_SEC}
-              / 3600.0
-            ELSE 0 END
+            CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS revenue_cent
         FROM entries e
         JOIN clients c ON c.id = e.client_id
@@ -115,7 +115,8 @@ export function buildAnalyticsSummary(
       const daysInMonth = new Date(year, month, 0).getDate()
       const daysElapsed = isCurrentMonth ? today.getDate() : daysInMonth
 
-      const hasData = (mCur.total_sec ?? 0) > 0
+      // A sub-second entry has no whole second of hours but bills a minute.
+      const hasData = (mCur.total_sec ?? 0) > 0 || (mCur.revenue_cent ?? 0) > 0
 
       // hasRateConfigured: any client or project has rate_cent > 0
       const rateCheck = db
@@ -149,11 +150,7 @@ export function buildAnalyticsSummary(
             ${ENTRY_SEC}
           ), 0) AS h,
           COALESCE(SUM(
-            CASE WHEN e.billable = 1 THEN
-              COALESCE(p.rate_cent, c.rate_cent, 0)
-              * ${ENTRY_SEC}
-              / 3600.0
-            ELSE 0 END
+            CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS rev
         FROM entries e
         JOIN clients c ON c.id = e.client_id
@@ -237,9 +234,7 @@ export function buildAnalyticsSummary(
             ${ENTRY_SEC}
           ), 0) AS h,
           COALESCE(SUM(
-            COALESCE(p.rate_cent, c.rate_cent, 0)
-            * ${ENTRY_SEC}
-            / 3600.0
+            CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS r
         FROM entries e
         JOIN clients c ON c.id = e.client_id

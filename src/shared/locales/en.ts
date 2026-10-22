@@ -249,6 +249,7 @@ export const en: Record<TranslationKey, string> = {
   'projects.addNew': 'Add project',
   'projects.empty': 'No projects yet.',
   'projects.inheritedRate': '(Client rate)',
+  'projects.goodwillRate': '0 €/h (goodwill)',
   'projects.pausedSection': 'Paused ({count})',
   'projects.archivedSection': 'Archived ({count})',
   'projects.action.archive': 'Archive',
@@ -266,7 +267,8 @@ export const en: Record<TranslationKey, string> = {
   'projects.form.colorInherit': 'Use client color',
   'projects.form.rateLabel': 'Hourly rate (€/h)',
   'projects.form.ratePlaceholder': 'Empty = client rate',
-  'projects.form.rateHint': 'Leave empty to use the client rate.',
+  'projects.form.rateHint':
+    'Leave empty to use the client rate. 0 means goodwill: the time is billed at 0 €.',
   'projects.form.rateInvalid': 'Please enter a number (e.g. 85.00).',
   'projects.form.rateNegative': 'Hourly rate must not be negative.',
   // v1.11 #94 — Stammdaten

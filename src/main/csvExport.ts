@@ -94,10 +94,22 @@ export async function handleCsvExport(
       return fail('Export abgebrochen')
     }
 
+    // Amounts follow the invoice rule: rounding step and project rates.
+    const roundRow = db
+      .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
+      .get() as { value: string } | undefined
+    const projectRows = db.prepare(`SELECT id, rate_cent FROM projects`).all() as {
+      id: number
+      rate_cent: number | null
+    }[]
+    const billing = {
+      roundMinutes: parseInt(roundRow?.value ?? '0', 10) || 0,
+      projectRates: new Map(projectRows.map((p) => [p.id, p.rate_cent]))
+    }
     const opts: CsvOptions =
       req.format === 'us'
-        ? { fieldSeparator: ',', decimalSeparator: '.', groupByTag: req.groupByTag }
-        : { fieldSeparator: ';', decimalSeparator: ',', groupByTag: req.groupByTag }
+        ? { fieldSeparator: ',', decimalSeparator: '.', groupByTag: req.groupByTag, ...billing }
+        : { fieldSeparator: ';', decimalSeparator: ',', groupByTag: req.groupByTag, ...billing }
 
     const clientMap = new Map([[client.id, client]])
     const csv = formatCsv(entries, clientMap, opts)

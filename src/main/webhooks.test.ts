@@ -98,6 +98,7 @@ interface FakeData {
   project?: { id: number; name: string; rate_cent: number | null }
   exposeRates?: boolean
   exposePrivateNotes?: boolean
+  roundMinutes?: string
 }
 function fakeDb(data: FakeData): Database.Database {
   const db = {
@@ -106,6 +107,9 @@ function fakeDb(data: FakeData): Database.Database {
         get: (...args: unknown[]): unknown => {
           if (sql.includes("key = 'webhook_targets'")) {
             return data.targetsRaw === undefined ? undefined : { value: data.targetsRaw }
+          }
+          if (sql.includes("key = 'pdf_round_minutes'")) {
+            return data.roundMinutes === undefined ? undefined : { value: data.roundMinutes }
           }
           if (sql.includes('FROM settings WHERE key = ?')) {
             const key = args[0]
@@ -193,6 +197,45 @@ describe('buildWebhookPayload (fake DB, runs everywhere)', () => {
       { deliveryId: 'd', now: Date.now() }
     )
     expect(p.entry.rate_cent).toBe(12000)
+  })
+
+  it('bills revenue like the invoice: minutes rounded up to the step', () => {
+    // 16 min at 90 €/h with a 15-min step bills 30 min = 45,00 €, not 24,00 €.
+    const db = fakeDb({ client, project, roundMinutes: '15' })
+    const p = buildWebhookPayload(
+      db,
+      'entry.created',
+      stoppedEntryObj({ stopped_at: '2026-06-10T09:16:00.000Z' }),
+      { exposeRates: true, exposePrivateNotes: false },
+      { deliveryId: 'd', now: Date.now() }
+    )
+    expect(p.entry.revenue_cent).toBe(4500)
+  })
+
+  it('reports no revenue for non-billable time, but still the rate', () => {
+    const db = fakeDb({ client, project })
+    const p = buildWebhookPayload(
+      db,
+      'entry.created',
+      stoppedEntryObj({ billable: 0 }),
+      { exposeRates: true, exposePrivateNotes: false },
+      { deliveryId: 'd', now: Date.now() }
+    )
+    expect(p.entry.rate_cent).toBe(9000)
+    expect(p.entry.revenue_cent).toBe(0)
+  })
+
+  it('a goodwill project (rate 0) bills 0 €, not the client rate', () => {
+    const db = fakeDb({ client, project: { id: 1, name: 'Website', rate_cent: 0 } })
+    const p = buildWebhookPayload(
+      db,
+      'entry.created',
+      stoppedEntryObj(),
+      { exposeRates: true, exposePrivateNotes: false },
+      { deliveryId: 'd', now: Date.now() }
+    )
+    expect(p.entry.rate_cent).toBe(0)
+    expect(p.entry.revenue_cent).toBe(0)
   })
 
   it('null duration for a running timer, and no revenue even with rates on', () => {

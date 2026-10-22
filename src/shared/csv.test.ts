@@ -286,3 +286,34 @@ describe('formatCsv', () => {
     })
   })
 })
+
+describe('formatCsv — amounts follow the invoice rule', () => {
+  const lastTwo = (csv: string): string[] => csv.split('\r\n')[1].split(';').slice(-2)
+
+  it('rounds minutes up to the step before pricing', () => {
+    // 16 min at 75 €/h with a 15-min step bills 30 min = 37,50 €.
+    const entry = makeEntry({ stopped_at: '2026-04-25T09:16:00.000Z' })
+    expect(lastTwo(formatCsv([entry], CLIENT_MAP, { roundMinutes: 15 }))).toEqual([
+      '75,00',
+      '37,50'
+    ])
+  })
+
+  it('uses a project rate of its own over the client rate', () => {
+    const entry = makeEntry({ project_id: 5 })
+    const csv = formatCsv([entry], CLIENT_MAP, { projectRates: new Map([[5, 10000]]) })
+    expect(lastTwo(csv)).toEqual(['100,00', '150,00'])
+  })
+
+  it('bills a goodwill project (rate 0) at 0,00, not the client rate', () => {
+    const entry = makeEntry({ project_id: 5 })
+    const csv = formatCsv([entry], CLIENT_MAP, { projectRates: new Map([[5, 0]]) })
+    expect(lastTwo(csv)).toEqual(['0,00', '0,00'])
+  })
+
+  it('inherits the client rate for a project without one', () => {
+    const entry = makeEntry({ project_id: 5 })
+    const csv = formatCsv([entry], CLIENT_MAP, { projectRates: new Map([[5, null]]) })
+    expect(lastTwo(csv)).toEqual(['75,00', '112,50'])
+  })
+})

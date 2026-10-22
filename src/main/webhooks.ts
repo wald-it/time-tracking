@@ -18,6 +18,7 @@
  */
 import { createHmac } from 'crypto'
 import type Database from 'better-sqlite3'
+import { billedMinutes, effectiveRateCent, feeCent } from '../shared/currency'
 import { deserializeTags } from '../shared/tags'
 import { parseWebhookTargets, type WebhookEvent, type WebhookTarget } from '../shared/webhooks'
 import { resolvePrivacy } from '../mcp/privacy'
@@ -117,11 +118,17 @@ export function buildWebhookPayload(
   }
 
   if (privacy.exposeRates && clientRow) {
-    // Project rate overrides the client rate; a null project rate inherits it.
-    const effectiveRate = projectRow?.rate_cent ?? clientRow.rate_cent
+    const effectiveRate = effectiveRateCent(projectRow?.rate_cent, clientRow.rate_cent)
     payloadEntry.rate_cent = effectiveRate
-    if (durationSeconds !== null) {
-      payloadEntry.revenue_cent = Math.round((effectiveRate * durationSeconds) / 3600)
+    if (entry.stopped_at !== null) {
+      // The amount the invoice bills (shared/currency.ts); non-billable time earns nothing.
+      const roundRow = db
+        .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
+        .get() as { value: string } | undefined
+      const step = parseInt(roundRow?.value ?? '0', 10) || 0
+      const ms = Math.max(0, Date.parse(entry.stopped_at) - Date.parse(entry.started_at))
+      payloadEntry.revenue_cent =
+        entry.billable === 1 ? feeCent(billedMinutes(ms, step), effectiveRate) : 0
     }
   }
   if (privacy.exposePrivateNotes) {

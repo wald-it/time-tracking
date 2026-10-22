@@ -307,6 +307,51 @@ describe('buildAnalyticsSummary', () => {
     expect(res.data.weekday.map((d) => d.d)).toEqual(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'])
   })
 
+  // ── Invoice rule (shared/currency.ts) ───────────────────────────────────
+
+  it('a sub-second entry is data: no whole second of hours, but the minute it bills', () => {
+    addEntry(db, {
+      client_id: 1,
+      started_at: '2025-04-10T08:00:00.000Z',
+      stopped_at: '2025-04-10T08:00:00.400Z'
+    })
+    const res = buildAnalyticsSummary(db, { year: 2025, month: 4 })
+    if (!res.ok) throw new Error(res.error)
+    expect(res.data.month.hasData).toBe(true)
+    expect(res.data.month.hours).toBe(0)
+    // 1 min at 85 €/h = 141,67 ct → 142
+    expect(res.data.month.revenue).toBe(142)
+  })
+
+  it('a goodwill project (rate 0) adds hours but no revenue', () => {
+    db.prepare(`INSERT INTO projects (id, client_id, name, rate_cent) VALUES (9, 1, 'K', 0)`).run()
+    addEntry(db, {
+      client_id: 1,
+      project_id: 9,
+      started_at: '2025-04-10T08:00:00.000Z',
+      stopped_at: '2025-04-10T10:00:00.000Z'
+    })
+    const res = buildAnalyticsSummary(db, { year: 2025, month: 4 })
+    if (!res.ok) throw new Error(res.error)
+    expect(res.data.month.hours).toBe(7200)
+    expect(res.data.month.revenue).toBe(0)
+  })
+
+  it('the 12-month revenue trend counts billable time only (#104)', () => {
+    addEntry(db, {
+      client_id: 1,
+      billable: 0,
+      started_at: '2025-04-10T08:00:00.000Z',
+      stopped_at: '2025-04-10T10:00:00.000Z'
+    })
+    const res = buildAnalyticsSummary(db, { year: 2025, month: 4 })
+    if (!res.ok) throw new Error(res.error)
+    // The trend ends with the selected month.
+    const april = res.data.months[res.data.months.length - 1]
+    expect(april.h).toBe(7200)
+    expect(april.r).toBe(0)
+  })
+
   // ── 13. Non-billable hours excluded from revenue (#104) ─────────────────
 
   it('excludes non-billable entries from revenue calculation', () => {

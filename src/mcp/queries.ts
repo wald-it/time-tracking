@@ -13,6 +13,7 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
+import { feeCentSql } from '../shared/currency'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
 import type { PrivacyConfig } from './privacy'
@@ -581,12 +582,16 @@ export function getAnalytics(
     .get() as { value: string } | undefined
   const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
 
+  // Hours are worked time: per-entry seconds, rounded up to `roundStep` minutes when
+  // set. Revenue follows the invoice rule (FEE_CENT); with no step the two may differ
+  // by the seconds the invoice ceils to a minute (owner decision 2026-10-22).
   const RAW_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
   const ENTRY_SEC =
     roundStep > 0
       ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
       : RAW_SEC
-  const REVENUE = `(COALESCE(p.rate_cent, c.rate_cent, 0) * ${ENTRY_SEC} / 3600.0)`
+  // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
+  const REVENUE = feeCentSql(roundStep)
   const monthKey = `${year}-${String(month).padStart(2, '0')}`
 
   const totals = db
@@ -614,7 +619,7 @@ export function getAnalytics(
         WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
           AND strftime('%Y-%m', e.started_at, 'localtime') = ?
         GROUP BY c.id
-        HAVING seconds > 0
+        HAVING seconds > 0 OR revenue_cent > 0
         ORDER BY seconds DESC, c.name ASC`
     )
     .all(monthKey) as Array<{
@@ -639,7 +644,7 @@ export function getAnalytics(
         WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
           AND strftime('%Y-%m', e.started_at, 'localtime') = ?
         GROUP BY e.project_id
-        HAVING seconds > 0
+        HAVING seconds > 0 OR revenue_cent > 0
         ORDER BY seconds DESC, name ASC`
     )
     .all(monthKey) as Array<{

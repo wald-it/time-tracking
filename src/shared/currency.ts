@@ -53,6 +53,55 @@ export function roundMinutes(minutes: number, step: number): number {
 }
 
 /**
+ * Billed minutes for an entry of `rawMs` milliseconds: ceil to whole
+ * minutes (a few-second entry counts as 1 minute, never vanishes to 0),
+ * then round up to `step` via `roundMinutes`. Shared by the PDF pipeline
+ * and the calendar's day revenue so both bill the same minutes.
+ */
+export function billedMinutes(rawMs: number, step: number): number {
+  const rawMin = rawMs > 0 ? Math.ceil(rawMs / 60000) : 0
+  return roundMinutes(rawMin, step)
+}
+
+/**
+ * The hourly rate that applies to an entry (v1.13 #120): a project with a
+ * rate of its own uses it, a project without one (null) inherits the client
+ * rate. A project rate of 0 is a deliberate choice — goodwill work billed at
+ * 0 € — and is never replaced by the client rate.
+ */
+export function effectiveRateCent(
+  projectRateCent: number | null | undefined,
+  clientRateCent: number
+): number {
+  return projectRateCent != null ? projectRateCent : clientRateCent
+}
+
+// ── SQL twins ──────────────────────────────────────────────────────────────
+// Analytics and the MCP server sum revenue in SQLite. These fragments are the
+// same rules as `billedMinutes`, `effectiveRateCent` and `feeCent`, so every
+// surface reports the amount the invoice bills. `revenueSql.test.ts` runs both
+// sides over the same entries; change one side and it turns red.
+
+/** Effective rate for an entry joined as `p` (projects) and `c` (clients). */
+export const EFFECTIVE_RATE_SQL = 'COALESCE(p.rate_cent, c.rate_cent, 0)'
+
+/**
+ * Billed minutes of the entry aliased `e`, like `billedMinutes`: whole
+ * milliseconds (julianday, since strftime('%s') drops them), ceiled to
+ * minutes, then up to `step`.
+ */
+export function billedMinutesSql(step: number): string {
+  const ms = `MAX(0, CAST(ROUND((julianday(e.stopped_at) - julianday(e.started_at)) * 86400000) AS INTEGER))`
+  const min = `((${ms} + 59999) / 60000)`
+  return step > 0 ? `((${min} + ${step} - 1) / ${step} * ${step})` : min
+}
+
+/** Fee in cents of the entry aliased `e`, like `feeCent`: rounded per entry. */
+export function feeCentSql(step: number): string {
+  return `ROUND(${EFFECTIVE_RATE_SQL} * ${billedMinutesSql(step)} / 60.0)`
+}
+
+/**
  * Format a minute count as `H:MM` (two-digit minutes). Used for entry rows
  * and totals in the PDF. Examples: 84 → "1:24", 600 → "10:00", 5 → "0:05".
  */

@@ -324,6 +324,35 @@ describe('buildPdfPayload', () => {
     expect(p.totals.feeCent).toBe(9000)
   })
 
+  it('bills a goodwill project (rate 0) at 0 €, not the client rate', () => {
+    db.prepare(
+      `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
+       VALUES (24, 1, 'Kulanz', '#10b981', 'active', 0)`
+    ).run()
+    db.prepare(
+      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
+       VALUES (1, 24, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
+    ).run()
+    const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
+    expect(p.rows[0].feeCent).toBe(0)
+    expect(p.totals.feeCent).toBe(0)
+  })
+
+  it('keeps the fee column for goodwill work of a client without a rate', () => {
+    // Client 2 has rate_cent = 0; a goodwill project still shows "0,00 €".
+    db.prepare(
+      `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
+       VALUES (25, 2, 'Kulanz', '#10b981', 'active', 0)`
+    ).run()
+    db.prepare(
+      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
+       VALUES (2, 25, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
+    ).run()
+    const p = buildPdfPayload(db, { clientId: 2, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
+    expect(p.rows[0].feeCent).toBe(0)
+    expect(p.totals.feeCent).toBe(0)
+  })
+
   // ── v1.13 #118: grouping dropdown ────────────────────────────────────────
 
   it('legacy groupByTag still coerces to groupBy=tag', () => {

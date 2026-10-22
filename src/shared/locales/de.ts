@@ -250,6 +250,7 @@ export const de = {
   'projects.addNew': 'Projekt hinzufügen',
   'projects.empty': 'Noch keine Projekte.',
   'projects.inheritedRate': '(Kundensatz)',
+  'projects.goodwillRate': '0 €/h (Kulanz)',
   'projects.pausedSection': 'Pausiert ({count})',
   'projects.archivedSection': 'Archiviert ({count})',
   'projects.action.archive': 'Archivieren',
@@ -267,7 +268,8 @@ export const de = {
   'projects.form.colorInherit': 'Kundenfarbe übernehmen',
   'projects.form.rateLabel': 'Stundensatz (€/h)',
   'projects.form.ratePlaceholder': 'Leer = Kundensatz',
-  'projects.form.rateHint': 'Leer lassen, um den Kundensatz zu verwenden.',
+  'projects.form.rateHint':
+    'Leer lassen, um den Kundensatz zu verwenden. 0 heißt Kulanz: die Zeit wird mit 0 € berechnet.',
   'projects.form.rateInvalid': 'Bitte eine Zahl eingeben (z.B. 85,00).',
   'projects.form.rateNegative': 'Stundensatz darf nicht negativ sein.',
   // v1.11 #94 — Stammdaten
