@@ -53,6 +53,29 @@ export function roundMinutes(minutes: number, step: number): number {
 }
 
 /**
+ * Billed minutes for an entry of `rawMs` milliseconds: ceil to whole
+ * minutes (a few-second entry counts as 1 minute, never vanishes to 0),
+ * then round up to `step` via `roundMinutes`. Shared by the PDF pipeline
+ * and the calendar's day revenue so both bill the same minutes.
+ */
+export function billedMinutes(rawMs: number, step: number): number {
+  const rawMin = rawMs > 0 ? Math.ceil(rawMs / 60000) : 0
+  return roundMinutes(rawMin, step)
+}
+
+/**
+ * The hourly rate that applies to an entry (v1.13 #120): a project rate
+ * overrides the client rate when it is set and positive; otherwise the
+ * client rate applies. Returns 0 when neither has a rate.
+ */
+export function effectiveRateCent(
+  projectRateCent: number | null | undefined,
+  clientRateCent: number
+): number {
+  return projectRateCent != null && projectRateCent > 0 ? projectRateCent : clientRateCent
+}
+
+/**
  * Format a minute count as `H:MM` (two-digit minutes). Used for entry rows
  * and totals in the PDF. Examples: 84 → "1:24", 600 → "10:00", 5 → "0:05".
  */

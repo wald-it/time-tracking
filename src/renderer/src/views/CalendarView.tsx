@@ -23,6 +23,7 @@ import { CalendarDrawer } from '../components/CalendarDrawer'
 import { GraphImportModal } from '../components/GraphImportModal'
 import { useRounding } from '../contexts/RoundingContext'
 import { roundDuration } from '../../../shared/duration'
+import { billedMinutes, effectiveRateCent, feeCent, formatEur } from '../../../shared/currency'
 
 /**
  * Month-grid calendar view. 7×N rows, KW column on the left.
@@ -333,6 +334,7 @@ function Week({
         const isFocus = isSameDay(day, focusDay)
         const totalSeconds = dayEntries.reduce((sum, e) => sum + entryDurationSeconds(e), 0)
         const displaySeconds = roundDuration(totalSeconds, roundMinutes)
+        const revenueCent = dayRevenueCent(dayEntries, clients, projects, roundMinutes)
         return (
           <button
             key={key}
@@ -371,6 +373,15 @@ function Week({
                 </span>
               )}
             </div>
+            {revenueCent > 0 && (
+              <span
+                data-testid="day-revenue"
+                className="self-end text-[10px] tabular-nums"
+                style={{ color: 'var(--text3)', fontFamily: "'JetBrains Mono', monospace" }}
+              >
+                {formatEur(revenueCent)}
+              </span>
+            )}
             <DayBars
               entries={dayEntries}
               clients={clients}
@@ -472,6 +483,31 @@ function addDays(d: Date, n: number): Date {
 function entryDurationSeconds(e: Entry): number {
   const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : Date.now()
   return Math.max(0, Math.floor((stop - new Date(e.started_at).getTime()) / 1000))
+}
+
+/**
+ * Billable revenue of one day in cents, computed per entry exactly like the
+ * PDF invoice: billable entries only (#104), minutes ceiled and rounded up
+ * to the step, project rate over client rate (#120). A running entry counts
+ * up to now, like the hour total next to it.
+ */
+function dayRevenueCent(
+  entries: Entry[],
+  clients: Client[],
+  projects: Project[],
+  roundStep: number
+): number {
+  let sum = 0
+  for (const e of entries) {
+    if (e.billable !== 1) continue
+    const clientRate = clients.find((c) => c.id === e.client_id)?.rate_cent ?? 0
+    const projectRate =
+      e.project_id != null ? projects.find((p) => p.id === e.project_id)?.rate_cent : null
+    const rate = effectiveRateCent(projectRate, clientRate)
+    if (rate <= 0) continue
+    sum += feeCent(billedMinutes(entryDurationSeconds(e) * 1000, roundStep), rate)
+  }
+  return sum
 }
 
 function formatHHMM(seconds: number): string {

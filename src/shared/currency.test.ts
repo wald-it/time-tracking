@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { feeCent, formatEur, roundMinutes, formatHoursMinutes } from './currency'
+import {
+  billedMinutes,
+  effectiveRateCent,
+  feeCent,
+  formatEur,
+  roundMinutes,
+  formatHoursMinutes
+} from './currency'
 
 describe('feeCent', () => {
   it('returns 0 when rate is 0 or minutes are 0', () => {
@@ -92,5 +99,29 @@ describe('formatHoursMinutes', () => {
 
   it('handles negative durations', () => {
     expect(formatHoursMinutes(-65)).toBe('-1:05')
+  })
+})
+
+describe('billedMinutes', () => {
+  it('ceils a sub-minute entry to 1 minute instead of 0', () => {
+    expect(billedMinutes(5_000, 0)).toBe(1)
+  })
+  it('ceils to whole minutes, then up to the step', () => {
+    expect(billedMinutes(61_000, 0)).toBe(2)
+    expect(billedMinutes(16 * 60_000, 15)).toBe(30)
+  })
+  it('keeps zero at zero', () => {
+    expect(billedMinutes(0, 15)).toBe(0)
+  })
+})
+
+describe('effectiveRateCent', () => {
+  it('prefers a positive project rate', () => {
+    expect(effectiveRateCent(15000, 10000)).toBe(15000)
+  })
+  it('falls back to the client rate for null, undefined or 0', () => {
+    expect(effectiveRateCent(null, 10000)).toBe(10000)
+    expect(effectiveRateCent(undefined, 10000)).toBe(10000)
+    expect(effectiveRateCent(0, 10000)).toBe(10000)
   })
 })

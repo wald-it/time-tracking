@@ -16,7 +16,7 @@ import { fireEvent } from '@testing-library/dom'
 import CalendarView from './CalendarView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useTimerStore } from '../store/timerStore'
-import type { Client, Entry } from '../../../shared/types'
+import type { Client, Entry, Project } from '../../../shared/types'
 
 // `globals` is off in vitest.config.ts — unmount explicitly (see TagInput test).
 afterEach(() => {
@@ -84,10 +84,16 @@ interface Setup {
  * reach on mount, renders, and waits for the month load to settle.
  */
 async function setup(
-  opts: { now?: string; byMonth?: Record<string, Entry[]> } = {}
+  opts: {
+    now?: string
+    byMonth?: Record<string, Entry[]>
+    clients?: Client[]
+    projects?: Project[]
+  } = {}
 ): Promise<Setup> {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(opts.now ?? '2026-08-15T12:00:00.000Z'))
+  const clients = opts.clients ?? CLIENTS
 
   const getByMonth = vi.fn(async ({ year, month }: { year: number; month: number }) => ({
     ok: true as const,
@@ -99,10 +105,10 @@ async function setup(
       getRunning: async () => ({ ok: true as const, data: null })
     },
     clients: {
-      getAll: async () => ({ ok: true as const, data: CLIENTS })
+      getAll: async () => ({ ok: true as const, data: clients })
     },
     projects: {
-      getAll: async () => ({ ok: true as const, data: [] })
+      getAll: async () => ({ ok: true as const, data: opts.projects ?? [] })
     },
     dashboard: {
       todayTotal: async () => ({ ok: true as const, data: 0 })
@@ -120,7 +126,7 @@ async function setup(
   // useTimer's module-level init runs only once per test FILE; seed the
   // shared store directly so every test sees the same clients regardless of
   // execution order.
-  useTimerStore.setState({ clients: CLIENTS })
+  useTimerStore.setState({ clients })
 
   render(
     <I18nProvider>
@@ -230,5 +236,42 @@ describe('CalendarView — month paging', () => {
 
     expect(screen.getByText('August 2026')).not.toBeNull()
     expect(document.activeElement).toBe(cell('2026-08-15'))
+  })
+})
+
+describe('CalendarView — day revenue', () => {
+  const RATED: Client[] = [{ ...CLIENTS[0], rate_cent: 10000 }]
+
+  it('shows no amount while no client or project has a rate', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    expect(within(cell('2026-08-10')).queryByTestId('day-revenue')).toBeNull()
+  })
+
+  it('sums billable entries per day at the client rate', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES }, clients: RATED })
+    // 1:30 + 1:00 at 100 €/h
+    expect(within(cell('2026-08-10')).getByTestId('day-revenue').textContent).toBe('250,00 €')
+    expect(within(cell('2026-08-12')).getByTestId('day-revenue').textContent).toBe('200,00 €')
+    expect(within(cell('2026-08-11')).queryByTestId('day-revenue')).toBeNull()
+  })
+
+  it('leaves non-billable entries out and lets a project rate win', async () => {
+    const project: Project = {
+      id: 7,
+      client_id: 1,
+      name: 'Audit',
+      color: '',
+      rate_cent: 15000,
+      active: 1,
+      created_at: '2026-01-01T00:00:00.000Z'
+    }
+    const entries = [
+      { ...AUGUST_ENTRIES[0], project_id: 7 }, // 1:30 at 150 €/h = 225 €
+      { ...AUGUST_ENTRIES[1], billable: 0 } // excluded
+    ]
+    await setup({ byMonth: { '2026-8': entries }, clients: RATED, projects: [project] })
+    await waitFor(() =>
+      expect(within(cell('2026-08-10')).getByTestId('day-revenue').textContent).toBe('225,00 €')
+    )
   })
 })

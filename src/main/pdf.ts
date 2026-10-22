@@ -12,7 +12,13 @@
  * v1.3 plan), and makes the output trivially snapshot-testable.
  */
 import type Database from 'better-sqlite3'
-import { feeCent, formatEur, formatHoursMinutes, roundMinutes } from '../shared/currency'
+import {
+  billedMinutes,
+  effectiveRateCent,
+  feeCent,
+  formatEur,
+  formatHoursMinutes
+} from '../shared/currency'
 import { deserializeTags } from '../shared/tags'
 import type { Client, Entry, Settings } from '../shared/types'
 
@@ -290,19 +296,12 @@ export function buildPdfPayload(
   const rows: PdfRow[] = entries.map((e) => {
     const start = new Date(e.started_at)
     const stop = new Date(e.stopped_at as string)
-    // Use ceil here so that a sub-minute entry (e.g. a quick test toggle of
-    // a few seconds) is reported as 1 raw minute instead of vanishing to 0.
-    // Combined with the ceil-based `roundMinutes` below, this matches the
-    // conventional billing rule: any started step gets charged in full.
+    // `billedMinutes` ceils to whole minutes, then to the step: any started
+    // step gets charged in full (shared with the calendar's day revenue).
     const rawMs = Math.max(0, stop.getTime() - start.getTime())
-    const rawMin = rawMs > 0 ? Math.ceil(rawMs / 60000) : 0
-    const minutes = roundMinutes(rawMin, roundStep)
-    // v1.13 #120: project rate overrides client rate when set
-    // (matches analyticsHandlers' COALESCE(p.rate_cent, c.rate_cent)).
-    const effectiveRate =
-      e.project_rate_cent != null && e.project_rate_cent > 0
-        ? e.project_rate_cent
-        : client.rate_cent
+    const minutes = billedMinutes(rawMs, roundStep)
+    // v1.13 #120: project rate overrides client rate when set.
+    const effectiveRate = effectiveRateCent(e.project_rate_cent, client.rate_cent)
     const fee = effectiveRate > 0 ? feeCent(minutes, effectiveRate) : null
     // When rounding is on, we also adjust the displayed times so the
     // visible "Von / Bis / Dauer" arithmetic adds up for the recipient.
