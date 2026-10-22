@@ -347,7 +347,6 @@ export const en: Record<TranslationKey, string> = {
   'tags.removeAria': 'Remove tag {tag}',
 
   // ── CalendarDrawer ────────────────────────────────────────────────────────
-  'drawer.header.title': 'Entries for {date}',
   'drawer.entries.one': '1 entry',
   'drawer.entries.other': '{count} entries',
   'drawer.entries.filtered': '{filtered} of {total}',
@@ -355,7 +354,6 @@ export const en: Record<TranslationKey, string> = {
   'drawer.filter.apply': 'Filter by #{tag}',
   'drawer.empty.noEntries': 'No entries on this day.',
   'drawer.empty.noEntriesWithTag': 'No entries with tag #{tag}.',
-  'drawer.footer.addEntry': 'Add entry for {date}',
   'drawer.aria': 'Entries for {date}',
 
   // ── IdleModal ─────────────────────────────────────────────────────────────

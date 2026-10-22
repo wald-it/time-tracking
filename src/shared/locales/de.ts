@@ -348,7 +348,6 @@ export const de = {
   'tags.removeAria': 'Tag {tag} entfernen',
 
   // ── CalendarDrawer ────────────────────────────────────────────────────────
-  'drawer.header.title': 'Einträge für {date}',
   'drawer.entries.one': '1 Eintrag',
   'drawer.entries.other': '{count} Einträge',
   'drawer.entries.filtered': '{filtered} von {total}',
@@ -356,7 +355,6 @@ export const de = {
   'drawer.filter.apply': 'Nach #{tag} filtern',
   'drawer.empty.noEntries': 'Kein Eintrag an diesem Tag.',
   'drawer.empty.noEntriesWithTag': 'Keine Einträge mit Tag #{tag}.',
-  'drawer.footer.addEntry': 'Eintrag für {date} hinzufügen',
   'drawer.aria': 'Einträge für {date}',
 
   // ── IdleModal ─────────────────────────────────────────────────────────────
