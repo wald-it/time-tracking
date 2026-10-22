@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [1.21.0] — 2026-10-22
+
 ### Added
 
 - **The calendar shows each day's billable revenue** — A day with rated, billable time now shows its amount under the hour total ("250,00 €"); days without a rate show nothing, so nothing changes for anyone who never set one. The amount is computed per entry exactly like the PDF invoice: non-billable entries stay out (#104), minutes are rounded up to the configured step, and a project rate wins over the client rate (#120). Both rules now live in one place that the PDF uses as well, so the calendar and the invoice cannot drift apart.
