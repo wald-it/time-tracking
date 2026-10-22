@@ -49,13 +49,14 @@ export interface DayWeekTotals {
 }
 
 /**
- * The rounding step the app applies before *showing* a duration
- * (`pdf_round_minutes`, ceiling arithmetic — see `roundDuration`). 0 = off.
+ * The rounding step (`pdf_round_minutes`, ceiling arithmetic — see
+ * `roundDuration`). 0 = off.
  *
- * The stat cards on the "Heute" page round; the raw seconds stay in the
- * payload. Any surface that wants to show the same number as the app has to
- * round the same way, which is what tripped up the first version of the dial:
- * 6:24 raw against 6:30 on screen at a 15-minute step.
+ * Since the Messinstrument UI the "Heute" page shows the RAW worked time
+ * large and the rounded value only as a sub-line ("gerundet … h"); the dial
+ * mirrors the raw number. The rounded value still travels in `get_summary`
+ * for surfaces that want it — and any of them has to round exactly this way
+ * (the first dial disagreed with the page: 6:24 raw against 6:30).
  */
 export function readRoundMinutes(db: Db): number {
   const row = db.prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`).get() as

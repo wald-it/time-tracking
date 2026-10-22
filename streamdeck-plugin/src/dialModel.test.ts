@@ -152,8 +152,10 @@ describe('formatHm / elapsedSeconds', () => {
 })
 
 describe('displayTotals', () => {
-  it('prefers the rounded seconds the app shows', () => {
-    // The hardware run that found this: 6:24 raw, 6:30 in the app window.
+  it('shows the worked (raw) seconds, like the app since Messinstrument', () => {
+    // Heute now shows the worked time large and the rounded value as a
+    // sub-line (owner decision 2026-10-22: hours are worked time, euros follow
+    // the invoice). The bridge still sends the rounded pair — it must not win.
     expect(
       displayTotals({
         today_seconds: 0,
@@ -161,7 +163,7 @@ describe('displayTotals', () => {
         today_display_seconds: 0,
         week_display_seconds: 23400
       })
-    ).toEqual({ today: 0, week: 23400 })
+    ).toEqual({ today: 0, week: 23051 })
   })
 
   it('falls back to raw against an app that does not send them yet', () => {

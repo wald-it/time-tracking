@@ -346,10 +346,13 @@ async function handleControllerRequest(
   // "Heute" page shows. Superset of get_timer_status; that op stays for the
   // key action, which does not need the totals.
   //
-  // Raw *and* display seconds: the page shows the rounded value
-  // (`pdf_round_minutes`, ceiling), so a surface that renders the raw number
-  // disagrees with the app by up to one rounding step. Rounding here rather
-  // than in the plugin keeps the rule in one place.
+  // Raw and rounded seconds. Since the Messinstrument UI (owner decision
+  // 2026-10-22) the app shows the RAW worked time large and the rounded value
+  // (`pdf_round_minutes`, ceiling) as a sub-line; surfaces that mirror the
+  // page show the raw seconds. The rounded pair is sent under clear names
+  // (`*_rounded_seconds`). `*_display_seconds` carries the same rounded value
+  // and keeps its meaning for plugin versions that already read it — the
+  // plugin ships separately. Rounding stays here, in one place.
   if (op === 'get_summary') {
     const totals = readTotals(db)
     const round_minutes = readRoundMinutes(db)
@@ -359,6 +362,9 @@ async function handleControllerRequest(
         running: readRunning(db),
         ...totals,
         round_minutes,
+        today_rounded_seconds: roundDuration(totals.today_seconds, round_minutes),
+        week_rounded_seconds: roundDuration(totals.week_seconds, round_minutes),
+        // Legacy name, unchanged meaning (rounded) — see above.
         today_display_seconds: roundDuration(totals.today_seconds, round_minutes),
         week_display_seconds: roundDuration(totals.week_seconds, round_minutes)
       }

@@ -148,6 +148,10 @@ export interface Summary {
    * `round_minutes`. The dial shows these — rendering the raw seconds made it
    * disagree with the app by up to one rounding step (6:24 vs. 6:30).
    */
+  /** Rounded (`pdf_round_minutes`); the dial shows the raw seconds. */
+  today_rounded_seconds?: number
+  week_rounded_seconds?: number
+  /** Legacy name of the rounded pair, kept for older plugin builds. */
   today_display_seconds?: number
   week_display_seconds?: number
 }

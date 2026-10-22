@@ -350,6 +350,8 @@ describe('handleRequest — controller scope', () => {
         today_seconds: 0,
         week_seconds: 0,
         round_minutes: 0,
+        today_rounded_seconds: 0,
+        week_rounded_seconds: 0,
         today_display_seconds: 0,
         week_display_seconds: 0
       })
@@ -417,6 +419,11 @@ describe('handleRequest — controller scope', () => {
     expect(data.today_seconds).toBe(6 * 3600 + 24 * 60)
     expect(data.today_display_seconds).toBe(6 * 3600 + 30 * 60)
     expect(data.week_display_seconds).toBe(6 * 3600 + 30 * 60)
+    // The rounded pair under names that say what it is; *_display_seconds
+    // keeps its meaning for plugins that already read it.
+    const named = res.data as { today_rounded_seconds: number; week_rounded_seconds: number }
+    expect(named.today_rounded_seconds).toBe(6 * 3600 + 30 * 60)
+    expect(named.week_rounded_seconds).toBe(6 * 3600 + 30 * 60)
   })
 
   it('get_summary passes the raw seconds through when rounding is off', async () => {
