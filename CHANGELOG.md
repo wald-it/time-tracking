@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **The calendar shows each day's billable revenue** — A day with rated, billable time now shows its amount under the hour total ("250,00 €"); days without a rate show nothing, so nothing changes for anyone who never set one. The amount is computed per entry exactly like the PDF invoice: non-billable entries stay out (#104), minutes are rounded up to the configured step, and a project rate wins over the client rate (#120). Both rules now live in one place that the PDF uses as well, so the calendar and the invoice cannot drift apart.
+
 ### Fixed
 
 - **An MCP preview now says that nothing was written** — A write tool called with `preview: true` returned the planned change as plain JSON, which looked exactly like a success. The server even advised clients to preview first, but never to execute afterwards, so an assistant could stop after the preview and report an entry that TimeTrack never showed. Preview replies now carry a `hinweis` that nothing was created and that the same call without `preview` executes it; the server instructions and the `preview` parameter of all four write tools say the same.
