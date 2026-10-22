@@ -29,6 +29,13 @@ import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
 import {
+  WINDOW_BOUNDS_KEY,
+  createWindowStateKeeper,
+  parseWindowState,
+  resolveWindow,
+  showPlacedWindow
+} from './windowBounds'
+import {
   startMcpBridge,
   stopMcpBridge,
   generateWriteToken,
@@ -378,17 +385,56 @@ function loadStartupSettings(): void {
  * Default window size: the 1280px the Messinstrument screens are drawn for,
  * clamped to the primary display's work area (taskbar excluded). Minimum
  * 760 × 600 — at 760 the content column still fits the entry table's 640px.
+ * A size and position from the last session wins when it is still on screen
+ * (`windowBounds.ts`).
  */
 const DEFAULT_WINDOW = { width: 1280, height: 860 }
 const MIN_WINDOW = { width: 760, height: 600 }
+/** Resizing and moving fire continuously; store once the window has settled. */
+const WINDOW_SAVE_DEBOUNCE_MS = 500
+
+function loadWindowState(): ReturnType<typeof parseWindowState> {
+  try {
+    const row = getDb()
+      .prepare('SELECT value FROM settings WHERE key = ?')
+      .get(WINDOW_BOUNDS_KEY) as { value: string } | undefined
+    return parseWindowState(row?.value)
+  } catch (err) {
+    console.warn('[window] bounds load failed (using default):', err)
+    return null
+  }
+}
+
+/**
+ * Stores the main window's normal bounds and maximized flag: debounced while it
+ * is resized or moved, at once when it minimizes, hides to the tray or the app
+ * quits — so neither a crash nor a kill loses more than the last half second.
+ */
+const windowState = createWindowStateKeeper({
+  delayMs: WINDOW_SAVE_DEBOUNCE_MS,
+  write: (value) => {
+    try {
+      getDb()
+        .prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`)
+        .run(WINDOW_BOUNDS_KEY, value)
+    } catch (err) {
+      console.warn('[window] bounds save failed:', err)
+    }
+  }
+})
 
 function createWindow(): void {
-  const work = screen.getPrimaryDisplay().workAreaSize
+  const placed = resolveWindow(
+    loadWindowState(),
+    screen.getAllDisplays().map((d) => d.workArea),
+    screen.getPrimaryDisplay().workArea,
+    DEFAULT_WINDOW,
+    MIN_WINDOW
+  )
   mainWindow = new BrowserWindow({
-    width: Math.min(DEFAULT_WINDOW.width, work.width),
-    height: Math.min(DEFAULT_WINDOW.height, work.height),
-    minWidth: Math.min(MIN_WINDOW.width, work.width),
-    minHeight: Math.min(MIN_WINDOW.height, work.height),
+    ...placed.bounds,
+    minWidth: placed.minSize.width,
+    minHeight: placed.minSize.height,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -400,13 +446,26 @@ function createWindow(): void {
     }
   })
 
+  // Windows can size a window created with x/y on a monitor whose scaling
+  // differs from the primary's wrongly; setting the bounds once more after
+  // creation puts it right (owner review).
+  mainWindow.setBounds(placed.bounds)
+
   mainWindow.on('ready-to-show', () => {
-    mainWindow!.show()
+    showPlacedWindow(mainWindow!, placed.maximized)
   })
+
+  const changed = (): void => windowState.changed(mainWindow)
+  mainWindow.on('resize', changed)
+  mainWindow.on('move', changed)
+  mainWindow.on('maximize', changed)
+  mainWindow.on('unmaximize', changed)
+  mainWindow.on('minimize', () => windowState.flush())
 
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault()
+      windowState.flush(mainWindow)
       mainWindow?.hide()
     }
   })
@@ -789,6 +848,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true
+  windowState.flush(mainWindow)
 })
 
 app.on('will-quit', () => {

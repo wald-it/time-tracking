@@ -189,6 +189,9 @@ export interface Settings {
   // v1.11 #94 — Show external project number in square brackets.
   // '0' (default) = hidden, '1' = shown.
   show_project_number?: string
+  // Main window size, position and maximized flag as a JSON blob, written by
+  // the main process (see main/windowBounds.ts). Absent until the first move.
+  window_bounds?: string
   // v1.13.2 — Export modal preferences as a JSON blob (see ExportModal.tsx).
   // Lives in the DB instead of localStorage so it survives hard exits,
   // second instances, and is included in backups. Absent until first change.
