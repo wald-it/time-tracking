@@ -79,19 +79,13 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-[100]"
-        style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
-        onPointerDown={onClose}
-      />
+      <div className="fixed inset-0 z-[100] bg-[rgb(0_0_0/0.35)]" onPointerDown={onClose} />
       {/* Modal */}
       <div
-        className="fixed left-1/2 top-1/2 z-[101] w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[18px] border p-6 flex flex-col gap-4"
+        className="fixed left-1/2 top-1/2 z-[101] w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[var(--r-disp)] border p-6 flex flex-col gap-4"
         style={{
           background: 'var(--modal-bg)',
-          borderColor: 'var(--card-border)',
-          boxShadow: 'var(--shadow)',
-          backdropFilter: 'blur(20px)'
+          borderColor: 'var(--card-border)'
         }}
       >
         {/* Header */}
@@ -102,7 +96,7 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="rounded-[var(--r-key)] p-1.5 transition-colors hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             aria-label={t('common.close')}
           >
             <Icons.X />
@@ -122,8 +116,8 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
               aria-label={t('timer.client.label')}
               value={selectedClientId ?? ''}
               onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full appearance-none rounded-[10px] border px-3.5 py-2.5 pr-9 text-sm backdrop-blur-xl
-                focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full appearance-none rounded-[var(--r-key)] border px-3.5 py-2.5 pr-9 text-sm
+                focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{
                 background: 'var(--input-bg)',
                 borderColor: 'var(--card-border)',
@@ -169,8 +163,8 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
                 onChange={(e) =>
                   setSelectedProjectId(e.target.value ? Number(e.target.value) : null)
                 }
-                className="w-full appearance-none rounded-[10px] border px-3.5 py-2.5 pr-9 text-sm backdrop-blur-xl
-                  focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full appearance-none rounded-[var(--r-key)] border px-3.5 py-2.5 pr-9 text-sm
+                  focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
                 style={{
                   background: 'var(--input-bg)',
                   borderColor: 'var(--card-border)',
@@ -223,10 +217,11 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
             const over = usedMin > budgetMin
             return (
               <div
-                className="flex items-start gap-2 rounded-[10px] px-3 py-2.5 text-xs"
+                className="flex items-start gap-2 rounded-[var(--r-key)] px-3 py-2.5 text-xs"
                 style={{
-                  background: over ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
-                  color: over ? 'var(--danger)' : '#f59e0b'
+                  background: over ? 'var(--danger-bg)' : 'var(--key)',
+                  color: over ? 'var(--danger)' : 'var(--ink)',
+                  border: `1px solid ${over ? 'transparent' : 'var(--key-edge)'}`
                 }}
               >
                 <span className="shrink-0 mt-0.5">⚠</span>
@@ -258,8 +253,8 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
             onChange={(e) => setDescription(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void handleStart()}
             autoFocus
-            className="rounded-[10px] border px-3.5 py-2.5 text-sm backdrop-blur-xl
-              focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="rounded-[var(--r-key)] border px-3.5 py-2.5 text-sm
+              focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -273,11 +268,11 @@ export function StartTimerModal({ open, onClose }: StartTimerModalProps): React.
           type="button"
           onClick={() => void handleStart()}
           disabled={!canStart}
-          className="flex items-center justify-center gap-2.5 rounded-[12px] py-3 text-base font-bold transition-all
+          className="flex items-center justify-center gap-2.5 rounded-[var(--r-key)] py-3 text-base font-bold transition-all
             disabled:cursor-not-allowed"
           style={{
             background: canStart ? 'var(--accent)' : 'var(--card-bg)',
-            color: canStart ? '#fff' : 'var(--text3)',
+            color: canStart ? 'var(--inv-ink)' : 'var(--text3)',
             border: 'none'
           }}
         >

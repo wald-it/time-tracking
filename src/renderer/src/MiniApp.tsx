@@ -54,19 +54,16 @@ export default function MiniApp(): React.JSX.Element {
         className="
           drag-region
           flex h-10 w-[200px] items-center gap-2 px-3
-          rounded-md bg-slate-900/90 backdrop-blur-sm
-          text-sm text-slate-100
+          rounded-[var(--r-key)] bg-[var(--disp,#1b1b19)]
+          text-sm text-[var(--disp-ink,#edebe4)]
           select-none
         "
       >
-        <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
+        <span className="h-2 w-2 rounded-[var(--r-fine,2px)] bg-[var(--sig,#e2551f)]" aria-hidden />
         <span className="flex-1 truncate" title={state.label}>
           {state.label || t('miniWidget.timerRunning')}
         </span>
-        <span
-          className="tabular-nums text-xs"
-          style={{ color: 'var(--text2)', fontFamily: "'JetBrains Mono', monospace" }}
-        >
+        <span className="font-num text-xs" style={{ color: 'var(--text2)' }}>
           {formatDuration(elapsed)}
         </span>
         <button
@@ -76,7 +73,7 @@ export default function MiniApp(): React.JSX.Element {
           className="
             no-drag-region
             h-6 w-6 flex items-center justify-center
-            rounded text-slate-300 hover:bg-rose-600 hover:text-white
+            rounded text-[var(--disp-ink,#edebe4)] hover:bg-[var(--danger,#a8261b)] hover:text-[var(--bg,#e8e6df)]
           "
         >
           ■
@@ -90,13 +87,18 @@ export default function MiniApp(): React.JSX.Element {
       className="
         drag-region
         flex h-10 w-[200px] items-center gap-2 px-3
-        rounded-md bg-slate-900/90 backdrop-blur-sm
-        text-sm text-slate-200
+        rounded-[var(--r-key)] bg-[var(--disp,#1b1b19)]
+        text-sm text-[var(--disp-ink,#edebe4)]
         select-none
       "
     >
-      <span className="h-2 w-2 rounded-full bg-slate-600" aria-hidden />
-      <span className="flex-1 truncate text-slate-400">{t('miniWidget.noTimer')}</span>
+      <span
+        className="h-2 w-2 rounded-[var(--r-fine,2px)] bg-[var(--disp-dim,#8f8c83)]"
+        aria-hidden
+      />
+      <span className="flex-1 truncate text-[var(--disp-dim,#8f8c83)]">
+        {t('miniWidget.noTimer')}
+      </span>
       <button
         type="button"
         aria-label={t('miniWidget.start')}
@@ -104,7 +106,7 @@ export default function MiniApp(): React.JSX.Element {
         className="
           no-drag-region
           h-6 w-6 flex items-center justify-center
-          rounded text-slate-400 hover:bg-emerald-600 hover:text-white
+          rounded text-[var(--disp-dim,#8f8c83)] hover:bg-[var(--disp-line,#3a3935)] hover:text-[var(--disp-ink,#edebe4)]
         "
       >
         ▶

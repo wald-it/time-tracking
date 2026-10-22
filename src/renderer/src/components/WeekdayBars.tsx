@@ -35,7 +35,7 @@ export function WeekdayBars({ weekday }: WeekdayBarsProps): React.JSX.Element {
               className="tabular-nums"
               style={{
                 fontSize: 10,
-                fontFamily: 'var(--font-mono, monospace)',
+                fontFamily: 'var(--font-num)',
                 color: 'var(--text2)'
               }}
             >
@@ -46,9 +46,7 @@ export function WeekdayBars({ weekday }: WeekdayBarsProps): React.JSX.Element {
                 width: '100%',
                 height: barH,
                 borderRadius: '4px 4px 1px 1px',
-                background: isWeekend
-                  ? 'linear-gradient(180deg, var(--text3-50, rgba(74,82,112,.4)), var(--text3-25, rgba(74,82,112,.2)))'
-                  : 'linear-gradient(180deg, var(--accent), var(--accent-88, rgba(139,124,248,.55)))',
+                background: isWeekend ? 'var(--tick)' : 'var(--accent)',
                 transition: 'height 0.4s ease'
               }}
             />

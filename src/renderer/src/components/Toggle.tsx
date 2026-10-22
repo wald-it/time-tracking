@@ -14,10 +14,9 @@ export function Toggle({ checked, onChange, disabled }: ToggleProps): React.JSX.
       style={{
         width: 40,
         height: 22,
-        borderRadius: 11,
-        background: checked ? 'var(--accent)' : 'var(--card-bg)',
-        border: `1px solid ${checked ? 'var(--accent)' : 'var(--card-border)'}`,
-        boxShadow: checked ? '0 0 12px var(--accent-glow)' : 'none',
+        borderRadius: 'var(--r-key)',
+        background: checked ? 'var(--inv)' : 'var(--key)',
+        border: `1px solid ${checked ? 'var(--inv)' : 'var(--key-edge)'}`,
         opacity: disabled ? 0.5 : 1
       }}
     >
@@ -27,9 +26,8 @@ export function Toggle({ checked, onChange, disabled }: ToggleProps): React.JSX.
           left: checked ? 20 : 2,
           width: 16,
           height: 16,
-          borderRadius: '50%',
-          background: '#fff',
-          boxShadow: '0 1px 4px rgba(0,0,0,.3)'
+          borderRadius: 'var(--r-fine)',
+          background: checked ? 'var(--inv-ink)' : 'var(--ink3)'
         }}
       />
     </div>

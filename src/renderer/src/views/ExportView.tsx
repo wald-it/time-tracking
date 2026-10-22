@@ -60,7 +60,7 @@ export default function ExportView(): React.JSX.Element {
           <button
             type="button"
             onClick={() => onQuickRange('lastMonth')}
-            className="rounded-full px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="rounded-[var(--r-key)] px-3 py-1.5 text-xs font-semibold text-[var(--inv-ink)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             style={{ background: 'var(--accent)' }}
             title={t('export.view.lastMonthTitle')}
           >
@@ -74,7 +74,7 @@ export default function ExportView(): React.JSX.Element {
               key={k}
               type="button"
               onClick={() => onQuickRange(k)}
-              className="rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-xl hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{
                 background: 'var(--card-bg)',
                 borderColor: 'var(--card-border)',
@@ -93,7 +93,7 @@ export default function ExportView(): React.JSX.Element {
           <button
             type="button"
             onClick={() => setMergeOpen(true)}
-            className="rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-xl hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             style={{
               background: 'var(--card-bg)',
               borderColor: 'var(--card-border)',
@@ -125,7 +125,7 @@ export default function ExportView(): React.JSX.Element {
 function Card({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <section
-      className="flex flex-col gap-3 rounded-xl border p-4 backdrop-blur-xl"
+      className="flex flex-col gap-3 rounded-[var(--r-disp)] border p-4"
       style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
     >
       {children}

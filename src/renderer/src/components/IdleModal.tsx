@@ -33,13 +33,13 @@ export function IdleModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(0_0_0/0.35)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="idle-modal-title"
     >
       <div
-        className="w-[460px] rounded-xl border p-6 shadow-2xl backdrop-blur-xl"
+        className="w-[460px] rounded-[var(--r-disp)] border p-6"
         style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
       >
         <h2
@@ -56,7 +56,7 @@ export function IdleModal({
           <button
             type="button"
             onClick={onKeep}
-            className="rounded-lg px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium text-[var(--inv-ink)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             style={{ background: 'var(--accent)' }}
             autoFocus
           >
@@ -65,7 +65,7 @@ export function IdleModal({
           <button
             type="button"
             onClick={onStopAtIdle}
-            className="rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400 border backdrop-blur-xl"
+            className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] border"
             style={{
               background: 'var(--card-bg)',
               borderColor: 'var(--card-border)',
@@ -77,7 +77,7 @@ export function IdleModal({
           <button
             type="button"
             onClick={onMarkPause}
-            className="rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400 border backdrop-blur-xl"
+            className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] border"
             style={{
               background: 'var(--card-bg)',
               borderColor: 'var(--card-border)',

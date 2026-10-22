@@ -149,7 +149,7 @@ export default function CalendarView(): React.JSX.Element {
         <button
           type="button"
           onClick={onPrev}
-          className="grid h-9 w-9 place-items-center rounded-lg border backdrop-blur-xl hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="grid h-9 w-9 place-items-center rounded-[var(--r-key)] border key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
           style={{
             background: 'var(--card-bg)',
             borderColor: 'var(--card-border)',
@@ -168,7 +168,7 @@ export default function CalendarView(): React.JSX.Element {
         <button
           type="button"
           onClick={onNext}
-          className="grid h-9 w-9 place-items-center rounded-lg border backdrop-blur-xl hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="grid h-9 w-9 place-items-center rounded-[var(--r-key)] border key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
           style={{
             background: 'var(--card-bg)',
             borderColor: 'var(--card-border)',
@@ -181,7 +181,7 @@ export default function CalendarView(): React.JSX.Element {
         <button
           type="button"
           onClick={onToday}
-          className="ml-2 rounded-lg border px-3 py-1.5 text-sm font-medium backdrop-blur-xl hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="ml-2 rounded-[var(--r-key)] border px-3 py-1.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
           style={{
             background: 'var(--card-bg)',
             borderColor: 'var(--card-border)',
@@ -193,7 +193,7 @@ export default function CalendarView(): React.JSX.Element {
         <button
           type="button"
           onClick={() => setImportOpen(true)}
-          className="ml-2 rounded-lg border px-3 py-1.5 text-sm font-medium backdrop-blur-xl hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="ml-2 rounded-[var(--r-key)] border px-3 py-1.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
           style={{
             background: 'var(--card-bg)',
             borderColor: 'var(--card-border)',
@@ -220,7 +220,7 @@ export default function CalendarView(): React.JSX.Element {
 
       {/* Header row: KW + Mo–So */}
       <div
-        className="grid grid-cols-[40px_repeat(7,minmax(0,1fr))] gap-px rounded-t-lg"
+        className="grid grid-cols-[40px_repeat(7,minmax(0,1fr))] gap-px rounded-t-[var(--r-key)]"
         style={{ background: 'var(--card-border)' }}
       >
         <div
@@ -256,7 +256,7 @@ export default function CalendarView(): React.JSX.Element {
         role="grid"
         aria-label={t('calendar.grid.aria')}
         onKeyDown={handleKey}
-        className="grid grid-cols-[40px_repeat(7,minmax(0,1fr))] gap-px rounded-b-lg"
+        className="grid grid-cols-[40px_repeat(7,minmax(0,1fr))] gap-px rounded-b-[var(--r-key)]"
         style={{ background: 'var(--card-border)' }}
       >
         {weeks.map((week) => (
@@ -345,10 +345,10 @@ function Week({
             aria-label={`${formatAriaDate(day, months)}${dayEntries.length ? `, ${dayEntries.length}` : ''}`}
             onClick={() => onSelect(day)}
             className={[
-              'relative flex h-24 flex-col gap-0.5 px-2 py-1 text-left transition-colors backdrop-blur-xl',
-              'focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-400',
+              'relative flex h-24 flex-col gap-0.5 px-2 py-1 text-left transition-colors',
+              'focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--focus)]',
               !inMonth && 'opacity-40',
-              isToday && 'border-2 border-indigo-500'
+              isToday && 'border-2 border-[var(--ink)]'
             ]
               .filter(Boolean)
               .join(' ')}
@@ -366,7 +366,7 @@ function Week({
               {dayEntries.length > 0 && (
                 <span
                   className="text-[10px] tabular-nums"
-                  style={{ color: 'var(--text2)', fontFamily: "'JetBrains Mono', monospace" }}
+                  style={{ color: 'var(--text2)', fontFamily: 'var(--font-num)' }}
                   title={displaySeconds !== totalSeconds ? formatHHMM(totalSeconds) : undefined}
                 >
                   {formatHHMM(displaySeconds)}
@@ -377,7 +377,7 @@ function Week({
               <span
                 data-testid="day-revenue"
                 className="self-end text-[10px] tabular-nums"
-                style={{ color: 'var(--text3)', fontFamily: "'JetBrains Mono', monospace" }}
+                style={{ color: 'var(--text3)', fontFamily: 'var(--font-num)' }}
               >
                 {formatEur(revenueCent)}
               </span>
@@ -434,7 +434,7 @@ function DayBars({
         return (
           <div
             key={e.id}
-            className="h-[3px] rounded-sm"
+            className="h-[3px] rounded-[var(--r-key)]"
             style={{ backgroundColor: color }}
             title={tooltip}
           />

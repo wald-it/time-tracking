@@ -123,14 +123,18 @@ export function CalendarDrawer({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-30 bg-black/40" onClick={onClose} aria-hidden="true" />
+      <div
+        className="fixed inset-0 z-30 bg-[rgb(0_0_0/0.35)]"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       {/* Drawer */}
       <aside
         ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-label={t('drawer.aria', { date: dateLabel })}
-        className="fixed right-0 top-0 z-40 flex h-screen w-96 flex-col shadow-2xl border-l backdrop-blur-xl"
+        className="fixed right-0 top-0 z-40 flex h-screen w-96 flex-col border-l"
         style={{ background: 'var(--nav-bg)', borderColor: 'var(--card-border)' }}
       >
         {/* Sticky header */}
@@ -162,10 +166,10 @@ export function CalendarDrawer({
                     key={tag}
                     type="button"
                     onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
-                    className={`rounded-full border px-2 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-indigo-400 ${
+                    className={`rounded-[var(--r-key)] border px-2 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[var(--focus)] ${
                       tagFilter === tag
-                        ? 'border-indigo-500 bg-indigo-600 text-white'
-                        : 'hover:border-indigo-400'
+                        ? 'border-[var(--ink)] bg-[var(--inv)] text-[var(--inv-ink)]'
+                        : 'hover:border-[var(--ink)]'
                     }`}
                     style={
                       tagFilter !== tag
@@ -193,7 +197,7 @@ export function CalendarDrawer({
             type="button"
             onClick={onClose}
             aria-label={t('common.close')}
-            className="grid h-11 w-11 place-items-center rounded-lg hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="grid h-11 w-11 place-items-center rounded-[var(--r-key)] hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             style={{ color: 'var(--text2)' }}
           >
             ×
@@ -220,13 +224,13 @@ export function CalendarDrawer({
               return (
                 <li
                   key={e.id}
-                  className="rounded-lg border backdrop-blur-xl"
+                  className="rounded-[var(--r-key)] border"
                   style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
                 >
                   {!isEditing && (
                     <div className="flex items-center gap-2 p-2">
                       <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        className="h-2.5 w-2.5 shrink-0 rounded-[var(--r-fine)]"
                         style={{ backgroundColor: project?.color || (client?.color ?? '#64748b') }}
                       />
                       <div className="min-w-0 flex-1">
@@ -234,10 +238,7 @@ export function CalendarDrawer({
                           className="flex items-center gap-2 text-xs"
                           style={{ color: 'var(--text2)' }}
                         >
-                          <span
-                            className="tabular-nums"
-                            style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                          >
+                          <span className="tabular-nums" style={{ fontFamily: 'var(--font-num)' }}>
                             {formatTimeRange(e)}
                           </span>
                           <span>·</span>
@@ -262,7 +263,7 @@ export function CalendarDrawer({
                             {entryTags.map((tag) => (
                               <span
                                 key={tag}
-                                className="rounded-full px-1.5 py-px text-xs"
+                                className="rounded-[var(--r-key)] px-1.5 py-px text-xs"
                                 style={{ background: 'var(--accent-bg)', color: 'var(--text2)' }}
                               >
                                 #{tag}
@@ -273,14 +274,14 @@ export function CalendarDrawer({
                       </div>
                       <span
                         className="text-xs tabular-nums"
-                        style={{ color: 'var(--text)', fontFamily: "'JetBrains Mono', monospace" }}
+                        style={{ color: 'var(--text)', fontFamily: 'var(--font-num)' }}
                       >
                         {formatHHMM(durationSeconds(e))}
                       </span>
                       <button
                         type="button"
                         onClick={() => setEditingId(e.id)}
-                        className="rounded p-1 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
                         style={{ color: 'var(--text2)' }}
                         aria-label={t('common.edit')}
                         title={t('common.edit')}
@@ -291,7 +292,7 @@ export function CalendarDrawer({
                         type="button"
                         onClick={() => setDeleteCandidate(e)}
                         disabled={e.stopped_at === null}
-                        className="rounded p-1 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-30"
+                        className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-30"
                         style={{ color: 'var(--danger)' }}
                         aria-label={t('common.delete')}
                         title={
@@ -320,7 +321,7 @@ export function CalendarDrawer({
             })}
             {creating && (
               <li
-                className="rounded-lg border p-3 backdrop-blur-xl"
+                className="rounded-[var(--r-key)] border p-3"
                 style={{ background: 'var(--card-bg)', borderColor: 'var(--accent)' }}
               >
                 <EntryEditForm
@@ -347,7 +348,7 @@ export function CalendarDrawer({
               type="button"
               onClick={() => setCreating(true)}
               disabled={clients.length === 0}
-              className="w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 rounded-[var(--r-key)] px-4 py-2 text-sm font-medium text-[var(--inv-ink)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: 'var(--accent)' }}
             >
               <Icons.Plus width={15} height={15} />

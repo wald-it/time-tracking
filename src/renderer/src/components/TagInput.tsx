@@ -12,25 +12,11 @@ interface Props {
 }
 
 /**
- * 8-color deterministic palette for tag chips.
- * Color is derived from the first character code so the same tag always
- * gets the same color across sessions.
+ * Tag chips are outlined legend chips in ink (Messinstrument, HANDOFF §3.2 /
+ * §3.10): colour never carries meaning on its own, and the old per-letter
+ * palette was not tied to anything the tag means.
  */
-const CHIP_COLORS: string[] = [
-  'bg-indigo-900/60 text-indigo-300 border-indigo-700',
-  'bg-emerald-900/60 text-emerald-300 border-emerald-700',
-  'bg-amber-900/60 text-amber-300 border-amber-700',
-  'bg-rose-900/60 text-rose-300 border-rose-700',
-  'bg-violet-900/60 text-violet-300 border-violet-700',
-  'bg-sky-900/60 text-sky-300 border-sky-700',
-  'bg-lime-900/60 text-lime-300 border-lime-700',
-  'bg-orange-900/60 text-orange-300 border-orange-700'
-]
-
-function chipColor(tag: string): string {
-  const code = tag.charCodeAt(0) || 0
-  return CHIP_COLORS[code % CHIP_COLORS.length]
-}
+const CHIP_CLASS = 'bg-[var(--key)] text-[var(--ink2)] border-[var(--key-edge)]'
 
 // Sentinel value for the "create new tag" option in the dropdown
 const CREATE_SENTINEL = '__create__'
@@ -215,7 +201,7 @@ export function TagInput({
   return (
     <div ref={containerRef} className="relative">
       <div
-        className={`flex min-h-[36px] flex-wrap items-center gap-1 rounded border px-2 py-1.5 focus-within:border-indigo-500 transition-colors ${disabled ? 'opacity-50' : ''}`}
+        className={`flex min-h-[36px] flex-wrap items-center gap-1 rounded border px-2 py-1.5 focus-within:border-[var(--ink)] transition-colors ${disabled ? 'opacity-50' : ''}`}
         style={{ background: 'var(--input-bg)', borderColor: 'var(--card-border)' }}
         onClick={() => {
           inputRef.current?.focus()
@@ -228,7 +214,7 @@ export function TagInput({
         {tags.map((tag) => (
           <span
             key={tag}
-            className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium ${chipColor(tag)}`}
+            className={`inline-flex items-center gap-1 rounded-[var(--r-fine)] border px-1.5 py-0.5 text-xs font-medium ${CHIP_CLASS}`}
           >
             #{tag}
             {!disabled && (
@@ -272,7 +258,7 @@ export function TagInput({
       {showDropdown && (
         <ul
           role="listbox"
-          className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded border py-1 shadow-xl backdrop-blur-xl"
+          className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded border py-1"
           style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
         >
           {suggestions.map((s, i) => (
@@ -285,7 +271,9 @@ export function TagInput({
                 void commitInput(s)
               }}
               className={`cursor-pointer px-3 py-1 text-xs ${
-                i === highlightedIndex ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'
+                i === highlightedIndex
+                  ? 'bg-[var(--inv)] text-[var(--inv-ink)]'
+                  : 'hover:bg-[var(--key)]'
               }`}
               style={
                 i !== highlightedIndex

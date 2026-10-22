@@ -5,9 +5,10 @@ import { useT } from '../contexts/I18nContext'
 /**
  * v1.5 PR B — slim banner above the main app surface.
  *
- * Visible only for non-idle states. Color choices follow the design-review
- * decision: indigo for passive info (available/downloading/ready), amber
- * for errors (NOT red — we don't want to alarm users).
+ * Visible only for non-idle states. Display style (HANDOFF §5: `--disp`,
+ * `--disp-ink`) for every state; errors are NOT red — we don't want to alarm
+ * users. Info and warn currently share one look: the text carries the
+ * meaning, not the colour (Messinstrument rule 6).
  *
  * `idle` and `not-available` collapse the banner entirely.
  */
@@ -54,14 +55,14 @@ export function UpdateBanner(): React.JSX.Element | null {
             <button
               type="button"
               onClick={() => void installNow()}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
+              className="rounded-[var(--r-key)] bg-[var(--disp-ink)] px-3 py-1.5 text-xs font-medium text-[var(--disp)] transition-colors key-hover"
             >
               {t('update.ready.install')}
             </button>
             <button
               type="button"
               onClick={dismissReady}
-              className="rounded-md px-2 py-1 text-xs text-indigo-200 transition-colors hover:bg-indigo-500/20"
+              className="rounded-[var(--r-key)] px-2 py-1 text-xs text-[var(--disp-ink)] transition-colors hover:bg-[var(--disp-line)]"
               aria-label={t('update.ready.dismiss')}
             >
               {t('update.ready.dismiss')}
@@ -85,14 +86,14 @@ export function UpdateBanner(): React.JSX.Element | null {
   const toneStyle =
     tone === 'warn'
       ? {
-          background: 'rgba(180,120,0,0.15)',
-          color: 'var(--text)',
-          borderColor: 'rgba(180,120,0,0.35)'
+          background: 'var(--disp)',
+          color: 'var(--disp-ink)',
+          borderColor: 'var(--disp-line)'
         }
       : {
-          background: 'var(--accent-bg)',
-          color: 'var(--text)',
-          borderColor: 'rgba(139,124,248,0.30)'
+          background: 'var(--disp)',
+          color: 'var(--disp-ink)',
+          borderColor: 'var(--disp-line)'
         }
 
   return (

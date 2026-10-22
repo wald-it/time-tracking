@@ -69,7 +69,7 @@ export function IcalFeedSection({
             <button
               type="button"
               onClick={() => void onCopy()}
-              className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
             >
               {copied ? t('settings.icalFeed.copied') : t('settings.icalFeed.copy')}
@@ -86,7 +86,7 @@ export function IcalFeedSection({
               onChange={(e) => onPortChange(e.target.value)}
               placeholder={t('settings.icalFeed.portPlaceholder')}
               inputMode="numeric"
-              className="w-24 rounded-lg border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-24 rounded-[var(--r-key)] border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{
                 background: 'var(--card-bg)',
                 borderColor: 'var(--card-border)',
@@ -96,7 +96,7 @@ export function IcalFeedSection({
             <button
               type="button"
               onClick={() => void onRegenerate()}
-              className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
             >
               {t('settings.icalFeed.regenerate')}

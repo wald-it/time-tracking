@@ -126,15 +126,15 @@ export function GraphAccountSection(): React.JSX.Element {
       </p>
 
       {storageMissing && (
-        <p className="text-xs text-amber-300">{t('settings.graph.storageUnavailable')}</p>
+        <p className="text-xs text-[var(--ink)]">{t('settings.graph.storageUnavailable')}</p>
       )}
 
       {connected ? (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className="inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
-              style={{ background: 'var(--green-bg)', color: 'var(--green)' }}
+              className="inline-flex w-fit items-center rounded-[var(--r-key)] px-2.5 py-0.5 text-xs font-semibold"
+              style={{ background: 'var(--key)', color: 'var(--ink2)' }}
             >
               {t('settings.graph.connected')}
             </span>
@@ -157,7 +157,7 @@ export function GraphAccountSection(): React.JSX.Element {
           {/* Teams presence mirroring (#132) — work/school accounts only. */}
           {!status?.personalAccount && (
             <div
-              className="flex flex-col gap-2 rounded-lg border p-3"
+              className="flex flex-col gap-2 rounded-[var(--r-key)] border p-3"
               style={{ borderColor: 'var(--card-border)' }}
             >
               <div className="flex items-center justify-between gap-3">
@@ -177,14 +177,14 @@ export function GraphAccountSection(): React.JSX.Element {
                     (s) => s.toLowerCase() === PRESENCE_SCOPE.toLowerCase()
                   ) && (
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs text-amber-300">
+                      <p className="text-xs text-[var(--ink)]">
                         {t('settings.presence.reconnectHint')}
                       </p>
                       <button
                         type="button"
                         onClick={() => void onConnect()}
                         disabled={busy}
-                        className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-white/10 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
                         style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
                       >
                         {busy ? t('settings.graph.connecting') : t('settings.presence.reconnect')}
@@ -215,7 +215,7 @@ export function GraphAccountSection(): React.JSX.Element {
               type="button"
               onClick={() => void onVerify()}
               disabled={verifying}
-              className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-white/10 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
             >
               {verifying ? t('settings.graph.verifying') : t('settings.graph.verify')}
@@ -223,7 +223,7 @@ export function GraphAccountSection(): React.JSX.Element {
             <button
               type="button"
               onClick={() => void onDisconnect()}
-              className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
             >
               {t('settings.graph.disconnect')}
@@ -231,7 +231,7 @@ export function GraphAccountSection(): React.JSX.Element {
           </div>
 
           {verifyMsg && (
-            <p className="text-xs" style={{ color: 'var(--green)' }}>
+            <p className="text-xs" style={{ color: 'var(--ink2)' }}>
               {verifyMsg}
             </p>
           )}
@@ -242,7 +242,7 @@ export function GraphAccountSection(): React.JSX.Element {
             type="button"
             onClick={() => void onConnect()}
             disabled={busy || storageMissing}
-            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="rounded-[var(--r-key)] px-3 py-1.5 text-xs font-semibold text-[var(--inv-ink)] hover:opacity-90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             style={{ background: 'var(--accent)' }}
           >
             {busy ? t('settings.graph.connecting') : t('settings.graph.connect')}
@@ -255,7 +255,7 @@ export function GraphAccountSection(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => void onCancel()}
-                className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
                 style={{ borderColor: 'var(--card-border)', color: 'var(--text2)' }}
               >
                 {t('settings.graph.cancel')}
@@ -293,7 +293,7 @@ export function GraphAccountSection(): React.JSX.Element {
               spellCheck={false}
               // `min-w-0` so a long GUID shrinks instead of pushing the Save
               // button out of the card in a narrow settings pane.
-              className="min-w-0 flex-1 rounded-lg border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="min-w-0 flex-1 rounded-[var(--r-key)] border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{
                 background: 'var(--card-bg)',
                 borderColor: 'var(--card-border)',
@@ -303,13 +303,13 @@ export function GraphAccountSection(): React.JSX.Element {
             <button
               type="button"
               onClick={() => void onSaveClientId()}
-              className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
             >
               {t('common.save')}
             </button>
             {clientIdSaved && (
-              <span className="text-xs" style={{ color: 'var(--green)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink2)' }}>
                 {t('settings.graph.clientIdSaved')}
               </span>
             )}

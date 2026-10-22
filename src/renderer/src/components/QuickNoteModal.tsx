@@ -69,13 +69,13 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(0_0_0/0.35)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="quicknote-title"
     >
       <div
-        className="w-[420px] rounded-xl p-6 shadow-2xl border backdrop-blur-xl"
+        className="w-[420px] rounded-[var(--r-disp)] p-6 border"
         style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
       >
         <h2
@@ -100,8 +100,8 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element {
           }}
           onKeyDown={handleKeyDown}
           placeholder={t('quicknote.placeholder')}
-          className="mb-4 w-full rounded-lg px-3 py-2.5 text-sm border outline-none
-            focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          className="mb-4 w-full rounded-[var(--r-key)] px-3 py-2.5 text-sm border outline-none
+            focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
           style={{
             background: 'var(--input-bg)',
             borderColor: 'var(--card-border)',
@@ -111,11 +111,11 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element {
 
         {/* Progress bar */}
         <div
-          className="mb-5 h-1 w-full overflow-hidden rounded-full"
+          className="mb-5 h-1 w-full overflow-hidden rounded-[var(--r-fine)]"
           style={{ background: 'var(--card-border)' }}
         >
           <div
-            className="h-1 rounded-full bg-indigo-500 transition-none"
+            className="h-1 rounded-[var(--r-fine)] bg-[var(--ink)] transition-none"
             style={{ width: `${progressPct}%` }}
           />
         </div>
@@ -125,17 +125,17 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element {
             type="button"
             onClick={() => void save()}
             disabled={!text.trim()}
-            className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium
-              text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed
-              focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="flex-1 rounded-[var(--r-key)] bg-[var(--inv)] px-4 py-2.5 text-sm font-medium
+              text-[var(--inv-ink)] key-hover disabled:opacity-40 disabled:cursor-not-allowed
+              focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
           >
             {t('common.save')}
           </button>
           <button
             type="button"
             onClick={onDone}
-            className="rounded-lg px-4 py-2.5 text-sm font-medium border
-              hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors"
+            className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium border
+              key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] transition-colors"
             style={{
               background: 'var(--card-bg)',
               borderColor: 'var(--card-border)',

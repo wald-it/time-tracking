@@ -285,7 +285,7 @@ export default function ClientsView(): React.JSX.Element {
         </h1>
         <button
           onClick={openNew}
-          className="flex items-center gap-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-1.5 transition-colors"
+          className="flex items-center gap-2 rounded-[var(--r-key)] bg-[var(--inv)] key-hover text-[var(--inv-ink)] text-sm font-medium px-4 py-1.5 transition-colors"
         >
           <Icons.Plus />
           {t('clients.addNew')}
@@ -293,11 +293,11 @@ export default function ClientsView(): React.JSX.Element {
       </div>
 
       {isLoading ? (
-        <p className="text-slate-500 text-sm">{t('clients.loading')}</p>
+        <p className="text-[var(--ink3)] text-sm">{t('clients.loading')}</p>
       ) : (
         <>
           {clients.length === 0 && (
-            <div className="text-center py-16 text-slate-500">
+            <div className="text-center py-16 text-[var(--ink3)]">
               <p className="text-4xl mb-3">👤</p>
               <p className="font-medium">{t('clients.empty.title')}</p>
               <p className="text-sm mt-1">{t('clients.empty.hint')}</p>
@@ -325,7 +325,7 @@ export default function ClientsView(): React.JSX.Element {
               <button
                 onClick={() => setArchivedExpanded((v) => !v)}
                 aria-expanded={archivedExpanded}
-                className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300
+                className="flex items-center gap-1.5 text-[var(--ink3)] hover:text-[var(--ink)]
                   text-xs font-medium uppercase tracking-wide mb-2 transition-colors"
               >
                 <svg
@@ -510,7 +510,7 @@ function ClientItem({
 
   return (
     <li
-      className="rounded-xl border backdrop-blur-xl transition-colors overflow-hidden"
+      className="rounded-[var(--r-disp)] border transition-colors overflow-hidden"
       style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
     >
       {/* Client row */}
@@ -523,7 +523,7 @@ function ClientItem({
           onClick={() => onToggleExpand(c.id)}
           aria-expanded={expanded}
           aria-label={expanded ? 'Projekte verbergen' : 'Projekte anzeigen'}
-          className="rounded p-0.5 transition-colors hover:bg-white/10 shrink-0"
+          className="rounded p-0.5 transition-colors hover:bg-[var(--key)] shrink-0"
           style={{ color: 'var(--text3)' }}
         >
           <svg
@@ -541,7 +541,7 @@ function ClientItem({
         </button>
 
         <span
-          className={`w-4 h-4 rounded-full shrink-0 self-start mt-1 ${dimmed ? 'opacity-40' : ''}`}
+          className={`w-4 h-4 rounded-[var(--r-fine)] shrink-0 self-start mt-1 ${dimmed ? 'opacity-40' : ''}`}
           style={{ backgroundColor: c.color }}
         />
         <span className={`flex-1 min-w-0 ${dimmed ? 'opacity-50' : ''}`}>
@@ -557,7 +557,7 @@ function ClientItem({
         {/* project count badge */}
         {allProjects.length > 0 && !expanded && (
           <span
-            className="text-xs px-1.5 py-0.5 rounded-full"
+            className="text-xs px-1.5 py-0.5 rounded-[var(--r-key)]"
             style={{ background: 'var(--input-bg)', color: 'var(--text3)' }}
           >
             {allProjects.length}
@@ -566,7 +566,7 @@ function ClientItem({
         <button
           onClick={() => onToggleActive(c)}
           title={c.active ? t('clients.action.archive') : t('clients.action.reactivate')}
-          className="rounded p-1 transition-colors hover:bg-white/10"
+          className="rounded p-1 transition-colors hover:bg-[var(--key)]"
           style={{ color: 'var(--text3)' }}
         >
           {c.active ? <Icons.Archive /> : <Icons.Unarchive />}
@@ -575,7 +575,7 @@ function ClientItem({
           <button
             onClick={() => onNewProject(c.id)}
             title={t('projects.addNew')}
-            className="rounded p-1 transition-colors hover:bg-white/10"
+            className="rounded p-1 transition-colors hover:bg-[var(--key)]"
             style={{ color: 'var(--text3)' }}
           >
             <Icons.Plus />
@@ -583,14 +583,14 @@ function ClientItem({
         )}
         <button
           onClick={() => onEdit(c)}
-          className="rounded p-1 transition-colors hover:bg-white/10"
+          className="rounded p-1 transition-colors hover:bg-[var(--key)]"
           style={{ color: 'var(--text3)' }}
         >
           <Icons.Edit />
         </button>
         <button
           onClick={() => onDelete(c)}
-          className="rounded p-1 transition-colors hover:bg-white/10"
+          className="rounded p-1 transition-colors hover:bg-[var(--key)]"
           style={{ color: 'var(--danger)' }}
         >
           <Icons.Trash />
@@ -659,7 +659,7 @@ function ClientItem({
           {c.active && (
             <button
               onClick={() => onNewProject(c.id)}
-              className="flex items-center gap-1.5 text-xs mt-1 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/10"
+              className="flex items-center gap-1.5 text-xs mt-1 rounded-[var(--r-key)] px-2 py-1.5 transition-colors hover:bg-[var(--key)]"
               style={{ color: 'var(--text2)' }}
             >
               <Icons.Plus />
@@ -714,11 +714,11 @@ function ProjectItem({
 
   return (
     <li
-      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 group"
+      className="flex items-center gap-2.5 rounded-[var(--r-key)] px-2 py-1.5 group"
       style={{ background: 'var(--input-bg)' }}
     >
       <span
-        className="w-3 h-3 rounded-full shrink-0 self-start mt-1"
+        className="w-3 h-3 rounded-[var(--r-fine)] shrink-0 self-start mt-1"
         style={{ backgroundColor: dotColor }}
       />
       <span className="flex-1 min-w-0">
@@ -730,10 +730,7 @@ function ProjectItem({
             ) : null}
           </span>
           {p.status === 'paused' && (
-            <span
-              className="text-xs px-1.5 py-0.5 rounded-full leading-none shrink-0"
-              style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}
-            >
+            <span className="text-xs px-1.5 py-0.5 rounded-[var(--r-key)] leading-none shrink-0 border border-[var(--key-edge)] bg-[var(--key)] text-[var(--ink)]">
               {t('projects.form.statusPaused')}
             </span>
           )}
@@ -751,11 +748,11 @@ function ProjectItem({
         {hasBudget && (
           <span className="flex items-center gap-1.5 mt-1">
             <span
-              className="flex-1 h-1 rounded-full overflow-hidden"
+              className="flex-1 h-1 rounded-[var(--r-fine)] overflow-hidden"
               style={{ background: 'var(--card-border)' }}
             >
               <span
-                className="h-full rounded-full block transition-all"
+                className="h-full rounded-[var(--r-fine)] block transition-all"
                 style={{
                   width: `${budgetPct}%`,
                   background: overBudget
@@ -769,7 +766,7 @@ function ProjectItem({
             <span
               className="text-xs shrink-0 tabular-nums"
               style={{
-                color: overBudget ? 'var(--danger)' : budgetWarn ? '#f59e0b' : 'var(--text3)'
+                color: overBudget ? 'var(--danger)' : budgetWarn ? 'var(--ink)' : 'var(--text3)'
               }}
             >
               {(usedMin / 60).toFixed(1)}h / {(budgetMin / 60).toFixed(1)}h
@@ -795,21 +792,21 @@ function ProjectItem({
       <button
         onClick={() => onArchive(p)}
         title={p.active ? t('projects.action.archive') : t('projects.action.reactivate')}
-        className="rounded p-0.5 transition-colors hover:bg-white/10 opacity-0 group-hover:opacity-100"
+        className="rounded p-0.5 transition-colors hover:bg-[var(--key)] opacity-0 group-hover:opacity-100"
         style={{ color: 'var(--text3)' }}
       >
         {p.active ? <Icons.Archive /> : <Icons.Unarchive />}
       </button>
       <button
         onClick={() => onEdit(p)}
-        className="rounded p-0.5 transition-colors hover:bg-white/10 opacity-0 group-hover:opacity-100"
+        className="rounded p-0.5 transition-colors hover:bg-[var(--key)] opacity-0 group-hover:opacity-100"
         style={{ color: 'var(--text3)' }}
       >
         <Icons.Edit />
       </button>
       <button
         onClick={() => onDelete(p)}
-        className="rounded p-0.5 transition-colors hover:bg-white/10 opacity-0 group-hover:opacity-100"
+        className="rounded p-0.5 transition-colors hover:bg-[var(--key)] opacity-0 group-hover:opacity-100"
         style={{ color: 'var(--danger)' }}
       >
         <Icons.Trash />
@@ -980,8 +977,8 @@ function ClientFormModal({
               setError('')
             }}
             placeholder={t('clients.form.namePlaceholder')}
-            className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-                focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -1013,8 +1010,10 @@ function ClientFormModal({
                   color: t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')
                 })}
                 onClick={() => setColor(c)}
-                className={`w-8 h-8 rounded-full transition-transform ${
-                  color === c ? 'scale-125 ring-2 ring-white ring-offset-2' : 'hover:scale-110'
+                className={`w-8 h-8 rounded-[var(--r-fine)] transition-transform ${
+                  color === c
+                    ? 'scale-125 ring-2 ring-[var(--ink)] ring-offset-2'
+                    : 'hover:scale-110'
                 }`}
                 style={{ backgroundColor: c }}
               />
@@ -1042,8 +1041,8 @@ function ClientFormModal({
                 setRateError('')
               }}
               placeholder={t('clients.form.ratePlaceholder')}
-              className="rounded-lg pl-3 pr-10 py-2.5 w-full border backdrop-blur-xl focus:outline-none
-                  focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="rounded-[var(--r-key)] pl-3 pr-10 py-2.5 w-full border focus:outline-none
+                  focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
               style={{
                 background: 'var(--input-bg)',
                 borderColor: 'var(--card-border)',
@@ -1128,8 +1127,8 @@ function ClientFormModal({
                   value={value ?? ''}
                   onChange={(e) => set(e.target.value)}
                   placeholder={placeholder}
-                  className="rounded-lg px-3 py-2 border backdrop-blur-xl focus:outline-none
-                  focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="rounded-[var(--r-key)] px-3 py-2 border focus:outline-none
+                  focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
                   style={{
                     background: 'var(--input-bg)',
                     borderColor: 'var(--card-border)',
@@ -1152,8 +1151,8 @@ function ClientFormModal({
                 value={vatId ?? ''}
                 onChange={(e) => setVatId(e.target.value)}
                 placeholder={t('clients.form.vatIdPlaceholder')}
-                className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-                focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
                 style={{
                   background: 'var(--input-bg)',
                   borderColor: 'var(--card-border)',
@@ -1175,8 +1174,8 @@ function ClientFormModal({
                 value={contactPerson ?? ''}
                 onChange={(e) => setContactPerson(e.target.value)}
                 placeholder={t('clients.form.contactPersonPlaceholder')}
-                className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-                focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
                 style={{
                   background: 'var(--input-bg)',
                   borderColor: 'var(--card-border)',
@@ -1196,8 +1195,8 @@ function ClientFormModal({
                 value={contactEmail ?? ''}
                 onChange={(e) => setContactEmail(e.target.value)}
                 placeholder={t('clients.form.contactEmailPlaceholder')}
-                className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-                focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
                 style={{
                   background: 'var(--input-bg)',
                   borderColor: 'var(--card-border)',
@@ -1213,7 +1212,7 @@ function ClientFormModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 font-medium py-2.5 rounded-lg transition-colors hover:opacity-90"
+            className="flex-1 font-medium py-2.5 rounded-[var(--r-key)] transition-colors hover:opacity-90"
             style={{
               background: 'var(--input-bg)',
               border: '1px solid var(--card-border)',
@@ -1225,8 +1224,8 @@ function ClientFormModal({
           <button
             type="submit"
             disabled={isSaving}
-            className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50
-                text-white font-medium py-2.5 rounded-lg transition-colors"
+            className="flex-1 bg-[var(--inv)] key-hover disabled:opacity-50
+                text-[var(--inv-ink)] font-medium py-2.5 rounded-[var(--r-key)] transition-colors"
           >
             {isSaving ? t('common.saving') : t('common.save')}
           </button>
@@ -1366,8 +1365,8 @@ function ProjectFormModal({
               setError('')
             }}
             placeholder={t('projects.form.namePlaceholder')}
-            className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-              focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+              focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -1395,10 +1394,10 @@ function ProjectFormModal({
               title={t('projects.form.colorInherit')}
               aria-label={t('projects.form.colorInherit')}
               onClick={() => setColor('')}
-              className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-transform ${
+              className={`w-8 h-8 rounded-[var(--r-fine)] border-2 flex items-center justify-center transition-transform ${
                 color === ''
-                  ? 'scale-125 ring-2 ring-white ring-offset-2 border-slate-400'
-                  : 'hover:scale-110 border-slate-600'
+                  ? 'scale-125 ring-2 ring-[var(--ink)] ring-offset-2 border-[var(--ink2)]'
+                  : 'hover:scale-110 border-[var(--key-edge)]'
               }`}
               style={{ background: 'var(--input-bg)' }}
             >
@@ -1415,8 +1414,10 @@ function ProjectFormModal({
                   color: t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')
                 })}
                 onClick={() => setColor(c)}
-                className={`w-8 h-8 rounded-full transition-transform ${
-                  color === c ? 'scale-125 ring-2 ring-white ring-offset-2' : 'hover:scale-110'
+                className={`w-8 h-8 rounded-[var(--r-fine)] transition-transform ${
+                  color === c
+                    ? 'scale-125 ring-2 ring-[var(--ink)] ring-offset-2'
+                    : 'hover:scale-110'
                 }`}
                 style={{ backgroundColor: c }}
               />
@@ -1449,8 +1450,8 @@ function ProjectFormModal({
                 setRateError('')
               }}
               placeholder={t('projects.form.ratePlaceholder')}
-              className="rounded-lg pl-3 pr-10 py-2.5 w-full border backdrop-blur-xl focus:outline-none
-                focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="rounded-[var(--r-key)] pl-3 pr-10 py-2.5 w-full border focus:outline-none
+                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
               style={{
                 background: 'var(--input-bg)',
                 borderColor: 'var(--card-border)',
@@ -1488,7 +1489,7 @@ function ProjectFormModal({
             {t('projects.form.statusLabel')}
           </label>
           <div
-            className="flex rounded-lg overflow-hidden border"
+            className="flex rounded-[var(--r-key)] overflow-hidden border"
             style={{ borderColor: 'var(--card-border)' }}
           >
             {STATUS_OPTIONS.map((opt, i) => (
@@ -1499,8 +1500,8 @@ function ProjectFormModal({
                 className={`flex-1 py-2 text-sm font-medium transition-colors ${i > 0 ? 'border-l' : ''}`}
                 style={{
                   borderColor: 'var(--card-border)',
-                  background: status === opt.value ? 'var(--accent, #6366f1)' : 'var(--input-bg)',
-                  color: status === opt.value ? '#fff' : 'var(--text2)'
+                  background: status === opt.value ? 'var(--inv)' : 'var(--input-bg)',
+                  color: status === opt.value ? 'var(--inv-ink)' : 'var(--text2)'
                 }}
               >
                 {opt.label}
@@ -1522,8 +1523,8 @@ function ProjectFormModal({
             value={externalNumber}
             onChange={(e) => setExternalNumber(e.target.value)}
             placeholder={t('projects.form.externalNumberPlaceholder')}
-            className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-              focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+              focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -1545,8 +1546,8 @@ function ProjectFormModal({
             value={contactPerson}
             onChange={(e) => setContactPerson(e.target.value)}
             placeholder={t('projects.form.contactPersonPlaceholder')}
-            className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-              focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+              focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -1568,8 +1569,8 @@ function ProjectFormModal({
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-                focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
               style={{
                 background: 'var(--input-bg)',
                 borderColor: 'var(--card-border)',
@@ -1588,8 +1589,8 @@ function ProjectFormModal({
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-                focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
               style={{
                 background: 'var(--input-bg)',
                 borderColor: 'var(--card-border)',
@@ -1613,8 +1614,8 @@ function ProjectFormModal({
             value={budgetInput}
             onChange={(e) => setBudgetInput(e.target.value)}
             placeholder={t('projects.form.budgetPlaceholder')}
-            className="rounded-lg px-3 py-2.5 border backdrop-blur-xl focus:outline-none
-              focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
+              focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
               background: 'var(--input-bg)',
               borderColor: 'var(--card-border)',
@@ -1631,7 +1632,7 @@ function ProjectFormModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 font-medium py-2.5 rounded-lg transition-colors hover:opacity-90"
+            className="flex-1 font-medium py-2.5 rounded-[var(--r-key)] transition-colors hover:opacity-90"
             style={{
               background: 'var(--input-bg)',
               border: '1px solid var(--card-border)',
@@ -1643,8 +1644,8 @@ function ProjectFormModal({
           <button
             type="submit"
             disabled={isSaving}
-            className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50
-              text-white font-medium py-2.5 rounded-lg transition-colors"
+            className="flex-1 bg-[var(--inv)] key-hover disabled:opacity-50
+              text-[var(--inv-ink)] font-medium py-2.5 rounded-[var(--r-key)] transition-colors"
           >
             {isSaving ? t('common.saving') : t('common.save')}
           </button>

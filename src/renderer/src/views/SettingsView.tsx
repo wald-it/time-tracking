@@ -304,8 +304,8 @@ export default function SettingsView(): React.JSX.Element {
               setTab(item.id)
               setStatusMsg(null)
             }}
-            className={`w-full rounded-full px-4 py-2 text-left text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-              tab === item.id ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'
+            className={`w-full rounded-[var(--r-key)] px-4 py-2 text-left text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--focus)] ${
+              tab === item.id ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:bg-[var(--key)]'
             }`}
             style={tab !== item.id ? { color: 'var(--text2)' } : undefined}
           >
@@ -318,7 +318,7 @@ export default function SettingsView(): React.JSX.Element {
       <div className="flex-1 min-w-0 flex flex-col gap-6 max-w-xl">
         {statusMsg && (
           <div
-            className="rounded-md px-3 py-2 text-sm"
+            className="rounded-[var(--r-key)] px-3 py-2 text-sm"
             style={{ background: 'var(--card-bg)', color: 'var(--text)' }}
           >
             {statusMsg}
@@ -458,7 +458,7 @@ export default function SettingsView(): React.JSX.Element {
                   )}
                 </div>
                 {hotkeyError && capturingHotkey === 'hotkey_toggle' && (
-                  <p className="mt-1 text-xs text-red-400">{hotkeyError}</p>
+                  <p className="mt-1 text-xs text-[var(--danger)]">{hotkeyError}</p>
                 )}
               </Row>
             </Section>
@@ -504,7 +504,7 @@ export default function SettingsView(): React.JSX.Element {
                   )}
                 </div>
                 {hotkeyError && capturingHotkey === 'mini_hotkey' && (
-                  <p className="mt-1 text-xs text-red-400">{hotkeyError}</p>
+                  <p className="mt-1 text-xs text-[var(--danger)]">{hotkeyError}</p>
                 )}
               </Row>
               <Row label={t('settings.mini.position')} hint={t('settings.mini.positionHint')}>
@@ -645,8 +645,8 @@ export default function SettingsView(): React.JSX.Element {
               {/* T2: Offline-Warnung */}
               {backupPathInfo?.isCustom && !backupPathInfo.isReachable && (
                 <div
-                  className="rounded-md px-3 py-2 text-sm"
-                  style={{ background: 'rgba(234,179,8,0.15)', color: 'var(--text)' }}
+                  className="rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-3 py-2 text-sm"
+                  style={{ color: 'var(--text)' }}
                 >
                   ⚠️ {t('settings.data.backupPathUnreachable')}
                 </div>
@@ -718,7 +718,7 @@ export default function SettingsView(): React.JSX.Element {
                       aria-label={t('settings.data.restoreBackup')}
                       value={selectedRestoreFile}
                       onChange={(e) => setSelectedRestoreFile(e.target.value)}
-                      className="flex-1 rounded-lg border px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      className="flex-1 rounded-[var(--r-key)] border px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
                       style={{
                         background: 'var(--input-bg)',
                         borderColor: 'var(--card-border)',
@@ -836,7 +836,7 @@ export default function SettingsView(): React.JSX.Element {
             <Section title={t('settings.mcp.section')}>
               <Row label={t('settings.mcp.section')} hint={t('settings.mcp.desc')} stacked>
                 <span
-                  className="inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                  className="inline-flex w-fit items-center rounded-[var(--r-key)] px-2.5 py-0.5 text-xs font-semibold"
                   style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}
                 >
                   {t('settings.mcp.readonlyBadge')}
@@ -866,7 +866,7 @@ export default function SettingsView(): React.JSX.Element {
               >
                 <div className="flex flex-col gap-2">
                   {!paths.mcp.available && (
-                    <p className="text-xs text-amber-300">{t('settings.mcp.unavailable')}</p>
+                    <p className="text-xs text-[var(--ink)]">{t('settings.mcp.unavailable')}</p>
                   )}
                   <pre
                     className="overflow-x-auto rounded px-3 py-2 text-xs"
@@ -994,14 +994,14 @@ export default function SettingsView(): React.JSX.Element {
 }
 
 const inputClass =
-  'w-full rounded-lg px-3 py-2 text-sm border backdrop-blur-xl ' +
+  'w-full rounded-[var(--r-key)] px-3 py-2 text-sm border ' +
   '[background:var(--input-bg)] [border-color:var(--card-border)] [color:var(--text)] ' +
-  'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent'
+  'focus:outline-none focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent'
 
 const btnSecondaryClass =
-  'rounded-md px-3 py-1.5 text-sm font-medium hover:bg-white/10 ' +
+  'rounded-[var(--r-key)] px-3 py-1.5 text-sm font-medium key-hover ' +
   'border [background:var(--card-bg)] [border-color:var(--card-border)] [color:var(--text)] ' +
-  'focus:outline-none focus:ring-2 focus:ring-indigo-500'
+  'focus:outline-none focus:ring-2 focus:ring-[var(--focus)]'
 
 function Section({
   title,
@@ -1019,7 +1019,7 @@ function Section({
         {title}
       </h2>
       <div
-        className="rounded-2xl border overflow-hidden backdrop-blur-xl [&>*:last-child]:border-b-0"
+        className="rounded-[var(--r-disp)] border overflow-hidden [&>*:last-child]:border-b-0"
         style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
       >
         {children}
@@ -1127,7 +1127,7 @@ function WebhooksSection({
             return (
               <div
                 key={tg.id}
-                className="flex flex-col gap-2.5 rounded-xl border p-3"
+                className="flex flex-col gap-2.5 rounded-[var(--r-disp)] border p-3"
                 style={{ borderColor: 'var(--card-border)', background: 'var(--input-bg)' }}
               >
                 <div className="flex items-center justify-between">
@@ -1162,7 +1162,7 @@ function WebhooksSection({
                     className={inputClass}
                   />
                   {urlInvalid && (
-                    <span className="text-xs text-amber-300">
+                    <span className="text-xs text-[var(--ink)]">
                       {t('settings.webhooks.urlInvalid')}
                     </span>
                   )}
@@ -1239,7 +1239,7 @@ function SegmentedPicker<T extends string>({
           key={opt.value}
           type="button"
           onClick={() => onChange(opt.value)}
-          className="text-xs font-semibold cursor-pointer transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="text-xs font-semibold cursor-pointer transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
           style={{
             padding: '5px 12px',
             borderRadius: 8,
@@ -1312,7 +1312,7 @@ function UpdatesSection(): React.JSX.Element {
         label={t('settings.update.status')}
         hint={`${t('settings.update.lastCheck')}: ${lastCheckedLabel}`}
       >
-        <p className={`text-sm ${status.status === 'error' ? 'text-amber-300' : ''}`}>
+        <p className={`text-sm ${status.status === 'error' ? 'text-[var(--ink)]' : ''}`}>
           {statusLabel}
         </p>
       </Row>
@@ -1330,7 +1330,7 @@ function UpdatesSection(): React.JSX.Element {
             <button
               type="button"
               onClick={() => void installNow()}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="rounded-[var(--r-key)] bg-[var(--inv)] px-3 py-1.5 text-sm font-medium text-[var(--inv-ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             >
               {t('update.ready.install')}
             </button>

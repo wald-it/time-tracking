@@ -258,7 +258,7 @@ export function ExportModal(props: Props): React.JSX.Element {
   }
 
   const inputClass =
-    'rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400'
+    'rounded-[var(--r-key)] border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]'
   const inputStyle = {
     background: 'var(--input-bg)',
     borderColor: 'var(--card-border)',
@@ -270,7 +270,7 @@ export function ExportModal(props: Props): React.JSX.Element {
       <div className="flex flex-col gap-4">
         {/* Tab bar */}
         <div
-          className="flex gap-1 rounded-lg p-1 border"
+          className="flex gap-1 rounded-[var(--r-key)] p-1 border"
           style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
         >
           {(['pdf', 'csv', 'ical'] as Tab[]).map((tabKey) => (
@@ -278,8 +278,8 @@ export function ExportModal(props: Props): React.JSX.Element {
               key={tabKey}
               type="button"
               onClick={() => handleTabChange(tabKey)}
-              className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
-                tab === tabKey ? 'bg-indigo-600 text-white' : 'hover:bg-white/10'
+              className={`flex-1 rounded-[var(--r-key)] py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--focus)] ${
+                tab === tabKey ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:bg-[var(--key)]'
               }`}
               style={tab !== tabKey ? { color: 'var(--text2)' } : undefined}
             >
@@ -484,7 +484,7 @@ export function ExportModal(props: Props): React.JSX.Element {
                     persistPrefs({ csvFormat: 'de' })
                   }}
                   disabled={busy}
-                  className="h-4 w-4 text-indigo-500 focus:ring-indigo-400"
+                  className="h-4 w-4 text-[var(--ink)] focus:ring-[var(--focus)]"
                 />
                 <span>
                   DE{' '}
@@ -507,7 +507,7 @@ export function ExportModal(props: Props): React.JSX.Element {
                     persistPrefs({ csvFormat: 'us' })
                   }}
                   disabled={busy}
-                  className="h-4 w-4 text-indigo-500 focus:ring-indigo-400"
+                  className="h-4 w-4 text-[var(--ink)] focus:ring-[var(--focus)]"
                 />
                 <span>
                   US{' '}
@@ -555,10 +555,10 @@ export function ExportModal(props: Props): React.JSX.Element {
           <div
             className={
               statusKind === 'error'
-                ? 'rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-200'
+                ? 'rounded-[var(--r-key)] bg-[var(--danger-bg)] px-3 py-2 text-sm text-[var(--danger)]'
                 : statusKind === 'success'
-                  ? 'rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-200'
-                  : 'rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-300'
+                  ? 'rounded-[var(--r-key)] bg-[var(--key)] px-3 py-2 text-sm text-[var(--ink2)]'
+                  : 'rounded-[var(--r-key)] bg-[var(--key)] px-3 py-2 text-sm text-[var(--ink)]'
             }
             role={statusKind === 'error' ? 'alert' : 'status'}
           >
@@ -568,11 +568,14 @@ export function ExportModal(props: Props): React.JSX.Element {
 
         {/* Footer */}
         <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-[var(--ink3)]">
             {tab === 'pdf' ? (
               <>
                 {t('export.footer.pdfHint')}{' '}
-                <span className="font-medium text-zinc-400">{t('export.footer.pdfHintPath')}</span>.
+                <span className="font-medium text-[var(--ink2)]">
+                  {t('export.footer.pdfHintPath')}
+                </span>
+                .
               </>
             ) : tab === 'csv' ? (
               t('export.footer.csvHint')
@@ -585,7 +588,7 @@ export function ExportModal(props: Props): React.JSX.Element {
               type="button"
               onClick={onClose}
               disabled={busy}
-              className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-500 disabled:opacity-50"
+              className="rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-4 py-2 text-sm font-medium text-[var(--ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50"
             >
               {t('common.close')}
             </button>
@@ -599,7 +602,7 @@ export function ExportModal(props: Props): React.JSX.Element {
                     : handleIcalExport())
               }
               disabled={!canExport}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-[var(--r-key)] bg-[var(--inv)] px-4 py-2 text-sm font-semibold text-[var(--inv-ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy
                 ? t('export.button.busy')
