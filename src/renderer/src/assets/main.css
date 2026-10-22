@@ -50,6 +50,14 @@ textarea {
   padding-inline: 40px;
 }
 
+/* HANDOFF §3.1 stage 3: below 840 px the column's side padding drops to 24 px,
+   for the header and the views together so their edges stay aligned. */
+@media (max-width: 839px) {
+  .mi-column {
+    padding-inline: 24px;
+  }
+}
+
 /* Key hover (HANDOFF §2.4): an outline instead of a colour change. Not while
    the key has keyboard focus — the 2px focus ring must stay visible. */
 .key-hover:hover:not(:focus-visible) {

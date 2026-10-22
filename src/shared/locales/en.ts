@@ -171,6 +171,7 @@ export const en: Record<TranslationKey, string> = {
   'today.dialog.add': 'Add entry',
   'today.dialog.edit': 'Edit entry',
   'header.stopTimer': 'Stop timer',
+  'header.stopTimerFor': 'Stop timer – {client}',
   'today.display.running': 'Running · since {time}',
   'today.display.ready': 'Ready',
   'today.display.rounding': 'Step {step} min · rounded {total} h',

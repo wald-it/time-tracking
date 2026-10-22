@@ -171,6 +171,7 @@ export const de = {
   'today.dialog.add': 'Eintrag nachtragen',
   'today.dialog.edit': 'Eintrag bearbeiten',
   'header.stopTimer': 'Timer stoppen',
+  'header.stopTimerFor': 'Timer stoppen – {client}',
   'today.display.running': 'Läuft · seit {time}',
   'today.display.ready': 'Bereit',
   'today.display.rounding': 'Takt {step} min · gerundet {total} h',
