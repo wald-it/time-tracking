@@ -12,6 +12,7 @@ import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { buildAnalyticsSummary } from './analyticsHandlers'
 import { getAnalytics } from '../mcp/queries'
+import { buildPdfPayload } from './pdf'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 
 let DatabaseImpl: DatabaseCtor
@@ -68,6 +69,16 @@ describe('Auswertung and get_analytics agree', () => {
       else expect(app.data.month.hoursRounded).toBeNull()
       // Rounding never shrinks a month.
       expect(mcp.rounded_seconds).toBeGreaterThanOrEqual(mcp.total_seconds)
+
+      // billable_rounded_seconds is what the month's invoices bill together:
+      // the PDF hours of every client for September. The non-billable Beta
+      // entry is in rounded_seconds but not here. The PDF reads the same step.
+      const pdfSeconds = [1, 2].reduce((sum, clientId) => {
+        const p = buildPdfPayload(db, { clientId, fromIso: '2026-09-01', toIso: '2026-09-30' }, '')
+        return sum + p.totals.minutes * 60
+      }, 0)
+      expect(mcp.billable_rounded_seconds).toBe(pdfSeconds)
+      expect(mcp.billable_rounded_seconds).toBeLessThan(mcp.rounded_seconds)
 
       const byApp = new Map(app.data.byClient.map((c) => [c.client_id, c]))
       for (const c of mcp.by_client) {

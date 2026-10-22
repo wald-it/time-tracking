@@ -539,10 +539,16 @@ export interface McpAnalytics {
   /** Worked seconds of billable entries, raw. */
   billable_seconds: number
   /**
-   * The month rounded per entry like the invoice (minutes ceiled, then the
-   * `rounding_minutes` step), summed — the billing/PDF number.
+   * All entries of the month, each rounded like the invoice (minutes ceiled,
+   * then the `rounding_minutes` step), summed — the app's "gerundet … h".
+   * Includes non-billable time, so it is not what the invoices bill.
    */
   rounded_seconds: number
+  /**
+   * Billable entries only, each rounded like the invoice, summed — the hours
+   * the month's invoices (PDF, #104) bill together.
+   */
+  billable_rounded_seconds: number
   /** Rounding step in minutes (app setting `pdf_round_minutes`); 0 = unrounded. */
   rounding_minutes: number
   /** Number of clients with recorded time in this month. */
@@ -600,7 +606,8 @@ export function getAnalytics(
          COALESCE(SUM(${ENTRY_SEC}), 0) AS total_sec,
          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${ENTRY_SEC} ELSE 0 END), 0) AS billable_sec,
          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent,
-         COALESCE(SUM(${BILLED_SEC}), 0) AS billed_sec
+         COALESCE(SUM(${BILLED_SEC}), 0) AS billed_sec,
+         COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${BILLED_SEC} ELSE 0 END), 0) AS billable_billed_sec
        FROM entries e
        JOIN clients c ON c.id = e.client_id
        LEFT JOIN projects p ON p.id = e.project_id
@@ -612,6 +619,7 @@ export function getAnalytics(
     billable_sec: number
     revenue_cent: number
     billed_sec: number
+    billable_billed_sec: number
   }
 
   const byClient = db
@@ -667,6 +675,7 @@ export function getAnalytics(
     total_seconds: Math.max(0, Math.floor(totals.total_sec ?? 0)),
     billable_seconds: Math.max(0, Math.floor(totals.billable_sec ?? 0)),
     rounded_seconds: Math.max(0, Math.round(totals.billed_sec ?? 0)),
+    billable_rounded_seconds: Math.max(0, Math.round(totals.billable_billed_sec ?? 0)),
     rounding_minutes: roundStep,
     distinct_client_count: byClient.length,
     by_client: byClient.map((r) => ({
