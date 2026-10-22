@@ -189,7 +189,6 @@ export const en: Record<TranslationKey, string> = {
   'today.table.actions': 'Actions',
   'today.quickstart.legend': 'Quick start',
   'today.quickstart.meta': 'h · 30 days',
-  'today.quickstart.hintIdle': 'Click starts right away. Press and hold to pick a project.',
   'today.quickstart.hintIdlePresets': 'Click starts at once · ▾ or hold: choose a project',
   'today.quickstart.hintRunningSwitch': 'Click switches at once · ▾ or hold: choose a project',
   'today.quickstart.running': 'Running',

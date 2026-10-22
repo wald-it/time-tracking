@@ -53,7 +53,14 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element {
         started_at: entry.started_at,
         // entry was just stopped so stopped_at is always set here
         stopped_at: entry.stopped_at!,
-        tags: entry.tags
+        tags: entry.tags,
+        // entries:update re-inserts the row and defaults every field it is
+        // not given: without these the note would drop the project, make a
+        // non-billable entry billable and clear reference and private note.
+        project_id: entry.project_id ?? null,
+        billable: entry.billable,
+        reference: entry.reference,
+        private_note: entry.private_note
       })
       bumpVersion()
     }

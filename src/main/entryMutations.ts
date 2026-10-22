@@ -257,7 +257,9 @@ export function switchTimer(db: Db, input: CreateEntryInput): IpcResult<SwitchTi
   const running = db
     .prepare(`SELECT id, started_at, deleted_at FROM entries WHERE stopped_at IS NULL`)
     .all() as Array<{ id: number; started_at: string; deleted_at: string | null }>
-  if (running.some((r) => Date.parse(r.started_at) > start.getTime())) {
+  // Only live entries: a soft-deleted row left running is invisible to the
+  // user and must not block a start.
+  if (running.some((r) => r.deleted_at === null && Date.parse(r.started_at) > start.getTime())) {
     return fail('Startzeit liegt vor dem Beginn des laufenden Eintrags')
   }
   const tx = db.transaction((): SwitchTimerResult => {

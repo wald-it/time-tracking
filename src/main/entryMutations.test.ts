@@ -314,6 +314,26 @@ describe('switchTimer (B1)', () => {
     expect(r.data.stopped?.heartbeat_at).toBe(r.data.entry.started_at)
   })
 
+  it('a soft-deleted running row does not block an earlier start', () => {
+    const ghost = startTimer(db, {
+      client_id: 1,
+      description: '',
+      started_at: '2026-06-10T11:00:00.000Z'
+    })
+    if (!ghost.ok) throw new Error('setup failed')
+    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(
+      '2026-06-10T11:05:00.000Z',
+      ghost.data.id
+    )
+    const r = switchTimer(db, {
+      client_id: 2,
+      description: '',
+      started_at: '2026-06-10T10:00:00.000Z'
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data.stopped).toBeNull()
+  })
+
   it('returns stopped: null when nothing ran', () => {
     const r = switchTimer(db, {
       client_id: 1,

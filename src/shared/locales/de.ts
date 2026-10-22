@@ -189,7 +189,6 @@ export const de = {
   'today.table.actions': 'Aktionen',
   'today.quickstart.legend': 'Schnellstart',
   'today.quickstart.meta': 'h · 30 Tage',
-  'today.quickstart.hintIdle': 'Klick startet sofort. Gedrückt halten für Projektwahl.',
   // Messinstrument PR 5 — preset keys + project list (HANDOFF §3.11, B1)
   'today.quickstart.hintIdlePresets': 'Klick startet sofort · ▾ oder halten: Projekt wählen',
   'today.quickstart.hintRunningSwitch': 'Klick wechselt sofort · ▾ oder halten: Projekt wählen',

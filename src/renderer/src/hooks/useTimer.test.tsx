@@ -414,6 +414,20 @@ describe('useTimer — switchTo (B1)', () => {
     )
   })
 
+  it('ignores a second switch while the first one is still in flight', async () => {
+    const { api, hook } = await setup()
+    await startTimer(hook)
+
+    await act(async () => {
+      await Promise.all([
+        hook.result.current.switchTo(1, null),
+        hook.result.current.switchTo(1, null)
+      ])
+    })
+
+    expect(api.switch).toHaveBeenCalledTimes(1)
+  })
+
   it('opens no quick note when the stopped entry had a description', async () => {
     const { hook } = await setup()
     act(() => hook.result.current.setDescription('work'))

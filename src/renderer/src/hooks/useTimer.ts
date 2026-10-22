@@ -264,6 +264,9 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
    */
   const switchTo = useCallback(
     async (clientId: number, projectId: number | null) => {
+      // A double click would switch twice: the second call still sees the old
+      // running entry and leaves a zero-length entry with its own prompt.
+      if (useTimerStore.getState().isLoading) return
       setIsLoading(true)
       const res = await window.api.entries.switch({
         client_id: clientId,
