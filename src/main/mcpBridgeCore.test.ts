@@ -562,6 +562,53 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     )
   })
 
+  it('update in the repeated hour: before and after differ in the dialog', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, create('2025-10-26T02:15:00+02:00', '2025-10-26T03:15:00+01:00'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, started_at: '2025-10-26T02:15:00+01:00' }
+    })
+    expect(asked[1]).toBe(
+      `Eintrag #${id} ändern — vorher So 26.10.2025 02:15 (+02:00)–03:15 (+01:00), ` +
+        `nachher So 26.10.2025 02:15 (+01:00)–03:15 (+01:00): "Workshop"`
+    )
+  })
+
+  it('an executed write returns its offset notes too (no dialog in silent mode)', async () => {
+    // makeCtx approves without asking — what confirm mode "silent" does
+    const { ctx } = makeCtx(db)
+    const started = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2026-10-28T09:00:00+02:00' }
+    })
+    expect(started.ok).toBe(true)
+    if (started.ok) {
+      expect(started.data).toMatchObject({
+        started_at: '2026-10-28T07:00:00.000Z',
+        zeit_hinweise: {
+          started_at:
+            'Hinweis: +02:00 weicht von der Ortszeit am 28.10. ab (+01:00) — wird als 08:00 Ortszeit gespeichert.'
+        }
+      })
+    }
+    const created = await handleRequest(
+      ctx,
+      create('2025-10-28T09:00:00+02:00', '2025-10-28T12:00:00+01:00')
+    )
+    if (created.ok) expect(created.data).toHaveProperty('zeit_hinweise.started_at')
+    const plain = await handleRequest(
+      ctx,
+      create('2025-10-29T09:00:00+01:00', '2025-10-29T10:00:00+01:00')
+    )
+    if (plain.ok) expect(plain.data).not.toHaveProperty('zeit_hinweise')
+  })
+
   it('start_timer: the dialog names a given start, else "ab jetzt"', async () => {
     const { ctx, asked } = recording()
     await handleRequest(ctx, {

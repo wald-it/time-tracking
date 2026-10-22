@@ -141,6 +141,21 @@ describe('local time for confirmation and preview (Europe/Berlin)', () => {
     )
   })
 
+  it('on a clock-change day every time carries its offset (the hour that exists twice)', () => {
+    zone()
+    // 02:15 summer time → 03:15 winter time: two hours
+    expect(formatLocalSpan('2025-10-26T00:15:00.000Z', '2025-10-26T02:15:00.000Z')).toBe(
+      'So 26.10.2025 02:15 (+02:00)–03:15 (+01:00)'
+    )
+    // 02:15 winter time → 03:15 winter time: one hour, now told apart
+    expect(formatLocalSpan('2025-10-26T01:15:00.000Z', '2025-10-26T02:15:00.000Z')).toBe(
+      'So 26.10.2025 02:15 (+01:00)–03:15 (+01:00)'
+    )
+    expect(formatLocalMoment('2025-03-30T01:30:00.000Z')).toBe('So 30.03.2025 03:30 (+02:00)')
+    // the day after: no offsets
+    expect(formatLocalMoment('2025-10-27T08:00:00.000Z')).toBe('Mo 27.10.2025 09:00')
+  })
+
   it('notes a written offset that is not the local one on that day', () => {
     zone()
     const p = parseZonedTimestamp('2026-10-27T09:00:00+02:00')

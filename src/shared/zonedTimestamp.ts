@@ -128,10 +128,30 @@ function localTime(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** `Di 27.10.2026 09:00` */
+/** Whether the clocks change on the local day of `d` (offset at its start ≠ at its end). */
+function isClockChangeDay(d: Date): boolean {
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+  return start.getTimezoneOffset() !== next.getTimezoneOffset()
+}
+
+/**
+ * The time of day for the confirmation. On a day the clocks change it carries
+ * its offset: in the repeated hour `02:15` exists twice, and an edit from
+ * `02:15 (+02:00)` to `02:15 (+01:00)` changes the duration by an hour —
+ * without the offset the dialog would show the same text on both sides
+ * (Codex, round 2).
+ */
+function clock(d: Date): string {
+  return isClockChangeDay(d)
+    ? `${localTime(d)} (${formatOffset(-d.getTimezoneOffset())})`
+    : localTime(d)
+}
+
+/** `Di 27.10.2026 09:00`; `So 26.10.2025 02:15 (+02:00)` on a clock-change day. */
 export function formatLocalMoment(iso: string): string {
   const d = new Date(iso)
-  return `${localDay(d)} ${localTime(d)}`
+  return `${localDay(d)} ${clock(d)}`
 }
 
 /** `Di 27.10.2026 09:00–12:00`, or both days when the span crosses midnight. */
@@ -139,7 +159,7 @@ export function formatLocalSpan(startIso: string, stopIso: string): string {
   const a = new Date(startIso)
   const b = new Date(stopIso)
   return localDay(a) === localDay(b)
-    ? `${localDay(a)} ${localTime(a)}–${localTime(b)}`
+    ? `${localDay(a)} ${clock(a)}–${clock(b)}`
     : `${formatLocalMoment(startIso)} – ${formatLocalMoment(stopIso)}`
 }
 

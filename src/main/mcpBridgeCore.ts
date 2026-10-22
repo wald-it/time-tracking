@@ -168,6 +168,12 @@ function durationMin(started_at: string, stopped_at: string): number {
 interface Plan {
   summary: string
   preview: Record<string, unknown>
+  /**
+   * Offset notes, also returned with the executed write: with "for this
+   * session" or confirm mode silent no dialog shows them, so the reply is the
+   * only place the client learns of them (owner review 2026-10-22).
+   */
+  hints?: OffsetHints
   run: () => { ok: true; data: Entry | null } | { ok: false; error: string }
   audit: (result: Entry | null) => McpAuditEntry
 }
@@ -212,6 +218,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
           project_id: input.project_id,
           ...hintPreview(hints)
         },
+        hints,
         run: () => createManualEntry(db, input),
         audit: (r) => ({
           op,
@@ -309,6 +316,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
           },
           ...hintPreview(hints)
         },
+        hints,
         run: () => updateManualEntry(db, input),
         audit: (r) => ({
           op,
@@ -359,6 +367,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
           project_id: input.project_id,
           ...hintPreview(hints)
         },
+        hints,
         run: () => startTimer(db, input),
         audit: (r) => ({
           op,
@@ -599,5 +608,8 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
   ctx.audit(plan.audit(result.data))
   // Same emission point as the IPC handlers, one level up from the mutation.
   ctx.emitWebhook?.(req.op as WriteOp, result.data)
+  if (plan.hints && Object.keys(plan.hints).length) {
+    return { ok: true, data: { ...(result.data ?? {}), zeit_hinweise: plan.hints } }
+  }
   return { ok: true, data: result.data }
 }
