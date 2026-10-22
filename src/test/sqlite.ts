@@ -16,7 +16,7 @@
 import { copyFileSync } from 'fs'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
-import { migrations } from '../main/migrations'
+import { executeMigration, migrations } from '../main/migrations'
 
 /** Constructor shape of `better-sqlite3`'s default export. */
 export type DatabaseCtor = new (path: string) => Database.Database
@@ -81,7 +81,7 @@ export function applyMigrations(db: Database.Database): void {
   )
   for (const m of migrations) {
     db.transaction(() => {
-      db.exec(m.up)
+      executeMigration(db, m)
       db.prepare('INSERT INTO schema_version (version, name) VALUES (?, ?)').run(m.version, m.name)
     })()
   }

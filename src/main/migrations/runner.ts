@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import { existsSync, copyFileSync } from 'fs'
-import { migrations, type Migration } from './index'
+import { executeMigration, migrations, type Migration } from './index'
 import { createBackupSync } from '../backup'
 
 const SCHEMA_VERSION_TABLE = `
@@ -69,7 +69,7 @@ function applyMigration(db: Database.Database, m: Migration): void {
   }
 
   const tx = db.transaction(() => {
-    db.exec(m.up)
+    executeMigration(db, m)
     db.prepare('INSERT INTO schema_version (version, name) VALUES (?, ?)').run(m.version, m.name)
     // Post-apply invariants (run inside the same transaction so a failing
     // assertion rolls back the migration cleanly — runner's catch will then
