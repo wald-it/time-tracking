@@ -4,19 +4,14 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 html {
-  background: var(--page-bg);
+  background: var(--bg);
 }
 
+/* The fallbacks matter for the mini widget, which loads this file but not
+   base.css (its window must stay transparent), so the tokens are undefined. */
 body {
-  font-family:
-    'Inter Variable',
-    'Inter',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  background: var(--page-bg);
+  font-family: var(--font-ui, 'Archivo Variable', 'Archivo', 'Segoe UI', Arial, sans-serif);
+  background: var(--bg);
   color: var(--text);
   overflow: hidden;
   user-select: none;
@@ -39,6 +34,18 @@ textarea {
   -webkit-app-region: no-drag;
 }
 
+/* Every figure is an instrument reading: Plex Mono with tabular figures. */
+.font-num {
+  font-family: var(--font-num, 'IBM Plex Mono', ui-monospace, Consolas, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Key hover (HANDOFF §2.4): an outline instead of a colour change. */
+.key-hover:hover {
+  outline: 1px solid var(--ink3);
+  outline-offset: 2px;
+}
+
 /* Scrollbar styling — Chromium/Electron only */
 ::-webkit-scrollbar {
   width: 8px;
@@ -50,14 +57,14 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
+  background: color-mix(in srgb, var(--tick, #8f8b80) 40%, transparent);
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.22);
+  background: color-mix(in srgb, var(--tick, #8f8b80) 70%, transparent);
 }
 
 ::-webkit-scrollbar-corner {
-  background: #1e293b;
+  background: var(--bg, transparent);
 }
