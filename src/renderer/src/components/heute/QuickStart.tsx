@@ -49,7 +49,9 @@ export function QuickStart({
             key={c.client_id}
             clientId={c.client_id}
             name={c.name}
-            color={c.color}
+            color={
+              (c.last_project_id != null && projectsById.get(c.last_project_id)?.color) || c.color
+            }
             seconds={c.seconds}
             lastProjectId={c.last_project_id}
             projectsById={projectsById}

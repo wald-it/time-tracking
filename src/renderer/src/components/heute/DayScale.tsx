@@ -43,25 +43,29 @@ export function DayScale({
     [locale, dayKey]
   )
 
-  // Day total per client, largest first.
+  // Day total per colour the bars actually carry, largest first: a project
+  // with its own colour gets its own legend row (named after the project),
+  // everything else groups under its client — so every legend square matches
+  // the bars it stands for (rule 6: colour always next to a name).
   const legend = useMemo(() => {
-    const totals = new Map<number, number>()
+    const groups = new Map<string, { name: string; color: string; secs: number }>()
     for (const e of entries) {
-      totals.set(e.client_id, (totals.get(e.client_id) ?? 0) + entrySecondsToday(e, nowMs))
+      const project = e.project_id != null ? projectsById.get(e.project_id) : undefined
+      const client = clientsById.get(e.client_id)
+      const key = project?.color ? `p${project.id}` : `c${e.client_id}`
+      const g = groups.get(key) ?? {
+        name: project?.color ? project.name : (client?.name ?? '—'),
+        color: project?.color || client?.color || 'var(--tick)',
+        secs: 0
+      }
+      g.secs += entrySecondsToday(e, nowMs)
+      groups.set(key, g)
     }
-    return [...totals.entries()]
-      .filter(([, secs]) => secs > 0)
-      .sort((a, b) => b[1] - a[1])
-      .map(([clientId, secs]) => {
-        const client = clientsById.get(clientId)
-        return {
-          clientId,
-          name: client?.name ?? '—',
-          color: client?.color || 'var(--tick)',
-          secs
-        }
-      })
-  }, [entries, clientsById, nowMs])
+    return [...groups.entries()]
+      .filter(([, g]) => g.secs > 0)
+      .sort((a, b) => b[1].secs - a[1].secs)
+      .map(([key, g]) => ({ clientId: key, ...g }))
+  }, [entries, clientsById, projectsById, nowMs])
 
   const needleBg = isRunning ? 'var(--sig)' : 'var(--ink)'
   const needleInk = isRunning ? 'var(--sig-ink)' : 'var(--bg)'

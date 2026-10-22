@@ -183,7 +183,9 @@ function EntryRow({
       <td className="px-3">
         <div className="flex flex-wrap items-center gap-2">
           {entry.description ? (
-            <span className="text-sm text-[var(--ink)]">{entry.description}</span>
+            <span className="line-clamp-2 text-sm text-[var(--ink)]" title={entry.description}>
+              {entry.description}
+            </span>
           ) : (
             <span className="text-sm text-[var(--ink3)]">—</span>
           )}
