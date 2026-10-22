@@ -17,6 +17,12 @@ import icon from '../../resources/icon.png?asset'
 import trayRunningIcon from '../../resources/tray-running.png?asset'
 import trayStoppedIcon from '../../resources/tray-stopped.png?asset'
 import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
+import {
+  assertSmokeUserDataIsolated,
+  createSmokeUserDataDir,
+  removeSmokeUserDataDir,
+  scheduleRemovalAfterExit
+} from './smokeUserData'
 import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
@@ -87,6 +93,19 @@ let isQuitting = false
 // TimeTrack instance can't silently break a smoke run on a dev machine.
 // (argv is scanned once here; the whenReady smoke block reuses smokeTestArg.)
 const smokeTestArg = process.argv.find((a) => a.startsWith('--smoke-test'))
+
+// Smoke runs never see the user's data: userData moves to a fresh temp
+// directory before the app is ready (Chromium reads it at startup). The
+// default locations are remembered so the smoke block can refuse to open a
+// database that still resolves to one of them.
+let smokeUserData: string | undefined
+let smokeProtectedDirs: string[] = []
+if (smokeTestArg !== undefined) {
+  smokeProtectedDirs = [app.getPath('userData'), join(app.getPath('appData'), app.getName())]
+  smokeUserData = createSmokeUserDataDir()
+  app.setPath('userData', smokeUserData)
+}
+
 const isSecondInstance = smokeTestArg === undefined && !app.requestSingleInstanceLock()
 if (isSecondInstance) {
   // quit() is asynchronous — the whenReady handler below early-returns on
@@ -449,7 +468,8 @@ app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.timetrack.app')
 
   // Smoke-test mode (CI release pipeline). When invoked with
-  // `--smoke-test=<path>`, open the DB (which runs migrations against
+  // `--smoke-test=<path>`, open a fresh DB in the temp userData set up
+  // at module load (never the user's live DB), which runs migrations against
   // the Electron-ABI better-sqlite3 binary), write a JSON status to
   // <path>, and exit. No window, no tray, no IPC handlers.
   // This is the v1.2 packaged-binary smoke check (E11) that catches
@@ -457,8 +477,28 @@ app.whenReady().then(async () => {
   if (smokeTestArg !== undefined) {
     const smokeArg = smokeTestArg
     const outPath = smokeArg.includes('=') ? smokeArg.split('=').slice(1).join('=') : ''
+    let smokeDb: ReturnType<typeof getDb> | undefined
+    // Close the DB (Windows keeps open files undeletable), drop the temp
+    // userData and exit. Chromium holds its profile files until the process
+    // is gone, so on Windows the in-process removal fails and a detached
+    // cleaner finishes the job after exit. Cleanup never fails the run.
+    const finishSmoke = (code: number): void => {
+      try {
+        smokeDb?.close()
+      } catch {
+        /* best-effort */
+      }
+      if (smokeUserData && !removeSmokeUserDataDir(smokeUserData)) {
+        if (!scheduleRemovalAfterExit(smokeUserData)) {
+          console.warn(`[smoke] could not remove temp userData ${smokeUserData}`)
+        }
+      }
+      app.exit(code)
+    }
     try {
+      assertSmokeUserDataIsolated(app.getPath('userData'), smokeProtectedDirs)
       const db = getDb()
+      smokeDb = db
       const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as {
         v: number | null
       }
@@ -495,7 +535,8 @@ app.whenReady().then(async () => {
         const buf = await renderPdfBuffer({ html })
         pdfBytes = buf.length
       } finally {
-        // Always clean up — keeps the smoke DB stable across re-runs.
+        // Always clean up. The DB is a throwaway in the temp userData, so
+        // this only keeps the run self-contained.
         try {
           db.prepare(`DELETE FROM entries WHERE client_id = 9999`).run()
           db.prepare(`DELETE FROM clients WHERE id = 9999`).run()
@@ -521,7 +562,7 @@ app.whenReady().then(async () => {
           console.warn('[smoke] could not write to outPath:', (e as Error).message)
         }
       }
-      app.exit(0)
+      finishSmoke(0)
     } catch (err) {
       const payload = JSON.stringify({
         ok: false,
@@ -536,7 +577,7 @@ app.whenReady().then(async () => {
           /* ignore — exit code is the source of truth */
         }
       }
-      app.exit(1)
+      finishSmoke(1)
     }
     return
   }
