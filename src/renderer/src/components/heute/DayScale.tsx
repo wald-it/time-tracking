@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { Client, Entry, Project } from '../../../../shared/types'
 import { useLocale, useT } from '../../contexts/I18nContext'
-import { entrySecondsToday, formatClock, formatHm, layoutDayScale } from './dayScale'
+import { entrySecondsToday, formatClock, formatHm, layoutDayScale } from './dayScaleLayout'
 
 /**
  * Tagesverlauf — the signature element of Heute (HANDOFF §3.8).

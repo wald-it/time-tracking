@@ -10,7 +10,7 @@ import {
   pctOf,
   scaleTicks,
   type ScaleEntry
-} from './dayScale'
+} from './dayScaleLayout'
 
 // All fixtures are built in local time, the way the app reads them.
 const at = (h: number, m = 0, day = 22): number => new Date(2026, 9, day, h, m, 0, 0).getTime()
