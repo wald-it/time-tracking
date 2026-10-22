@@ -80,8 +80,12 @@ export function QuickStart({
 function getRingPositions(N: number, R: number): Array<{ x: number; y: number; angle: number }> {
   if (N <= 0) return []
   if (N === 1) return [{ x: 0, y: -R, angle: 0 }]
+  // ±72° instead of the old ±90° (9 → 12 → 3): the Messinstrument key is a
+  // full-width 64px row, and items at 9/3 o'clock sat on the key itself and
+  // were hidden under it. At ±72° the outermost items clear its top edge
+  // (y ≈ −56 at R = 180, key half-height 32).
   const angles: number[] =
-    N === 2 ? [-60, 60] : Array.from({ length: N }, (_, i) => -90 + i * (180 / (N - 1)))
+    N === 2 ? [-60, 60] : Array.from({ length: N }, (_, i) => -72 + i * (144 / (N - 1)))
   return angles.map((a) => {
     const rad = (a * Math.PI) / 180
     return { x: R * Math.sin(rad), y: -R * Math.cos(rad), angle: a }
@@ -156,7 +160,9 @@ function QuickStartKey({
     // Constant ring radius — gives every fan the generous spacing of the
     // N=8 case. Dynamic radii made small N (2, 3) feel cramped because items
     // ended up too close to the pill and overlapping adjacent UI cards.
-    const R = 180
+    // 220 from four projects on: the ±72° arc (see getRingPositions) packs
+    // the inner items closer than the old ±90°, and long names overlapped.
+    const R = N >= 4 ? 220 : 180
     // "Kein Projekt" sits on the 6-o'clock direction at a *fixed* short
     // distance — it's a secondary action, not part of the project ring.
     // Decoupling it from R keeps it close to the pill regardless of N
