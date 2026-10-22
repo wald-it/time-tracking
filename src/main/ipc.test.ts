@@ -6,22 +6,72 @@
  * in-memory DB seeded with the v1.2 schema. Keeps the test fast and avoids
  * an Electron runtime dependency in unit tests.
  */
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { migrations } from './migrations'
 import { normaliseBudgetMinutes } from './ipc'
-import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import {
+  createMigratedTemplate,
+  loadSqlite,
+  openMigratedCopy,
+  type DatabaseCtor
+} from '../test/sqlite'
 
 const MAX_DESCRIPTION_LEN = 500
 const MAX_DURATION_SECONDS = 24 * 3600
 
 let DatabaseImpl: DatabaseCtor
+// Migrated once per file; every DB-backed test opens its own copy (#233).
+let templateDir: string
+let templatePath: string
 
 beforeAll(async () => {
   DatabaseImpl = await loadSqlite()
+  templateDir = mkdtempSync(join(tmpdir(), 'tt-ipc-template-'))
+  templatePath = createMigratedTemplate(DatabaseImpl, templateDir)
+})
+
+afterAll(() => {
+  if (templateDir) rmSync(templateDir, { recursive: true, force: true })
+})
+
+describe('migrated template (#233)', () => {
+  let tmpDir: string
+  let db: Database.Database
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'tt-template-'))
+    db = openMigratedCopy(DatabaseImpl, templatePath, tmpDir)
+  })
+
+  afterEach(() => {
+    if (!db) return
+    db.close()
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('a copy carries exactly the current migrations, so a stale template cannot pass', () => {
+    const applied = db.prepare('SELECT version FROM schema_version ORDER BY version').all() as {
+      version: number
+    }[]
+    expect(applied.map((r) => r.version)).toEqual(migrations.map((m) => m.version))
+  })
+
+  it('writes to one copy do not reach the template or the next copy', () => {
+    db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
+    const otherDir = mkdtempSync(join(tmpdir(), 'tt-template-other-'))
+    const other = openMigratedCopy(DatabaseImpl, templatePath, otherDir)
+    try {
+      const row = other.prepare('SELECT COUNT(*) AS n FROM clients').get() as { n: number }
+      expect(row.n).toBe(0)
+    } finally {
+      other.close()
+      rmSync(otherDir, { recursive: true, force: true })
+    }
+  })
 })
 
 interface ManualInput {
@@ -79,9 +129,8 @@ describe('entries:create / entries:update validation contract', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-ipc-'))
-    db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    db = openMigratedCopy(DatabaseImpl, templatePath, tmpDir)
     db.pragma('foreign_keys = ON')
-    applyMigrations(db)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(`INSERT INTO clients (id, name) VALUES (2, 'Other')`).run()
   })
@@ -387,9 +436,8 @@ describe('reference field — insertEntrySegments round-trip', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-ref-'))
-    db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    db = openMigratedCopy(DatabaseImpl, templatePath, tmpDir)
     db.pragma('foreign_keys = ON')
-    applyMigrations(db)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
   })
 
@@ -458,9 +506,8 @@ describe('billable + private_note — DB round-trip', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-billable-'))
-    db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    db = openMigratedCopy(DatabaseImpl, templatePath, tmpDir)
     db.pragma('foreign_keys = ON')
-    applyMigrations(db)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
   })
 
@@ -574,9 +621,8 @@ describe('projects — validateProject', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-projects-'))
-    db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    db = openMigratedCopy(DatabaseImpl, templatePath, tmpDir)
     db.pragma('foreign_keys = ON')
-    applyMigrations(db)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(`INSERT INTO clients (id, name) VALUES (2, 'Other')`).run()
   })
@@ -634,9 +680,8 @@ describe('projects — SQL contract tests', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-projects-sql-'))
-    db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    db = openMigratedCopy(DatabaseImpl, templatePath, tmpDir)
     db.pragma('foreign_keys = ON')
-    applyMigrations(db)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(`INSERT INTO clients (id, name) VALUES (2, 'Other')`).run()
   })
@@ -878,9 +923,8 @@ describe('projects status/active sync', () => {
 
   beforeEach(() => {
     tmpDir2 = mkdtempSync(join(tmpdir(), 'tt-status-'))
-    db2 = new DatabaseImpl(join(tmpDir2, 'test.sqlite'))
+    db2 = openMigratedCopy(DatabaseImpl, templatePath, tmpDir2)
     db2.pragma('foreign_keys = ON')
-    applyMigrations(db2)
     db2.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Test')`).run()
     db2
       .prepare(`INSERT INTO projects (id, client_id, name, status) VALUES (1, 1, 'App', 'active')`)
