@@ -19,9 +19,10 @@ import trayStoppedIcon from '../../resources/tray-stopped.png?asset'
 import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
 import {
   assertSmokeUserDataIsolated,
-  createSmokeUserDataDir,
+  parseSmokeOutPath,
   removeSmokeUserDataDir,
-  scheduleRemovalAfterExit
+  scheduleRemovalAfterExit,
+  setupSmokeUserData
 } from './smokeUserData'
 import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
@@ -97,13 +98,37 @@ const smokeTestArg = process.argv.find((a) => a.startsWith('--smoke-test'))
 // Smoke runs never see the user's data: userData moves to a fresh temp
 // directory before the app is ready (Chromium reads it at startup). The
 // default locations are remembered so the smoke block can refuse to open a
-// database that still resolves to one of them.
+// database that still resolves to one of them. A failed setup ends the run
+// right here with an ok:false result — thrown at module level it would only
+// be logged by the uncaughtException handler and the run would hang.
+/** Log the smoke result and write it to `outPath` (exit code stays authoritative). */
+function writeSmokeResult(outPath: string, result: object, level: 'log' | 'error'): void {
+  const payload = JSON.stringify(result)
+  console[level](`[smoke] ${payload}`)
+  if (outPath) {
+    try {
+      writeFileSync(outPath, payload, 'utf8')
+    } catch (e) {
+      console.warn('[smoke] could not write to outPath:', (e as Error).message)
+    }
+  }
+}
+
 let smokeUserData: string | undefined
 let smokeProtectedDirs: string[] = []
 if (smokeTestArg !== undefined) {
-  smokeProtectedDirs = [app.getPath('userData'), join(app.getPath('appData'), app.getName())]
-  smokeUserData = createSmokeUserDataDir()
-  app.setPath('userData', smokeUserData)
+  const setup = setupSmokeUserData(app)
+  if (setup.ok) {
+    smokeUserData = setup.userData
+    smokeProtectedDirs = setup.protectedDirs
+  } else {
+    writeSmokeResult(
+      parseSmokeOutPath(smokeTestArg),
+      { ok: false, error: setup.error, electronVersion: process.versions.electron },
+      'error'
+    )
+    app.exit(1)
+  }
 }
 
 const isSecondInstance = smokeTestArg === undefined && !app.requestSingleInstanceLock()
@@ -475,8 +500,7 @@ app.whenReady().then(async () => {
   // This is the v1.2 packaged-binary smoke check (E11) that catches
   // ABI / native-module regressions before we publish a release.
   if (smokeTestArg !== undefined) {
-    const smokeArg = smokeTestArg
-    const outPath = smokeArg.includes('=') ? smokeArg.split('=').slice(1).join('=') : ''
+    const outPath = parseSmokeOutPath(smokeTestArg)
     let smokeDb: ReturnType<typeof getDb> | undefined
     // Close the DB (Windows keeps open files undeletable), drop the temp
     // userData and exit. Chromium holds its profile files until the process
@@ -496,6 +520,9 @@ app.whenReady().then(async () => {
       app.exit(code)
     }
     try {
+      if (!smokeUserData || app.getPath('userData') !== smokeUserData) {
+        throw new Error('smoke test refused to run: temp userData is not in effect')
+      }
       assertSmokeUserDataIsolated(app.getPath('userData'), smokeProtectedDirs)
       const db = getDb()
       smokeDb = db
@@ -549,34 +576,19 @@ app.whenReady().then(async () => {
         ok: true as const,
         schemaVersion: row.v ?? 0,
         dbPath: app.getPath('userData'),
+        sessionData: app.getPath('sessionData'),
         electronVersion: process.versions.electron,
         nodeVersion: process.versions.node,
         pdfBytes
       }
-      const payload = JSON.stringify(result)
-      console.log(`[smoke] ${payload}`)
-      if (outPath) {
-        try {
-          writeFileSync(outPath, payload, 'utf8')
-        } catch (e) {
-          console.warn('[smoke] could not write to outPath:', (e as Error).message)
-        }
-      }
+      writeSmokeResult(outPath, result, 'log')
       finishSmoke(0)
     } catch (err) {
-      const payload = JSON.stringify({
-        ok: false,
-        error: (err as Error).message,
-        electronVersion: process.versions.electron
-      })
-      console.error(`[smoke] ${payload}`)
-      if (outPath) {
-        try {
-          writeFileSync(outPath, payload, 'utf8')
-        } catch {
-          /* ignore — exit code is the source of truth */
-        }
-      }
+      writeSmokeResult(
+        outPath,
+        { ok: false, error: (err as Error).message, electronVersion: process.versions.electron },
+        'error'
+      )
       finishSmoke(1)
     }
     return
