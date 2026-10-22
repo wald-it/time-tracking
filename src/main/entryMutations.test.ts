@@ -332,6 +332,13 @@ describe('switchTimer (B1)', () => {
     })
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.data.stopped).toBeNull()
+    // The ghost is closed, but never before its own start: an undelete must
+    // not bring back a negative duration.
+    const row = db
+      .prepare(`SELECT started_at, stopped_at FROM entries WHERE id = ?`)
+      .get(ghost.data.id) as { started_at: string; stopped_at: string | null }
+    expect(row.stopped_at).not.toBeNull()
+    expect(Date.parse(row.stopped_at!)).toBeGreaterThanOrEqual(Date.parse(row.started_at))
   })
 
   it('returns stopped: null when nothing ran', () => {

@@ -263,10 +263,16 @@ export function switchTimer(db: Db, input: CreateEntryInput): IpcResult<SwitchTi
     return fail('Startzeit liegt vor dem Beginn des laufenden Eintrags')
   }
   const tx = db.transaction((): SwitchTimerResult => {
-    db.prepare(`UPDATE entries SET stopped_at = ?, heartbeat_at = ? WHERE stopped_at IS NULL`).run(
-      startedAt,
-      startedAt
-    )
+    // Never before a row's own start: a soft-deleted row left running may have
+    // started after the new entry (the check above lets that through), and an
+    // undelete would bring a negative duration back. Live rows cannot reach
+    // the CASE — an earlier start was refused above.
+    db.prepare(
+      `UPDATE entries
+          SET stopped_at = CASE WHEN started_at > ? THEN started_at ELSE ? END,
+              heartbeat_at = CASE WHEN started_at > ? THEN started_at ELSE ? END
+        WHERE stopped_at IS NULL`
+    ).run(startedAt, startedAt, startedAt, startedAt)
     const info = db
       .prepare(
         `INSERT INTO entries (client_id, description, started_at, heartbeat_at, project_id)
