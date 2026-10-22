@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getISOWeek } from 'date-fns'
 import type { Client, DashboardSummary, Entry, Project } from '../../../shared/types'
 import { useEntriesStore } from '../store/entriesStore'
 import { useProjectsStore } from '../store/projectsStore'
@@ -7,7 +6,7 @@ import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useToastStore } from '../store/toastStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTimer } from '../hooks/useTimer'
-import { useWeekStart } from '../hooks/useWeekStart'
+import { useWeekStart, weekNumberOf } from '../hooks/useWeekStart'
 import { Dialog } from '../components/Dialog'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { EntryEditForm } from '../components/EntryEditForm'
@@ -179,7 +178,7 @@ export default function TodayView(): React.JSX.Element {
             todaySeconds={summary.todaySeconds + liveDelta}
             weekSeconds={summary.weekSeconds + liveDelta}
             weekDaySeconds={weekDaySeconds}
-            weekNumber={getISOWeek(new Date(nowMs))}
+            weekNumber={weekNumberOf(new Date(nowMs), weekStart)}
             todayIndex={todayIndex}
             roundMinutes={roundMinutes}
             todayRoundedSeconds={todayRoundedSeconds}

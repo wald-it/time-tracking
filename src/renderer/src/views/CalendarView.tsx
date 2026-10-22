@@ -5,7 +5,6 @@ import {
   addMonths,
   endOfMonth,
   endOfWeek,
-  getISOWeek,
   isSameDay,
   isSameMonth,
   startOfMonth,
@@ -16,7 +15,7 @@ import type { Client, Project } from '../../../shared/types'
 import { useProjectsStore } from '../store/projectsStore'
 import { localDateKey } from '../../../shared/dateRanges'
 import { weekStartsOn, type WeekStart } from '../../../shared/weekStart'
-import { useWeekStart } from '../hooks/useWeekStart'
+import { useWeekStart, weekNumberOf } from '../hooks/useWeekStart'
 import { useEntriesStore } from '../store/entriesStore'
 import { useTimer } from '../hooks/useTimer'
 import { CalendarDrawer } from '../components/CalendarDrawer'
@@ -467,7 +466,7 @@ function buildMonthWeeks(cursor: Date, week: WeekStart): WeekData[] {
     }
     weeks.push({
       weekKey: localDateKey(days[0]),
-      weekNumber: getISOWeek(days[0]),
+      weekNumber: weekNumberOf(days[0], week),
       days
     })
   }
