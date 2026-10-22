@@ -112,7 +112,7 @@ export function TimerDisplay({
               <span
                 aria-hidden="true"
                 className="block h-2.5 w-2.5 flex-none"
-                style={{ background: client?.color ?? 'var(--disp-dim)' }}
+                style={{ background: project?.color || (client?.color ?? 'var(--disp-dim)') }}
               />
               <span className="text-[15px] font-semibold">{client?.name ?? ''}</span>
               {project && <span className="text-sm text-[var(--disp-dim)]">· {project.name}</span>}

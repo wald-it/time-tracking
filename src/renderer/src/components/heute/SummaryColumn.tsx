@@ -16,7 +16,8 @@ export function SummaryColumn({
   weekDaySeconds,
   weekNumber,
   todayIndex,
-  roundMinutes
+  roundMinutes,
+  todayRoundedSeconds
 }: {
   todaySeconds: number
   weekSeconds: number
@@ -24,12 +25,19 @@ export function SummaryColumn({
   weekNumber: number
   todayIndex: number
   roundMinutes: number
+  /**
+   * Today's total as the invoice bills it (each entry rounded up to the
+   * step). Omitted ⇒ the day total is rounded as a whole.
+   */
+  todayRoundedSeconds?: number
 }): React.JSX.Element {
   const t = useT()
   const roundedSub =
     roundMinutes > 0
       ? t('today.summary.rounded', {
-          total: formatHoursMinutes(Math.floor(roundDuration(todaySeconds, roundMinutes) / 60)),
+          total: formatHoursMinutes(
+            Math.floor((todayRoundedSeconds ?? roundDuration(todaySeconds, roundMinutes)) / 60)
+          ),
           step: roundMinutes
         })
       : undefined
