@@ -24,6 +24,7 @@ import type {
 } from '../shared/types'
 import type { McpAuditEntry } from './mcpAudit'
 import { readRoundMinutes, readRoundedTotals, readTotals } from './dashboardTotals'
+import { parseZonedTimestamp, zonedTimestampError } from '../shared/zonedTimestamp'
 import { roundDuration } from '../shared/duration'
 
 type Db = Database.Database
@@ -114,6 +115,16 @@ function asProjectId(v: unknown, fallback: number | null): number | null {
   if (typeof v === 'number') return v
   return fallback
 }
+/**
+ * An MCP time field: real date, time of day and zone (owner decision
+ * 2026-10-22). Returns the stored form (UTC, ms, `Z`) or an error that names
+ * the field. MCP scope only — controller ops (#133) send no timestamps.
+ */
+function zonedField(field: string, value: unknown): { iso: string } | { error: string } {
+  const r = parseZonedTimestamp(value)
+  return r.ok ? { iso: r.iso } : { error: zonedTimestampError(field, value, r.reason) }
+}
+
 function durationMin(started_at: string, stopped_at: string): number {
   return Math.round((Date.parse(stopped_at) - Date.parse(started_at)) / 60000)
 }
@@ -131,11 +142,15 @@ interface Plan {
 function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { error: string } {
   switch (op) {
     case 'create_manual_entry': {
+      const start = zonedField('started_at', args.started_at)
+      if ('error' in start) return start
+      const stop = zonedField('stopped_at', args.stopped_at)
+      if ('error' in stop) return stop
       const input: CreateManualEntryInput = {
         client_id: Number(args.client_id),
         description: asString(args.description),
-        started_at: asString(args.started_at),
-        stopped_at: asString(args.stopped_at),
+        started_at: start.iso,
+        stopped_at: stop.iso,
         tags: asString(args.tags),
         reference: asString(args.reference),
         billable: asBillable(args.billable, 1),
@@ -179,14 +194,27 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
             'Laufende Einträge können nicht über update_entry_fields bearbeitet werden — erst stop_running_timer nutzen'
         }
       }
+      // Only the time fields the caller actually passed are checked; an update
+      // without them keeps the stored values and is not affected by the rule.
+      let startedAt = existing.started_at
+      if (args.started_at !== undefined) {
+        const r = zonedField('started_at', args.started_at)
+        if ('error' in r) return r
+        startedAt = r.iso
+      }
+      let stoppedAt = existing.stopped_at ?? ''
+      if (args.stopped_at !== undefined) {
+        const r = zonedField('stopped_at', args.stopped_at)
+        if ('error' in r) return r
+        stoppedAt = r.iso
+      }
       const input: UpdateEntryInput = {
         id,
         client_id: args.client_id === undefined ? existing.client_id : Number(args.client_id),
         description:
           args.description === undefined ? existing.description : asString(args.description),
-        started_at: args.started_at === undefined ? existing.started_at : asString(args.started_at),
-        stopped_at:
-          args.stopped_at === undefined ? (existing.stopped_at ?? '') : asString(args.stopped_at),
+        started_at: startedAt,
+        stopped_at: stoppedAt,
         tags: args.tags === undefined ? existing.tags : asString(args.tags),
         reference: args.reference === undefined ? existing.reference : asString(args.reference),
         billable:
@@ -238,10 +266,17 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
     }
     case 'start_timer': {
+      // Absent (or empty) means "now", as before; a given start must be zoned.
+      let startedAt = new Date().toISOString()
+      if (args.started_at !== undefined && args.started_at !== '') {
+        const r = zonedField('started_at', args.started_at)
+        if ('error' in r) return r
+        startedAt = r.iso
+      }
       const input: CreateEntryInput = {
         client_id: Number(args.client_id),
         description: asString(args.description),
-        started_at: asString(args.started_at) || new Date().toISOString(),
+        started_at: startedAt,
         project_id: asProjectId(args.project_id, null)
       }
       const client = db.prepare(`SELECT id FROM clients WHERE id = ?`).get(input.client_id) as

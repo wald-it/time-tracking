@@ -289,6 +289,124 @@ function runningRow(
   )
 }
 
+describe('handleRequest — MCP time fields need a date, a time and a zone', () => {
+  let db: Database.Database
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+  })
+
+  function create(
+    started_at: unknown,
+    stopped_at: unknown = '2026-10-01T10:00:00Z',
+    preview = false
+  ): BridgeRequest {
+    return {
+      v: 1,
+      token: 'secret',
+      op: 'create_manual_entry',
+      args: { client_id: 1, description: 'x', started_at, stopped_at },
+      preview
+    }
+  }
+
+  it('accepts an offset and stores it as UTC', async () => {
+    const { ctx } = makeCtx(db)
+    const res = await handleRequest(ctx, create('2026-10-01T09:00:00+02:00'))
+    expect(res.ok).toBe(true)
+    const row = db.prepare(`SELECT started_at, stopped_at FROM entries`).get()
+    expect(row).toEqual({
+      started_at: '2026-10-01T07:00:00.000Z',
+      stopped_at: '2026-10-01T10:00:00.000Z'
+    })
+  })
+
+  it('accepts Z', async () => {
+    const { ctx } = makeCtx(db)
+    expect((await handleRequest(ctx, create('2026-10-01T09:00:00Z'))).ok).toBe(true)
+  })
+
+  for (const preview of [false, true]) {
+    const mode = preview ? 'preview' : 'write'
+
+    it(`refuses a value without a zone, naming the field (${mode})`, async () => {
+      const { ctx, spies } = makeCtx(db)
+      const res = await handleRequest(ctx, create('2026-10-01T09:00:00', undefined, preview))
+      expect(res).toMatchObject({ ok: false, code: 'invalid' })
+      if (!res.ok) {
+        expect(res.error).toMatch(
+          /^started_at: Zeitzone fehlt, z\. B\. \d{4}-\d{2}-\d{2}T09:00:00[+-]\d{2}:\d{2}/
+        )
+      }
+      expect(countEntries(db)).toBe(0)
+      expect(spies.confirmCalls).toBe(0)
+    })
+
+    it(`refuses a bare date (${mode})`, async () => {
+      const { ctx } = makeCtx(db)
+      const res = await handleRequest(ctx, create('2026-10-01', undefined, preview))
+      expect(res.ok).toBe(false)
+      if (!res.ok) expect(res.error).toMatch(/^started_at: Uhrzeit fehlt/)
+    })
+
+    it(`refuses an impossible date instead of rolling it over (${mode})`, async () => {
+      const { ctx } = makeCtx(db)
+      const res = await handleRequest(
+        ctx,
+        create('2026-02-28T09:00:00Z', '2026-02-30T10:00:00Z', preview)
+      )
+      expect(res.ok).toBe(false)
+      if (!res.ok) expect(res.error).toMatch(/^stopped_at: kein gültiges Datum/)
+    })
+  }
+
+  it('update_entry_fields without time fields is not affected', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, create('2026-10-01T09:00:00Z'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, description: 'neu' }
+    })
+    expect(res.ok).toBe(true)
+  })
+
+  it('update_entry_fields checks only the time field it was given, by name', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, create('2026-10-01T09:00:00Z'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, stopped_at: '2026-10-01T11:00:00' }
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/^stopped_at: Zeitzone fehlt/)
+  })
+
+  it('start_timer refuses a start without a zone, and still defaults to now without one', async () => {
+    const { ctx } = makeCtx(db)
+    const bad = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2026-10-01T09:00:00' }
+    })
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.error).toMatch(/^started_at: Zeitzone fehlt/)
+    const ok = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1 }
+    })
+    expect(ok.ok).toBe(true)
+  })
+})
+
 describe('handleRequest — controller scope', () => {
   let db: Database.Database
   beforeEach(() => {
