@@ -2,7 +2,7 @@
  * Tests for the guarded MCP write-bridge core. In-memory migrated DB; stubs
  * for confirm/backup/audit/onChange.
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest'
 import type Database from 'better-sqlite3'
 import { handleRequest, type BridgeCtx, type BridgeRequest } from './mcpBridgeCore'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
@@ -387,6 +387,61 @@ describe('handleRequest — MCP time fields need a date, a time and a zone', () 
     if (!res.ok) expect(res.error).toMatch(/^stopped_at: Zeitzone fehlt/)
   })
 
+  it('update_entry_fields stores a given zoned time in the stored form', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, create('2026-10-01T09:00:00Z'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, stopped_at: '2026-10-01T13:00:00+02:00' }
+    })
+    expect(res.ok).toBe(true)
+    // updateManualEntry may re-insert the row; read the live one.
+    const row = db.prepare(`SELECT stopped_at FROM entries WHERE deleted_at IS NULL`).get()
+    expect(row).toEqual({ stopped_at: '2026-10-01T11:00:00.000Z' })
+  })
+
+  it('start_timer stores a given zoned start in the stored form', async () => {
+    const { ctx } = makeCtx(db)
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2026-10-01T09:00:00+02:00' }
+    })
+    expect(res.ok).toBe(true)
+    const row = db.prepare(`SELECT started_at FROM entries WHERE stopped_at IS NULL`).get()
+    expect(row).toEqual({ started_at: '2026-10-01T07:00:00.000Z' })
+  })
+
+  it('preview of update_entry_fields and start_timer is refused the same way', async () => {
+    const { ctx, spies } = makeCtx(db)
+    await handleRequest(ctx, create('2026-10-01T09:00:00Z'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const upd = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, started_at: '2026-10-01' },
+      preview: true
+    })
+    expect(upd.ok).toBe(false)
+    if (!upd.ok) expect(upd.error).toMatch(/^started_at: Uhrzeit fehlt/)
+    const start = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2026-10-01T09:00:00' },
+      preview: true
+    })
+    expect(start.ok).toBe(false)
+    if (!start.ok) expect(start.error).toMatch(/^started_at: Zeitzone fehlt/)
+    // the create above confirmed once; the two refused previews add nothing
+    expect(spies.confirmCalls).toBe(1)
+  })
+
   it('start_timer refuses a start without a zone, and still defaults to now without one', async () => {
     const { ctx } = makeCtx(db)
     const bad = await handleRequest(ctx, {
@@ -404,6 +459,127 @@ describe('handleRequest — MCP time fields need a date, a time and a zone', () 
       args: { client_id: 1 }
     })
     expect(ok.ok).toBe(true)
+  })
+})
+
+describe('handleRequest — confirmation and preview speak local time (Europe/Berlin)', () => {
+  let db: Database.Database
+  const previousTz = process.env.TZ
+  beforeEach(() => {
+    process.env.TZ = 'Europe/Berlin'
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+  })
+  afterEach(() => {
+    if (previousTz === undefined) delete process.env.TZ
+    else process.env.TZ = previousTz
+  })
+
+  /** A ctx that records what the owner is asked to confirm. */
+  function recording(): { ctx: BridgeCtx; asked: string[] } {
+    const { ctx } = makeCtx(db)
+    const asked: string[] = []
+    ctx.confirm = async (summary) => {
+      asked.push(summary)
+      return true
+    }
+    return { ctx, asked }
+  }
+
+  function create(started_at: string, stopped_at: string, preview = false): BridgeRequest {
+    return {
+      v: 1,
+      token: 'secret',
+      op: 'create_manual_entry',
+      args: { client_id: 1, description: 'Workshop', started_at, stopped_at },
+      preview
+    }
+  }
+
+  const HINT =
+    'Hinweis: +02:00 weicht von der Ortszeit am 28.10. ab (+01:00) — wird als 08:00 Ortszeit gespeichert.'
+
+  it('create: the dialog shows the local span, no note when the offset fits', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
+    expect(asked).toEqual([
+      'Eintrag nachtragen — Kunde 1, Di 28.10.2025 09:00–12:00 (180 min): "Workshop"'
+    ])
+  })
+
+  it('create: a summer-time offset after the change gets a note in dialog and preview', async () => {
+    const { ctx, asked } = recording()
+    const prev = await handleRequest(
+      ctx,
+      create('2025-10-28T09:00:00+02:00', '2025-10-28T12:00:00+01:00', true)
+    )
+    expect(prev.ok).toBe(true)
+    if (prev.ok) {
+      expect(prev.data).toMatchObject({
+        started_at: '2025-10-28T07:00:00.000Z',
+        started_local: '2025-10-28T08:00:00+01:00',
+        stopped_local: '2025-10-28T12:00:00+01:00',
+        zeit_hinweise: { started_at: HINT }
+      })
+      expect(prev.data).not.toHaveProperty('zeit_hinweise.stopped_at')
+    }
+    await handleRequest(ctx, create('2025-10-28T09:00:00+02:00', '2025-10-28T12:00:00+01:00'))
+    expect(asked[0]).toBe(
+      `Eintrag nachtragen — Kunde 1, Di 28.10.2025 08:00–12:00 (240 min): "Workshop"\nStart: ${HINT}`
+    )
+  })
+
+  it('create: Z gets no note', async () => {
+    const { ctx } = recording()
+    const prev = await handleRequest(
+      ctx,
+      create('2025-10-28T08:00:00Z', '2025-10-28T11:00:00Z', true)
+    )
+    expect(prev.ok).toBe(true)
+    if (prev.ok) expect(prev.data).not.toHaveProperty('zeit_hinweise')
+  })
+
+  it('update: the dialog shows before and after in local time; the preview both sides', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const upd = {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, stopped_at: '2025-10-28T13:00:00+01:00' }
+    }
+    const prev = await handleRequest(ctx, { ...upd, preview: true })
+    if (prev.ok) {
+      expect(prev.data).toMatchObject({
+        before: { stopped_local: '2025-10-28T12:00:00+01:00' },
+        after: { stopped_local: '2025-10-28T13:00:00+01:00' }
+      })
+    }
+    await handleRequest(ctx, upd)
+    expect(asked[1]).toBe(
+      `Eintrag #${id} ändern — vorher Di 28.10.2025 09:00–12:00, nachher Di 28.10.2025 09:00–13:00: "Workshop"`
+    )
+  })
+
+  it('start_timer: the dialog names a given start, else "ab jetzt"', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, description: 'Call', started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, description: 'Call' }
+    })
+    expect(asked).toEqual([
+      'Timer starten — Kunde 1, ab Di 28.10.2025 09:00: "Call"',
+      'Timer starten — Kunde 1, ab jetzt: "Call"'
+    ])
   })
 })
 

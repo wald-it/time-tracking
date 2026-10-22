@@ -19,7 +19,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { zonedTimestampExample } from '../shared/zonedTimestamp'
+import { localTimeZoneName, zonedTimestampExample } from '../shared/zonedTimestamp'
 import { openReadonly } from './db'
 import { resolveDbPath } from './dbPath'
 import { resolvePrivacy, type PrivacyConfig } from './privacy'
@@ -314,12 +314,15 @@ export function buildServer(): McpServer {
     'Nur Vorschau: in TimeTrack wurde nichts angelegt oder geändert. Zum Ausführen denselben ' +
     'Aufruf ohne preview wiederholen.'
 
-  // Write tools take only zoned timestamps (owner decision 2026-10-22); the
-  // example is in this machine's current offset, like the error message the
-  // app returns for a value without a zone.
+  // Write tools take only zoned timestamps (owner decision 2026-10-22). The
+  // example uses the offset of the day this server started; it goes stale
+  // across a clock change, so the text names the zone and says the offset has
+  // to fit the date — the app adds a note when it does not.
   const ZONED =
     `ISO-Zeitstempel mit Uhrzeit und Zeitzone, z. B. ${zonedTimestampExample()} ` +
-    '(oder mit Z für UTC). Ohne Zone oder als reines Datum wird der Aufruf abgelehnt'
+    `(oder mit Z für UTC). Der Rechner läuft in ${localTimeZoneName()}; der Offset muss ` +
+    'zum Datum passen (Sommer-/Winterzeit). Ohne Zone oder als reines Datum wird der Aufruf ' +
+    'abgelehnt'
 
   async function runWrite(
     op: string,

@@ -108,6 +108,10 @@ date or an impossible date (`2026-02-30`) is refused, in preview mode as well; t
 names the field and gives an example in the computer's current offset. Without a zone
 the moment would be ambiguous: the app reads such a value as local time, `list_entries`
 reads its `from`/`to` as UTC. Accepted times are stored in UTC.
+The tool descriptions name the computer's time zone; the offset has to fit the date
+(summer or winter time). A preview returns the times in UTC and as `started_local` /
+`stopped_local`, and an offset that does not match the local time on that day is accepted
+with a note (`zeit_hinweise`) — in the preview and in the confirmation dialog.
 
 **The server is included in the installed app** — no checkout, no build, and no
 separately installed Node required.
