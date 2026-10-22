@@ -248,7 +248,10 @@ export function DayDetails({
                     </span>
                   </div>
                   {e.description && (
-                    <p className="m-0 truncate text-[13px] text-[var(--ink)]" title={e.description}>
+                    <p
+                      className="m-0 line-clamp-2 text-[13px] text-[var(--ink)] [overflow-wrap:anywhere]"
+                      title={e.description}
+                    >
                       {e.description}
                     </p>
                   )}

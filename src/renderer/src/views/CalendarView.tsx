@@ -374,7 +374,9 @@ export default function CalendarView(): React.JSX.Element {
           </p>
         </section>
 
-        <aside className="flex flex-col gap-9" style={{ flex: '1 1 300px' }}>
+        {/* min-w-0: a flex item's automatic minimum is its min-content width;
+            one long description would otherwise push the aside below the grid. */}
+        <aside className="flex min-w-0 flex-col gap-9" style={{ flex: '1 1 300px' }}>
           {wide && <DayPanel dateISO={selectedKey} entries={selectedEntries} clients={clients} />}
           <ClientBreakdown
             entries={entries}
@@ -501,7 +503,7 @@ function Week({
             aria-label={ariaLabel}
             onClick={() => onSelect(day)}
             className={[
-              'flex min-h-[104px] cursor-pointer flex-col justify-between gap-2.5 rounded-none p-2.5 text-left',
+              '@container flex min-h-[104px] min-w-0 cursor-pointer flex-col justify-between gap-2.5 overflow-hidden rounded-none p-2.5 text-left',
               'disabled:cursor-default',
               'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus)]',
               isSelected ? 'bg-[var(--key)]' : 'bg-transparent enabled:hover:bg-[var(--key)]'
@@ -512,7 +514,12 @@ function Week({
               boxShadow: isSelected ? 'inset 0 0 0 1px var(--ink)' : 'none'
             }}
           >
-            <span className="flex w-full items-start justify-between gap-1.5">
+            {/* Narrow cells (window ~760px): the totals wrap below the number
+                instead of running into the neighbour cell. */}
+            <span
+              className="flex w-full flex-wrap items-start justify-between gap-x-1.5 gap-y-0.5"
+              title={revenueCent > 0 ? formatEur(revenueCent) : undefined}
+            >
               <span
                 data-testid="day-number"
                 className="font-num -ml-[5px] px-[5px] py-px text-[13px] font-medium"
@@ -523,11 +530,11 @@ function Week({
               >
                 {day.getDate()}
               </span>
-              <span className="flex flex-col items-end gap-0.5">
+              <span className="ml-auto flex flex-col items-end gap-0.5">
                 {totalSeconds > 0 && (
                   <span
                     data-testid="day-total"
-                    className="font-num text-xs"
+                    className="font-num whitespace-nowrap text-xs"
                     style={{ color: 'var(--ink2)' }}
                     title={
                       roundedSeconds !== totalSeconds
@@ -541,11 +548,13 @@ function Week({
                     {formatHm(totalSeconds)}
                   </span>
                 )}
-                {/* Owner decision: the revenue line stays in the cell (deviates from the mockup). */}
+                {/* Owner decision: the revenue line stays in the cell (deviates from the
+                    mockup). Below ~80px of cell content (narrowest windows) it is
+                    hidden rather than split or overflowing — the cell's title keeps it. */}
                 {revenueCent > 0 && (
                   <span
                     data-testid="day-revenue"
-                    className="font-num text-[11px]"
+                    className="font-num whitespace-nowrap text-[11px] @max-[79px]:hidden"
                     style={{ color: 'var(--ink3)' }}
                   >
                     {formatEur(revenueCent)}
