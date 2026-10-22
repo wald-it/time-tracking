@@ -10,6 +10,7 @@
  */
 import type Database from 'better-sqlite3'
 import type { Entry } from '../shared/types'
+import { billedMinutes } from '../shared/currency'
 import {
   parseWeekStart,
   weekStartModifiers,
@@ -49,14 +50,15 @@ export interface DayWeekTotals {
 }
 
 /**
- * The rounding step (`pdf_round_minutes`, ceiling arithmetic — see
- * `roundDuration`). 0 = off.
+ * The rounding step (`pdf_round_minutes`). 0 = off.
  *
  * Since the Messinstrument UI the "Heute" page shows the RAW worked time
  * large and the rounded value only as a sub-line ("gerundet … h"); the dial
- * mirrors the raw number. The rounded value still travels in `get_summary`
- * for surfaces that want it — and any of them has to round exactly this way
- * (the first dial disagreed with the page: 6:24 raw against 6:30).
+ * mirrors the raw number. That rounded value follows the invoice rule — each
+ * entry rounded up (`readRoundedTotals`, `billedMinutes`) — and travels in
+ * `get_summary` as `*_rounded_seconds`. The legacy `*_display_seconds` there
+ * round the total in one piece (`roundDuration`) and exist only for older
+ * plugin builds.
  */
 export function readRoundMinutes(db: Db): number {
   const row = db.prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`).get() as
@@ -146,4 +148,49 @@ export function readTodayEntries(db: Db): Entry[] {
         ORDER BY started_at DESC`
     )
     .all() as Entry[]
+}
+
+export interface RoundedTotals {
+  today_rounded_seconds: number
+  week_rounded_seconds: number
+}
+
+/**
+ * Today and the week as the invoice bills them: each entry rounded up to the
+ * step (`billedMinutes`, shared with the PDF and Heute's "gerundet … h"), so
+ * the product has one "rounded" number. Same windows as `readTotals` (a
+ * running entry counts up to now). With rounding off these equal the raw
+ * totals — the sub-line is hidden then, and nothing is billed differently.
+ */
+export function readRoundedTotals(db: Db): RoundedTotals {
+  const step = readRoundMinutes(db)
+  const totals = readTotals(db)
+  if (step <= 0) {
+    return {
+      today_rounded_seconds: totals.today_seconds,
+      week_rounded_seconds: totals.week_seconds
+    }
+  }
+  const rows = db
+    .prepare(
+      `SELECT started_at, stopped_at,
+              (DATE(started_at, 'localtime') = DATE('now', 'localtime') OR stopped_at IS NULL)
+                AS is_today
+         FROM entries
+        WHERE deleted_at IS NULL
+          AND (DATE(started_at, 'localtime') >= ${weekStartExpr(db)}
+               OR stopped_at IS NULL)`
+    )
+    .all() as Array<{ started_at: string; stopped_at: string | null; is_today: number }>
+
+  const now = Date.now()
+  let today = 0
+  let week = 0
+  for (const r of rows) {
+    const end = r.stopped_at ? Date.parse(r.stopped_at) : now
+    const secs = billedMinutes(Math.max(0, end - Date.parse(r.started_at)), step) * 60
+    week += secs
+    if (r.is_today) today += secs
+  }
+  return { today_rounded_seconds: today, week_rounded_seconds: week }
 }

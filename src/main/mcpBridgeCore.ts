@@ -23,7 +23,7 @@ import type {
   CreateEntryInput
 } from '../shared/types'
 import type { McpAuditEntry } from './mcpAudit'
-import { readRoundMinutes, readTotals } from './dashboardTotals'
+import { readRoundMinutes, readRoundedTotals, readTotals } from './dashboardTotals'
 import { roundDuration } from '../shared/duration'
 
 type Db = Database.Database
@@ -347,12 +347,14 @@ async function handleControllerRequest(
   // key action, which does not need the totals.
   //
   // Raw and rounded seconds. Since the Messinstrument UI (owner decision
-  // 2026-10-22) the app shows the RAW worked time large and the rounded value
-  // (`pdf_round_minutes`, ceiling) as a sub-line; surfaces that mirror the
-  // page show the raw seconds. The rounded pair is sent under clear names
-  // (`*_rounded_seconds`). `*_display_seconds` carries the same rounded value
-  // and keeps its meaning for plugin versions that already read it — the
-  // plugin ships separately. Rounding stays here, in one place.
+  // 2026-10-22) the app shows the RAW worked time large; surfaces that mirror
+  // the page show the raw seconds.
+  // - `*_rounded_seconds`: as the invoice bills it — each entry rounded up to
+  //   `pdf_round_minutes` (readRoundedTotals), the same number as Heute's
+  //   "gerundet … h". One rounding rule in the product.
+  // - `*_display_seconds`: LEGACY, unchanged meaning — the total rounded in
+  //   one piece, as the page showed it before. Kept only for plugin builds
+  //   that already read it (the plugin ships separately); not the invoice rule.
   if (op === 'get_summary') {
     const totals = readTotals(db)
     const round_minutes = readRoundMinutes(db)
@@ -362,9 +364,8 @@ async function handleControllerRequest(
         running: readRunning(db),
         ...totals,
         round_minutes,
-        today_rounded_seconds: roundDuration(totals.today_seconds, round_minutes),
-        week_rounded_seconds: roundDuration(totals.week_seconds, round_minutes),
-        // Legacy name, unchanged meaning (rounded) — see above.
+        ...readRoundedTotals(db),
+        // Legacy: the total rounded in one piece — see above.
         today_display_seconds: roundDuration(totals.today_seconds, round_minutes),
         week_display_seconds: roundDuration(totals.week_seconds, round_minutes)
       }

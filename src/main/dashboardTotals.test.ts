@@ -12,6 +12,7 @@ import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
   readRoundMinutes,
+  readRoundedTotals,
   readTodayEntries,
   readTotals,
   readWeekDaySeconds,
@@ -386,5 +387,46 @@ describe('readTodayEntries', () => {
 
     const list = readTodayEntries(db)
     expect(list.map((e) => e.description).sort()).toEqual(['overnight', 'x'])
+  })
+})
+
+/**
+ * The rounded totals in get_summary follow the invoice rule — each entry
+ * rounded up to the step, like Heute's "gerundet … h" sub-line and the PDF —
+ * so there is one "rounded" number in the product, not two (owner review of
+ * #242). Rounding the day total in one piece gives less.
+ */
+describe('readRoundedTotals', () => {
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    db.pragma('foreign_keys = ON')
+    applyMigrations(db)
+    db.prepare(
+      `INSERT INTO clients (id, name, color, active, rate_cent) VALUES (1,'Acme','#111',1,0)`
+    ).run()
+  })
+
+  it('rounds each entry up to the step, not the sum', () => {
+    db.prepare(
+      `INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes','15')`
+    ).run()
+    addClosed(db, daysAgoAt10(0).toISOString(), 10)
+    addClosed(db, new Date(daysAgoAt10(0).getTime() + 3_600_000).toISOString(), 10)
+    // Three 10-minute entries: 30 min raw. Per entry 3 × 15 = 45 min; the
+    // total rounded in one piece would stay at 30.
+    addClosed(db, new Date(daysAgoAt10(0).getTime() + 7_200_000).toISOString(), 10)
+    const r = readRoundedTotals(db)
+    expect(r.today_rounded_seconds).toBe(45 * 60)
+    expect(r.week_rounded_seconds).toBe(45 * 60)
+  })
+
+  it('equals the raw totals when rounding is off', () => {
+    addClosed(db, daysAgoAt10(0).toISOString(), 10)
+    const r = readRoundedTotals(db)
+    const t = readTotals(db)
+    expect(r.today_rounded_seconds).toBe(t.today_seconds)
+    expect(r.week_rounded_seconds).toBe(t.week_seconds)
   })
 })
