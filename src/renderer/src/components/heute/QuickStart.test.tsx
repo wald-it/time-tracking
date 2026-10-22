@@ -205,6 +205,8 @@ describe('QuickStart — project list', () => {
     fireEvent.keyDown(document.activeElement!, { key: 'Enter' })
     expect(onStart).toHaveBeenCalledWith(1, 10)
     expect(screen.queryByRole('menu')).toBeNull()
+    // Focus returns to ▾ instead of falling to <body> with the closed list.
+    expect(document.activeElement).toBe(toggleFor('Acme'))
   })
 
   it('"Kein Projekt" starts with null', () => {

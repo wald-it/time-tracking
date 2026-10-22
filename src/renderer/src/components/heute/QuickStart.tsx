@@ -243,7 +243,9 @@ function PresetKey({
   function pick(row: QuickStartRow): void {
     // The LÄUFT row has no action: no restart, no stop.
     if (row.isRunning || locked) return
-    onOpenChange(false)
+    // Back to ▾, like Esc: the chosen row unmounts with the list, and focus
+    // would otherwise fall to <body>.
+    closeToToggle()
     if (timerRuns) onSwitch(clientId, row.projectId)
     else onStart(clientId, row.projectId)
   }
