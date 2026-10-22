@@ -16,6 +16,7 @@ import { useT } from './contexts/I18nContext'
 import { useSettingsStore } from './store/settingsStore'
 import { useProjectsStore } from './store/projectsStore'
 import { useUiPrefsStore } from './store/uiPrefsStore'
+import { NowProvider } from './contexts/NowContext'
 
 type View = 'today' | 'calendar' | 'clients' | 'analytics' | 'export' | 'settings'
 
@@ -67,95 +68,97 @@ function App(): React.JSX.Element {
   }
 
   return (
-    <div
-      className="h-screen flex flex-col overflow-hidden"
-      style={{ background: 'var(--page-bg)', color: 'var(--text)' }}
-    >
-      <UpdateBanner />
-      {/* Nav */}
-      <nav
-        className="relative z-10 flex items-center gap-1 px-3 py-2 shrink-0 border-b"
-        style={{
-          background: 'var(--nav-bg)',
-          borderColor: 'var(--card-border)'
-        }}
+    <NowProvider running={runningEntry !== null}>
+      <div
+        className="h-screen flex flex-col overflow-hidden"
+        style={{ background: 'var(--page-bg)', color: 'var(--text)' }}
       >
-        {(['today', 'calendar', 'clients', 'analytics', 'export', 'settings'] as View[]).map(
-          (v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-4 py-1.5 rounded-[var(--r-key)] text-sm font-medium transition-colors
+        <UpdateBanner />
+        {/* Nav */}
+        <nav
+          className="relative z-10 flex items-center gap-1 px-3 py-2 shrink-0 border-b"
+          style={{
+            background: 'var(--nav-bg)',
+            borderColor: 'var(--card-border)'
+          }}
+        >
+          {(['today', 'calendar', 'clients', 'analytics', 'export', 'settings'] as View[]).map(
+            (v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-4 py-1.5 rounded-[var(--r-key)] text-sm font-medium transition-colors
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]
               ${view === v ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:bg-[var(--key)]'}`}
-              style={view !== v ? { color: 'var(--text2)' } : undefined}
-            >
-              {t(('nav.' + v) as `nav.${View}`)}
-            </button>
-          )
-        )}
-
-        {/* Play button — only when no timer is running */}
-        {!runningEntry && (
-          <button
-            type="button"
-            onClick={() => setShowTimerModal(true)}
-            className="ml-auto flex items-center gap-1.5 rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--key)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
-            style={{ borderColor: 'var(--card-border)', color: 'var(--text2)' }}
-            aria-label={t('timer.modal.title')}
-          >
-            <PlayIcon />
-            {t('timer.modal.start')}
-          </button>
-        )}
-
-        {/* Running timer pill */}
-        {runningEntry &&
-          (() => {
-            const client = clients.find((c) => c.id === runningEntry.client_id)
-            return (
-              <RunningPill
-                startedAt={runningEntry.started_at}
-                clientName={client?.name}
-                clientColor={client?.color}
-                projectColor={runningProjectColor}
-                onStop={() => void stop()}
-              />
+                style={view !== v ? { color: 'var(--text2)' } : undefined}
+              >
+                {t(('nav.' + v) as `nav.${View}`)}
+              </button>
             )
-          })()}
-      </nav>
+          )}
 
-      {/* Content */}
-      <main className="relative z-10 flex-1 overflow-y-auto p-6 flex flex-col">
-        <div key={view} className="view-enter flex-1 flex flex-col">
-          {view === 'today' && <TodayView />}
-          {view === 'calendar' && <CalendarView />}
-          {view === 'clients' && <ClientsView />}
-          {view === 'analytics' && <AuswertungView />}
-          {view === 'export' && <ExportView />}
-          {view === 'settings' && <SettingsView />}
-        </div>
-      </main>
+          {/* Play button — only when no timer is running */}
+          {!runningEntry && (
+            <button
+              type="button"
+              onClick={() => setShowTimerModal(true)}
+              className="ml-auto flex items-center gap-1.5 rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--key)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+              style={{ borderColor: 'var(--card-border)', color: 'var(--text2)' }}
+              aria-label={t('timer.modal.title')}
+            >
+              <PlayIcon />
+              {t('timer.modal.start')}
+            </button>
+          )}
 
-      {idleEvent && (
-        <IdleModal
-          idleSince={idleEvent.idleSince}
-          idleSeconds={idleEvent.idleSeconds}
-          onKeep={idleKeep}
-          onStopAtIdle={idleStopAtIdle}
-          onMarkPause={idleMarkPause}
-        />
-      )}
-      {quickNoteEntry && (
-        <QuickNoteModal entry={quickNoteEntry} onDone={() => setQuickNoteEntry(null)} />
-      )}
+          {/* Running timer pill */}
+          {runningEntry &&
+            (() => {
+              const client = clients.find((c) => c.id === runningEntry.client_id)
+              return (
+                <RunningPill
+                  startedAt={runningEntry.started_at}
+                  clientName={client?.name}
+                  clientColor={client?.color}
+                  projectColor={runningProjectColor}
+                  onStop={() => void stop()}
+                />
+              )
+            })()}
+        </nav>
 
-      <ToastTray />
+        {/* Content */}
+        <main className="relative z-10 flex-1 overflow-y-auto p-6 flex flex-col">
+          <div key={view} className="view-enter flex-1 flex flex-col">
+            {view === 'today' && <TodayView />}
+            {view === 'calendar' && <CalendarView />}
+            {view === 'clients' && <ClientsView />}
+            {view === 'analytics' && <AuswertungView />}
+            {view === 'export' && <ExportView />}
+            {view === 'settings' && <SettingsView />}
+          </div>
+        </main>
 
-      <OnboardingWizard open={showOnboarding} onFinish={() => void finishOnboarding()} />
+        {idleEvent && (
+          <IdleModal
+            idleSince={idleEvent.idleSince}
+            idleSeconds={idleEvent.idleSeconds}
+            onKeep={idleKeep}
+            onStopAtIdle={idleStopAtIdle}
+            onMarkPause={idleMarkPause}
+          />
+        )}
+        {quickNoteEntry && (
+          <QuickNoteModal entry={quickNoteEntry} onDone={() => setQuickNoteEntry(null)} />
+        )}
 
-      <StartTimerModal open={showTimerModal} onClose={() => setShowTimerModal(false)} />
-    </div>
+        <ToastTray />
+
+        <OnboardingWizard open={showOnboarding} onFinish={() => void finishOnboarding()} />
+
+        <StartTimerModal open={showTimerModal} onClose={() => setShowTimerModal(false)} />
+      </div>
+    </NowProvider>
   )
 }
 
