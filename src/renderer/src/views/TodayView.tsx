@@ -59,6 +59,10 @@ export default function TodayView(): React.JSX.Element {
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
   const [startOpen, setStartOpen] = useState(false)
 
+  // The local date; a change re-fetches, so a view left open across midnight
+  // does not show yesterday's entries under today's date.
+  const dayKey = new Date(nowMs).toDateString()
+
   useEffect(() => {
     let cancelled = false
     async function load(): Promise<void> {
@@ -79,7 +83,7 @@ export default function TodayView(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [version, runningEntry?.id])
+  }, [version, runningEntry?.id, dayKey])
 
   const clientsById = useMemo(() => {
     const map = new Map<number, Client>()
@@ -100,8 +104,12 @@ export default function TodayView(): React.JSX.Element {
 
   // Seconds the running entry has added since the summary was read. The
   // fetched totals already include it up to `fetchedAt`.
+  // Only once the summary already contains the running entry: right after a
+  // start (or stop) the old summary is still on screen for a moment.
   const liveDelta =
-    runningEntry && summary ? Math.max(0, Math.floor((nowMs - fetchedAt) / 1000)) : 0
+    runningEntry && summary && summary.todayEntries.some((e) => e.id === runningEntry.id)
+      ? Math.max(0, Math.floor((nowMs - fetchedAt) / 1000))
+      : 0
 
   const todayIndex = weekdayIndex(new Date(nowMs), weekStart)
   const weekDaySeconds = useMemo(() => {
@@ -118,10 +126,12 @@ export default function TodayView(): React.JSX.Element {
     }, 0)
   }, [summary, roundMinutes, nowMs])
 
+  // Only an active client can be started; the modal lists active ones only.
   const lastEntry = summary?.recentEntries[0]
-  const lastUsed = lastEntry
-    ? { clientId: lastEntry.client_id, projectId: lastEntry.project_id ?? null }
-    : null
+  const lastUsed =
+    lastEntry && clientsById.get(lastEntry.client_id)?.active === 1
+      ? { clientId: lastEntry.client_id, projectId: lastEntry.project_id ?? null }
+      : null
 
   const runningClient = runningEntry ? clientsById.get(runningEntry.client_id) : undefined
   const runningProject =
