@@ -1,0 +1,146 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   TimeTrack — "Messinstrument" design tokens (successor of v1.8 Glass, #76)
+
+   :root  = "Papier"  (light, default)
+   .dark  = "Graphit" (dark) — same toggle mechanism as today (ThemeContext
+            puts .dark on <html>; preload FOUC fix unchanged)
+
+   Drop-in plan (see HANDOFF.md § Rollout):
+     1. Paste the NEW TOKENS block into src/renderer/src/assets/base.css,
+        replacing the v1.8 Glass blocks (:root + .dark at the top).
+     2. Keep the LEGACY ALIASES block until every component reads the new
+        names, then delete it in the cleanup PR.
+
+   Contrast (WCAG 2.x, computed — not eyeballed):
+     ink  on bg        14.1 (Papier) / 14.9 (Graphit)
+     ink2 on bg         7.3          /  8.7
+     ink3 on bg         5.4          /  5.4      ← smallest text colour, passes AA
+     ink3 on key        6.0          /  4.9
+     sig  on bg         3.0          /  4.9      ← graphics/fills only, never small text on bg
+     sig-ink on sig     4.7                      ← text placed ON the signal colour
+     sig  on disp       4.6                      ← small caps "LÄUFT" inside the display: OK
+     disp-dim on disp   5.1          /  5.9
+     danger on bg       5.7          /  6.8
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── NEW TOKENS ──────────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --bg: #e8e6df; /* chassis — the page. Solid, never a gradient */
+  --key: #f3f2ec; /* raised key, hovered row, selected cell, inputs */
+  --key-edge: #c9c6bc; /* key border + 2px bottom "keycap" edge */
+  --line: #cbc8be; /* hairlines between rows / cells */
+  --tick: #8f8b80; /* scale ticks, graticule, non-billable hatch */
+
+  /* Ink (text) */
+  --ink: #191917; /* primary text, 2px section rules, baselines */
+  --ink2: #4a4843; /* secondary text, legends */
+  --ink3: #5e5b54; /* hints, metadata — the lightest text colour allowed */
+
+  /* Display window (the dark readout — stays dark in BOTH themes) */
+  --disp: #1b1b19;
+  --disp-ink: #edebe4;
+  --disp-dim: #8f8c83;
+  --disp-line: #3a3935;
+
+  /* Inverse key (primary / STOPP key, active segment) */
+  --inv: #191917;
+  --inv-ink: #f3f2ec;
+  --inv-dim: #8f8c83;
+
+  /* Signal — reserved for "running / now". Not a generic accent. */
+  --sig: #e2551f;
+  --sig-ink: #191917; /* text on --sig (white on --sig fails: 3.8) */
+
+  /* Destructive — deliberately a different hue than --sig */
+  --danger: #a8261b;
+
+  /* Focus */
+  --focus: var(--sig);
+
+  /* Typography */
+  --font-ui: 'Archivo Variable', 'Archivo', 'Segoe UI', Arial, sans-serif;
+  --font-num: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+
+  /* Shape */
+  --r-key: 4px;
+  --r-disp: 6px;
+  --r-fine: 2px;
+  --edge-key: inset 0 -2px 0 var(--key-edge);
+  --edge-bigkey: inset 0 -4px 0 rgb(0 0 0 / 0.3);
+
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #141413;
+  --key: #1e1e1c;
+  --key-edge: #34332f;
+  --line: #2e2d2a;
+  --tick: #66635c;
+
+  --ink: #e9e7e0;
+  --ink2: #b5b2a8;
+  --ink3: #8e8b82;
+
+  --disp: #0b0b0a;
+  --disp-line: #2a2926;
+  /* --disp-ink / --disp-dim unchanged */
+
+  --inv: #e9e7e0; /* STOPP key turns light on the dark chassis */
+  --inv-ink: #141413;
+  --inv-dim: #55534d;
+
+  /* --sig / --sig-ink unchanged */
+  --danger: #ef7a72;
+
+  color-scheme: dark;
+}
+
+/* ── LEGACY ALIASES (v1.8 Glass names → new values) ─────────────────────────
+   Lets every existing component pick up the new look in PR 1 without touching
+   its markup. Glass effects are neutralised here (no blur, no glow, no
+   gradient, no shadow). Delete this block in the cleanup PR. */
+:root,
+.dark {
+  --page-bg: var(--bg);
+  --card-bg: var(--key);
+  --card-hover: var(--bg);
+  --card-border: var(--line);
+  --nav-bg: var(--bg);
+  --modal-bg: var(--key);
+  --input-bg: var(--key);
+  --shadow: none;
+  --accent-glow: transparent;
+  --blur: none;
+
+  --text: var(--ink);
+  --text2: var(--ink2);
+  --text3: var(--ink3); /* old --text3 failed contrast (≈2:1); this one passes */
+
+  --accent: var(--inv); /* primary actions become ink keys, not violet */
+  --accent-bg: color-mix(in srgb, var(--ink) 6%, transparent);
+
+  --green: var(--sig); /* "running" moves from green to the signal colour */
+  --green-bg: color-mix(in srgb, var(--sig) 10%, transparent);
+
+  --danger-bg: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+/* ── Sample client palette (demo data only) ─────────────────────────────────
+   Client colours stay USER DATA (clients.color). These four are what the
+   mockups use; they are validated as a set (lightness band, chroma floor,
+   protan/deutan separation, normal-vision ΔE ≥ 15) for both themes.
+   Replacing the 10 stored presets is OUT of scope — see HANDOFF.md § Open. */
+:root {
+  --demo-c1: #1f4fa6;
+  --demo-c2: #d4a017;
+  --demo-c3: #13805c;
+  --demo-c4: #e07aa6;
+}
+.dark {
+  --demo-c1: #3a70c8;
+  --demo-c2: #bc8c14;
+  --demo-c3: #118058;
+  --demo-c4: #d36a95;
+}
