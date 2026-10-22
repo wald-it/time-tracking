@@ -57,16 +57,16 @@ export function ConfirmDialog({
     >
       <div
         className="w-[440px] rounded-[var(--r-disp)] border p-6"
-        style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+        style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
       >
         <h2
           id="confirm-title"
           className="mb-2 text-lg font-semibold"
-          style={{ color: 'var(--text)' }}
+          style={{ color: 'var(--ink)' }}
         >
           {title}
         </h2>
-        <p id="confirm-message" className="mb-6 text-sm" style={{ color: 'var(--text2)' }}>
+        <p id="confirm-message" className="mb-6 text-sm" style={{ color: 'var(--ink2)' }}>
           {message}
         </p>
         <div className="flex justify-end gap-2">
@@ -76,9 +76,9 @@ export function ConfirmDialog({
             onClick={onCancel}
             className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] border"
             style={{
-              background: 'var(--card-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           >
             {cancelLabel}

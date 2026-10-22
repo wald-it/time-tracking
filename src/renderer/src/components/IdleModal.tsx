@@ -40,16 +40,16 @@ export function IdleModal({
     >
       <div
         className="w-[460px] rounded-[var(--r-disp)] border p-6"
-        style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+        style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
       >
         <h2
           id="idle-modal-title"
           className="mb-2 text-xl font-semibold"
-          style={{ color: 'var(--text)' }}
+          style={{ color: 'var(--ink)' }}
         >
           {t('idle.title')}
         </h2>
-        <p className="mb-6 text-sm" style={{ color: 'var(--text2)' }}>
+        <p className="mb-6 text-sm" style={{ color: 'var(--ink2)' }}>
           {t('idle.body', { time: idleSinceLocal, duration: formatDuration(idleSeconds) })}
         </p>
         <div className="flex flex-col gap-2">
@@ -57,7 +57,7 @@ export function IdleModal({
             type="button"
             onClick={onKeep}
             className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium text-[var(--inv-ink)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            style={{ background: 'var(--accent)' }}
+            style={{ background: 'var(--inv)' }}
             autoFocus
           >
             {t('idle.keep')}
@@ -67,9 +67,9 @@ export function IdleModal({
             onClick={onStopAtIdle}
             className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] border"
             style={{
-              background: 'var(--card-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           >
             {t('idle.stopAtIdle', { time: idleSinceLocal })}
@@ -79,15 +79,15 @@ export function IdleModal({
             onClick={onMarkPause}
             className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] border"
             style={{
-              background: 'var(--card-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           >
             {t('idle.markPause')}
           </button>
         </div>
-        <p className="mt-4 text-xs" style={{ color: 'var(--text3)' }}>
+        <p className="mt-4 text-xs" style={{ color: 'var(--ink3)' }}>
           {t('idle.tip')}
         </p>
       </div>

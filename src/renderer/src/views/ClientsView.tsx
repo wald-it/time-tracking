@@ -280,7 +280,7 @@ export default function ClientsView(): React.JSX.Element {
   return (
     <div className="mx-auto w-full max-w-3xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>
           {t('clients.title')}
         </h1>
         <button
@@ -511,7 +511,7 @@ function ClientItem({
   return (
     <li
       className="rounded-[var(--r-disp)] border transition-colors overflow-hidden"
-      style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+      style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
     >
       {/* Client row */}
       <div
@@ -524,7 +524,7 @@ function ClientItem({
           aria-expanded={expanded}
           aria-label={expanded ? 'Projekte verbergen' : 'Projekte anzeigen'}
           className="rounded p-0.5 transition-colors hover:bg-[var(--key)] shrink-0"
-          style={{ color: 'var(--text3)' }}
+          style={{ color: 'var(--ink3)' }}
         >
           <svg
             className={`w-3.5 h-3.5 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
@@ -545,11 +545,11 @@ function ClientItem({
           style={{ backgroundColor: c.color }}
         />
         <span className={`flex-1 min-w-0 ${dimmed ? 'opacity-50' : ''}`}>
-          <span className="block font-medium" style={{ color: 'var(--text)' }}>
+          <span className="block font-medium" style={{ color: 'var(--ink)' }}>
             {c.name}
           </span>
           {c.contact_person && (
-            <span className="block text-xs" style={{ color: 'var(--text3)' }}>
+            <span className="block text-xs" style={{ color: 'var(--ink3)' }}>
               {c.contact_person}
             </span>
           )}
@@ -558,7 +558,7 @@ function ClientItem({
         {allProjects.length > 0 && !expanded && (
           <span
             className="text-xs px-1.5 py-0.5 rounded-[var(--r-key)]"
-            style={{ background: 'var(--input-bg)', color: 'var(--text3)' }}
+            style={{ background: 'var(--key)', color: 'var(--ink3)' }}
           >
             {allProjects.length}
           </span>
@@ -567,7 +567,7 @@ function ClientItem({
           onClick={() => onToggleActive(c)}
           title={c.active ? t('clients.action.archive') : t('clients.action.reactivate')}
           className="rounded p-1 transition-colors hover:bg-[var(--key)]"
-          style={{ color: 'var(--text3)' }}
+          style={{ color: 'var(--ink3)' }}
         >
           {c.active ? <Icons.Archive /> : <Icons.Unarchive />}
         </button>
@@ -576,7 +576,7 @@ function ClientItem({
             onClick={() => onNewProject(c.id)}
             title={t('projects.addNew')}
             className="rounded p-1 transition-colors hover:bg-[var(--key)]"
-            style={{ color: 'var(--text3)' }}
+            style={{ color: 'var(--ink3)' }}
           >
             <Icons.Plus />
           </button>
@@ -584,7 +584,7 @@ function ClientItem({
         <button
           onClick={() => onEdit(c)}
           className="rounded p-1 transition-colors hover:bg-[var(--key)]"
-          style={{ color: 'var(--text3)' }}
+          style={{ color: 'var(--ink3)' }}
         >
           <Icons.Edit />
         </button>
@@ -599,12 +599,12 @@ function ClientItem({
 
       {/* Project sub-list (collapsible) */}
       {expanded && (
-        <div className="border-t px-4 pb-3 pt-2" style={{ borderColor: 'var(--card-border)' }}>
+        <div className="border-t px-4 pb-3 pt-2" style={{ borderColor: 'var(--line)' }}>
           {/* Active projects */}
           {activeProjects.length === 0 &&
             pausedProjects.length === 0 &&
             archivedProjects.length === 0 && (
-              <p className="text-xs py-1" style={{ color: 'var(--text3)' }}>
+              <p className="text-xs py-1" style={{ color: 'var(--ink3)' }}>
                 {t('projects.empty')}
               </p>
             )}
@@ -627,7 +627,7 @@ function ClientItem({
             <div className="mb-2">
               <p
                 className="text-xs font-medium uppercase tracking-wide mb-1.5"
-                style={{ color: 'var(--text3)' }}
+                style={{ color: 'var(--ink3)' }}
               >
                 {t('projects.pausedSection', { count: String(pausedProjects.length) })}
               </p>
@@ -660,7 +660,7 @@ function ClientItem({
             <button
               onClick={() => onNewProject(c.id)}
               className="flex items-center gap-1.5 text-xs mt-1 rounded-[var(--r-key)] px-2 py-1.5 transition-colors hover:bg-[var(--key)]"
-              style={{ color: 'var(--text2)' }}
+              style={{ color: 'var(--ink2)' }}
             >
               <Icons.Plus />
               {t('projects.addNew')}
@@ -715,7 +715,7 @@ function ProjectItem({
   return (
     <li
       className="flex items-center gap-2.5 rounded-[var(--r-key)] px-2 py-1.5 group"
-      style={{ background: 'var(--input-bg)' }}
+      style={{ background: 'var(--key)' }}
     >
       <span
         className="w-3 h-3 rounded-[var(--r-fine)] shrink-0 self-start mt-1"
@@ -723,10 +723,10 @@ function ProjectItem({
       />
       <span className="flex-1 min-w-0">
         <span className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+          <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
             {p.name}
             {showProjectNumber && p.external_project_number ? (
-              <span style={{ color: 'var(--text3)' }}> [{p.external_project_number}]</span>
+              <span style={{ color: 'var(--ink3)' }}> [{p.external_project_number}]</span>
             ) : null}
           </span>
           {p.status === 'paused' && (
@@ -736,12 +736,12 @@ function ProjectItem({
           )}
         </span>
         {p.contact_person && (
-          <span className="block text-xs mt-0.5" style={{ color: 'var(--text3)' }}>
+          <span className="block text-xs mt-0.5" style={{ color: 'var(--ink3)' }}>
             {p.contact_person}
           </span>
         )}
         {statsLabel && (
-          <span className="block text-xs mt-0.5" style={{ color: 'var(--text3)' }}>
+          <span className="block text-xs mt-0.5" style={{ color: 'var(--ink3)' }}>
             {statsLabel}
           </span>
         )}
@@ -749,24 +749,20 @@ function ProjectItem({
           <span className="flex items-center gap-1.5 mt-1">
             <span
               className="flex-1 h-1 rounded-[var(--r-fine)] overflow-hidden"
-              style={{ background: 'var(--card-border)' }}
+              style={{ background: 'var(--line)' }}
             >
               <span
                 className="h-full rounded-[var(--r-fine)] block transition-all"
                 style={{
                   width: `${budgetPct}%`,
-                  background: overBudget
-                    ? 'var(--danger)'
-                    : budgetWarn
-                      ? '#f59e0b'
-                      : 'var(--accent)'
+                  background: overBudget ? 'var(--danger)' : budgetWarn ? '#f59e0b' : 'var(--inv)'
                 }}
               />
             </span>
             <span
               className="text-xs shrink-0 tabular-nums"
               style={{
-                color: overBudget ? 'var(--danger)' : budgetWarn ? 'var(--ink)' : 'var(--text3)'
+                color: overBudget ? 'var(--danger)' : budgetWarn ? 'var(--ink)' : 'var(--ink3)'
               }}
             >
               {(usedMin / 60).toFixed(1)}h / {(budgetMin / 60).toFixed(1)}h
@@ -775,11 +771,11 @@ function ProjectItem({
         )}
       </span>
       <span className="flex flex-col items-end gap-0.5">
-        <span className="text-xs" style={{ color: 'var(--text3)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink3)' }}>
           {rateLabel}
         </span>
         {p.end_date && (
-          <span className="text-xs" style={{ color: 'var(--text3)' }}>
+          <span className="text-xs" style={{ color: 'var(--ink3)' }}>
             bis{' '}
             {new Date(p.end_date).toLocaleDateString('de-DE', {
               day: '2-digit',
@@ -793,14 +789,14 @@ function ProjectItem({
         onClick={() => onArchive(p)}
         title={p.active ? t('projects.action.archive') : t('projects.action.reactivate')}
         className="rounded p-0.5 transition-colors hover:bg-[var(--key)] opacity-0 group-hover:opacity-100"
-        style={{ color: 'var(--text3)' }}
+        style={{ color: 'var(--ink3)' }}
       >
         {p.active ? <Icons.Archive /> : <Icons.Unarchive />}
       </button>
       <button
         onClick={() => onEdit(p)}
         className="rounded p-0.5 transition-colors hover:bg-[var(--key)] opacity-0 group-hover:opacity-100"
-        style={{ color: 'var(--text3)' }}
+        style={{ color: 'var(--ink3)' }}
       >
         <Icons.Edit />
       </button>
@@ -836,7 +832,7 @@ function ArchivedProjectsSection({
       <button
         onClick={() => setExpanded((v) => !v)}
         className="flex items-center gap-1 text-xs mb-1 transition-colors hover:opacity-80"
-        style={{ color: 'var(--text3)' }}
+        style={{ color: 'var(--ink3)' }}
       >
         <svg
           className={`w-3 h-3 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
@@ -964,7 +960,7 @@ function ClientFormModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('clients.form.nameLabel')}
           </label>
@@ -980,9 +976,9 @@ function ClientFormModal({
             className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
                 focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           />
           {error && (
@@ -996,7 +992,7 @@ function ClientFormModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('clients.form.colorLabel')}
           </label>
@@ -1026,7 +1022,7 @@ function ClientFormModal({
           <label
             htmlFor="client-rate"
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('clients.form.rateLabel')}
           </label>
@@ -1044,14 +1040,14 @@ function ClientFormModal({
               className="rounded-[var(--r-key)] pl-3 pr-10 py-2.5 w-full border focus:outline-none
                   focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
               style={{
-                background: 'var(--input-bg)',
-                borderColor: 'var(--card-border)',
-                color: 'var(--text)'
+                background: 'var(--key)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink)'
               }}
             />
             <span
               className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm"
-              style={{ color: 'var(--text3)' }}
+              style={{ color: 'var(--ink3)' }}
             >
               €
             </span>
@@ -1062,7 +1058,7 @@ function ClientFormModal({
             </p>
           )}
           {!rateError && (
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>
+            <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('clients.form.rateHint')}
             </p>
           )}
@@ -1073,9 +1069,9 @@ function ClientFormModal({
           type="button"
           onClick={() => setShowDetails((v) => !v)}
           className="flex items-center gap-2 w-full text-left"
-          style={{ color: 'var(--text3)' }}
+          style={{ color: 'var(--ink3)' }}
         >
-          <hr className="flex-1" style={{ borderColor: 'var(--card-border)' }} />
+          <hr className="flex-1" style={{ borderColor: 'var(--line)' }} />
           <span className="text-xs font-medium uppercase tracking-wide whitespace-nowrap">
             {t('clients.form.billingAddressLabel')}
           </span>
@@ -1092,7 +1088,7 @@ function ClientFormModal({
               clipRule="evenodd"
             />
           </svg>
-          <hr className="flex-1" style={{ borderColor: 'var(--card-border)' }} />
+          <hr className="flex-1" style={{ borderColor: 'var(--line)' }} />
         </button>
 
         {showDetails && (
@@ -1130,9 +1126,9 @@ function ClientFormModal({
                   className="rounded-[var(--r-key)] px-3 py-2 border focus:outline-none
                   focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
                   style={{
-                    background: 'var(--input-bg)',
-                    borderColor: 'var(--card-border)',
-                    color: 'var(--text)'
+                    background: 'var(--key)',
+                    borderColor: 'var(--line)',
+                    color: 'var(--ink)'
                   }}
                 />
               ))}
@@ -1142,7 +1138,7 @@ function ClientFormModal({
             <div className="flex flex-col gap-1.5">
               <label
                 className="text-xs font-medium uppercase tracking-wide"
-                style={{ color: 'var(--text2)' }}
+                style={{ color: 'var(--ink2)' }}
               >
                 {t('clients.form.vatIdLabel')}
               </label>
@@ -1154,9 +1150,9 @@ function ClientFormModal({
                 className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
                 focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
                 style={{
-                  background: 'var(--input-bg)',
-                  borderColor: 'var(--card-border)',
-                  color: 'var(--text)'
+                  background: 'var(--key)',
+                  borderColor: 'var(--line)',
+                  color: 'var(--ink)'
                 }}
               />
             </div>
@@ -1165,7 +1161,7 @@ function ClientFormModal({
             <div className="flex flex-col gap-1.5">
               <label
                 className="text-xs font-medium uppercase tracking-wide"
-                style={{ color: 'var(--text2)' }}
+                style={{ color: 'var(--ink2)' }}
               >
                 {t('clients.form.contactPersonLabel')}
               </label>
@@ -1177,16 +1173,16 @@ function ClientFormModal({
                 className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
                 focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
                 style={{
-                  background: 'var(--input-bg)',
-                  borderColor: 'var(--card-border)',
-                  color: 'var(--text)'
+                  background: 'var(--key)',
+                  borderColor: 'var(--line)',
+                  color: 'var(--ink)'
                 }}
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <label
                 className="text-xs font-medium uppercase tracking-wide"
-                style={{ color: 'var(--text2)' }}
+                style={{ color: 'var(--ink2)' }}
               >
                 {t('clients.form.contactEmailLabel')}
               </label>
@@ -1198,9 +1194,9 @@ function ClientFormModal({
                 className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
                 focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
                 style={{
-                  background: 'var(--input-bg)',
-                  borderColor: 'var(--card-border)',
-                  color: 'var(--text)'
+                  background: 'var(--key)',
+                  borderColor: 'var(--line)',
+                  color: 'var(--ink)'
                 }}
               />
             </div>
@@ -1214,9 +1210,9 @@ function ClientFormModal({
             onClick={onClose}
             className="flex-1 font-medium py-2.5 rounded-[var(--r-key)] transition-colors hover:opacity-90"
             style={{
-              background: 'var(--input-bg)',
-              border: '1px solid var(--card-border)',
-              color: 'var(--text2)'
+              background: 'var(--key)',
+              border: '1px solid var(--line)',
+              color: 'var(--ink2)'
             }}
           >
             {t('common.cancel')}
@@ -1352,7 +1348,7 @@ function ProjectFormModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('projects.form.nameLabel')}
           </label>
@@ -1368,9 +1364,9 @@ function ProjectFormModal({
             className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
               focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           />
           {error && (
@@ -1384,7 +1380,7 @@ function ProjectFormModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('projects.form.colorLabel')}
           </label>
@@ -1399,9 +1395,9 @@ function ProjectFormModal({
                   ? 'scale-125 ring-2 ring-[var(--ink)] ring-offset-2 border-[var(--ink2)]'
                   : 'hover:scale-110 border-[var(--key-edge)]'
               }`}
-              style={{ background: 'var(--input-bg)' }}
+              style={{ background: 'var(--key)' }}
             >
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                 –
               </span>
             </button>
@@ -1424,7 +1420,7 @@ function ProjectFormModal({
             ))}
           </div>
           {color === '' && (
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>
+            <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('projects.form.colorInherit')}
             </p>
           )}
@@ -1435,7 +1431,7 @@ function ProjectFormModal({
           <label
             htmlFor="project-rate"
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('projects.form.rateLabel')}
           </label>
@@ -1453,14 +1449,14 @@ function ProjectFormModal({
               className="rounded-[var(--r-key)] pl-3 pr-10 py-2.5 w-full border focus:outline-none
                 focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
               style={{
-                background: 'var(--input-bg)',
-                borderColor: 'var(--card-border)',
-                color: 'var(--text)'
+                background: 'var(--key)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink)'
               }}
             />
             <span
               className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm"
-              style={{ color: 'var(--text3)' }}
+              style={{ color: 'var(--ink3)' }}
             >
               €
             </span>
@@ -1471,26 +1467,26 @@ function ProjectFormModal({
             </p>
           )}
           {!rateError && (
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>
+            <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('projects.form.rateHint')}
             </p>
           )}
         </div>
 
         {/* Divider */}
-        <hr style={{ borderColor: 'var(--card-border)' }} />
+        <hr style={{ borderColor: 'var(--line)' }} />
 
         {/* Status */}
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('projects.form.statusLabel')}
           </label>
           <div
             className="flex rounded-[var(--r-key)] overflow-hidden border"
-            style={{ borderColor: 'var(--card-border)' }}
+            style={{ borderColor: 'var(--line)' }}
           >
             {STATUS_OPTIONS.map((opt, i) => (
               <button
@@ -1499,9 +1495,9 @@ function ProjectFormModal({
                 onClick={() => setStatus(opt.value)}
                 className={`flex-1 py-2 text-sm font-medium transition-colors ${i > 0 ? 'border-l' : ''}`}
                 style={{
-                  borderColor: 'var(--card-border)',
-                  background: status === opt.value ? 'var(--inv)' : 'var(--input-bg)',
-                  color: status === opt.value ? 'var(--inv-ink)' : 'var(--text2)'
+                  borderColor: 'var(--line)',
+                  background: status === opt.value ? 'var(--inv)' : 'var(--key)',
+                  color: status === opt.value ? 'var(--inv-ink)' : 'var(--ink2)'
                 }}
               >
                 {opt.label}
@@ -1514,7 +1510,7 @@ function ProjectFormModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('projects.form.externalNumberLabel')}
           </label>
@@ -1526,9 +1522,9 @@ function ProjectFormModal({
             className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
               focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           />
         </div>
@@ -1537,7 +1533,7 @@ function ProjectFormModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('projects.form.contactPersonLabel')}
           </label>
@@ -1549,9 +1545,9 @@ function ProjectFormModal({
             className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
               focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           />
         </div>
@@ -1561,7 +1557,7 @@ function ProjectFormModal({
           <div className="flex flex-col gap-1.5 flex-1">
             <label
               className="text-xs font-medium uppercase tracking-wide"
-              style={{ color: 'var(--text2)' }}
+              style={{ color: 'var(--ink2)' }}
             >
               {t('projects.form.startDateLabel')}
             </label>
@@ -1572,16 +1568,16 @@ function ProjectFormModal({
               className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
                 focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
               style={{
-                background: 'var(--input-bg)',
-                borderColor: 'var(--card-border)',
-                color: 'var(--text)'
+                background: 'var(--key)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink)'
               }}
             />
           </div>
           <div className="flex flex-col gap-1.5 flex-1">
             <label
               className="text-xs font-medium uppercase tracking-wide"
-              style={{ color: 'var(--text2)' }}
+              style={{ color: 'var(--ink2)' }}
             >
               {t('projects.form.endDateLabel')}
             </label>
@@ -1592,9 +1588,9 @@ function ProjectFormModal({
               className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
                 focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
               style={{
-                background: 'var(--input-bg)',
-                borderColor: 'var(--card-border)',
-                color: 'var(--text)'
+                background: 'var(--key)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink)'
               }}
             />
           </div>
@@ -1604,7 +1600,7 @@ function ProjectFormModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
           >
             {t('projects.form.budgetLabel')}
           </label>
@@ -1617,12 +1613,12 @@ function ProjectFormModal({
             className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
               focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           />
-          <p className="text-xs" style={{ color: 'var(--text3)' }}>
+          <p className="text-xs" style={{ color: 'var(--ink3)' }}>
             {t('projects.form.budgetHint')}
           </p>
         </div>
@@ -1634,9 +1630,9 @@ function ProjectFormModal({
             onClick={onClose}
             className="flex-1 font-medium py-2.5 rounded-[var(--r-key)] transition-colors hover:opacity-90"
             style={{
-              background: 'var(--input-bg)',
-              border: '1px solid var(--card-border)',
-              color: 'var(--text2)'
+              background: 'var(--key)',
+              border: '1px solid var(--line)',
+              color: 'var(--ink2)'
             }}
           >
             {t('common.cancel')}

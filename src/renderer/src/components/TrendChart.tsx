@@ -40,10 +40,10 @@ export function TrendChart({
       {/* Header row with segmented control */}
       <div className="flex items-center gap-3">
         <div className="flex flex-col">
-          <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+          <span className="text-sm font-bold" style={{ color: 'var(--ink)' }}>
             Trend
           </span>
-          <span className="text-xs" style={{ color: 'var(--text3)' }}>
+          <span className="text-xs" style={{ color: 'var(--ink3)' }}>
             {mode === 'week'
               ? 'Letzte 12 Wochen · gestapelt nach abrechenbar / nicht abrechenbar'
               : 'Letzte 12 Monate · Stunden + Umsatzlinie'}
@@ -53,8 +53,8 @@ export function TrendChart({
         <div
           className="ml-auto inline-flex p-0.5 rounded-[var(--r-key)] border"
           style={{
-            background: 'var(--input-bg)',
-            borderColor: 'var(--card-border)'
+            background: 'var(--key)',
+            borderColor: 'var(--line)'
           }}
         >
           {(['week', 'month'] as const).map((v) => (
@@ -63,8 +63,8 @@ export function TrendChart({
               onClick={() => onModeChange(v)}
               className="px-3.5 py-1 rounded-[var(--r-key)] text-xs font-medium transition-all"
               style={{
-                background: mode === v ? 'var(--accent)' : 'transparent',
-                color: mode === v ? 'var(--inv-ink)' : 'var(--text2)',
+                background: mode === v ? 'var(--inv)' : 'transparent',
+                color: mode === v ? 'var(--inv-ink)' : 'var(--ink2)',
                 border: 'none',
                 cursor: 'pointer',
                 fontWeight: mode === v ? 600 : 500
@@ -88,7 +88,7 @@ export function TrendChart({
                 x2={P.l + innerW}
                 y1={y}
                 y2={y}
-                stroke="var(--card-border)"
+                stroke="var(--line)"
                 strokeWidth="0.8"
                 strokeDasharray={i === 0 ? undefined : '2 4'}
               />
@@ -97,7 +97,7 @@ export function TrendChart({
                 y={y + 4}
                 fontSize="9.5"
                 fontFamily="var(--font-num)"
-                fill="var(--text3)"
+                fill="var(--ink3)"
                 textAnchor="end"
               >
                 {Math.round(mode === 'week' ? tv / 3600 : tv / 3600)}h
@@ -152,7 +152,7 @@ export function TrendChart({
                   y={H - 10}
                   fontSize="9.5"
                   fontFamily="var(--font-num)"
-                  fill="var(--text3)"
+                  fill="var(--ink3)"
                   textAnchor="middle"
                 >
                   {wd.lbl.replace('KW', '')}
@@ -163,7 +163,7 @@ export function TrendChart({
                     y={yTotal - 5}
                     fontSize="9"
                     fontFamily="var(--font-num)"
-                    fill="var(--text2)"
+                    fill="var(--ink2)"
                     textAnchor="middle"
                     fontWeight="600"
                   >
@@ -184,7 +184,7 @@ export function TrendChart({
                   y={H - 10}
                   fontSize="9.5"
                   fontFamily="var(--font-ui)"
-                  fill="var(--text3)"
+                  fill="var(--ink3)"
                   textAnchor="middle"
                 >
                   {md.lbl}
@@ -223,7 +223,7 @@ export function TrendChart({
       </svg>
 
       {/* Legend */}
-      <div className="flex gap-4 flex-wrap text-xs" style={{ color: 'var(--text2)' }}>
+      <div className="flex gap-4 flex-wrap text-xs" style={{ color: 'var(--ink2)' }}>
         {mode === 'week' ? (
           <>
             <span className="inline-flex items-center gap-1.5">

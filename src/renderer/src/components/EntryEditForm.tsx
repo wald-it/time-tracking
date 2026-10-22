@@ -171,7 +171,7 @@ export function EntryEditForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 text-sm">
       <div className="grid grid-cols-3 gap-2">
         <label className="flex flex-col gap-1">
-          <span className="text-xs" style={{ color: 'var(--text2)' }}>
+          <span className="text-xs" style={{ color: 'var(--ink2)' }}>
             {t('entry.date')}
           </span>
           <input
@@ -180,15 +180,15 @@ export function EntryEditForm({
             onChange={(e) => setDate(e.target.value)}
             className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
             disabled={isSaving}
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs" style={{ color: 'var(--text2)' }}>
+          <span className="text-xs" style={{ color: 'var(--ink2)' }}>
             {t('entry.start')}
           </span>
           <input
@@ -197,15 +197,15 @@ export function EntryEditForm({
             onChange={(e) => setStartTime(e.target.value)}
             className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
             disabled={isSaving}
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs" style={{ color: 'var(--text2)' }}>
+          <span className="text-xs" style={{ color: 'var(--ink2)' }}>
             {t('entry.end')}
           </span>
           <input
@@ -214,9 +214,9 @@ export function EntryEditForm({
             onChange={(e) => setStopTime(e.target.value)}
             className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
             disabled={isSaving || (entry?.stopped_at == null && entry !== undefined)}
           />
@@ -224,7 +224,7 @@ export function EntryEditForm({
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--text2)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
           {t('entry.client')}
         </span>
         <select
@@ -232,9 +232,9 @@ export function EntryEditForm({
           onChange={(e) => setClientId(parseInt(e.target.value, 10))}
           className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
           style={{
-            background: 'var(--input-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
+            background: 'var(--key)',
+            borderColor: 'var(--line)',
+            color: 'var(--ink)'
           }}
           disabled={isSaving}
         >
@@ -249,7 +249,7 @@ export function EntryEditForm({
       {/* Project picker — only shown when there are active projects for the client */}
       {projects.length > 0 && (
         <label className="flex flex-col gap-1">
-          <span className="text-xs" style={{ color: 'var(--text2)' }}>
+          <span className="text-xs" style={{ color: 'var(--ink2)' }}>
             {t('entry.project')}
           </span>
           <select
@@ -257,9 +257,9 @@ export function EntryEditForm({
             onChange={(e) => setProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
             className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
             disabled={isSaving}
           >
@@ -280,9 +280,9 @@ export function EntryEditForm({
       )}
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--text2)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
           {t('entry.description')}{' '}
-          <span className="text-xs" style={{ color: 'var(--text3)' }}>
+          <span className="text-xs" style={{ color: 'var(--ink3)' }}>
             ({description.length}/{MAX_DESCRIPTION_LEN})
           </span>
         </span>
@@ -293,26 +293,26 @@ export function EntryEditForm({
           maxLength={MAX_DESCRIPTION_LEN}
           className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
           style={{
-            background: 'var(--input-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
+            background: 'var(--key)',
+            borderColor: 'var(--line)',
+            color: 'var(--ink)'
           }}
           disabled={isSaving}
         />
       </label>
 
       <div className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--text2)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
           {t('entry.tags')}
         </span>
         <TagInput value={tags} onChange={(serialized) => setTags(serialized)} disabled={isSaving} />
-        <span className="text-xs" style={{ color: 'var(--text3)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink3)' }}>
           {t('entry.tagsHint')}
         </span>
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--text2)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
           {t('entry.reference.label')}
         </span>
         <input
@@ -323,19 +323,19 @@ export function EntryEditForm({
           placeholder={t('entry.reference.placeholder')}
           className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
           style={{
-            background: 'var(--input-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
+            background: 'var(--key)',
+            borderColor: 'var(--line)',
+            color: 'var(--ink)'
           }}
           disabled={isSaving}
         />
-        <span className="text-xs" style={{ color: 'var(--text3)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink3)' }}>
           {t('entry.reference.hint')}
         </span>
       </label>
 
       <div className="flex items-center justify-between">
-        <span className="text-xs" style={{ color: 'var(--text2)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
           {t('entry.billable.label')}
         </span>
         <div className="flex items-center gap-2">
@@ -353,7 +353,7 @@ export function EntryEditForm({
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--text2)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
           {t('entry.privateNote.label')}
         </span>
         <textarea
@@ -364,13 +364,13 @@ export function EntryEditForm({
           placeholder={t('entry.privateNote.placeholder')}
           className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
           style={{
-            background: 'var(--input-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
+            background: 'var(--key)',
+            borderColor: 'var(--line)',
+            color: 'var(--ink)'
           }}
           disabled={isSaving}
         />
-        <span className="text-xs" style={{ color: 'var(--text3)' }}>
+        <span className="text-xs" style={{ color: 'var(--ink3)' }}>
           {t('entry.privateNote.hint')}
         </span>
       </label>
@@ -388,7 +388,7 @@ export function EntryEditForm({
 
       <div
         className="sticky bottom-0 -mx-1 mt-1 flex justify-end gap-2 px-1 pt-2 border-t"
-        style={{ background: 'var(--nav-bg)', borderColor: 'var(--card-border)' }}
+        style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
       >
         <button
           type="button"
@@ -396,9 +396,9 @@ export function EntryEditForm({
           disabled={isSaving}
           className="rounded-[var(--r-key)] px-3 py-1.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50 border"
           style={{
-            background: 'var(--card-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
+            background: 'var(--key)',
+            borderColor: 'var(--line)',
+            color: 'var(--ink)'
           }}
         >
           {t('common.cancel')}

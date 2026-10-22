@@ -260,9 +260,9 @@ export function ExportModal(props: Props): React.JSX.Element {
   const inputClass =
     'rounded-[var(--r-key)] border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]'
   const inputStyle = {
-    background: 'var(--input-bg)',
-    borderColor: 'var(--card-border)',
-    color: 'var(--text)'
+    background: 'var(--key)',
+    borderColor: 'var(--line)',
+    color: 'var(--ink)'
   } as React.CSSProperties
 
   return (
@@ -271,7 +271,7 @@ export function ExportModal(props: Props): React.JSX.Element {
         {/* Tab bar */}
         <div
           className="flex gap-1 rounded-[var(--r-key)] p-1 border"
-          style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+          style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
         >
           {(['pdf', 'csv', 'ical'] as Tab[]).map((tabKey) => (
             <button
@@ -281,7 +281,7 @@ export function ExportModal(props: Props): React.JSX.Element {
               className={`flex-1 rounded-[var(--r-key)] py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--focus)] ${
                 tab === tabKey ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:bg-[var(--key)]'
               }`}
-              style={tab !== tabKey ? { color: 'var(--text2)' } : undefined}
+              style={tab !== tabKey ? { color: 'var(--ink2)' } : undefined}
             >
               {tabKey === 'pdf'
                 ? t('export.tab.pdf')
@@ -294,7 +294,7 @@ export function ExportModal(props: Props): React.JSX.Element {
 
         {/* Shared: client + date range */}
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium" style={{ color: 'var(--text2)' }}>
+          <span className="font-medium" style={{ color: 'var(--ink2)' }}>
             {t('export.client.label')}
           </span>
           <select
@@ -322,7 +322,7 @@ export function ExportModal(props: Props): React.JSX.Element {
         {/* Project filter — only shown when client has projects */}
         {projects.length > 0 && (
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium" style={{ color: 'var(--text2)' }}>
+            <span className="font-medium" style={{ color: 'var(--ink2)' }}>
               {t('export.project.label')}
             </span>
             <select
@@ -347,7 +347,7 @@ export function ExportModal(props: Props): React.JSX.Element {
 
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium" style={{ color: 'var(--text2)' }}>
+            <span className="font-medium" style={{ color: 'var(--ink2)' }}>
               {t('export.from')}
             </span>
             <input
@@ -360,7 +360,7 @@ export function ExportModal(props: Props): React.JSX.Element {
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium" style={{ color: 'var(--text2)' }}>
+            <span className="font-medium" style={{ color: 'var(--ink2)' }}>
               {t('export.to')}
             </span>
             <input
@@ -379,7 +379,7 @@ export function ExportModal(props: Props): React.JSX.Element {
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text)' }}>
+                <span className="text-sm" style={{ color: 'var(--ink)' }}>
                   {t('export.pdf.groupBy')}
                 </span>
                 <select
@@ -402,13 +402,13 @@ export function ExportModal(props: Props): React.JSX.Element {
                   <option value="reference">{t('export.pdf.groupBy.reference')}</option>
                 </select>
               </div>
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                 {t('export.pdf.groupByHint')}
               </span>
             </div>
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text)' }}>
+                <span className="text-sm" style={{ color: 'var(--ink)' }}>
                   {t('export.pdf.hideFeeColumn')}
                 </span>
                 <Toggle
@@ -420,13 +420,13 @@ export function ExportModal(props: Props): React.JSX.Element {
                   disabled={busy}
                 />
               </div>
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                 {t('export.pdf.hideFeeColumnHint')}
               </span>
             </div>
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text)' }}>
+                <span className="text-sm" style={{ color: 'var(--ink)' }}>
                   {t('export.pdf.signatures')}
                 </span>
                 <Toggle
@@ -438,7 +438,7 @@ export function ExportModal(props: Props): React.JSX.Element {
                   disabled={busy}
                 />
               </div>
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                 {t('export.pdf.signaturesHint')}
               </span>
             </div>
@@ -450,7 +450,7 @@ export function ExportModal(props: Props): React.JSX.Element {
           <div className="flex flex-col gap-2">
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text)' }}>
+                <span className="text-sm" style={{ color: 'var(--ink)' }}>
                   {t('export.csv.groupByTag')}
                 </span>
                 <Toggle
@@ -462,17 +462,17 @@ export function ExportModal(props: Props): React.JSX.Element {
                   disabled={busy}
                 />
               </div>
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                 {t('export.csv.groupByTagHint')}
               </span>
             </div>
-            <span className="text-sm font-medium" style={{ color: 'var(--text2)' }}>
+            <span className="text-sm font-medium" style={{ color: 'var(--ink2)' }}>
               {t('export.csv.format')}
             </span>
             <div className="flex gap-4">
               <label
                 className="flex items-center gap-2 text-sm cursor-pointer"
-                style={{ color: 'var(--text)' }}
+                style={{ color: 'var(--ink)' }}
               >
                 <input
                   type="radio"
@@ -488,14 +488,14 @@ export function ExportModal(props: Props): React.JSX.Element {
                 />
                 <span>
                   DE{' '}
-                  <span className="text-xs" style={{ color: 'var(--text3)' }}>
+                  <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                     {t('export.csv.formatDeHint')}
                   </span>
                 </span>
               </label>
               <label
                 className="flex items-center gap-2 text-sm cursor-pointer"
-                style={{ color: 'var(--text)' }}
+                style={{ color: 'var(--ink)' }}
               >
                 <input
                   type="radio"
@@ -511,13 +511,13 @@ export function ExportModal(props: Props): React.JSX.Element {
                 />
                 <span>
                   US{' '}
-                  <span className="text-xs" style={{ color: 'var(--text3)' }}>
+                  <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                     {t('export.csv.formatUsHint')}
                   </span>
                 </span>
               </label>
             </div>
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>
+            <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('export.csv.encodingNote')}
             </p>
           </div>
@@ -528,7 +528,7 @@ export function ExportModal(props: Props): React.JSX.Element {
           <div className="flex flex-col gap-2">
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--text)' }}>
+                <span className="text-sm" style={{ color: 'var(--ink)' }}>
                   {t('export.ical.showClientName')}
                 </span>
                 <Toggle
@@ -540,11 +540,11 @@ export function ExportModal(props: Props): React.JSX.Element {
                   disabled={busy}
                 />
               </div>
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                 {t('export.ical.showClientNameHint')}
               </span>
             </div>
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>
+            <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('export.ical.privacyNote')}
             </p>
           </div>
@@ -555,7 +555,7 @@ export function ExportModal(props: Props): React.JSX.Element {
           <div
             className={
               statusKind === 'error'
-                ? 'rounded-[var(--r-key)] bg-[var(--danger-bg)] px-3 py-2 text-sm text-[var(--danger)]'
+                ? 'rounded-[var(--r-key)] bg-[color-mix(in_srgb,_var(--danger)_8%,_transparent)] px-3 py-2 text-sm text-[var(--danger)]'
                 : statusKind === 'success'
                   ? 'rounded-[var(--r-key)] bg-[var(--key)] px-3 py-2 text-sm text-[var(--ink2)]'
                   : 'rounded-[var(--r-key)] bg-[var(--key)] px-3 py-2 text-sm text-[var(--ink)]'

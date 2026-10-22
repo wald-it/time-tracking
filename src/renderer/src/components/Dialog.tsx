@@ -75,22 +75,22 @@ export function Dialog({
         ref={containerRef}
         className={`${widthClass} flex max-h-[calc(100vh-3rem)] flex-col rounded-[var(--r-disp)] border`}
         style={{
-          background: 'var(--modal-bg)',
-          borderColor: 'var(--card-border)'
+          background: 'var(--key)',
+          borderColor: 'var(--line)'
         }}
       >
         <div
           className="flex shrink-0 items-center justify-between rounded-t-[var(--r-disp)] border-b px-6 py-4"
-          style={{ borderColor: 'var(--card-border)' }}
+          style={{ borderColor: 'var(--line)' }}
         >
-          <h2 id="dialog-title" className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+          <h2 id="dialog-title" className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="-mr-2 grid h-9 w-9 place-items-center rounded-[var(--r-key)] hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            style={{ color: 'var(--text2)' }}
+            style={{ color: 'var(--ink2)' }}
             aria-label={t('common.close')}
           >
             ×

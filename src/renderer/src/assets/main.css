@@ -12,7 +12,7 @@ html {
 body {
   font-family: var(--font-ui, 'Archivo Variable', 'Archivo', 'Segoe UI', Arial, sans-serif);
   background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
   overflow: hidden;
   user-select: none;
 }

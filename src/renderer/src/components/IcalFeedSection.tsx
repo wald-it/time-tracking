@@ -47,10 +47,10 @@ export function IcalFeedSection({
     <div className="flex min-w-0 flex-col gap-3 px-[18px] py-[13px]">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm" style={{ color: 'var(--text)' }}>
+          <p className="text-sm" style={{ color: 'var(--ink)' }}>
             {t('settings.icalFeed.enable')}
           </p>
-          <p className="text-xs" style={{ color: 'var(--text3)' }}>
+          <p className="text-xs" style={{ color: 'var(--ink3)' }}>
             {t('settings.icalFeed.enableHint')}
           </p>
         </div>
@@ -62,7 +62,7 @@ export function IcalFeedSection({
           <div className="flex flex-wrap items-center gap-2">
             <pre
               className="min-w-0 flex-1 overflow-x-auto rounded px-3 py-2 text-xs"
-              style={{ background: 'var(--card-bg)', color: 'var(--text2)' }}
+              style={{ background: 'var(--key)', color: 'var(--ink2)' }}
             >
               {url}
             </pre>
@@ -70,14 +70,14 @@ export function IcalFeedSection({
               type="button"
               onClick={() => void onCopy()}
               className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
+              style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
             >
               {copied ? t('settings.icalFeed.copied') : t('settings.icalFeed.copy')}
             </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs" style={{ color: 'var(--text3)' }}>
+            <label className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('settings.icalFeed.port')}
             </label>
             <input
@@ -88,21 +88,21 @@ export function IcalFeedSection({
               inputMode="numeric"
               className="w-24 rounded-[var(--r-key)] border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{
-                background: 'var(--card-bg)',
-                borderColor: 'var(--card-border)',
-                color: 'var(--text)'
+                background: 'var(--key)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink)'
               }}
             />
             <button
               type="button"
               onClick={() => void onRegenerate()}
               className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
+              style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
             >
               {t('settings.icalFeed.regenerate')}
             </button>
           </div>
-          <p className="text-xs" style={{ color: 'var(--text3)' }}>
+          <p className="text-xs" style={{ color: 'var(--ink3)' }}>
             {t('settings.icalFeed.regenerateHint')}
           </p>
         </>

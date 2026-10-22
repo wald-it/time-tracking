@@ -80,69 +80,6 @@
   color-scheme: dark;
 }
 
-/* ── LEGACY ALIASES (v1.8 Glass names → new values) ─────────────────────────
-   Lets every existing component pick up the new look in PR 1 without touching
-   its markup. Glass effects are neutralised here (no blur, no glow, no
-   gradient, no shadow). Delete this block in the cleanup PR. */
-:root,
-.dark {
-  --page-bg: var(--bg);
-  --card-bg: var(--key);
-  --card-hover: var(--bg);
-  --card-border: var(--line);
-  --nav-bg: var(--bg);
-  --modal-bg: var(--key);
-  --input-bg: var(--key);
-  --shadow: none;
-  --accent-glow: transparent;
-  --blur: none;
-
-  --text: var(--ink);
-  --text2: var(--ink2);
-  --text3: var(--ink3); /* old --text3 failed contrast (≈2:1); this one passes */
-
-  --accent: var(--inv); /* primary actions become ink keys, not violet */
-  --accent-bg: color-mix(in srgb, var(--ink) 6%, transparent);
-
-  --green: var(--sig); /* "running" moves from green to the signal colour */
-  --green-bg: color-mix(in srgb, var(--sig) 10%, transparent);
-
-  --danger-bg: color-mix(in srgb, var(--danger) 8%, transparent);
-}
-
-:root {
-  --ev-c-white: #ffffff;
-  --ev-c-white-soft: #f8f8f8;
-  --ev-c-white-mute: #f2f2f2;
-
-  --ev-c-black: #1b1b1f;
-  --ev-c-black-soft: #222222;
-  --ev-c-black-mute: #282828;
-
-  --ev-c-gray-1: #515c67;
-  --ev-c-gray-2: #414853;
-  --ev-c-gray-3: #32363f;
-
-  --ev-c-text-1: rgba(255, 255, 245, 0.86);
-  --ev-c-text-2: rgba(235, 235, 245, 0.6);
-  --ev-c-text-3: rgba(235, 235, 245, 0.38);
-
-  --ev-button-alt-border: transparent;
-  --ev-button-alt-text: var(--ev-c-text-1);
-  --ev-button-alt-bg: var(--ev-c-gray-3);
-  --ev-button-alt-hover-border: transparent;
-  --ev-button-alt-hover-text: var(--ev-c-text-1);
-  --ev-button-alt-hover-bg: var(--ev-c-gray-2);
-}
-
-:root {
-  --color-background: var(--ev-c-black);
-  --color-background-soft: var(--ev-c-black-soft);
-  --color-background-mute: var(--ev-c-black-mute);
-
-  --color-text: var(--ev-c-text-1);
-}
-
 *,
 *::before,
 *::after {

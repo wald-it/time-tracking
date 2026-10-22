@@ -183,7 +183,7 @@ function QuickStartKey({
       id: null,
       name: t('today.quickstart.noProject'),
       externalNumber: null,
-      color: 'var(--text3)',
+      color: 'var(--ink3)',
       pos: { x: 0, y: NO_PROJECT_OFFSET, angle: 180 },
       isNoProject: true
     }
@@ -322,7 +322,7 @@ function QuickStartKey({
             )}
             <defs>
               {ring.items.map((item) => {
-                const strokeColor = item.isNoProject ? 'var(--text3)' : item.color
+                const strokeColor = item.isNoProject ? 'var(--ink3)' : item.color
                 return (
                   <linearGradient
                     key={`grad-${item.key}`}
@@ -378,9 +378,9 @@ function QuickStartKey({
                     top: `calc(50% + ${item.pos.y}px)`,
                     zIndex: 51,
                     whiteSpace: 'nowrap',
-                    background: 'var(--modal-bg)',
-                    borderColor: item.isNoProject ? 'var(--text3)' : 'var(--card-border)',
-                    color: item.isNoProject ? 'var(--text3)' : 'var(--text)',
+                    background: 'var(--key)',
+                    borderColor: item.isNoProject ? 'var(--ink3)' : 'var(--line)',
+                    color: item.isNoProject ? 'var(--ink3)' : 'var(--ink)',
                     animationDelay: `${delay}ms`,
                     ['--qs-dx' as string]: `${(-item.pos.x).toFixed(2)}px`,
                     ['--qs-dy' as string]: `${(-item.pos.y).toFixed(2)}px`
