@@ -38,6 +38,21 @@ afterAll(() => {
   if (templateDir) rmSync(templateDir, { recursive: true, force: true })
 })
 
+/**
+ * Close a per-test copy and remove its directory. Callers clear their `db`
+ * variable before calling this, so a test whose `beforeEach` threw inside
+ * `openMigratedCopy` neither closes the previous handle twice nor leaves its
+ * fresh temp directory behind: the directory is removed whether or not a
+ * handle was ever opened.
+ */
+function disposeCopy(db: Database.Database | undefined, dir: string | undefined): void {
+  try {
+    db?.close()
+  } finally {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 describe('migrated template (#233)', () => {
   let tmpDir: string
   let db: Database.Database
@@ -48,11 +63,15 @@ describe('migrated template (#233)', () => {
   })
 
   afterEach(() => {
-    if (!db) return
-    db.close()
-    rmSync(tmpDir, { recursive: true, force: true })
+    const open = db
+    db = undefined as unknown as Database.Database
+    disposeCopy(open, tmpDir)
   })
 
+  // Cannot go red today: the template is rebuilt from `migrations` on every
+  // run. It guards a future change that caches the template across runs
+  // (on disk or in CI), where a new migration would otherwise be missing
+  // from every copy without any test noticing.
   it('a copy carries exactly the current migrations, so a stale template cannot pass', () => {
     const applied = db.prepare('SELECT version FROM schema_version ORDER BY version').all() as {
       version: number
@@ -136,9 +155,9 @@ describe('entries:create / entries:update validation contract', () => {
   })
 
   afterEach(() => {
-    if (!db) return
-    db.close()
-    rmSync(tmpDir, { recursive: true, force: true })
+    const open = db
+    db = undefined as unknown as Database.Database
+    disposeCopy(open, tmpDir)
   })
 
   it('accepts a valid entry', () => {
@@ -442,9 +461,9 @@ describe('reference field — insertEntrySegments round-trip', () => {
   })
 
   afterEach(() => {
-    if (!db) return
-    db.close()
-    rmSync(tmpDir, { recursive: true, force: true })
+    const open = db
+    db = undefined as unknown as Database.Database
+    disposeCopy(open, tmpDir)
   })
 
   it('persists non-empty reference and returns it on the inserted row', () => {
@@ -512,9 +531,9 @@ describe('billable + private_note — DB round-trip', () => {
   })
 
   afterEach(() => {
-    if (!db) return
-    db.close()
-    rmSync(tmpDir, { recursive: true, force: true })
+    const open = db
+    db = undefined as unknown as Database.Database
+    disposeCopy(open, tmpDir)
   })
 
   function insertEntry(overrides: { billable?: number; private_note?: string } = {}): number {
@@ -628,9 +647,9 @@ describe('projects — validateProject', () => {
   })
 
   afterEach(() => {
-    if (!db) return
-    db.close()
-    rmSync(tmpDir, { recursive: true, force: true })
+    const open = db
+    db = undefined as unknown as Database.Database
+    disposeCopy(open, tmpDir)
   })
 
   it('accepts valid project input', () => {
@@ -687,9 +706,9 @@ describe('projects — SQL contract tests', () => {
   })
 
   afterEach(() => {
-    if (!db) return
-    db.close()
-    rmSync(tmpDir, { recursive: true, force: true })
+    const open = db
+    db = undefined as unknown as Database.Database
+    disposeCopy(open, tmpDir)
   })
 
   // Helper: insert a project and return its id
@@ -932,9 +951,9 @@ describe('projects status/active sync', () => {
   })
 
   afterEach(() => {
-    if (!db2) return
-    db2.close()
-    rmSync(tmpDir2, { recursive: true, force: true })
+    const open = db2
+    db2 = undefined as unknown as Database.Database
+    disposeCopy(open, tmpDir2)
   })
 
   it('projects:archive — sets status=archived and active=0', () => {
