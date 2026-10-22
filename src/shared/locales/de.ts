@@ -127,6 +127,8 @@ export const de = {
   'common.cancel': 'Abbrechen',
   'common.delete': 'Löschen',
   'common.edit': 'Bearbeiten',
+  'clients.projects.show': 'Projekte anzeigen',
+  'clients.projects.hide': 'Projekte verbergen',
   'common.unknown': 'Unbekannt',
   'common.undo': 'Rückgängig',
   'common.loading': 'Lädt…',

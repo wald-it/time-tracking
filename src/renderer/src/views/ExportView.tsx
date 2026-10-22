@@ -5,6 +5,14 @@ import { ExportModal } from '../components/ExportModal'
 import { PdfMergeModal } from '../components/PdfMergeModal'
 import { getQuickRange, localDateKey, type QuickRangeKind } from '../../../shared/dateRanges'
 import { useWeekStart } from '../hooks/useWeekStart'
+import {
+  FIELD_LABEL,
+  KEY,
+  KEY_INV,
+  LEGEND,
+  SECTION,
+  VIEW_TITLE
+} from '../components/instrumentClasses'
 
 /**
  * Export view (#153).
@@ -46,41 +54,26 @@ export default function ExportView(): React.JSX.Element {
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-[920px] flex-col gap-4">
-      <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--ink)' }}>
-        {t('export.view.title')}
-      </h1>
+    <div className="flex w-full max-w-[920px] flex-col gap-10">
+      <h1 className={VIEW_TITLE}>{t('export.view.title')}</h1>
 
       <Card>
         <CardHeading title={t('export.view.timesTitle')} hint={t('export.view.timesHint')} />
 
         {/* Trigger row, moved verbatim from CalendarView. Hero "Letzter Monat"
-            keeps the accent colour — it is the most common rechnungs-flow. */}
+            is the inverse ink key — it is the most common rechnungs-flow. */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => onQuickRange('lastMonth')}
-            className="rounded-[var(--r-key)] px-3 py-1.5 text-xs font-semibold text-[var(--inv-ink)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            style={{ background: 'var(--inv)' }}
+            className={KEY_INV}
             title={t('export.view.lastMonthTitle')}
           >
             {t('export.view.lastMonth')}
           </button>
-          <span className="ml-1 text-xs uppercase tracking-wide" style={{ color: 'var(--ink3)' }}>
-            {t('export.view.rangeLabel')}
-          </span>
+          <span className={`ml-2 ${FIELD_LABEL}`}>{t('export.view.rangeLabel')}</span>
           {(['thisWeek', 'lastWeek', 'thisMonth'] as const).map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => onQuickRange(k)}
-              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink)'
-              }}
-            >
+            <button key={k} type="button" onClick={() => onQuickRange(k)} className={KEY}>
               {t(('export.range.' + k) as TranslationKey)}
             </button>
           ))}
@@ -93,12 +86,7 @@ export default function ExportView(): React.JSX.Element {
           <button
             type="button"
             onClick={() => setMergeOpen(true)}
-            className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={KEY}
             title={t('export.view.mergeButtonTitle')}
           >
             {t('export.view.merge')}
@@ -124,21 +112,15 @@ export default function ExportView(): React.JSX.Element {
 
 function Card({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <section
-      className="flex flex-col gap-3 rounded-[var(--r-disp)] border p-4"
-      style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
-    >
-      {children}
-    </section>
+    // Section pattern (HANDOFF §2.3) instead of a card: 2 px ink rule, legend, content.
+    <section className={`${SECTION} gap-3`}>{children}</section>
   )
 }
 
 function CardHeading({ title, hint }: { title: string; hint: string }): React.JSX.Element {
   return (
     <div className="flex flex-col gap-1">
-      <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
-        {title}
-      </h2>
+      <h2 className={LEGEND}>{title}</h2>
       <p className="text-xs" style={{ color: 'var(--ink3)' }}>
         {hint}
       </p>

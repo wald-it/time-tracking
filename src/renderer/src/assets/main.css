@@ -65,6 +65,30 @@ textarea {
   outline-offset: 2px;
 }
 
+/* ── Running indicator (HANDOFF §2.5) ─────────────────────────────────────
+   Moved here from base.css in PR 5 so the mini widget (main.css only) shares
+   it. Hard blink, 1 s steps(1), 100 % → 25 % opacity. Off under reduced motion. */
+@keyframes tt-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.tt-blink {
+  animation: tt-blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-blink {
+    animation: none;
+  }
+}
+
 /* Scrollbar styling — Chromium/Electron only */
 ::-webkit-scrollbar {
   width: 8px;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '../contexts/I18nContext'
 import { Dialog } from './Dialog'
+import { FOCUS, ICON_BTN, KEY, KEY_INV } from './instrumentClasses'
 import { detectFilePurpose } from './pdfMergeUtils'
 
 const basename = (p: string): string => p.replace(/.*[\\/]/, '')
@@ -323,8 +324,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
             return (
               <div
                 key={entry.id}
-                className="flex flex-col gap-1 rounded-[var(--r-key)] border px-3 py-2"
-                style={{ borderColor: 'var(--line)', background: 'var(--key)' }}
+                className="flex flex-col gap-1 border-b border-[var(--line)] py-2"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium" style={{ color: 'var(--ink2)' }}>
@@ -342,8 +342,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
                     type="button"
                     onClick={() => removeSnEntry(entry.id)}
                     disabled={busy}
-                    className="rounded px-2 py-0.5 text-xs hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50"
-                    style={{ color: 'var(--ink3)' }}
+                    className={ICON_BTN}
                     aria-label={t('merge.sn.remove')}
                     title={t('merge.sn.remove')}
                   >
@@ -363,7 +362,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
                     <button
                       type="button"
                       onClick={executeSwap}
-                      className="font-semibold underline hover:text-[var(--ink)]"
+                      className={`rounded-[var(--r-fine)] font-semibold underline ${FOCUS}`}
                     >
                       {t('merge.swap')}
                     </button>
@@ -377,12 +376,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
               type="button"
               onClick={() => void handlePickFile('sn')}
               disabled={busy}
-              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50 hover:opacity-80"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink2)'
-              }}
+              className={KEY}
             >
               {snEntries.length === 0 ? t('merge.sn.pick') : t('merge.sn.add')}
             </button>
@@ -404,12 +398,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
               type="button"
               onClick={() => void handlePickFile('invoice')}
               disabled={busy}
-              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50 hover:opacity-80"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink2)'
-              }}
+              className={KEY}
             >
               {invPath ? t('merge.sn.change') : t('merge.sn.pick')}
             </button>
@@ -432,7 +421,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
               <button
                 type="button"
                 onClick={executeSwap}
-                className="font-semibold underline hover:text-[var(--ink)]"
+                className={`rounded-[var(--r-fine)] font-semibold underline ${FOCUS}`}
               >
                 {t('merge.swap')}
               </button>
@@ -442,14 +431,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
 
         {/* Total page preview */}
         {totalPages !== null && (
-          <div
-            className="rounded-[var(--r-key)] px-3 py-2 text-sm border"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink2)'
-            }}
-          >
+          <div className="font-num rounded-[var(--r-key)] border border-[var(--line)] px-3 py-2 text-sm text-[var(--ink2)]">
             {snEntries.length === 1
               ? t('merge.preview', {
                   inv: String(invPages),
@@ -471,16 +453,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
             className={
               statusKind === 'error'
                 ? 'rounded-[var(--r-key)] bg-[color-mix(in_srgb,_var(--danger)_8%,_transparent)] px-3 py-2 text-sm text-[var(--danger)]'
-                : 'rounded-[var(--r-key)] px-3 py-2 text-sm border'
-            }
-            style={
-              statusKind !== 'error'
-                ? {
-                    background: 'var(--key)',
-                    borderColor: 'var(--line)',
-                    color: 'var(--ink2)'
-                  }
-                : undefined
+                : 'rounded-[var(--r-key)] border border-[var(--line)] px-3 py-2 text-sm text-[var(--ink2)]'
             }
             role={statusKind === 'error' ? 'alert' : undefined}
             aria-live="polite"
@@ -491,7 +464,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
 
         {/* Success state */}
         {successPath && (
-          <div className="rounded-[var(--r-key)] bg-[var(--key)] px-3 py-2 text-sm text-[var(--ink2)]">
+          <div className="rounded-[var(--r-key)] border border-[var(--line)] px-3 py-2 text-sm text-[var(--ink2)]">
             <div className="font-medium">{t('merge.success.title')}</div>
             <div className="mt-0.5 truncate text-xs text-[var(--ink2)]">
               {basename(successPath)}
@@ -499,7 +472,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
             <button
               type="button"
               onClick={() => void window.api.shell.showItemInFolder(successPath)}
-              className="mt-1 text-xs underline text-[var(--ink2)] hover:text-[var(--ink)]"
+              className={`mt-1 rounded-[var(--r-fine)] text-xs underline text-[var(--ink2)] hover:text-[var(--ink)] ${FOCUS}`}
             >
               {t('merge.success.showInExplorer')}
             </button>
@@ -508,25 +481,14 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
 
         {/* Footer */}
         <div className="mt-2 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-[var(--r-key)] border px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50 hover:opacity-80"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink2)'
-            }}
-          >
+          <button type="button" onClick={onClose} disabled={busy} className={KEY}>
             {t('common.close')}
           </button>
           <button
             type="button"
             onClick={() => void handleMerge()}
             disabled={!canMerge}
-            className="rounded-[var(--r-key)] px-4 py-2 text-sm font-semibold text-[var(--inv-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50 hover:opacity-90"
-            style={{ background: 'var(--inv)' }}
+            className={KEY_INV}
           >
             {busy ? t('merge.button.merging') : t('merge.button.merge')}
           </button>

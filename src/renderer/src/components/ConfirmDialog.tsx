@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useId, useRef } from 'react'
+import { Dialog } from './Dialog'
+import { FOCUS, KEY, KEY_INV } from './instrumentClasses'
 
 interface Props {
   open: boolean
@@ -12,11 +14,15 @@ interface Props {
   onCancel: () => void
 }
 
+/** Destructive key: `--danger` fill, `--bg` text (HANDOFF §2.1). */
+const KEY_DANGER = `key-hover inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--r-key)] border border-[var(--danger)] bg-[var(--danger)] px-4 text-[13px] font-semibold text-[var(--bg)] active:translate-y-px ${FOCUS}`
+
 /**
  * Confirmation dialog used for destructive actions (e.g. entry delete).
  *
  * Default focus is on Cancel — never on the destructive action — so a
- * stray Enter press does not delete user data.
+ * stray Enter press does not delete user data. Shell, focus trap, Escape
+ * (= cancel) and focus return come from `Dialog`.
  */
 export function ConfirmDialog({
   open,
@@ -29,69 +35,35 @@ export function ConfirmDialog({
   onCancel
 }: Props): React.ReactElement | null {
   const cancelRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', handler)
-    queueMicrotask(() => cancelRef.current?.focus())
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onCancel])
-
-  if (!open) return null
-
-  const confirmClass =
-    variant === 'danger'
-      ? 'bg-[var(--danger)] text-[var(--bg)] key-hover focus:ring-[var(--focus)]'
-      : 'bg-[var(--inv)] text-[var(--inv-ink)] key-hover focus:ring-[var(--focus)]'
+  const messageId = useId()
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(0_0_0/0.35)]"
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      title={title}
+      widthClass="w-[440px]"
       role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="confirm-title"
-      aria-describedby="confirm-message"
+      describedBy={messageId}
+      initialFocusRef={cancelRef}
+      closeButton={false}
+      closeOnBackdrop={false}
     >
-      <div
-        className="w-[440px] rounded-[var(--r-disp)] border p-6"
-        style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
-      >
-        <h2
-          id="confirm-title"
-          className="mb-2 text-lg font-semibold"
-          style={{ color: 'var(--ink)' }}
+      <p id={messageId} className="mb-6 text-sm text-[var(--ink2)]">
+        {message}
+      </p>
+      <div className="flex justify-end gap-2">
+        <button ref={cancelRef} type="button" onClick={onCancel} className={KEY}>
+          {cancelLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className={variant === 'danger' ? KEY_DANGER : KEY_INV}
         >
-          {title}
-        </h2>
-        <p id="confirm-message" className="mb-6 text-sm" style={{ color: 'var(--ink2)' }}>
-          {message}
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            ref={cancelRef}
-            type="button"
-            onClick={onCancel}
-            className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] border"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={`rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 ${confirmClass}`}
-          >
-            {confirmLabel}
-          </button>
-        </div>
+          {confirmLabel}
+        </button>
       </div>
-    </div>
+    </Dialog>
   )
 }

@@ -198,3 +198,72 @@ describe('Dialog — focus management', () => {
     expect(latest).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('Dialog — focus trap and stacking (PR 5)', () => {
+  it('11 — Tab from the last control wraps to the first, Shift+Tab from the first to the last', async () => {
+    renderDialog(
+      <Dialog open onClose={() => {}} title="Eintrag">
+        {FIELDS}
+      </Dialog>
+    )
+    await flushFocus()
+    const close = screen.getByRole('button', { name: 'Schließen' })
+    const save = screen.getByRole('button', { name: 'Speichern' })
+    act(() => save.focus())
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(document.activeElement).toBe(close)
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(save)
+  })
+
+  it('12 — focus that escaped the dialog is pulled back in on Tab', async () => {
+    render(
+      <I18nProvider>
+        <button type="button">Draußen</button>
+        <Dialog open onClose={() => {}} title="Eintrag">
+          {FIELDS}
+        </Dialog>
+      </I18nProvider>
+    )
+    await flushFocus()
+    act(() => screen.getByRole('button', { name: 'Draußen' }).focus())
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Schließen' }))
+  })
+
+  it('13 — with two dialogs open, Escape closes only the top one', async () => {
+    const outer = vi.fn()
+    const inner = vi.fn()
+    const { rerender } = renderDialog(
+      <Dialog open onClose={outer} title="Außen">
+        {FIELDS}
+      </Dialog>
+    )
+    await flushFocus()
+    rerender(
+      <I18nProvider>
+        <Dialog open onClose={outer} title="Außen">
+          {FIELDS}
+        </Dialog>
+        <Dialog open onClose={inner} title="Innen">
+          <button type="button">Ok</button>
+        </Dialog>
+      </I18nProvider>
+    )
+    await flushFocus()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(inner).toHaveBeenCalledTimes(1)
+    expect(outer).not.toHaveBeenCalled()
+  })
+
+  it('14 — the title row carries the 2 px ink rule (HANDOFF §5)', () => {
+    renderDialog(
+      <Dialog open onClose={() => {}} title="Eintrag">
+        {FIELDS}
+      </Dialog>
+    )
+    const heading = screen.getByRole('heading', { name: 'Eintrag' })
+    expect(heading.parentElement?.className).toContain('border-t-2')
+    expect(heading.parentElement?.className).toContain('border-[var(--ink)]')
+  })
+})

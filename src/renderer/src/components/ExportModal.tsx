@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { Client, Project } from '../../../shared/types'
 import { useT } from '../contexts/I18nContext'
 import { useSettingsStore } from '../store/settingsStore'
 import { Dialog } from './Dialog'
 import { Toggle } from './Toggle'
+import { FOCUS, INPUT, KEY, KEY_INV } from './instrumentClasses'
 import { LS_PREFS_KEY, parsePrefs, readLegacyPrefs } from './exportPrefs'
 import type { CsvFormat, ExportPrefs, ExportTab as Tab, GroupBy } from './exportPrefs'
 
@@ -31,6 +32,8 @@ interface Props {
 export function ExportModal(props: Props): React.JSX.Element {
   const { open, onClose, prefilledRange } = props
   const t = useT()
+  // Names the switches by their row labels (aria-labelledby).
+  const labelId = useId()
   // Selectors (v1.13.2 PR 2): subscribe to the export_prefs key and the
   // loaded flag only — this modal's own writes no longer re-render every
   // settings consumer in the app.
@@ -257,29 +260,20 @@ export function ExportModal(props: Props): React.JSX.Element {
     }
   }
 
-  const inputClass =
-    'rounded-[var(--r-key)] border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]'
-  const inputStyle = {
-    background: 'var(--key)',
-    borderColor: 'var(--line)',
-    color: 'var(--ink)'
-  } as React.CSSProperties
+  const inputClass = INPUT
 
   return (
     <Dialog open={open} onClose={onClose} title={t('export.title')} widthClass="w-[520px]">
       <div className="flex flex-col gap-4">
         {/* Tab bar */}
-        <div
-          className="flex gap-1 rounded-[var(--r-key)] p-1 border"
-          style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
-        >
+        <div className="flex gap-1 rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] p-1">
           {(['pdf', 'csv', 'ical'] as Tab[]).map((tabKey) => (
             <button
               key={tabKey}
               type="button"
               onClick={() => handleTabChange(tabKey)}
-              className={`flex-1 rounded-[var(--r-key)] py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--focus)] ${
-                tab === tabKey ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:bg-[var(--key)]'
+              className={`min-h-9 flex-1 rounded-[var(--r-fine)] text-[13px] font-semibold ${FOCUS} ${
+                tab === tabKey ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:text-[var(--ink)]'
               }`}
               style={tab !== tabKey ? { color: 'var(--ink2)' } : undefined}
             >
@@ -305,7 +299,6 @@ export function ExportModal(props: Props): React.JSX.Element {
             }
             disabled={busy}
             className={inputClass}
-            style={inputStyle}
           >
             <option value="">{t('export.client.placeholder')}</option>
             {clients.map((c) => (
@@ -333,7 +326,6 @@ export function ExportModal(props: Props): React.JSX.Element {
               }
               disabled={busy}
               className={inputClass}
-              style={inputStyle}
             >
               <option value="">{t('export.project.placeholder')}</option>
               {projects.map((p) => (
@@ -356,7 +348,6 @@ export function ExportModal(props: Props): React.JSX.Element {
               onChange={(e) => setFromIso(e.target.value)}
               disabled={busy}
               className={inputClass}
-              style={inputStyle}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -369,7 +360,6 @@ export function ExportModal(props: Props): React.JSX.Element {
               onChange={(e) => setToIso(e.target.value)}
               disabled={busy}
               className={inputClass}
-              style={inputStyle}
             />
           </label>
         </div>
@@ -392,7 +382,6 @@ export function ExportModal(props: Props): React.JSX.Element {
                   }}
                   disabled={busy}
                   className={inputClass}
-                  style={inputStyle}
                 >
                   <option value="none">{t('export.pdf.groupBy.none')}</option>
                   <option value="tag">{t('export.pdf.groupBy.tag')}</option>
@@ -408,10 +397,11 @@ export function ExportModal(props: Props): React.JSX.Element {
             </div>
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--ink)' }}>
+                <span id={`${labelId}-hideFee`} className="text-sm" style={{ color: 'var(--ink)' }}>
                   {t('export.pdf.hideFeeColumn')}
                 </span>
                 <Toggle
+                  labelledBy={`${labelId}-hideFee`}
                   checked={hideFeeColumn}
                   onChange={(v) => {
                     setHideFeeColumn(v)
@@ -426,10 +416,15 @@ export function ExportModal(props: Props): React.JSX.Element {
             </div>
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--ink)' }}>
+                <span
+                  id={`${labelId}-signatures`}
+                  className="text-sm"
+                  style={{ color: 'var(--ink)' }}
+                >
                   {t('export.pdf.signatures')}
                 </span>
                 <Toggle
+                  labelledBy={`${labelId}-signatures`}
                   checked={includeSignatures}
                   onChange={(v) => {
                     setIncludeSignatures(v)
@@ -450,10 +445,15 @@ export function ExportModal(props: Props): React.JSX.Element {
           <div className="flex flex-col gap-2">
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--ink)' }}>
+                <span
+                  id={`${labelId}-csvGroup`}
+                  className="text-sm"
+                  style={{ color: 'var(--ink)' }}
+                >
                   {t('export.csv.groupByTag')}
                 </span>
                 <Toggle
+                  labelledBy={`${labelId}-csvGroup`}
                   checked={csvGroupByTag}
                   onChange={(v) => {
                     setCsvGroupByTag(v)
@@ -484,7 +484,7 @@ export function ExportModal(props: Props): React.JSX.Element {
                     persistPrefs({ csvFormat: 'de' })
                   }}
                   disabled={busy}
-                  className="h-4 w-4 text-[var(--ink)] focus:ring-[var(--focus)]"
+                  className={`h-4 w-4 accent-[var(--ink)] ${FOCUS}`}
                 />
                 <span>
                   DE{' '}
@@ -507,7 +507,7 @@ export function ExportModal(props: Props): React.JSX.Element {
                     persistPrefs({ csvFormat: 'us' })
                   }}
                   disabled={busy}
-                  className="h-4 w-4 text-[var(--ink)] focus:ring-[var(--focus)]"
+                  className={`h-4 w-4 accent-[var(--ink)] ${FOCUS}`}
                 />
                 <span>
                   US{' '}
@@ -528,10 +528,15 @@ export function ExportModal(props: Props): React.JSX.Element {
           <div className="flex flex-col gap-2">
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: 'var(--ink)' }}>
+                <span
+                  id={`${labelId}-icalClient`}
+                  className="text-sm"
+                  style={{ color: 'var(--ink)' }}
+                >
                   {t('export.ical.showClientName')}
                 </span>
                 <Toggle
+                  labelledBy={`${labelId}-icalClient`}
                   checked={icalShowClientName}
                   onChange={(v) => {
                     setIcalShowClientName(v)
@@ -584,12 +589,7 @@ export function ExportModal(props: Props): React.JSX.Element {
             )}
           </p>
           <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={busy}
-              className="rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-4 py-2 text-sm font-medium text-[var(--ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50"
-            >
+            <button type="button" onClick={onClose} disabled={busy} className={KEY}>
               {t('common.close')}
             </button>
             <button
@@ -602,7 +602,7 @@ export function ExportModal(props: Props): React.JSX.Element {
                     : handleIcalExport())
               }
               disabled={!canExport}
-              className="rounded-[var(--r-key)] bg-[var(--inv)] px-4 py-2 text-sm font-semibold text-[var(--inv-ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
+              className={KEY_INV}
             >
               {busy
                 ? t('export.button.busy')

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Dialog } from './Dialog'
 import { useT } from '../contexts/I18nContext'
 import type { LicenseEntry } from '../../../shared/types'
+import { FOCUS, KEY, LEGEND, SECTION } from './instrumentClasses'
 
 interface Props {
   open: boolean
@@ -59,7 +60,7 @@ export function AboutDialog({ open, onClose, version }: Props): React.JSX.Elemen
           <div>
             <p className="text-lg font-semibold text-[var(--ink)]">TimeTrack</p>
             <p className="text-sm text-[var(--ink2)]">
-              {t('about.version')} {version}
+              {t('about.version')} <span className="font-num">{version}</span>
             </p>
           </div>
           <a
@@ -70,42 +71,41 @@ export function AboutDialog({ open, onClose, version }: Props): React.JSX.Elemen
               e.preventDefault()
               void window.api.shell.openExternal('https://github.com/wald-it/time-tracking')
             }}
-            className="text-xs text-[var(--ink)] hover:text-[var(--ink)] underline"
+            className={`inline-flex min-h-11 items-center rounded-[var(--r-key)] px-2 text-xs text-[var(--ink)] underline ${FOCUS}`}
           >
             GitHub
           </a>
         </div>
 
         {/* Own license */}
-        <div className="rounded-[var(--r-key)] border border-[var(--line)] bg-[var(--key)] p-3">
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--ink2)]">
-            {t('about.ownLicense')}
-          </p>
+        <div className={SECTION}>
+          <p className={`mb-1.5 ${LEGEND}`}>{t('about.ownLicense')}</p>
           <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-[var(--ink)]">
             {MIT_TEXT}
           </pre>
         </div>
 
         {/* Third-party licenses */}
-        <div className="rounded-[var(--r-key)] border border-[var(--line)] bg-[var(--key)] p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--ink2)]">
-            {t('about.thirdParty')} ({licenses.length})
+        <div className={SECTION}>
+          <p className={`mb-2 ${LEGEND}`}>
+            {t('about.thirdParty')} (<span className="font-num">{licenses.length}</span>)
           </p>
 
           {loading && <p className="text-xs text-[var(--ink3)]">{t('about.loading')}</p>}
 
-          <div className="max-h-64 overflow-y-auto flex flex-col gap-1">
+          <div className="max-h-64 overflow-y-auto flex flex-col">
             {licenses.map((pkg) => (
-              <div key={pkg.name} className="rounded-[var(--r-key)] border border-[var(--line)]">
+              <div key={pkg.name} className="border-b border-[var(--line)] last:border-b-0">
                 <button
                   type="button"
                   onClick={() => toggleExpand(pkg.name)}
-                  className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-[var(--key)] rounded-[var(--r-key)]"
+                  aria-expanded={expanded === pkg.name}
+                  className={`flex min-h-11 w-full items-center justify-between rounded-[var(--r-key)] px-3 text-left hover:bg-[var(--key)] ${FOCUS}`}
                 >
                   <span className="text-sm text-[var(--ink)] font-medium">{pkg.name}</span>
                   <span className="flex items-center gap-3">
-                    <span className="text-xs text-[var(--ink2)]">{pkg.version}</span>
-                    <span className="rounded bg-[var(--key)] px-1.5 py-0.5 text-xs text-[var(--ink)]">
+                    <span className="font-num text-xs text-[var(--ink2)]">{pkg.version}</span>
+                    <span className="rounded-[var(--r-fine)] border border-[var(--line)] px-1.5 py-0.5 text-xs text-[var(--ink)]">
                       {pkg.license}
                     </span>
                     <span className="text-xs text-[var(--ink3)]">
@@ -120,7 +120,7 @@ export function AboutDialog({ open, onClose, version }: Props): React.JSX.Elemen
                       <button
                         type="button"
                         onClick={() => void window.api.shell.openExternal(pkg.repository!)}
-                        className="text-left text-xs text-[var(--ink)] hover:text-[var(--ink)] underline truncate"
+                        className={`truncate rounded-[var(--r-fine)] text-left text-xs text-[var(--ink)] underline ${FOCUS}`}
                       >
                         {pkg.repository}
                       </button>
@@ -141,11 +141,7 @@ export function AboutDialog({ open, onClose, version }: Props): React.JSX.Elemen
 
         {/* Close button */}
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-4 py-2 text-sm font-medium text-[var(--ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-          >
+          <button type="button" onClick={onClose} className={KEY}>
             {t('about.close')}
           </button>
         </div>

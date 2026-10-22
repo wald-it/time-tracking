@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deserializeTags, parseTagInput, serializeTags } from '../../../shared/tags'
 import { useT } from '../contexts/I18nContext'
+import { FOCUS } from './instrumentClasses'
 
 interface Props {
   /** Serialized tags value from the DB (`,bug,ux,` format). */
@@ -201,8 +202,8 @@ export function TagInput({
   return (
     <div ref={containerRef} className="relative">
       <div
-        className={`flex min-h-[36px] flex-wrap items-center gap-1 rounded border px-2 py-1.5 focus-within:border-[var(--ink)] transition-colors ${disabled ? 'opacity-50' : ''}`}
-        style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
+        // Same frame as every input (HANDOFF §5); the ring follows the inner field.
+        className={`flex min-h-11 flex-wrap items-center gap-1 rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-2 py-1.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--focus)] ${disabled ? 'opacity-50' : ''}`}
         onClick={() => {
           inputRef.current?.focus()
           // Reopening hangs off `onFocus` alone, which does not fire again
@@ -224,7 +225,7 @@ export function TagInput({
                   e.stopPropagation()
                   removeTag(tag)
                 }}
-                className="leading-none opacity-60 hover:opacity-100 focus:outline-none"
+                className={`leading-none opacity-60 hover:opacity-100 focus-visible:opacity-100 ${FOCUS}`}
                 aria-label={t('tags.removeAria', { tag })}
               >
                 ×
@@ -247,8 +248,7 @@ export function TagInput({
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder={tags.length === 0 ? t('tags.placeholder') : ''}
-          className="min-w-[80px] flex-1 bg-transparent text-xs focus:outline-none"
-          style={{ color: 'var(--ink)' }}
+          className="min-w-[80px] flex-1 bg-transparent text-xs text-[var(--ink)] placeholder:text-[var(--ink3)] focus:outline-none"
           aria-label={t('tags.inputAria')}
           aria-autocomplete="list"
           aria-expanded={showDropdown}
@@ -258,8 +258,7 @@ export function TagInput({
       {showDropdown && (
         <ul
           role="listbox"
-          className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded border py-1"
-          style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
+          className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-[var(--r-key)] border border-[var(--ink)] bg-[var(--key)] py-1"
         >
           {suggestions.map((s, i) => (
             <li
@@ -270,10 +269,10 @@ export function TagInput({
                 e.preventDefault()
                 void commitInput(s)
               }}
-              className={`cursor-pointer px-3 py-1 text-xs ${
+              className={`cursor-pointer px-3 py-2 text-xs ${
                 i === highlightedIndex
                   ? 'bg-[var(--inv)] text-[var(--inv-ink)]'
-                  : 'hover:bg-[var(--key)]'
+                  : 'hover:bg-[var(--bg)]'
               }`}
               style={
                 i !== highlightedIndex
@@ -293,7 +292,7 @@ export function TagInput({
         <button
           type="button"
           onClick={onManageTags}
-          className="mt-1 text-xs underline focus:outline-none"
+          className={`mt-1 text-xs underline ${FOCUS}`}
           style={{ color: 'var(--ink3)' }}
         >
           {t('tags.manageLink')}

@@ -3,8 +3,10 @@
  * last used client + project, so Enter starts it. Without a prefill the modal
  * keeps whatever is selected — the header's "Timer starten" relies on that.
  */
+import { useState } from 'react'
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent } from '@testing-library/dom'
 import { StartTimerModal } from './StartTimerModal'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useTimerStore } from '../store/timerStore'
@@ -165,5 +167,72 @@ describe('StartTimerModal — prefill (B6)', () => {
     )
     const selects = await screen.findAllByRole('combobox')
     expect((selects[0] as HTMLSelectElement).value).toBe('1')
+  })
+})
+
+/**
+ * PR 5: the start modal sits on the shared Dialog shell — until then it had
+ * no role, no Escape, no focus trap and no focus return.
+ */
+describe('StartTimerModal — dialog shell (PR 5)', () => {
+  function Host(): React.JSX.Element {
+    const [open, setOpen] = useState(false)
+    return (
+      <I18nProvider>
+        <button type="button" onClick={() => setOpen(true)}>
+          Auslöser
+        </button>
+        <StartTimerModal
+          open={open}
+          onClose={() => setOpen(false)}
+          prefill={{ clientId: 2, projectId: 8 }}
+        />
+      </I18nProvider>
+    )
+  }
+
+  async function openFromTrigger(): Promise<HTMLElement> {
+    render(<Host />)
+    const trigger = screen.getByRole('button', { name: 'Auslöser' })
+    trigger.focus()
+    fireEvent.click(trigger)
+    await screen.findByRole('dialog')
+    await waitFor(() => expect(screen.getAllByRole('combobox')).toHaveLength(2))
+    return trigger
+  }
+
+  it('is a modal dialog named by its title, focus on the description (Enter starts)', async () => {
+    setup()
+    await openFromTrigger()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(dialog.getAttribute('aria-labelledby')).toBeTruthy()
+    await waitFor(() =>
+      expect(document.activeElement).toBe(dialog.querySelector('input[type="text"]'))
+    )
+  })
+
+  it('Escape closes and focus returns to the trigger', async () => {
+    setup()
+    const trigger = await openFromTrigger()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('Tab from the last control wraps to the first, Shift+Tab back to the last', async () => {
+    setup()
+    await openFromTrigger()
+    const dialog = screen.getByRole('dialog')
+    const focusables = Array.from(
+      dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input, select')
+    )
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    last.focus()
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(document.activeElement).toBe(first)
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(last)
   })
 })

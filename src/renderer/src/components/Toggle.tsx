@@ -1,35 +1,71 @@
+import { createContext, useContext } from 'react'
+import { FOCUS } from './instrumentClasses'
+
+/**
+ * Id of the label of the row a switch sits in. A settings row provides it, so
+ * every Toggle in such a row is named by that label without each call site
+ * passing `labelledBy`.
+ */
+export const ToggleLabelContext = createContext<string | undefined>(undefined)
+
 interface ToggleProps {
   checked: boolean
   onChange: (v: boolean) => void
   disabled?: boolean
+  /**
+   * Id of the element that names the switch — the label of the settings row
+   * it sits in (`aria-labelledby`). Without it the switch has no accessible
+   * name, so every caller should pass one.
+   */
+  labelledBy?: string
 }
 
-export function Toggle({ checked, onChange, disabled }: ToggleProps): React.JSX.Element {
+/**
+ * On/off switch (HANDOFF §5): a real `<button role="switch">`, so Space and
+ * Enter toggle it natively and `disabled` takes it out of the tab order.
+ *
+ * The visible track is 40 × 22 (`--inv` when on, `--key` with a `--key-edge`
+ * border when off, square-ish thumb with radius 2); the button around it is
+ * 44 px tall so the hit target meets §8 without changing the row layout.
+ */
+export function Toggle({
+  checked,
+  onChange,
+  disabled,
+  labelledBy
+}: ToggleProps): React.JSX.Element {
+  const rowLabel = useContext(ToggleLabelContext)
   return (
-    <div
+    <button
+      type="button"
       role="switch"
       aria-checked={checked}
-      onClick={() => !disabled && onChange(!checked)}
-      className="relative cursor-pointer transition-all duration-200 shrink-0"
-      style={{
-        width: 40,
-        height: 22,
-        borderRadius: 'var(--r-key)',
-        background: checked ? 'var(--inv)' : 'var(--key)',
-        border: `1px solid ${checked ? 'var(--inv)' : 'var(--key-edge)'}`,
-        opacity: disabled ? 0.5 : 1
-      }}
+      aria-labelledby={labelledBy ?? rowLabel}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`group -my-[11px] inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--r-key)] disabled:cursor-not-allowed ${FOCUS}`}
     >
-      <div
-        className="absolute top-0.5 transition-all duration-200"
+      <span
+        aria-hidden
+        className="relative block shrink-0 rounded-[var(--r-key)] border group-disabled:opacity-50"
         style={{
-          left: checked ? 20 : 2,
-          width: 16,
-          height: 16,
-          borderRadius: 'var(--r-fine)',
-          background: checked ? 'var(--inv-ink)' : 'var(--ink3)'
+          width: 40,
+          height: 22,
+          background: checked ? 'var(--inv)' : 'var(--key)',
+          borderColor: checked ? 'var(--inv)' : 'var(--key-edge)'
         }}
-      />
-    </div>
+      >
+        <span
+          className="absolute top-0.5 block"
+          style={{
+            left: checked ? 20 : 2,
+            width: 16,
+            height: 16,
+            borderRadius: 'var(--r-fine)',
+            background: checked ? 'var(--inv-ink)' : 'var(--ink3)'
+          }}
+        />
+      </span>
+    </button>
   )
 }

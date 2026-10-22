@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useT } from '../contexts/I18nContext'
 import { useEntriesStore } from '../store/entriesStore'
 import { Dialog } from './Dialog'
+import { FOCUS, INPUT, KEY, KEY_INV } from './instrumentClasses'
 import type { Client, Project } from '../../../shared/types'
 import type { DomainTarget, EntryDraft, SkippedEvent } from '../../../shared/graphCalendar'
 import type { TranslationKey } from '../../../shared/locales/de'
@@ -223,8 +224,7 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
             type="button"
             onClick={() => void load()}
             disabled={phase === 'loading' || phase === 'importing'}
-            className="rounded-[var(--r-key)] px-3 py-2 text-sm font-semibold text-[var(--inv-ink)] hover:opacity-90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            style={{ background: 'var(--inv)' }}
+            className={KEY_INV}
           >
             {phase === 'loading' ? t('calendarImport.loading') : t('calendarImport.load')}
           </button>
@@ -257,8 +257,7 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
           return (
             <div
               key={draft.graphEventId}
-              className="flex flex-col gap-2 rounded-[var(--r-key)] border px-3 py-2.5"
-              style={{ borderColor: 'var(--line)', background: 'var(--key)' }}
+              className="flex flex-col gap-2 border-b border-[var(--line)] py-2.5"
             >
               <div className="flex items-start gap-3">
                 <input
@@ -266,17 +265,14 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
                   checked={row.checked}
                   disabled={row.clientId === null || phase === 'importing'}
                   onChange={(e) => patchRow(draft.graphEventId, { checked: e.target.checked })}
-                  className="mt-1 h-4 w-4 accent-[var(--ink)]"
+                  className={`mt-1 h-4 w-4 accent-[var(--ink)] ${FOCUS}`}
                   aria-label={draft.description}
                 />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium" style={{ color: 'var(--ink)' }}>
                     {draft.description || '—'}
                   </div>
-                  <div
-                    className="text-xs tabular-nums"
-                    style={{ color: 'var(--ink2)', fontFamily: 'var(--font-num)' }}
-                  >
+                  <div className="font-num text-xs text-[var(--ink2)]">
                     {formatDraftRange(draft.startedAt, draft.stoppedAt)}
                   </div>
                 </div>
@@ -296,12 +292,7 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
                       })
                     }}
                     aria-label={t('calendarImport.clientPlaceholder')}
-                    className="w-full appearance-none rounded-[var(--r-key)] border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-                    style={{
-                      background: 'var(--key)',
-                      borderColor: 'var(--line)',
-                      color: 'var(--ink)'
-                    }}
+                    className={`w-full appearance-none ${INPUT}`}
                   >
                     <option value="">{t('calendarImport.clientPlaceholder')}</option>
                     {activeClients.map((c) => (
@@ -320,12 +311,7 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
                         })
                       }
                       aria-label={t('calendarImport.projectPlaceholder')}
-                      className="w-full appearance-none rounded-[var(--r-key)] border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-                      style={{
-                        background: 'var(--key)',
-                        borderColor: 'var(--line)',
-                        color: 'var(--ink)'
-                      }}
+                      className={`w-full appearance-none ${INPUT}`}
                     >
                       <option value="">{t('calendarImport.projectPlaceholder')}</option>
                       {activeProjects(row.clientId).map((p) => (
@@ -365,7 +351,7 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
                           learn: { ...row.learn, [domain]: e.target.checked }
                         })
                       }
-                      className="h-3.5 w-3.5 accent-[var(--ink)]"
+                      className={`h-3.5 w-3.5 accent-[var(--ink)] ${FOCUS}`}
                     />
                     {t(
                       row.projectId !== null
@@ -388,7 +374,10 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
         {/* Skipped events, folded away — they explain, they don't nag. */}
         {skipped.length > 0 && (
           <details>
-            <summary className="cursor-pointer text-xs" style={{ color: 'var(--ink3)' }}>
+            <summary
+              className={`cursor-pointer rounded-[var(--r-fine)] text-xs ${FOCUS}`}
+              style={{ color: 'var(--ink3)' }}
+            >
               {t('calendarImport.skipped', { count: skipped.length })}
             </summary>
             <ul
@@ -407,20 +396,14 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
         {/* Footer */}
         {(phase === 'loaded' || phase === 'importing') && drafts.length > 0 && (
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={close}
-              className="rounded-[var(--r-key)] border px-3 py-2 text-sm font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--line)', color: 'var(--ink2)' }}
-            >
+            <button type="button" onClick={close} className={KEY}>
               {t('common.cancel')}
             </button>
             <button
               type="button"
               onClick={() => void runImport()}
               disabled={selected.length === 0 || phase === 'importing'}
-              className="rounded-[var(--r-key)] px-3 py-2 text-sm font-semibold text-[var(--inv-ink)] hover:opacity-90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ background: 'var(--inv)' }}
+              className={KEY_INV}
             >
               {phase === 'importing'
                 ? t('calendarImport.importing')
@@ -430,12 +413,7 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
         )}
         {phase === 'done' && (
           <div className="flex items-center justify-end">
-            <button
-              type="button"
-              onClick={close}
-              className="rounded-[var(--r-key)] border px-3 py-2 text-sm font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
-            >
+            <button type="button" onClick={close} className={KEY}>
               {t('common.close')}
             </button>
           </div>
@@ -461,12 +439,7 @@ function DateField({
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-[var(--r-key)] border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-        style={{
-          background: 'var(--key)',
-          borderColor: 'var(--line)',
-          color: 'var(--ink)'
-        }}
+        className={INPUT}
       />
     </label>
   )

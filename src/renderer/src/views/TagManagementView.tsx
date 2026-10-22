@@ -3,6 +3,7 @@ import { useT } from '../contexts/I18nContext'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import * as Icons from '../components/Icons'
 import { useToastStore } from '../store/toastStore'
+import { ICON_BTN, INPUT, KEY, LEGEND, SECTION } from '../components/instrumentClasses'
 
 interface TagRow {
   name: string
@@ -15,15 +16,9 @@ interface MergeConfirm {
   count: number
 }
 
-const inputClass =
-  'rounded-[var(--r-key)] px-3 py-1.5 text-sm border ' +
-  '[background:var(--key)] [border-color:var(--line)] [color:var(--ink)] ' +
-  'focus:outline-none focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent'
+const inputClass = INPUT
 
-const btnClass =
-  'rounded-[var(--r-key)] px-3 py-1.5 text-sm font-medium key-hover ' +
-  'border [background:var(--key)] [border-color:var(--line)] [color:var(--ink)] ' +
-  'focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-40 disabled:cursor-not-allowed'
+const btnClass = KEY
 
 export default function TagManagementView(): React.JSX.Element {
   const t = useT()
@@ -123,10 +118,9 @@ export default function TagManagementView(): React.JSX.Element {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h2 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
-        {t('settings.tags.title')}
-      </h2>
+    // Section pattern (HANDOFF §2.3): 2 px ink rule, legend, content.
+    <section className={`${SECTION} gap-3`}>
+      <h2 className={LEGEND}>{t('settings.tags.title')}</h2>
 
       {/* Create new tag */}
       <form
@@ -134,14 +128,14 @@ export default function TagManagementView(): React.JSX.Element {
           e.preventDefault()
           void handleCreate()
         }}
-        className="flex items-center gap-2"
+        className="flex flex-wrap items-center gap-2"
       >
         <input
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder={t('settings.tags.newPlaceholder')}
-          className={`${inputClass} flex-1`}
+          className={`${inputClass} min-w-0 flex-[1_1_12rem]`}
           maxLength={50}
           disabled={creating}
         />
@@ -151,10 +145,7 @@ export default function TagManagementView(): React.JSX.Element {
       </form>
 
       {/* Tag list */}
-      <div
-        className="overflow-hidden rounded-[var(--r-disp)] border"
-        style={{ borderColor: 'var(--line)', background: 'var(--key)' }}
-      >
+      <div className="flex flex-col border-b border-[var(--line)]">
         {loading && (
           <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--ink3)' }}>
             …
@@ -171,19 +162,17 @@ export default function TagManagementView(): React.JSX.Element {
           tags.map((tag, idx) => (
             <div
               key={tag.name}
-              className="flex items-center gap-3 px-4 py-3 border-t"
+              className="flex min-h-14 flex-wrap items-center gap-3 border-t py-1.5 hover:bg-[var(--key)]"
               style={{
                 borderColor: idx === 0 ? 'transparent' : 'var(--line)'
               }}
             >
               {/* Tag chip */}
               <span
-                className="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium"
+                className="font-num inline-flex items-center rounded-[var(--r-fine)] border px-2 py-0.5 text-xs font-medium"
                 style={{
-                  background: 'var(--bg)',
-                  borderColor: 'var(--line)',
+                  borderColor: 'var(--ink3)',
                   color: 'var(--ink)',
-                  fontFamily: 'monospace',
                   minWidth: 80
                 }}
               >
@@ -191,7 +180,7 @@ export default function TagManagementView(): React.JSX.Element {
               </span>
 
               {/* Entry count */}
-              <span className="w-20 shrink-0 text-xs tabular-nums" style={{ color: 'var(--ink3)' }}>
+              <span className="font-num w-24 shrink-0 text-xs" style={{ color: 'var(--ink3)' }}>
                 {entryLabel(tag.count)}
               </span>
 
@@ -228,8 +217,7 @@ export default function TagManagementView(): React.JSX.Element {
                   <button
                     type="button"
                     onClick={() => startRename(tag.name)}
-                    className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] transition-colors"
-                    style={{ color: 'var(--ink2)' }}
+                    className={ICON_BTN}
                     aria-label={t('settings.tags.rename')}
                     title={t('settings.tags.rename')}
                   >
@@ -268,7 +256,7 @@ export default function TagManagementView(): React.JSX.Element {
                       ? t('settings.tags.deleteCannotHint', { count: String(tag.count) })
                       : t('settings.tags.deleteTitle')
                   }
-                  className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-30 transition-colors shrink-0"
+                  className={ICON_BTN}
                   style={{ color: 'var(--danger)' }}
                   aria-label={t('settings.tags.delete')}
                 >
@@ -297,6 +285,6 @@ export default function TagManagementView(): React.JSX.Element {
         onConfirm={() => void confirmMerge()}
         onCancel={() => setMergeConfirm(null)}
       />
-    </div>
+    </section>
   )
 }

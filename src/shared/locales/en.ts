@@ -127,6 +127,8 @@ export const en: Record<TranslationKey, string> = {
   'common.cancel': 'Cancel',
   'common.delete': 'Delete',
   'common.edit': 'Edit',
+  'clients.projects.show': 'Show projects',
+  'clients.projects.hide': 'Hide projects',
   'common.unknown': 'Unknown',
   'common.undo': 'Undo',
   'common.loading': 'Loading…',

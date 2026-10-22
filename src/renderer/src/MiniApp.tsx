@@ -8,7 +8,21 @@ import { useT } from './contexts/I18nContext'
  * B3: subscribes to push-state-sync from main, ticks elapsed locally so the
  * UI stays smooth without IPC chatter, and forwards play/stop intents back
  * to the main window via the dedicated `mini:request-*` channels.
+ *
+ * Messinstrument (HANDOFF §5): a small display window — `--disp` ground,
+ * 6 px blinking `--sig` square while running, Plex Mono time, one 28 px key.
+ * This window loads main.css but not base.css, so every token carries its
+ * Papier value as a fallback.
  */
+
+/** 28 px key on the display (HANDOFF §5), 2 px focus ring. */
+const MINI_KEY = `
+  no-drag-region
+  flex h-7 w-7 shrink-0 items-center justify-center
+  rounded-[var(--r-key,4px)] border border-[var(--disp-line,#3a3935)]
+  text-xs hover:bg-[var(--disp-line,#3a3935)] active:translate-y-px
+  focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus,#e2551f)]
+`
 
 interface MiniState {
   running: boolean
@@ -54,27 +68,23 @@ export default function MiniApp(): React.JSX.Element {
         className="
           drag-region
           flex h-10 w-[200px] items-center gap-2 px-3
-          rounded-[var(--r-key,4px)] bg-[var(--disp,#1b1b19)]
+          rounded-[var(--r-key,4px)] border border-[var(--disp-line,#3a3935)] bg-[var(--disp,#1b1b19)]
           text-sm text-[var(--disp-ink,#edebe4)]
           select-none
         "
       >
-        <span className="h-2 w-2 rounded-[var(--r-fine,2px)] bg-[var(--sig,#e2551f)]" aria-hidden />
+        <span className="tt-blink h-1.5 w-1.5 shrink-0 bg-[var(--sig,#e2551f)]" aria-hidden />
         <span className="flex-1 truncate" title={state.label}>
           {state.label || t('miniWidget.timerRunning')}
         </span>
-        <span className="font-num text-xs" style={{ color: 'var(--disp-dim,#8f8c83)' }}>
+        <span className="font-num text-[13px] font-medium text-[var(--disp-ink,#edebe4)]">
           {formatDuration(elapsed)}
         </span>
         <button
           type="button"
           aria-label={t('miniWidget.stop')}
           onClick={() => window.api.mini.requestStop()}
-          className="
-            no-drag-region
-            h-6 w-6 flex items-center justify-center
-            rounded text-[var(--disp-ink,#edebe4)] hover:bg-[var(--danger,#a8261b)] hover:text-[var(--bg,#e8e6df)]
-          "
+          className={`${MINI_KEY} text-[var(--sig,#e2551f)]`}
         >
           ■
         </button>
@@ -87,15 +97,12 @@ export default function MiniApp(): React.JSX.Element {
       className="
         drag-region
         flex h-10 w-[200px] items-center gap-2 px-3
-        rounded-[var(--r-key,4px)] bg-[var(--disp,#1b1b19)]
+        rounded-[var(--r-key,4px)] border border-[var(--disp-line,#3a3935)] bg-[var(--disp,#1b1b19)]
         text-sm text-[var(--disp-ink,#edebe4)]
         select-none
       "
     >
-      <span
-        className="h-2 w-2 rounded-[var(--r-fine,2px)] bg-[var(--disp-dim,#8f8c83)]"
-        aria-hidden
-      />
+      <span className="h-1.5 w-1.5 shrink-0 bg-[var(--disp-dim,#8f8c83)]" aria-hidden />
       <span className="flex-1 truncate text-[var(--disp-dim,#8f8c83)]">
         {t('miniWidget.noTimer')}
       </span>
@@ -103,11 +110,7 @@ export default function MiniApp(): React.JSX.Element {
         type="button"
         aria-label={t('miniWidget.start')}
         onClick={() => window.api.mini.requestStart()}
-        className="
-          no-drag-region
-          h-6 w-6 flex items-center justify-center
-          rounded text-[var(--disp-dim,#8f8c83)] hover:bg-[var(--disp-line,#3a3935)] hover:text-[var(--disp-ink,#edebe4)]
-        "
+        className={`${MINI_KEY} text-[var(--disp-dim,#8f8c83)] hover:text-[var(--disp-ink,#edebe4)]`}
       >
         ▶
       </button>
