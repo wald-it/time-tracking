@@ -64,6 +64,45 @@ describe('StartTimerModal — prefill (B6)', () => {
     })
   })
 
+  it('keeps an explicit "no project" even when the client has exactly one project', async () => {
+    setup()
+    // Client 3 has a single active project; the last entry for it had none.
+    PROJECTS.push({
+      id: 9,
+      client_id: 3,
+      name: 'Only',
+      color: '',
+      rate_cent: null,
+      active: 1,
+      created_at: ''
+    })
+    CLIENTS.push({
+      id: 3,
+      name: 'Gamma',
+      color: '#333333',
+      active: 1,
+      rate_cent: 0,
+      created_at: ''
+    })
+    useTimerStore.setState({ clients: CLIENTS })
+    try {
+      render(
+        <I18nProvider>
+          <StartTimerModal open onClose={() => {}} prefill={{ clientId: 3, projectId: null }} />
+        </I18nProvider>
+      )
+      const selects = await screen.findAllByRole('combobox')
+      await waitFor(() => expect((selects[0] as HTMLSelectElement).value).toBe('3'))
+      // Give the project loader its turn, then check it did not auto-pick 'Only'.
+      await waitFor(() => expect(screen.getAllByRole('combobox')).toHaveLength(2))
+      expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('')
+      expect(useTimerStore.getState().selectedProjectId).toBeNull()
+    } finally {
+      PROJECTS.pop()
+      CLIENTS.pop()
+    }
+  })
+
   it('leaves the current selection alone without a prefill', async () => {
     setup()
     useTimerStore.setState({ selectedClientId: 1, selectedProjectId: null })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTimer } from '../hooks/useTimer'
 import { useT } from '../contexts/I18nContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
@@ -37,11 +37,16 @@ export function StartTimerModal({
   } = useTimer()
 
   const [projects, setProjects] = useState<Project[]>([])
+  // A prefill that says "this client, no project" must not be overridden by
+  // the single-project default below. Holds that client's id until another
+  // client is chosen.
+  const explicitNoProjectFor = useRef<number | null>(null)
 
   // B6: apply the prefill once per opening. Project first, so the project
   // loader below finds a valid preselection and keeps it.
   useEffect(() => {
     if (!open || !prefill) return
+    explicitNoProjectFor.current = prefill.projectId === null ? prefill.clientId : null
     useTimerStore.getState().setSelectedProjectId(prefill.projectId)
     useTimerStore.getState().setSelectedClientId(prefill.clientId)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on opening; a new prefill object per render must not reset the user's choice
@@ -64,6 +69,9 @@ export function StartTimerModal({
         const currentId = useTimerStore.getState().selectedProjectId
         if (currentId !== null && active.some((p) => p.id === currentId)) {
           // keep valid pre-selection — don't reset
+        } else if (explicitNoProjectFor.current === selectedClientId) {
+          // prefilled "no project" for this client — keep it
+          setSelectedProjectId(null)
         } else if (active.length === 1) {
           setSelectedProjectId(active[0].id)
         } else {
