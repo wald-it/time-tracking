@@ -1,9 +1,13 @@
 /**
  * Characterization tests for CalendarView (#167): selection and navigation
  * interactions — day click → drawer, roving-tabindex arrow keys, Enter,
- * month paging, "Heute". Written against the current implementation to pin
- * observable behavior, not as a spec; rendering itself (bars, totals,
- * layout) is out of scope per the issue.
+ * month paging, "Heute". Written against the implementation to pin
+ * observable behavior, not as a spec. Messinstrument PR 3 (HANDOFF §4.2, B4)
+ * added the selection state (default = today, `aria-pressed`), the wide
+ * layout without drawer, week totals, the month total and the MiniDayScale.
+ *
+ * jsdom has no `matchMedia`, so the view runs in its NARROW layout (drawer
+ * fallback) unless a test installs one.
  *
  * Only `Date` is faked (system time pinned per test) so async loads and
  * `waitFor` run on real timers. Entry timestamps are mid-day UTC, which maps
@@ -16,14 +20,28 @@ import { fireEvent } from '@testing-library/dom'
 import CalendarView from './CalendarView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { NowProvider } from '../contexts/NowContext'
+import { RoundingProvider } from '../contexts/RoundingContext'
 import { useTimerStore } from '../store/timerStore'
+import { useSettingsStore } from '../store/settingsStore'
 import type { Client, Entry, Project } from '../../../shared/types'
 
 // `globals` is off in vitest.config.ts — unmount explicitly (see TagInput test).
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  delete (window as unknown as { matchMedia?: unknown }).matchMedia
+  useSettingsStore.setState({ settings: null })
 })
+
+/** Pretend the window is (not) at least 1100 px wide. */
+function installMatchMedia(wide: boolean): void {
+  ;(window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+    matches: wide && query.includes('min-width: 1100px'),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  })
+}
 
 const CLIENTS: Client[] = [
   {
@@ -90,7 +108,7 @@ async function setup(
     byMonth?: Record<string, Entry[]>
     clients?: Client[]
     projects?: Project[]
-    /** Wrap in a ticking NowProvider (as App does while a timer runs). */
+    /** The NowProvider ticks every second (as App does while a timer runs). */
     clock?: boolean
   } = {}
 ): Promise<Setup> {
@@ -131,20 +149,25 @@ async function setup(
   // execution order.
   useTimerStore.setState({ clients })
 
+  // App always wraps the views in these providers; the view reads "now" and
+  // the rounding step from them.
   render(
     <I18nProvider>
-      {opts.clock ? (
-        <NowProvider running>
+      <RoundingProvider>
+        <NowProvider running={opts.clock ?? false}>
           <CalendarView />
         </NowProvider>
-      ) : (
-        <CalendarView />
-      )}
+      </RoundingProvider>
     </I18nProvider>
   )
   await waitFor(() => expect(getByMonth).toHaveBeenCalled())
   await waitFor(() => expect(screen.queryByText('Lade…')).toBeNull())
   return { getByMonth }
+}
+
+/** The month title (month name + year in one heading). */
+function monthHeading(): string | null {
+  return screen.getByRole('heading', { level: 1 }).textContent
 }
 
 function cell(dayKey: string): HTMLElement {
@@ -160,7 +183,10 @@ describe('CalendarView — day selection', () => {
     fireEvent.click(cell('2026-08-10'))
 
     const drawer = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
-    expect(within(drawer).getByText('2 Einträge · 02:30')).not.toBeNull()
+    // Count and day total of exactly this day (1:30 + 1:00; no single entry
+    // lasts 2:30, so the total cannot be matched by accident).
+    expect(within(drawer).getByText('2 Einträge')).not.toBeNull()
+    expect(within(drawer).getByText('2:30')).not.toBeNull()
     expect(within(drawer).getByText('Standup prep')).not.toBeNull()
     expect(within(drawer).getByText('Review')).not.toBeNull()
     // The neighbouring day's entry stays out.
@@ -214,7 +240,7 @@ describe('CalendarView — keyboard navigation', () => {
 
     fireEvent.keyDown(cell('2026-08-31'), { key: 'ArrowRight' })
 
-    expect(screen.getByText('September 2026')).not.toBeNull()
+    expect(monthHeading()).toBe('September 2026')
     expect(document.activeElement).toBe(cell('2026-09-01'))
     await waitFor(() => expect(getByMonth).toHaveBeenLastCalledWith({ year: 2026, month: 9 }))
   })
@@ -223,15 +249,15 @@ describe('CalendarView — keyboard navigation', () => {
 describe('CalendarView — month paging', () => {
   it('next/prev buttons page through months and refetch each one', async () => {
     const { getByMonth } = await setup()
-    expect(screen.getByText('August 2026')).not.toBeNull()
+    expect(monthHeading()).toBe('August 2026')
     expect(getByMonth).toHaveBeenLastCalledWith({ year: 2026, month: 8 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }))
-    expect(screen.getByText('September 2026')).not.toBeNull()
+    expect(monthHeading()).toBe('September 2026')
     await waitFor(() => expect(getByMonth).toHaveBeenLastCalledWith({ year: 2026, month: 9 }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Vorheriger Monat' }))
-    expect(screen.getByText('August 2026')).not.toBeNull()
+    expect(monthHeading()).toBe('August 2026')
     await waitFor(() => expect(getByMonth).toHaveBeenLastCalledWith({ year: 2026, month: 8 }))
   })
 
@@ -239,11 +265,11 @@ describe('CalendarView — month paging', () => {
     await setup()
     fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }))
     fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }))
-    expect(screen.getByText('Oktober 2026')).not.toBeNull()
+    expect(monthHeading()).toBe('Oktober 2026')
 
     fireEvent.click(screen.getByRole('button', { name: 'Heute' }))
 
-    expect(screen.getByText('August 2026')).not.toBeNull()
+    expect(monthHeading()).toBe('August 2026')
     expect(document.activeElement).toBe(cell('2026-08-15'))
   })
 })
@@ -292,13 +318,182 @@ describe('CalendarView — live running entry', () => {
   it("today's total keeps counting while a timer runs", async () => {
     const running = makeEntry({ id: 9, started_at: '2026-08-15T11:00:00.000Z', stopped_at: null })
     await setup({ byMonth: { '2026-8': [running] }, clock: true })
-    const before = within(cell('2026-08-15')).getByText(/^\d\d:\d\d$/).textContent
+    const before = within(cell('2026-08-15')).getByTestId('day-total').textContent
+    expect(before).toBe('1:00')
 
     vi.setSystemTime(new Date('2026-08-15T12:02:00.000Z'))
     await waitFor(
-      () =>
-        expect(within(cell('2026-08-15')).getByText(/^\d\d:\d\d$/).textContent).not.toBe(before),
+      () => expect(within(cell('2026-08-15')).getByTestId('day-total').textContent).toBe('1:02'),
       { timeout: 2500 }
     )
+  })
+})
+
+/** Local wall-clock timestamp in August 2026, as ISO (the app stores UTC). */
+const local = (day: number, h: number, m = 0): string =>
+  new Date(2026, 7, day, h, m, 0, 0).toISOString()
+
+describe('CalendarView — selection state (§4.2.3)', () => {
+  it('selects today on open', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    expect(cell('2026-08-15').getAttribute('aria-pressed')).toBe('true')
+    expect(cell('2026-08-10').getAttribute('aria-pressed')).toBe('false')
+    // Opening the view does not open the drawer.
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a click moves the selection', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    expect(cell('2026-08-10').getAttribute('aria-pressed')).toBe('true')
+    expect(cell('2026-08-15').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('"Heute" selects today again', async () => {
+    installMatchMedia(true)
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    fireEvent.click(screen.getByRole('button', { name: 'Heute' }))
+    expect(cell('2026-08-15').getAttribute('aria-pressed')).toBe('true')
+    expect(cell('2026-08-10').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('days outside the month are disabled and carry no scale', async () => {
+    await setup()
+    // August 2026 starts on a Saturday; the Monday-based grid opens with 27 July.
+    const outside = cell('2026-07-27')
+    expect((outside as HTMLButtonElement).disabled).toBe(true)
+    expect(outside.querySelector('[aria-hidden="true"]')).toBeNull()
+    expect((cell('2026-08-03') as HTMLButtonElement).disabled).toBe(false)
+    expect(cell('2026-08-03').querySelector('[aria-hidden="true"]')).not.toBeNull()
+  })
+
+  it('labels a cell with weekday, date and hours', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    expect(cell('2026-08-10').getAttribute('aria-label')).toBe('Montag, 10. August, 2:30 Stunden')
+    expect(cell('2026-08-11').getAttribute('aria-label')).toBe(
+      'Dienstag, 11. August, keine Einträge'
+    )
+  })
+})
+
+describe('CalendarView — wide layout (B4)', () => {
+  it('from 1100 px on, a click selects the day but opens no drawer', async () => {
+    installMatchMedia(true)
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+
+    fireEvent.click(cell('2026-08-10'))
+
+    expect(cell('2026-08-10').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('Enter selects the keyboard-focused day without a drawer', async () => {
+    installMatchMedia(true)
+    await setup()
+    fireEvent.keyDown(cell('2026-08-15'), { key: 'ArrowRight' })
+    fireEvent.keyDown(cell('2026-08-16'), { key: 'Enter' })
+
+    expect(cell('2026-08-16').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('below 1100 px the drawer stays the fallback', async () => {
+    installMatchMedia(false)
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    expect(screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })).not.toBeNull()
+  })
+})
+
+describe('CalendarView — totals', () => {
+  it('shows the raw month total in the header', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    // 1:30 + 1:00 + 2:00
+    expect(screen.getByTestId('month-total').textContent).toBe('4:30')
+    expect(screen.getByText('Summe August')).not.toBeNull()
+  })
+
+  it('sums each week in the KW column and shows "–" for an empty week', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    const weeks = screen.getAllByTestId('week-total').map((el) => el.textContent)
+    // Rows start 27.7., 3.8., 10.8., 17.8., 24.8., 31.8.
+    expect(weeks).toEqual(['–', '–', '4:30', '–', '–', '–'])
+  })
+
+  it('shows the day total raw, not rounded', async () => {
+    useSettingsStore.setState({ settings: { pdf_round_minutes: '15' } as unknown as never })
+    const odd = [makeEntry({ id: 21, started_at: local(10, 9, 0), stopped_at: local(10, 9, 7) })]
+    await setup({ byMonth: { '2026-8': odd } })
+    const total = within(cell('2026-08-10')).getByTestId('day-total')
+    expect(total.textContent).toBe('0:07')
+    // The rounded value is only an addition (tooltip).
+    expect(total.getAttribute('title')).toBe('gerundet 0:15 h · 15-min-Takt')
+  })
+})
+
+describe('CalendarView — MiniDayScale (§3.9)', () => {
+  it('draws one bar per entry of the day', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    expect(within(cell('2026-08-10')).getAllByTestId('mini-bar')).toHaveLength(2)
+    expect(within(cell('2026-08-12')).getAllByTestId('mini-bar')).toHaveLength(1)
+    expect(within(cell('2026-08-11')).queryAllByTestId('mini-bar')).toHaveLength(0)
+  })
+
+  it("puts the needle only into today's cell and hatches the running entry", async () => {
+    const running = makeEntry({ id: 9, started_at: '2026-08-15T11:00:00.000Z', stopped_at: null })
+    await setup({ byMonth: { '2026-8': [...AUGUST_ENTRIES, running] } })
+    expect(document.querySelectorAll('[data-testid="mini-needle"]')).toHaveLength(1)
+    expect(within(cell('2026-08-15')).getByTestId('mini-needle')).not.toBeNull()
+    expect(within(cell('2026-08-15')).getByTestId('mini-bar').dataset.running).toBe('true')
+    expect(within(cell('2026-08-10')).getAllByTestId('mini-bar')[0].dataset.running).toBeUndefined()
+  })
+
+  it('uses one range for the whole month and names it in the footnote', async () => {
+    const early = makeEntry({ id: 30, started_at: local(3, 5, 30), stopped_at: local(3, 6, 30) })
+    const late = makeEntry({ id: 31, started_at: local(20, 9, 0), stopped_at: local(20, 10, 0) })
+    await setup({ byMonth: { '2026-8': [early, late] } })
+    // An early start on the 3rd widens the scale of EVERY cell.
+    expect(screen.getByText('Skala je Tag 05–20 Uhr · schraffiert = läuft')).not.toBeNull()
+    // 09:00 on the 20th sits at 4/15 of the shared 05–20 range, not at 2/13.
+    const bar = within(cell('2026-08-20')).getByTestId('mini-bar')
+    expect(parseFloat(bar.style.left)).toBeCloseTo((4 / 15) * 100, 2)
+  })
+
+  it('keeps the default 07–20 range when everything fits', async () => {
+    const fits = [makeEntry({ id: 40, started_at: local(3, 9, 0), stopped_at: local(3, 19, 30) })]
+    await setup({ byMonth: { '2026-8': fits } })
+    expect(screen.getByText('Skala je Tag 07–20 Uhr · schraffiert = läuft')).not.toBeNull()
+  })
+})
+
+describe('CalendarView — header follows week_start', () => {
+  it('starts the weekday header on Sunday when the week does', async () => {
+    useSettingsStore.setState({ settings: { week_start: 'sunday' } as unknown as never })
+    await setup()
+    const heads = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'].map((h) => screen.getByText(h))
+    for (let i = 1; i < heads.length; i++) {
+      expect(
+        heads[i - 1].compareDocumentPosition(heads[i]) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+    }
+    // …and the first grid row starts on a Sunday (26 July).
+    expect(document.querySelector('[data-day]')?.getAttribute('data-day')).toBe('2026-07-26')
+  })
+})
+
+describe('CalendarView — selection follows the shown month', () => {
+  // The panel shows the selected day; after paging away from it, a day of the
+  // shown month must stand in (the 1st, or today in the current month) —
+  // otherwise the panel would show an unloaded, seemingly empty day.
+  it('paging to the next month selects its 1st; back again selects today', async () => {
+    await setup()
+    expect(cell('2026-08-15').getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }))
+    await waitFor(() => expect(cell('2026-09-01').getAttribute('aria-pressed')).toBe('true'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vorheriger Monat' }))
+    await waitFor(() => expect(cell('2026-08-15').getAttribute('aria-pressed')).toBe('true'))
   })
 })

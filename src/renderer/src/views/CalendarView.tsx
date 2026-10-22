@@ -1,18 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNow } from '../contexts/NowContext'
-import { useT } from '../contexts/I18nContext'
+import { useLocale, useT } from '../contexts/I18nContext'
 import type { TranslationKey } from '../../../shared/locales/de'
-import {
-  addMonths,
-  endOfMonth,
-  endOfWeek,
-  isSameDay,
-  isSameMonth,
-  startOfMonth,
-  startOfWeek
-} from 'date-fns'
-import type { Entry } from '../../../shared/types'
-import type { Client, Project } from '../../../shared/types'
+import { addMonths, endOfMonth, endOfWeek, isSameMonth, startOfMonth, startOfWeek } from 'date-fns'
+import type { Client, Entry, Project } from '../../../shared/types'
 import { useProjectsStore } from '../store/projectsStore'
 import { localDateKey } from '../../../shared/dateRanges'
 import { weekStartsOn, type WeekStart } from '../../../shared/weekStart'
@@ -20,31 +11,63 @@ import { useWeekStart, weekNumberOf } from '../hooks/useWeekStart'
 import { useEntriesStore } from '../store/entriesStore'
 import { useTimer } from '../hooks/useTimer'
 import { CalendarDrawer } from '../components/CalendarDrawer'
+import { DayPanel } from '../components/kalender/DayPanel'
+import { ClientBreakdown } from '../components/kalender/ClientBreakdown'
 import { GraphImportModal } from '../components/GraphImportModal'
 import { useRounding } from '../contexts/RoundingContext'
 import { roundDuration } from '../../../shared/duration'
 import { billedMinutes, effectiveRateCent, feeCent, formatEur } from '../../../shared/currency'
+import { formatHm, type DayRange } from '../components/heute/dayScaleLayout'
+import { MiniDayScale } from '../components/kalender/MiniDayScale'
+import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
 
 /**
- * Month-grid calendar view. 7×N rows, KW column on the left.
- * Click a cell → opens `CalendarDrawer` with that day's entries.
+ * B4 switch point (HANDOFF §6): from this window width on, the day details
+ * live in the persistent aside panel and a click on a day opens NO drawer.
+ * Below it the overlay `CalendarDrawer` stays the fallback. To get the old
+ * drawer-only behaviour back, make this a query that never matches
+ * (e.g. `'(min-width: 100000px)'`).
+ */
+export const DAY_PANEL_MEDIA_QUERY = '(min-width: 1100px)'
+
+/** 2 px `--focus` outline, offset 2 px (HANDOFF §2.4). */
+const FOCUS =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)]'
+const KEY = `key-hover flex min-h-11 items-center gap-2.5 rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-4 text-[13px] font-semibold text-[var(--ink)] shadow-[var(--edge-key)] active:translate-y-px ${FOCUS}`
+const ICON_KEY = `key-hover flex h-11 w-11 items-center justify-center rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] text-[var(--ink)] shadow-[var(--edge-key)] active:translate-y-px ${FOCUS}`
+/** Section legend (HANDOFF §2.2): 11/600 caps, expanded. */
+const LEGEND = 'text-[11px] font-semibold uppercase tracking-[.14em] [font-stretch:118%]'
+
+/**
+ * Month-grid calendar view (Messinstrument, HANDOFF §4.2 / §3.12).
+ *
+ * Header: legend, month + year, prev/next/Heute keys; on the right the Graph
+ * import key and the month total. Body: the grid (KW column + 7 day cells,
+ * each with its MiniDayScale on one range shared by the whole month) and an
+ * aside for the day panel + client breakdown. From `DAY_PANEL_MEDIA_QUERY` on
+ * the selected day shows in that panel; below it a click opens the overlay
+ * `CalendarDrawer` as before.
+ *
+ * Selection defaults to today (§4.2.3). Keyboard navigation (v1.2): roving
+ * tabindex, arrows move, Enter/Space select, crossing the month edge pages.
  *
  * Performance budget (E12): grouping + render for 200 entries < 100ms.
  * The grouping pass is `O(n)` and uses local YYYY-MM-DD strings as keys.
  *
  * Refresh: re-fetches `entries:getByMonth` on mount, on month change,
- * and on `entriesStore.version` bump.
+ * and on `entriesStore.version` bump. Running entries are measured against
+ * the shared clock (`useNow()`), which ticks every second while one runs.
  */
 export default function CalendarView(): React.JSX.Element {
   const t = useT()
-  // Running entries are measured at render time; subscribing to the shared
-  // clock re-renders this view every second while a timer runs.
-  useNow()
+  const { locale } = useLocale()
+  const nowMs = useNow()
   const { clients } = useTimer()
   const { roundMinutes } = useRounding()
   const weekStart = useWeekStart()
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
+  const wide = useMediaQuery(DAY_PANEL_MEDIA_QUERY)
 
   const [projects, setProjects] = useState<Project[]>([])
 
@@ -54,13 +77,17 @@ export default function CalendarView(): React.JSX.Element {
     })
   }, [projectsVersion])
 
-  const months = MONTHS_KEYS.map((k) => t(k as import('../../../shared/locales/de').TranslationKey))
+  const months = MONTHS_KEYS.map((k) => t(k))
 
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()))
   const [entries, setEntries] = useState<Entry[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  // Default selection on open = today (§4.2.3).
+  const [selectedDay, setSelectedDay] = useState<Date>(() => new Date())
+  // The overlay drawer is only the narrow-width fallback; at wide widths it
+  // never opens (the aside panel shows the selected day instead).
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [focusDay, setFocusDay] = useState<Date>(() => new Date())
   const [importOpen, setImportOpen] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -89,7 +116,7 @@ export default function CalendarView(): React.JSX.Element {
     }
   }, [cursor, version])
 
-  // Group entries by local YYYY-MM-DD (the local-day key).
+  // Group entries by local YYYY-MM-DD of their start (the local-day key).
   const byDay = useMemo(() => {
     const map = new Map<string, Entry[]>()
     for (const e of entries) {
@@ -101,8 +128,22 @@ export default function CalendarView(): React.JSX.Element {
     return map
   }, [entries])
 
-  // Build the visible grid (Mon-anchored weeks covering the whole month).
+  const clientsById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients])
+  const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
+
+  // One range for every cell of the month, so the scales compare (§3.9).
+  const range = useMemo(() => monthRange(entries, cursor, nowMs), [entries, cursor, nowMs])
+
   const weeks = useMemo(() => buildMonthWeeks(cursor, weekStart), [cursor, weekStart])
+  const weekdayHeads = useMemo(() => weekdayHeaderKeys(weekStart), [weekStart])
+
+  // Raw worked time (owner decision: the big figure is raw, not rounded).
+  const monthSeconds = entries.reduce((sum, e) => sum + entryDurationSeconds(e, nowMs), 0)
+
+  // The roving tabindex needs a cell in the visible month. After paging with
+  // the arrow keys the focused day is still in the old month; the 1st of the
+  // shown month then takes over until a cell is focused again.
+  const activeDay = isSameMonth(focusDay, cursor) ? focusDay : cursor
 
   const onPrev = useCallback(() => setCursor((d) => addMonths(d, -1)), [])
   const onNext = useCallback(() => setCursor((d) => addMonths(d, 1)), [])
@@ -110,18 +151,28 @@ export default function CalendarView(): React.JSX.Element {
     const today = new Date()
     setCursor(startOfMonth(today))
     setFocusDay(today)
-  }, [setFocusDay])
+    setSelectedDay(today)
+  }, [])
+
+  const selectDay = useCallback(
+    (d: Date) => {
+      setFocusDay(d)
+      setSelectedDay(d)
+      if (!wide) setDrawerOpen(true)
+    },
+    [wide]
+  )
 
   // Keyboard navigation on the grid.
   function handleKey(e: React.KeyboardEvent): void {
     let next: Date | null = null
-    if (e.key === 'ArrowLeft') next = addDays(focusDay, -1)
-    else if (e.key === 'ArrowRight') next = addDays(focusDay, 1)
-    else if (e.key === 'ArrowUp') next = addDays(focusDay, -7)
-    else if (e.key === 'ArrowDown') next = addDays(focusDay, 7)
+    if (e.key === 'ArrowLeft') next = addDays(activeDay, -1)
+    else if (e.key === 'ArrowRight') next = addDays(activeDay, 1)
+    else if (e.key === 'ArrowUp') next = addDays(activeDay, -7)
+    else if (e.key === 'ArrowDown') next = addDays(activeDay, 7)
     else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
-      setSelectedDay(focusDay)
+      selectDay(activeDay)
       return
     } else return
     e.preventDefault()
@@ -137,156 +188,210 @@ export default function CalendarView(): React.JSX.Element {
     cell?.focus({ preventScroll: true })
   }, [focusDay, cursor])
 
-  const selectedKey = selectedDay ? localDateKey(selectedDay) : null
-  const drawerEntries = selectedKey ? (byDay.get(selectedKey) ?? []) : []
+  // The selection always lies in the shown month: after paging away from it,
+  // today (if this is the current month) or the 1st stands in, so the panel
+  // never shows an "empty" day that simply is not loaded.
+  const shownSelection = isSameMonth(selectedDay, cursor)
+    ? selectedDay
+    : isSameMonth(new Date(nowMs), cursor)
+      ? new Date(nowMs)
+      : cursor
+  const selectedKey = localDateKey(shownSelection)
+  // Only meaningful while the selected day lies in the loaded month; the
+  // drawer can only be opened from a visible cell, so that always holds there.
+  const selectedEntries = byDay.get(selectedKey) ?? []
+
+  const dateFmt = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'de-DE', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long'
+      }),
+    [locale]
+  )
+
+  const todayKey = localDateKey(new Date(nowMs))
+  const monthName = months[cursor.getMonth()]
 
   return (
-    // `w-full` is load-bearing, not decoration: this is a flex item in App's
-    // column layout, and `mx-auto` makes an item size to its content instead of
-    // stretching. Until #153 the export toolbar (five pills plus an `ml-auto`
-    // button) padded the content out to `max-w-5xl` by accident; with it gone
-    // the widest child is the grid, which shrink-wrapped to ~370px in an 886px
-    // pane. Every other view already carries `w-full` for this reason.
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onPrev}
-          className="grid h-9 w-9 place-items-center rounded-[var(--r-key)] border key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-          style={{
-            background: 'var(--card-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text2)'
-          }}
-          aria-label={t('calendar.nav.prev')}
-        >
-          ‹
-        </button>
-        <h2
-          className="min-w-[200px] text-center text-lg font-semibold"
-          style={{ color: 'var(--text)' }}
-        >
-          {formatMonthHeader(cursor, months)}
-        </h2>
-        <button
-          type="button"
-          onClick={onNext}
-          className="grid h-9 w-9 place-items-center rounded-[var(--r-key)] border key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-          style={{
-            background: 'var(--card-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text2)'
-          }}
-          aria-label={t('calendar.nav.next')}
-        >
-          ›
-        </button>
-        <button
-          type="button"
-          onClick={onToday}
-          className="ml-2 rounded-[var(--r-key)] border px-3 py-1.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-          style={{
-            background: 'var(--card-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
-          }}
-        >
-          {t('calendar.nav.today')}
-        </button>
-        <button
-          type="button"
-          onClick={() => setImportOpen(true)}
-          className="ml-2 rounded-[var(--r-key)] border px-3 py-1.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-          style={{
-            background: 'var(--card-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
-          }}
-        >
-          {t('calendarImport.button')}
-        </button>
-        {status === 'loading' && (
-          <span className="ml-auto text-xs" style={{ color: 'var(--text3)' }}>
-            {t('calendar.status.loading')}
-          </span>
-        )}
-        {status === 'error' && (
-          <span
-            className="ml-auto text-xs"
-            style={{ color: 'var(--danger)' }}
-            title={errorMsg ?? ''}
-          >
-            {t('calendar.status.error')}
-          </span>
-        )}
-      </div>
-
-      {/* Header row: KW + Mo–So */}
-      <div
-        className="grid grid-cols-[40px_repeat(7,minmax(0,1fr))] gap-px rounded-t-[var(--r-key)]"
-        style={{ background: 'var(--card-border)' }}
-      >
-        <div
-          className="px-2 py-1 text-center text-xs font-medium"
-          style={{ background: 'var(--nav-bg)', color: 'var(--text3)' }}
-        >
-          {t('calendar.header.week')}
-        </div>
-        {(
-          [
-            'calendar.days.mon',
-            'calendar.days.tue',
-            'calendar.days.wed',
-            'calendar.days.thu',
-            'calendar.days.fri',
-            'calendar.days.sat',
-            'calendar.days.sun'
-          ] as TranslationKey[]
-        ).map((k) => (
-          <div
-            key={k}
-            className="px-2 py-1 text-center text-xs font-medium"
-            style={{ background: 'var(--nav-bg)', color: 'var(--text2)' }}
-          >
-            {t(k)}
+    <div className="flex w-full flex-col gap-8">
+      {/* Header row (§4.2.1) */}
+      <div className="flex flex-wrap items-end justify-between gap-6">
+        <div className="flex flex-wrap items-end gap-6">
+          <div>
+            <div className={LEGEND} style={{ color: 'var(--ink2)' }}>
+              {t('calendar.legend')}
+            </div>
+            <h1
+              className="m-0 mt-1.5 flex items-baseline gap-3.5 text-[44px] leading-none font-semibold tracking-[-0.01em] [font-stretch:112%]"
+              style={{ color: 'var(--ink)' }}
+            >
+              {monthName}{' '}
+              <span
+                className="font-num text-[28px] font-light tracking-normal"
+                style={{ color: 'var(--ink3)' }}
+              >
+                {cursor.getFullYear()}
+              </span>
+            </h1>
           </div>
-        ))}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onPrev}
+              className={ICON_KEY}
+              aria-label={t('calendar.nav.prev')}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              className={ICON_KEY}
+              aria-label={t('calendar.nav.next')}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.6" />
+              </svg>
+            </button>
+            <button type="button" onClick={onToday} className={KEY}>
+              {t('calendar.nav.today')}
+            </button>
+          </div>
+          {status === 'loading' && (
+            <span className="self-center text-xs" style={{ color: 'var(--ink3)' }}>
+              {t('calendar.status.loading')}
+            </span>
+          )}
+          {status === 'error' && (
+            <span
+              className="self-center text-xs"
+              style={{ color: 'var(--danger)' }}
+              title={errorMsg ?? ''}
+            >
+              {t('calendar.status.error')}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-end gap-8">
+          <button type="button" onClick={() => setImportOpen(true)} className={KEY}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect
+                x="1.5"
+                y="3"
+                width="13"
+                height="11.5"
+                stroke="currentColor"
+                strokeWidth="1.4"
+              />
+              <path d="M1.5 6.5h13M5 1v3.5M11 1v3.5" stroke="currentColor" strokeWidth="1.4" />
+            </svg>
+            {t('calendarImport.button')}
+          </button>
+          <div className="text-right">
+            <div className={LEGEND} style={{ color: 'var(--ink2)' }}>
+              {t('calendar.monthTotal', { month: monthName })}
+            </div>
+            <div className="mt-1.5 flex items-baseline justify-end gap-1.5">
+              <span
+                data-testid="month-total"
+                className="font-num text-[44px] leading-none font-light tracking-[-0.02em]"
+                style={{ color: 'var(--ink)' }}
+              >
+                {formatHm(monthSeconds)}
+              </span>
+              <span className="text-[13px]" style={{ color: 'var(--ink2)' }}>
+                h
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Grid */}
-      <div
-        ref={gridRef}
-        role="grid"
-        aria-label={t('calendar.grid.aria')}
-        onKeyDown={handleKey}
-        className="grid grid-cols-[40px_repeat(7,minmax(0,1fr))] gap-px rounded-b-[var(--r-key)]"
-        style={{ background: 'var(--card-border)' }}
-      >
-        {weeks.map((week) => (
-          <Week
-            key={week.weekKey}
-            week={week}
-            cursor={cursor}
-            byDay={byDay}
+      {/* Body (§4.2.2): grid + aside, wrapping below ~1100 px */}
+      <div className="flex flex-wrap items-start gap-10">
+        <section
+          aria-label={`${monthName} ${cursor.getFullYear()}`}
+          className="min-w-0 overflow-x-auto"
+          style={{ flex: '999 1 680px' }}
+        >
+          <div
+            ref={gridRef}
+            role="group"
+            aria-label={t('calendar.grid.aria')}
+            onKeyDown={handleKey}
+            className="grid min-w-[660px] grid-cols-[72px_repeat(7,minmax(0,1fr))]"
+            style={{ borderBottom: '1px solid var(--line)' }}
+          >
+            <div
+              className={`${LEGEND} pb-2.5 text-[10px]`}
+              style={{ color: 'var(--ink3)', borderBottom: '2px solid var(--ink)' }}
+            >
+              {t('calendar.header.week')}
+            </div>
+            {weekdayHeads.map(({ key, weekend }) => (
+              <div
+                key={key}
+                className={`${LEGEND} pb-2.5 pl-2.5 text-[10px]`}
+                style={{
+                  color: weekend ? 'var(--ink3)' : 'var(--ink2)',
+                  borderBottom: '2px solid var(--ink)'
+                }}
+              >
+                {t(key)}
+              </div>
+            ))}
+
+            {weeks.map((week) => (
+              <Week
+                key={week.weekKey}
+                week={week}
+                cursor={cursor}
+                byDay={byDay}
+                clients={clients}
+                projects={projects}
+                clientsById={clientsById}
+                projectsById={projectsById}
+                range={range}
+                nowMs={nowMs}
+                todayKey={todayKey}
+                selectedKey={selectedKey}
+                activeDay={activeDay}
+                roundMinutes={roundMinutes}
+                dateFmt={dateFmt}
+                onSelect={selectDay}
+              />
+            ))}
+          </div>
+          <p className="m-0 mt-3 text-xs" style={{ color: 'var(--ink3)' }}>
+            {t('calendar.footnote', {
+              start: formatRangeHour(range.startHour),
+              end: formatRangeHour(range.endHour)
+            })}
+          </p>
+        </section>
+
+        <aside className="flex flex-col gap-9" style={{ flex: '1 1 300px' }}>
+          {wide && <DayPanel dateISO={selectedKey} entries={selectedEntries} clients={clients} />}
+          <ClientBreakdown
+            entries={entries}
             clients={clients}
             projects={projects}
-            focusDay={focusDay}
-            months={months}
-            roundMinutes={roundMinutes}
-            onSelect={(d) => {
-              setFocusDay(d)
-              setSelectedDay(d)
-            }}
+            monthLabel={monthName}
+            nowMs={nowMs}
           />
-        ))}
+        </aside>
       </div>
 
       <CalendarDrawer
-        open={selectedDay !== null}
-        dateISO={selectedDay ? localDateKey(selectedDay) : ''}
-        entries={drawerEntries}
+        open={!wide && drawerOpen}
+        dateISO={selectedKey}
+        entries={selectedEntries}
         clients={clients}
-        onClose={() => setSelectedDay(null)}
+        onClose={() => setDrawerOpen(false)}
       />
 
       <GraphImportModal open={importOpen} onClose={() => setImportOpen(false)} clients={clients} />
@@ -306,9 +411,15 @@ function Week({
   byDay,
   clients,
   projects,
-  focusDay,
-  months,
+  clientsById,
+  projectsById,
+  range,
+  nowMs,
+  todayKey,
+  selectedKey,
+  activeDay,
   roundMinutes,
+  dateFmt,
   onSelect
 }: {
   week: WeekData
@@ -316,81 +427,142 @@ function Week({
   byDay: Map<string, Entry[]>
   clients: Client[]
   projects: Project[]
-  focusDay: Date
-  months: readonly string[]
+  clientsById: Map<number, Client>
+  projectsById: Map<number, Project>
+  range: DayRange
+  nowMs: number
+  todayKey: string
+  selectedKey: string
+  activeDay: Date
   roundMinutes: number
+  dateFmt: Intl.DateTimeFormat
   onSelect: (d: Date) => void
 }): React.JSX.Element {
+  const t = useT()
+  // Only the loaded month has entries; out-of-month days count nothing.
+  const weekSeconds = week.days.reduce(
+    (sum, day) =>
+      sum +
+      (byDay.get(localDateKey(day)) ?? []).reduce((s, e) => s + entryDurationSeconds(e, nowMs), 0),
+    0
+  )
+  const activeKey = localDateKey(activeDay)
   return (
     <>
       <div
-        className="px-2 py-2 text-center text-xs"
-        style={{ background: 'var(--nav-bg)', color: 'var(--text3)' }}
+        data-testid="week-cell"
+        className="flex min-h-[104px] flex-col justify-between py-2.5 pr-2.5"
+        style={{ borderTop: '1px solid var(--line)' }}
       >
-        {week.weekNumber}
+        <span
+          className="font-num text-[20px] leading-none font-light"
+          style={{ color: 'var(--ink)' }}
+        >
+          {week.weekNumber}
+        </span>
+        <span
+          data-testid="week-total"
+          className="font-num text-xs"
+          style={{ color: 'var(--ink2)' }}
+        >
+          {weekSeconds > 0 ? formatHm(weekSeconds) : '–'}
+        </span>
       </div>
       {week.days.map((day) => {
         const key = localDateKey(day)
-        const dayEntries = byDay.get(key) ?? []
         const inMonth = isSameMonth(day, cursor)
-        const isToday = isSameDay(day, new Date())
-        const isFocus = isSameDay(day, focusDay)
-        const totalSeconds = dayEntries.reduce((sum, e) => sum + entryDurationSeconds(e), 0)
-        const displaySeconds = roundDuration(totalSeconds, roundMinutes)
-        const revenueCent = dayRevenueCent(dayEntries, clients, projects, roundMinutes)
+        const dayEntries = inMonth ? (byDay.get(key) ?? []) : []
+        const isToday = key === todayKey
+        const isSelected = inMonth && key === selectedKey
+        const weekend = isWeekend(day)
+        const totalSeconds = dayEntries.reduce((sum, e) => sum + entryDurationSeconds(e, nowMs), 0)
+        const roundedSeconds = roundDuration(totalSeconds, roundMinutes)
+        const revenueCent = dayRevenueCent(dayEntries, clients, projects, roundMinutes, nowMs)
+        const date = dateFmt.format(day)
+        const ariaLabel =
+          totalSeconds > 0
+            ? t('calendar.cellAria', { date, hours: formatHm(totalSeconds) })
+            : t('calendar.cellAriaEmpty', { date })
+        const numberInk = isToday
+          ? 'var(--sig-ink)'
+          : !inMonth
+            ? 'var(--ink3)'
+            : weekend
+              ? 'var(--ink2)'
+              : 'var(--ink)'
         return (
           <button
             key={key}
             type="button"
             data-day={key}
-            tabIndex={isFocus ? 0 : -1}
-            role="gridcell"
-            aria-label={`${formatAriaDate(day, months)}${dayEntries.length ? `, ${dayEntries.length}` : ''}`}
+            tabIndex={key === activeKey ? 0 : -1}
+            disabled={!inMonth}
+            aria-pressed={isSelected}
+            aria-label={ariaLabel}
             onClick={() => onSelect(day)}
             className={[
-              'relative flex h-24 flex-col gap-0.5 px-2 py-1 text-left transition-colors',
-              'focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--focus)]',
-              !inMonth && 'opacity-40',
-              isToday && 'border-2 border-[var(--ink)]'
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            style={{ background: 'var(--card-bg)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--card-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--card-bg)')}
+              'flex min-h-[104px] cursor-pointer flex-col justify-between gap-2.5 rounded-none p-2.5 text-left',
+              'disabled:cursor-default',
+              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus)]',
+              isSelected ? 'bg-[var(--key)]' : 'bg-transparent enabled:hover:bg-[var(--key)]'
+            ].join(' ')}
+            style={{
+              borderLeft: '1px solid var(--line)',
+              borderTop: isToday ? '2px solid var(--ink)' : '1px solid var(--line)',
+              boxShadow: isSelected ? 'inset 0 0 0 1px var(--ink)' : 'none'
+            }}
           >
-            <div className="flex items-start justify-between">
+            <span className="flex w-full items-start justify-between gap-1.5">
               <span
-                className="text-sm font-semibold"
-                style={{ color: isToday ? 'var(--accent)' : 'var(--text)' }}
+                data-testid="day-number"
+                className="font-num -ml-[5px] px-[5px] py-px text-[13px] font-medium"
+                style={{
+                  background: isToday ? 'var(--sig)' : 'transparent',
+                  color: numberInk
+                }}
               >
                 {day.getDate()}
               </span>
-              {dayEntries.length > 0 && (
-                <span
-                  className="text-[10px] tabular-nums"
-                  style={{ color: 'var(--text2)', fontFamily: 'var(--font-num)' }}
-                  title={displaySeconds !== totalSeconds ? formatHHMM(totalSeconds) : undefined}
-                >
-                  {formatHHMM(displaySeconds)}
-                </span>
-              )}
-            </div>
-            {revenueCent > 0 && (
-              <span
-                data-testid="day-revenue"
-                className="self-end text-[10px] tabular-nums"
-                style={{ color: 'var(--text3)', fontFamily: 'var(--font-num)' }}
-              >
-                {formatEur(revenueCent)}
+              <span className="flex flex-col items-end gap-0.5">
+                {totalSeconds > 0 && (
+                  <span
+                    data-testid="day-total"
+                    className="font-num text-xs"
+                    style={{ color: 'var(--ink2)' }}
+                    title={
+                      roundedSeconds !== totalSeconds
+                        ? t('today.summary.rounded', {
+                            total: formatHm(roundedSeconds),
+                            step: roundMinutes
+                          })
+                        : undefined
+                    }
+                  >
+                    {formatHm(totalSeconds)}
+                  </span>
+                )}
+                {/* Owner decision: the revenue line stays in the cell (deviates from the mockup). */}
+                {revenueCent > 0 && (
+                  <span
+                    data-testid="day-revenue"
+                    className="font-num text-[11px]"
+                    style={{ color: 'var(--ink3)' }}
+                  >
+                    {formatEur(revenueCent)}
+                  </span>
+                )}
               </span>
+            </span>
+            {inMonth && (
+              <MiniDayScale
+                entries={dayEntries}
+                range={range}
+                nowMs={nowMs}
+                isToday={isToday}
+                projectsById={projectsById}
+                clientsById={clientsById}
+              />
             )}
-            <DayBars
-              entries={dayEntries}
-              clients={clients}
-              projects={projects}
-              roundMinutes={roundMinutes}
-            />
           </button>
         )
       })}
@@ -398,61 +570,47 @@ function Week({
   )
 }
 
-const MAX_BARS = 5
+// --- helpers ---
 
-/** Indigo fallback when an entry's client_id no longer resolves
- *  (deleted client, race during reload, etc.) — same accent as the
- *  rest of the calendar UI so it still reads as "an entry". */
-const DEFAULT_BAR_COLOR = '#6366f1'
-
-function DayBars({
-  entries,
-  clients,
-  projects,
-  roundMinutes
-}: {
-  entries: Entry[]
-  clients: Client[]
-  projects: Project[]
-  roundMinutes: number
-}): React.JSX.Element | null {
-  if (entries.length === 0) return null
-  const visible = entries.slice(0, MAX_BARS)
-  const overflow = entries.length - visible.length
-  const colorById = new Map(clients.map((c) => [c.id, c.color]))
-  const projectColorById = new Map(projects.map((p) => [p.id, p.color]))
-  return (
-    <div className="mt-auto flex flex-col gap-[2px]">
-      {visible.map((e) => {
-        const projectColor = e.project_id != null ? projectColorById.get(e.project_id) : undefined
-        const color = (projectColor || colorById.get(e.client_id)) ?? DEFAULT_BAR_COLOR
-        const clientName = clients.find((c) => c.id === e.client_id)?.name ?? 'Eintrag'
-        const label = e.description ? `${clientName} — ${e.description}` : clientName
-        const rawSec = entryDurationSeconds(e)
-        const dispSec = roundDuration(rawSec, roundMinutes)
-        const tooltip =
-          rawSec !== dispSec
-            ? `${label} (${formatHHMM(dispSec)} · exakt: ${formatHHMM(rawSec)})`
-            : `${label} (${formatHHMM(rawSec)})`
-        return (
-          <div
-            key={e.id}
-            className="h-[3px] rounded-[var(--r-key)]"
-            style={{ backgroundColor: color }}
-            title={tooltip}
-          />
-        )
-      })}
-      {overflow > 0 && (
-        <span className="text-[10px]" style={{ color: 'var(--text3)' }}>
-          +{overflow}
-        </span>
-      )}
-    </div>
+/** Matches a media query and follows changes; `false` where matchMedia is missing (tests). */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(
+    () => typeof window.matchMedia === 'function' && window.matchMedia(query).matches
   )
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mql = window.matchMedia(query)
+    const onChange = (): void => setMatches(mql.matches)
+    onChange()
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [query])
+  return matches
 }
 
-// --- helpers ---
+const WEEKDAY_KEYS: TranslationKey[] = [
+  'calendar.days.sun',
+  'calendar.days.mon',
+  'calendar.days.tue',
+  'calendar.days.wed',
+  'calendar.days.thu',
+  'calendar.days.fri',
+  'calendar.days.sat'
+]
+
+/** Weekday header in grid order — it follows the week_start setting like the rows do. */
+function weekdayHeaderKeys(week: WeekStart): { key: TranslationKey; weekend: boolean }[] {
+  const first = weekStartsOn(week)
+  return Array.from({ length: 7 }, (_, i) => {
+    const dow = (first + i) % 7
+    return { key: WEEKDAY_KEYS[dow], weekend: dow === 0 || dow === 6 }
+  })
+}
+
+function isWeekend(d: Date): boolean {
+  const dow = d.getDay()
+  return dow === 0 || dow === 6
+}
 
 function buildMonthWeeks(cursor: Date, week: WeekStart): WeekData[] {
   // Weeks covering the visible month, anchored per the week_start setting
@@ -483,22 +641,24 @@ function addDays(d: Date, n: number): Date {
   return next
 }
 
-function entryDurationSeconds(e: Entry): number {
-  const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : Date.now()
+/** Elapsed seconds of an entry; a running one counts up to `nowMs`. */
+function entryDurationSeconds(e: Entry, nowMs: number): number {
+  const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : nowMs
   return Math.max(0, Math.floor((stop - new Date(e.started_at).getTime()) / 1000))
 }
 
 /**
  * Billable revenue of one day in cents, computed per entry exactly like the
  * PDF invoice: billable entries only (#104), minutes ceiled and rounded up
- * to the step, project rate over client rate (#120). A running entry counts
- * up to now, like the hour total next to it.
+ * to the step, project rate over client rate (#120), project rate 0 =
+ * goodwill. A running entry counts up to now, like the hour total next to it.
  */
 function dayRevenueCent(
   entries: Entry[],
   clients: Client[],
   projects: Project[],
-  roundStep: number
+  roundStep: number,
+  nowMs: number
 ): number {
   let sum = 0
   for (const e of entries) {
@@ -509,22 +669,14 @@ function dayRevenueCent(
     const rate = effectiveRateCent(projectRate, clientRate)
     if (rate <= 0) continue
     // Milliseconds, not entryDurationSeconds: the invoice ceils the exact span.
-    const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : Date.now()
+    const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : nowMs
     const rawMs = Math.max(0, stop - new Date(e.started_at).getTime())
     sum += feeCent(billedMinutes(rawMs, roundStep), rate)
   }
   return sum
 }
 
-function formatHHMM(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '00:00'
-  const total = Math.floor(seconds)
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
-
-const MONTHS_KEYS = [
+const MONTHS_KEYS: TranslationKey[] = [
   'calendar.months.jan',
   'calendar.months.feb',
   'calendar.months.mar',
@@ -537,12 +689,4 @@ const MONTHS_KEYS = [
   'calendar.months.oct',
   'calendar.months.nov',
   'calendar.months.dec'
-] as const
-
-function formatMonthHeader(d: Date, months: readonly string[]): string {
-  return `${months[d.getMonth()]} ${d.getFullYear()}`
-}
-
-function formatAriaDate(d: Date, months: readonly string[]): string {
-  return `${d.getDate()}. ${months[d.getMonth()]} ${d.getFullYear()}`
-}
+]
