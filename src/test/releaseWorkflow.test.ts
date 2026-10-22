@@ -40,13 +40,15 @@ interface Plan {
   stderr: string
   outputs: Record<string, string>
   notice: string
+  stdout: string
 }
 
 function runPlan(
   windows: Result,
   macos: Result,
   streamdeck: Result,
-  releaseAssets?: string[]
+  releaseAssets?: string[],
+  extraEnv: Record<string, string> = {}
 ): Plan {
   const dir = mkdtempSync(join(tmpdir(), 'release-plan-'))
   const outputFile = join(dir, 'github_output')
@@ -62,7 +64,8 @@ function runPlan(
       STREAMDECK_RESULT: streamdeck,
       GITHUB_OUTPUT: outputFile,
       NOTICE_FILE: noticeFile,
-      ...(releaseAssets === undefined ? {} : { RELEASE_ASSETS: releaseAssets.join('\n') })
+      ...(releaseAssets === undefined ? {} : { RELEASE_ASSETS: releaseAssets.join('\n') }),
+      ...extraEnv
     },
     encoding: 'utf8'
   })
@@ -77,7 +80,7 @@ function runPlan(
   } catch {
     // no file written — asserted on below where it matters
   }
-  return { status: proc.status, stderr: proc.stderr, outputs, notice }
+  return { status: proc.status, stderr: proc.stderr, outputs, notice, stdout: proc.stdout }
 }
 
 describe('release plan (#221)', () => {
@@ -125,17 +128,19 @@ describe('release plan (#221)', () => {
   })
 })
 
-// #234: what a release carries once every installer and update feed is
-// attached — named as electron-builder and the plugin pack name them.
+// #234: what a complete release carries — the asset list of the real v1.20.0
+// release, verbatim and in GitHub's order (`gh release view v1.20.0 --json
+// assets`), so the suffix matchers run against real names, .blockmap files
+// included.
 const COMPLETE_ASSETS = [
-  'timetrack-1.20.0-setup.exe',
-  'timetrack-1.20.0-setup.exe.blockmap',
-  'latest.yml',
-  'TimeTrack-1.20.0-arm64.dmg',
-  'TimeTrack-1.20.0-arm64.dmg.blockmap',
-  'TimeTrack-1.20.0-arm64-mac.zip',
+  'com.timetrack.streamdeck.streamDeckPlugin',
   'latest-mac.yml',
-  'com.wald-it.timetrack.streamDeckPlugin'
+  'latest.yml',
+  'time-tracking-1.20.0-setup.exe',
+  'time-tracking-1.20.0-setup.exe.blockmap',
+  'TimeTrack-1.20.0-arm64-mac.zip',
+  'TimeTrack-1.20.0-arm64.dmg',
+  'TimeTrack-1.20.0-arm64.dmg.blockmap'
 ]
 
 describe('release plan on a re-run: decided from the attached assets (#234)', () => {
@@ -186,6 +191,19 @@ describe('release plan on a re-run: decided from the attached assets (#234)', ()
     const plan = runPlan('success', 'success', 'success', [])
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
+  })
+
+  it('the job-result plan before a re-run is provisional: no ::warning:: annotation', () => {
+    const provisional = runPlan('failure', 'success', 'success', undefined, {
+      RELEASE_EXISTS: 'true'
+    })
+    expect(provisional.status, provisional.stderr).toBe(0)
+    expect(provisional.stdout).not.toContain('::warning::')
+    expect(provisional.stdout).toMatch(/Provisional plan/)
+    // A first publish still annotates, and so does the re-plan from assets.
+    expect(runPlan('failure', 'success', 'success').stdout).toContain('::warning::')
+    const replan = runPlan('failure', 'success', 'success', [], { RELEASE_EXISTS: 'true' })
+    expect(replan.stdout).toContain('::warning::')
   })
 
   it('still refuses an unknown job result', () => {

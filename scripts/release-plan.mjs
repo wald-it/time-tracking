@@ -28,6 +28,10 @@
  * place, and demoting that release would withdraw a valid version from
  * stable updates. Unset (first publish), the job results decide.
  *
+ * Optional RELEASE_EXISTS=true without RELEASE_ASSETS: the plan before a
+ * re-run's upload is provisional, so what is missing is logged without a
+ * `::warning::` annotation; the re-plan from the assets annotates.
+ *
  * Output: `prerelease=true|false` appended to $GITHUB_OUTPUT, the notice
  * (empty when nothing is missing) written to $NOTICE_FILE.
  *
@@ -116,9 +120,15 @@ if (missing.length > 0) {
           : `> - ${part.missing} (not attached; job \`${part.job}\` in the latest run: ${part.result})`
       )
     ].join('\n') + '\n\n'
+  // On a re-run (RELEASE_EXISTS=true, no RELEASE_ASSETS yet) this plan is
+  // provisional: the re-run path plans again from the attached assets and
+  // annotates then. Warning now would flag a release that may be complete.
+  const provisional = attached === null && process.env.RELEASE_EXISTS === 'true'
   for (const part of missing) {
     console.log(
-      `::warning::Partial release — ${part.job} ${part.result}, its artifacts are missing.`
+      provisional
+        ? `Provisional plan — ${part.job} ${part.result}; re-planned from the attached assets after the upload.`
+        : `::warning::Partial release — ${part.job} ${part.result}, its artifacts are missing.`
     )
   }
 }

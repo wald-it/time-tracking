@@ -407,7 +407,14 @@ jobs:
           MACOS_RESULT: ${{ needs.build-macos.result }}
           STREAMDECK_RESULT: ${{ needs.pack-streamdeck.result }}
           NOTICE_FILE: ${{ runner.temp }}/release-notice.md
-        run: node scripts/release-plan.mjs
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.name }}
+        # #234: on a re-run this plan is provisional (no ::warning:: yet) —
+        # the update path re-plans from the attached assets.
+        run: |
+          RELEASE_EXISTS=false
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then RELEASE_EXISTS=true; fi
+          RELEASE_EXISTS="$RELEASE_EXISTS" node scripts/release-plan.mjs
 
       - name: Create / update GitHub Release
         env:
