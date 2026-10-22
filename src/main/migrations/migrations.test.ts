@@ -831,6 +831,43 @@ describe('migration SQL execution', () => {
     }).not.toThrow()
   })
 
+  // ── migration 027: entry timestamps in one form ────────────────────────
+  it('migration 027 — rewrites offset and second-only timestamps to UTC with ms, leaves the rest', () => {
+    applyUpTo(26)
+    db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
+    const ins = db.prepare(
+      `INSERT INTO entries (id, client_id, started_at, stopped_at, heartbeat_at) VALUES (?, 1, ?, ?, ?)`
+    )
+    // start_timer with an offset, as the old startTimer stored it
+    ins.run(1, '2026-10-01T00:30:00+02:00', '2026-10-01T01:00:00.000Z', '2026-10-01T00:30:00+02:00')
+    // seconds only, no milliseconds
+    ins.run(2, '2026-10-02T08:00:00Z', null, null)
+    // already canonical
+    ins.run(3, '2026-10-03T08:00:00.000Z', '2026-10-03T09:00:00.000Z', '2026-10-03T08:00:00.000Z')
+    // unreadable: left as it is rather than nulled
+    ins.run(4, 'kaputt', null, null)
+    applyVersion(27)
+    const rows = db
+      .prepare('SELECT id, started_at, stopped_at, heartbeat_at FROM entries ORDER BY id')
+      .all()
+    expect(rows).toEqual([
+      {
+        id: 1,
+        started_at: '2026-09-30T22:30:00.000Z',
+        stopped_at: '2026-10-01T01:00:00.000Z',
+        heartbeat_at: '2026-09-30T22:30:00.000Z'
+      },
+      { id: 2, started_at: '2026-10-02T08:00:00.000Z', stopped_at: null, heartbeat_at: null },
+      {
+        id: 3,
+        started_at: '2026-10-03T08:00:00.000Z',
+        stopped_at: '2026-10-03T09:00:00.000Z',
+        heartbeat_at: '2026-10-03T08:00:00.000Z'
+      },
+      { id: 4, started_at: 'kaputt', stopped_at: null, heartbeat_at: null }
+    ])
+  })
+
   // ── migration 017: whitespace cleanup in tag names ─────────────────────
 
   function applyUpTo(targetVersion: number): void {
