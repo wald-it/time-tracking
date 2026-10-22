@@ -1,6 +1,7 @@
 # TimeTrack UI overhaul — "Messinstrument" (handoff)
 
 **Status:** design approved by the owner (Design Council) on 2026-10-22 · ready for implementation
+**Amended 2026-10-22 (owner):** header stages for narrow windows (§3.1), one rounding rule (§2.2), Heute with preset keys and a project list instead of the fan (§3.11, §4.1, B1).
 **Replaces:** v1.8 Glass Design System (#76, `design/issue-76-glass-reference.html`)
 **Scope of the mockups:** App shell + **Heute**, **Kalender**, **Auswertung** — light ("Papier") and dark ("Graphit")
 **Everything else** (Kunden, Export, Einstellungen, modals, mini widget …) gets the new tokens and follows the vocabulary below — no separate mockups.
@@ -13,7 +14,8 @@
 | `tokens.css` | Drop-in token layer: new tokens (`:root` = Papier, `.dark` = Graphit) **plus legacy aliases** for the Glass names. |
 | `reference.html` | Static render of the three screens with the exact markup and inline values. Open in a browser, inspect in DevTools. Theme toggle in the top bar. **Sample data, no behaviour.** |
 | `screens/*.png` | 1280 px screenshots of each screen in both themes — the visual target. |
-| `source/*.dc.html` | The interactive canvas source (needs the canvas runtime, so not directly runnable). Read it for the logic behind the mockups: day-scale math, tick generation, running-state switching. |
+| `screens/heute-speichertasten-*.png` | **Target layout of Heute from PR 5:** preset keys under the display, project list open. Supersedes the lower half of `heute-*.png` (side column). |
+| `source/*.dc.html` | The interactive canvas source (needs the canvas runtime, so not directly runnable). Read it for the logic behind the mockups: day-scale math, tick generation, running-state switching. `HeuteSpeicher.dc.html` holds the preset keys incl. hold-to-open and the project list. |
 
 The interactive prototype lives on Robin's design canvas (claude.ai, private). The PNGs and `reference.html` are the authoritative copies for implementation.
 
@@ -94,6 +96,8 @@ Import **`wdth.css`**, not `index.css`: only `wdth.css` carries the width axis t
 
 Duration formats stay as today: `H:MM` for completed durations, `H:MM:SS` for the running one, `HH:MM` for clock times.
 
+**One rounding rule (owner 2026-10-22).** Large numbers are worked time. Wherever a rounded value appears ("gerundet … h", tooltips, `get_summary`'s `*_rounded_seconds`), it is computed **per entry, like the invoice** (`billedMinutes`), and then summed. Never round a sum. The only exception is the legacy `*_display_seconds` in `get_summary`, which is kept for installed Stream Deck plugins.
+
 ### 2.3 Shape, spacing, layout
 
 - **Radii:** keys 4 px · display 6 px · tags/marks 0–2 px. Nothing is pill-shaped any more.
@@ -132,12 +136,19 @@ Same approach as today: inline SVG, `currentColor`, stroke 1.4–1.6, square cap
 Names are suggestions. Map them onto existing components where one already exists.
 
 ### 3.1 AppHeader (replaces the pill nav in `App.tsx`)
-- 64 px tall, `border-bottom: 1px solid var(--line)`, background `--bg`. Inner row uses the 1200 px content column.
+- 64 px tall, `border-bottom: 1px solid var(--line)`, background `--bg`. Inner row uses the shared content column (`.mi-column`, see §2.3).
 - Left: logo mark (22 px) + wordmark.
 - Nav: text links, 44 px tall, 14 px, `--ink2` / weight 500. Active: `--ink` / 600, plus a **3 px `--sig` bar** spanning the label, flush with the header's bottom edge. Use `aria-current="page"`.
 - Right, when running — **RunningReadout:** 8 px `--sig` square (blinking) · client short name (13px `--ink2`) · `H:MM:SS` (Plex Mono 15/500) · 44 px stop key (key style, 12 px `--ink` square glyph).
 - Right, when idle: key "▶ Timer starten" (existing `StartTimerModal`).
 - Remove the ambient blobs and all `backdrop-blur`.
+- **Narrow windows (owner 2026-10-22):** the header stays one line from 760 px up, in both states and in both languages. Collapse in this order, using container queries on the header (no JS):
+  0. Always: client name in the RunningReadout max. 160 px with ellipsis; full name in `title`/`aria-label`.
+  1. `< 1140 px`: hide the client name (dot · time · stop); the stop key's label becomes "Timer stoppen – <Kunde>".
+  2. `< 960 px`: logo mark only; the wordmark is visually hidden and the logo gets `aria-label="TimeTrack"`.
+  3. `< 840 px`: "Timer starten" becomes a 44 px icon key (`aria-label` + `title`); header gaps 32 → 16 px, nav padding 14 → 10 px, `.mi-column` side padding 40 → 24 px (header and views together, so the edges stay aligned).
+
+  Measured (Archivo/Plex, DE): logo + wordmark 147 px, nav 527 px (EN 472), start key 130 px, readout with a 22-character name 292 px / without name 139 px / from 10 h 148 px. At 760 px: idle ≈ 625 px, running ≈ 729 px. Check at 760/840/960/1140/1440 px, idle and running, DE and EN, timer ≥ 10 h: the header stays 64 px tall.
 
 ### 3.2 Display (the readout window) — Heute hero
 - `background: var(--disp); color: var(--disp-ink); border: 1px solid var(--disp-line); border-radius: 6px; padding: 22px 28px 24px;` · vertical gap 20 px.
@@ -191,10 +202,21 @@ Names are suggestions. Map them onto existing components where one already exist
 - The running row shows no delete button, but keeps a spacer so the columns stay aligned. Today's app already blocks deleting a running entry.
 - Newest first. Header legends 10px `--ink3`. The table sits in an `overflow-x: auto` box with a min-width of 640 px.
 
-### 3.11 QuickStart keys (Heute side column)
-- Stack of keys, min-height 64 px, gap 10: colour square 12 px · name 14/600 (single line, ellipsis) over project 12px `--ink2` · 30-day hours (Plex Mono 12 `--ink2`, from `topClients30d[].seconds`) · 32 px play glyph box.
-- Hint under the stack (12px `--ink3`). Running: "Klick wechselt den laufenden Timer. Gedrückt halten für Projektwahl." Idle: "Klick startet sofort. Gedrückt halten für Projektwahl."
-- Press-and-hold project fan (#96) stays. Restyle it per §6, B1.
+### 3.11 QuickStart — preset keys + project list (Heute, from PR 5)
+Supersedes the side-column keys and the radial fan (#96). Target: `screens/heute-speichertasten-*.png`, logic in `source/HeuteSpeicher.dc.html`.
+- **Position:** a section directly under the hero row (the preset keys of the instrument, like a radio's station presets), *above* the Tagesverlauf, 32 px below the hero. At 1280 × 860 the keys sit at ≈ 480–545 px, so no scrolling is needed. Section pattern; legend "SCHNELLSTART" + meta "h · 30 Tage" on the left, the hint (12px `--ink3`) on the right.
+- **Grid:** `repeat(auto-fit, minmax(min(260px, 100%), 1fr))`, gap 12. Three keys (`topClients30d`) → 3 / 2 / 1 per row depending on width.
+- **Split key:** one key container (`--key`, 1 px `--key-edge`, radius 4, keycap edge).
+  - **Main area** (min-height 64): colour square 12 px · client name 14/600 over the last project 12px `--ink2` (single lines, ellipsis) · right: 30-day hours (Plex Mono 12 `--ink2`), or while a timer runs on this client: blinking 7 px `--sig` square + legend "LÄUFT", and the sub-line shows the running project. **Click** starts the last used project, and while a timer runs it switches immediately (B1).
+  - **▾ segment** (48 px wide, 1 px `--key-edge` left border, `aria-expanded`): opens the project list. **Press and hold** the main area for 300 ms opens it too (muscle memory from #96). The hold feedback is a 3 px `--ink` bar filling along the key's bottom edge — no glow, no scaling.
+- **Project list (overlay, does not push content):** `position: absolute`, directly under the key, same width, `z-index` above the Tagesverlauf. While open, the key and the list share a **1 px `--ink` frame** (the key's bottom corners square, list bottom corners radius 4); no shadow. Background `--key`. Content:
+  - Legend "PROJEKT WÄHLEN" (10px `--ink3`).
+  - One row per active project of the client, 44 px: 8 px colour square · name 14px (600 while running) · right: "LÄUFT" with the `--sig` square for the running project, an outlined legend chip "ZULETZT" for the last used one, otherwise an action "starten" / "wechseln" (Plex Mono 11 `--ink3`) visible on hover/focus. Rows are separated by 1 px `--line`.
+  - "Kein Projekt" as the last row: dashed separator above, outlined square, `--ink2`.
+  - Footer (Plex Mono 11 `--ink3`): "↑↓ wählen · ↵ starten · Esc zu".
+  - Opens downwards, and flips upwards only if there is no room below. **Keyboard:** Enter/Space/↓ on the ▾ segment opens it; ↑↓ move, Enter starts, Esc closes and returns focus to the ▾ segment. A click outside closes. Only one list is open at a time.
+- Inactive client: key disabled with `title` "Kunde inaktiv" (as today). A client without projects: no ▾ segment, the main area alone.
+- The radial fan code (`getRingPositions`, `fanShift`, `qs-*` keyframes, beam gradients) is deleted.
 
 ### 3.12 Calendar grid
 - CSS grid `72px repeat(7, minmax(0, 1fr))`. Header row: legends ("KW", "MO" … "SO"; weekend `--ink3`) with a `2px --ink` bottom rule.
@@ -232,11 +254,12 @@ Shared rules: one y-axis per chart (**never dual-axis**), gridlines 1 px dotted 
 
 Match against `screens/*.png` (1280 px wide). All copy is German in the mockups; it goes through the locale files (de + en) as usual.
 
-### 4.1 Heute — `screens/heute-papier.png`, `screens/heute-graphit.png`
+### 4.1 Heute — `screens/heute-papier.png`, `screens/heute-graphit.png` (PR 2) → `screens/heute-speichertasten-*.png` (from PR 5)
 1. **Hero row** (flex-wrap, gap 24): Display (`flex: 999 1 520px`) · BigKey (`0 0 148px`) · Summen column (`1 1 260px`, section pattern): **HEUTE** readout L + "gerundet … · 15-min-Takt" → 1 px `--line` → **WOCHE · KW nn** readout M → WeekMeter.
-2. **Tagesverlauf** (section pattern): legend + date title on the left, client legend on the right → DayScale.
-3. **Lower row** (flex-wrap, gap 40): EntryTable section (`999 1 640px` — the table's min-width; header: legend "EINTRÄGE HEUTE" + count, key "+ Eintrag nachtragen" on the right) · QuickStart aside (`1 1 300px`; legend "SCHNELLSTART", meta "h · 30 Tage").
-4. **Empty/idle states:** no timer → Display "BEREIT" + START key, DayScale needle in `--ink`. No entries today → table replaced by the existing empty strings (`today.recent.empty` / `emptyHint`). Loading → keep the skeleton, re-styled as hairline blocks.
+2. **Schnellstart** (from PR 5, §3.11): preset keys directly under the hero, 32 px gap.
+3. **Tagesverlauf** (section pattern): legend + date title on the left, client legend on the right → DayScale.
+4. **Einträge heute** — from PR 5 at **full width** (no side column any more). EntryTable header: legend "EINTRÄGE HEUTE" + count, key "+ Eintrag nachtragen" on the right. Until PR 5: lower row as merged in PR 2 (table `999 1 640px` · QuickStart aside `1 1 300px`).
+5. **Empty/idle states:** no timer → Display "BEREIT" + START key, DayScale needle in `--ink`. No entries today → table replaced by the existing empty strings (`today.recent.empty` / `emptyHint`). Loading → keep the skeleton, re-styled as hairline blocks. No frequent clients → no Schnellstart section.
 
 **Data needed**
 - `DashboardSummary` has `todaySeconds`, `weekSeconds`, `recentEntries`, `topClients30d`. **Missing:** the per-day split of the current week, which the WeekMeter needs. Add e.g. `weekDaySeconds: number[]` (7 values in `week_start` order) in `dashboardTotals.ts`. That file is shared with the Stream Deck dial and the MCP `get_summary` bridge, so extend it without changing the existing fields, and add tests next to `dashboardTotals.test.ts`.
@@ -281,7 +304,7 @@ These get the new look through the tokens (PR 1) and are then aligned by hand in
 
 They are part of the approved design, but they change behaviour, not just looks, so **each one stays switchable on its own: one clearly named switch point in the code, documented in the PR description** (where to change what to get the old behaviour back). Changed from "own commit" during implementation (owner 2026-10-22): the repo squash-merges, so individual commits do not survive the merge anyway, and review fixes spread a change over several commits. Applies to B1–B6.
 
-- **B1 — Quick start while a timer runs = switch.** Today the quick-start pills are disabled while running. New: a click stops the running entry and starts the chosen client/project, via the same code path as stop + start, so the QuickNote-on-empty-description still fires. Press-and-hold project fan (#96) unchanged in behaviour. Restyle: remove the blur from `.qs-backdrop` (plain `rgb(0 0 0 / .18)`), and replace the glowing `qs-pill-pulse` with a static 2 px `--ink` ring.
+- **B1 — Quick start while a timer runs = switch; project list instead of the fan.** Today the quick-start keys are disabled while running. New: a click on a preset key's main area stops the running entry and starts that client's last project, and a row in the project list does the same for that project. Both use the same code path as stop + start, so the QuickNote-on-empty-description still fires. The radial fan (#96) is replaced by the project list (§3.11); press-and-hold stays as a way to open it. **Switch point:** the `running` guard in the preset key's click handler (and the list rows) — restoring `disabled={running}` brings back the old lock.
 - **B2 — Fair month comparison.** While viewing the *current* month, deltas compare against the same day span of the previous month (see §4.3). Past months compare full month to full month. The header note says which comparison applies.
 - **B3 — No dual axis.** The trend chart splits hours and revenue into two bands that share the x-axis.
 - **B4 — Calendar day panel + day scales.** A persistent day panel at wide widths instead of the overlay drawer (the drawer stays as the narrow-width fallback). Cells show a time-of-day scale instead of stacked mini-bars. The v1.2 rule "max 5 bars + N overflow" is retired.
@@ -296,9 +319,9 @@ Work on a feature branch (e.g. `feat/messinstrument-ui`). One PR per step, each 
 
 1. **Foundation — tokens, fonts, de-glass.** Paste `tokens.css` into `base.css` (replacing the Glass blocks, keeping the legacy aliases). Install and import the fonts, and set `body { font-family: var(--font-ui) }`. Delete the ambient blobs, every `backdrop-blur*`/`backdrop-filter`, gradient backgrounds and glow shadows, and replace hard-coded Tailwind palette classes (`indigo-*`, `slate-*`, `emerald-*`, `red-*` …) with tokens. *Result: the whole app in the new palette and fonts, with layouts unchanged.*
 2. **App shell + Heute** (§3.1–3.11, §4.1, B5, B6; `dashboardTotals` extension).
-3. **Kalender** (§3.9, 3.12–3.14, §4.2, B4).
+3. **Kalender** (§3.9, 3.12–3.14, §4.2, B4) **+ header stages for narrow windows** (§3.1).
 4. **Auswertung** (§3.15, §4.3, B2, B3; analytics handler changes + tests).
-5. **Align the rest + cleanup** (§5, B1). Delete the legacy alias block and the Inter/JetBrains Mono dependencies. **Rewrite `DESIGN.md`**: the "Design System (v1.8 Glass)" part becomes "Design System (Messinstrument)", built from this file, and the Glass reference is marked superseded. Add a CHANGELOG entry.
+5. **Align the rest + cleanup** (§5) **+ Heute re-layout with preset keys and project list** (§3.11, §4.1, B1). Delete the legacy alias block and the Inter/JetBrains Mono dependencies. **Rewrite `DESIGN.md`**: the "Design System (v1.8 Glass)" part becomes "Design System (Messinstrument)", built from this file, and the Glass reference is marked superseded. Add a CHANGELOG entry.
 
 Find leftovers with:
 
@@ -331,6 +354,11 @@ rg -n "backdrop-blur|backdrop-filter|linear-gradient|accent-glow|--blur|indigo-|
 ---
 
 ## 9. Open points (not part of this overhaul)
+
+0. **Project choice — considered and not taken (owner 2026-10-22).** These stay on the canvas for reference only.
+   - The radial fan: it cannot be reached by keyboard and its gesture is hidden. Its geometry fights the narrow column (angle hacks, viewport shift), and it crowds beyond about 6 projects.
+   - A rotary selector: it has the same space problems and needs a separate keyboard path.
+   - An anchored dark popover: it needs positioning and flip logic, and it puts a second dark window on the page next to the display.
 
 1. **Client colour presets.** The 10 stored presets are not colour-blind-safe (DESIGN.md limitation L2). A validated replacement set is possible, but it touches user data, so it needs a separate issue and a decision.
 2. **App icon / tray glyph** are still the glass versions (`timetrack_icon_glass_*.svg`). They need a separate design pass.
