@@ -309,7 +309,7 @@ describe('buildAnalyticsSummary', () => {
 
   // ── Invoice rule (shared/currency.ts) ───────────────────────────────────
 
-  it('a sub-second entry counts as the minute the invoice bills, not as no data', () => {
+  it('a sub-second entry is data: no whole second of hours, but the minute it bills', () => {
     addEntry(db, {
       client_id: 1,
       started_at: '2025-04-10T08:00:00.000Z',
@@ -318,7 +318,7 @@ describe('buildAnalyticsSummary', () => {
     const res = buildAnalyticsSummary(db, { year: 2025, month: 4 })
     if (!res.ok) throw new Error(res.error)
     expect(res.data.month.hasData).toBe(true)
-    expect(res.data.month.hours).toBe(60)
+    expect(res.data.month.hours).toBe(0)
     // 1 min at 85 €/h = 141,67 ct → 142
     expect(res.data.month.revenue).toBe(142)
   })

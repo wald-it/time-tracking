@@ -407,6 +407,22 @@ describe('query layer', () => {
     expect(acme.revenue_cent).toBe(15000)
   })
 
+  it('getAnalytics keeps a client whose only time is a sub-second entry that bills a minute', () => {
+    // Zeta (client 2) gets a rate and a 400 ms entry: no whole second, but the
+    // invoice bills one minute, so the breakdown must not drop it.
+    db.prepare(`UPDATE clients SET rate_cent = 6000 WHERE id = 2`).run()
+    db.prepare(
+      `INSERT INTO entries (id, client_id, description, started_at, stopped_at,
+                            tags, reference, billable, private_note)
+       VALUES (105, 2, 'Blitz', '2026-06-15T09:00:00.000Z', '2026-06-15T09:00:00.400Z',
+               '', '', 1, '')`
+    ).run()
+    const a = getAnalytics(sdb, SHOW, 2026, 6)
+    const zeta = a.by_client.find((c) => c.client_id === 2)
+    expect(zeta?.seconds).toBe(0)
+    expect(zeta?.revenue_cent).toBe(100)
+  })
+
   it('migration 018 seeds MCP flags to off; readStoredPrivacy reflects them', () => {
     expect(getSetting(sdb, 'mcp_expose_rates')).toBe('0')
     expect(getSetting(sdb, 'mcp_expose_private_notes')).toBe('0')

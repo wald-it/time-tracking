@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { IpcResult, MonthQuery, AnalyticsSummary } from '../shared/types'
-import { billedMinutesSql, feeCentSql } from '../shared/currency'
+import { feeCentSql } from '../shared/currency'
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -68,10 +68,14 @@ export function buildAnalyticsSummary(
         .get() as { value: string } | undefined
       const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
 
-      // Billed seconds per entry, the same minutes the invoice charges (shared/currency.ts):
-      // hours and revenue in one tile follow one rule, and a sub-second entry that
-      // bills a minute is not counted as zero time beside its revenue.
-      const ENTRY_SEC = `(${billedMinutesSql(roundStep)} * 60)`
+      // Hours are worked time: per-entry seconds, rounded up to `roundStep` minutes when
+      // set. Revenue follows the invoice rule (FEE_CENT); with no step the two may differ
+      // by the seconds the invoice ceils to a minute (owner decision 2026-10-22).
+      const RAW_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
+      const ENTRY_SEC =
+        roundStep > 0
+          ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
+          : RAW_SEC
       // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
       const FEE_CENT = feeCentSql(roundStep)
 
@@ -111,7 +115,8 @@ export function buildAnalyticsSummary(
       const daysInMonth = new Date(year, month, 0).getDate()
       const daysElapsed = isCurrentMonth ? today.getDate() : daysInMonth
 
-      const hasData = (mCur.total_sec ?? 0) > 0
+      // A sub-second entry has no whole second of hours but bills a minute.
+      const hasData = (mCur.total_sec ?? 0) > 0 || (mCur.revenue_cent ?? 0) > 0
 
       // hasRateConfigured: any client or project has rate_cent > 0
       const rateCheck = db
