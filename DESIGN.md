@@ -1,279 +1,94 @@
 # TimeTrack — Design Document
 
-**Date:** 22 April 2026 (design system updated: 27 April 2026)  
+**Date:** 22 April 2026 (design system updated: 23 October 2026)  
 **Mode:** Builder (personal use, possibly shared later)  
-**Phase:** v1.8 — Glass Design System implemented  
-**Reference:** `design/issue-76-glass-reference.html`
+**Phase:** Messinstrument design system implemented (supersedes v1.8 Glass)  
+**Reference:** `design/messinstrument/HANDOFF.md`, `design/messinstrument/reference.html`
 
 ---
 
-## Design System (v1.8 Glass)
+## Design System (Messinstrument)
+
+Supersedes the v1.8 Glass design system (#76); the Glass reference `design/issue-76-glass-reference.html` is kept for history only. The full specification with mockups lives in `design/messinstrument/` (`HANDOFF.md`, `reference.html`, `screens/*.png`, `source/*.dc.html`); this section is the short version a contributor needs.
+
+### Idea
+
+TimeTrack is a measuring instrument, not a dashboard: a solid chassis, a dark readout window, hard keys, scales with ticks. Everything is flat and solid — **no blur, no translucency, no glow, no gradient backgrounds, no drop shadows** (the only "shadow" is the 2 px keycap edge). Hatching (`repeating-linear-gradient`) is the one allowed pattern: it marks *running* time and *non-billable* time. Colour carries meaning, not decoration: client colours identify, `--sig` means *now / running / today*, everything else is ink on paper.
+
+### Themes and tokens
+
+Two themes, **Papier** (`:root`) and **Graphit** (`.dark`), plus "System". All colours come from tokens in `src/renderer/src/assets/base.css`; components never hard-code colours or Tailwind palette classes.
+
+| Token | Use |
+|---|---|
+| `--bg` | Chassis / page. Solid, never a gradient. |
+| `--key` | Raised key, inputs, hovered row, selected cell. |
+| `--key-edge` | Key border and the 2 px keycap bottom edge. |
+| `--line` | Hairlines between rows and cells. |
+| `--tick` | Scale ticks, graticule, non-billable hatch. |
+| `--ink` / `--ink2` / `--ink3` | Primary text and 2 px section rules / secondary text and legends / hints and metadata — `--ink3` is the lightest text colour allowed on `--bg`. |
+| `--disp`, `--disp-ink`, `--disp-dim`, `--disp-line` | The readout window (timer display, cursor readout, toasts). |
+| `--inv`, `--inv-ink`, `--inv-dim` | Inverted keys (STOPP, active segment). |
+| `--sig`, `--sig-ink` | Signal: running, now, today, focus. **Never small text on `--bg`.** Text on `--sig` uses `--sig-ink`. |
+| `--danger` | Destructive actions and errors. |
+| `--focus` | Focus ring (= `--sig`). |
+| `--r-key` 4 px, `--r-disp` 6 px, `--r-fine` 2 px | Radii of keys, windows/dialogs, small marks. |
+| `--edge-key`, `--edge-bigkey` | Keycap edges. |
+
+Contrast was checked per theme (table in `design/messinstrument/tokens.css`).
 
 ### Typography
 
-| Role            | Font                         | Usage                           |
-| --------------- | ---------------------------- | ------------------------------- |
-| UI text         | **Inter** (300–700)          | All labels, buttons, body text  |
-| Numbers / times | **JetBrains Mono** (400–700) | Timer, durations, hotkeys, paths |
+- **Archivo Variable** (`--font-ui`) for all text; legends in caps, 11 px / 600, letter-spacing ≈ 0.14 em, `font-stretch` ≈ 118 %.
+- **IBM Plex Mono** (`--font-num`, class `font-num`) for every number: durations, amounts, axes, readouts. Large readouts light (300).
+- Both fonts are bundled (`@fontsource-variable/archivo`, `@fontsource/ibm-plex-mono`) and imported in `main.tsx` and `mini.tsx`.
 
-Both fonts via Google Fonts: `Inter` + `JetBrains Mono`. `font-variant-numeric: tabular-nums` + `letter-spacing: 1` on all timer displays.
+### Layout and shape
 
----
+- **Section pattern:** a 2 px `--ink` rule on top, legend (and meta on the right), content. Used for every block instead of cards.
+- Content column `mi-column` (max. 1440 px, 24 px gutters below 840 px); the window is at least 760 × 600, so every screen must work at 760 px without horizontal page scroll. A flex column's basis is at least the minimum width of its content (HANDOFF §2.3).
+- Rows: label left, value or control right, 1 px `--line` hairline between rows. Hit targets of keys ≥ 44 px.
+- Keys: `--key` with `--key-edge` border, `--edge-key`, radius `--r-key`; pressed = `translate-y-px`. Icon keys 44 × 44 with an `aria-label`.
+- Dialogs: `--bg` panel, 1 px `--line` border, radius `--r-disp`, backdrop `rgb(0 0 0 / .35)`, title row with a 2 px `--ink` rule; one dialog shell (`Dialog.tsx`) with focus trap, Escape and focus return.
 
-### Color tokens (Dark / Light)
+### States and motion
 
-All colors as CSS Custom Properties in `src/renderer/src/assets/base.css`:
+- Focus: 2 px `--focus` outline (`focus-visible`), never removed.
+- Hover: keys and rows lift to `--key`; selected cells add `inset 0 0 0 1px var(--ink)`.
+- Running: a blinking `--sig` square (`tt-blink`), hatched bars, a `--sig` needle at *now*. `prefers-reduced-motion` stops the blink and any animation.
+- No transitions on layout; motion only where it carries state (blink, hold-to-open fill).
 
-| Token           | Dark                                        | Light                                       | Usage                                 |
-| --------------- | ------------------------------------------- | ------------------------------------------- | ------------------------------------- |
-| `--page-bg`     | `linear-gradient(145deg, #0d0f1e, #080c1a)` | `linear-gradient(145deg, #dde4f8, #e8edfb)` | Body background                       |
-| `--card-bg`     | `rgba(255,255,255,0.045)`                   | `rgba(255,255,255,0.70)`                    | Glass cards                           |
-| `--card-hover`  | `rgba(255,255,255,0.07)`                    | `rgba(255,255,255,0.88)`                    | Card hover state                      |
-| `--nav-bg`      | `rgba(10,12,28,0.80)`                       | `rgba(255,255,255,0.75)`                    | Nav + drawer backgrounds              |
-| `--card-border` | `rgba(255,255,255,0.08)`                    | `rgba(0,0,0,0.07)`                          | All edges                             |
-| `--input-bg`    | `rgba(0,0,0,0.30)`                          | `rgba(255,255,255,0.90)`                    | Inputs, selects, textareas            |
-| `--text`        | `#e8eaf6`                                   | `#1a1c2e`                                   | Primary text                          |
-| `--text2`       | `#8b93bc`                                   | `#5b6080`                                   | Secondary text, labels                |
-| `--text3`       | `#4a5270`                                   | `#9098b8`                                   | Hint text, metadata                   |
-| `--accent`      | `#8b7cf8`                                   | `#5b4ef0`                                   | Primary action color (indigo-violet)  |
-| `--accent-bg`   | `rgba(139,124,248,0.12)`                    | `rgba(91,78,240,0.08)`                      | Subtle accent surfaces                |
-| `--accent-glow` | `rgba(139,124,248,0.25)`                    | `rgba(91,78,240,0.18)`                      | Box-shadow on primary buttons         |
-| `--green`       | `#4ade80`                                   | `#16a34a`                                   | Running timer, success                |
-| `--green-bg`    | `rgba(74,222,128,0.10)`                     | `rgba(22,163,74,0.07)`                      | ActiveTimerPill background            |
-| `--danger`      | `#f87171`                                   | `#dc2626`                                   | Delete, stop button                   |
-| `--danger-bg`   | `rgba(248,113,113,0.10)`                    | `rgba(220,38,38,0.07)`                      | Danger-button hover surface           |
-| `--shadow`      | `0 8px 32px rgba(0,0,0,0.50)`               | `0 8px 32px rgba(100,120,200,0.12)`         | Card shadow                           |
-| `--blur`        | `blur(20px)`                                | `blur(20px)`                                | `backdrop-filter` on glass elements   |
+### Components (where they live)
 
----
+| Component | File | Spec |
+|---|---|---|
+| App header with stages for narrow windows | `components/heute/AppHeader.tsx` | §3.1 |
+| Display (timer readout), BigKey (START/STOPP), Readout, WeekMeter | `components/heute/*` | §3.2–§3.7 |
+| DayScale (Tagesverlauf), MiniDayScale (calendar cell) | `components/heute/DayScale.tsx`, `components/kalender/MiniDayScale.tsx` | §3.8, §3.9 |
+| EntryTable | `components/heute/EntryTable.tsx` | §3.10 |
+| QuickStart — preset keys + project list | `components/heute/QuickStart.tsx` | §3.11 |
+| Calendar grid, day panel / drawer, client breakdown | `views/CalendarView.tsx`, `components/kalender/*`, `components/CalendarDrawer.tsx` | §3.12–§3.14 |
+| KPI readouts, Stunden nach Kunde, Wochentag-Schnitt, two-band trend, segmented control | `components/auswertung/*` | §3.5, §3.6, §3.15 |
+| Dialog shell (focus trap, Escape, focus return, `Z_MODAL` / `Z_TOAST`) | `components/Dialog.tsx` | §5 |
+| Toggle (`role="switch"`, named by its settings row) | `components/Toggle.tsx` | §5, §8 |
+| Shared class strings for keys, inputs, readouts, legends, sections | `components/instrumentClasses.ts` | §2.3, §3.4 |
 
-### Component pattern
+### Numbers
 
-#### Glass Card
+One rounding rule (HANDOFF §2.2): large numbers are **worked time**, to the second. A rounded figure, where shown ("gerundet … h"), is rounded **per entry like the invoice** and then summed — never a rounded sum. Revenue is always computed like the invoice (`shared/currency.ts`).
 
-```css
-background: var(--card-bg);
-backdrop-filter: blur(20px);
-border: 1px solid var(--card-border);
-border-radius: 14px;
-box-shadow: var(--shadow);
-```
+### Behaviour changes and their switches (HANDOFF §6)
 
-#### Glass Input / Select
+Each approved behaviour change has one named switch in the code that brings back the old behaviour:
 
-```css
-background: var(--input-bg);
-border: 1px solid var(--card-border);
-border-radius: 10px;
-color: var(--text);
-padding: 10px 14px;
-font-family: Inter, sans-serif;
-font-size: 13px;
-```
+| | Change | Switch |
+|---|---|---|
+| B1 | Quick start while a timer runs switches instead of being locked; project list instead of the radial fan | `QUICKSTART_SWITCH_WHILE_RUNNING` (`components/heute/QuickStart.tsx`) |
+| B2 | Current month compared with the same days of the previous month | `SAME_PERIOD_COMPARISON` (`main/analyticsHandlers.ts`) |
+| B3 | Trend as two bands on one x-axis instead of a dual axis | `TREND_TWO_BANDS` (`views/AuswertungView.tsx`) |
+| B4 | Calendar day panel at wide widths, day scales in cells | `DAY_PANEL_MEDIA_QUERY` (`views/CalendarView.tsx`) — the drawer stays as the narrow-width layout for good |
 
-#### Primary button (Accent)
-
-```css
-background: var(--accent);
-color: #fff;
-border-radius: 12px; /* oder 24px für Pill */
-box-shadow: 0 8px 32px var(--accent-glow);
-font-weight: 700;
-```
-
-#### Pill button (Outline / active)
-
-```css
-/* Inaktiv */
-border: 1px solid var(--card-border);
-background: var(--card-bg);
-border-radius: 24px;
-color: var(--text2);
-
-/* Aktiv */
-border-color: var(--accent);
-background: var(--accent);
-color: #fff;
-```
-
-#### Icon button (30×30)
-
-```css
-width: 30px;
-height: 30px;
-border-radius: 8px;
-border: 1px solid transparent; /* hover: var(--card-border) */
-background: transparent; /* hover: var(--accent-bg) oder var(--danger-bg) */
-color: var(--text3); /* hover: var(--accent) oder var(--danger) */
-```
-
-#### Toggle (boolean setting)
-
-```css
-/* Wrapper */
-width: 40px;
-height: 22px;
-border-radius: 11px;
-background: var(--accent); /* an: accent, aus: card-bg */
-border: 1px solid var(--accent);
-box-shadow: 0 0 12px var(--accent-glow); /* nur wenn an */
-
-/* Thumb */
-width: 16px;
-height: 16px;
-border-radius: 50%;
-background: #fff;
-left: 20px (an) / 2px (aus); /* transition: left .2s */
-```
-
-#### Segmented Control (single-pick)
-
-```css
-/* Wrapper */
-border: 1px solid var(--card-border);
-border-radius: 8px; /* oder 24px */
-display: flex;
-gap: 4px;
-
-/* Button aktiv */
-background: var(--accent-bg);
-border: 1px solid var(--accent);
-color: var(--accent);
-
-/* Button inaktiv */
-background: var(--card-bg);
-border: 1px solid var(--card-border);
-color: var(--text2);
-```
-
----
-
-### Navigation
-
-```
-[Logo-Mark] [Heute] [Timer] [Kalender] [Kunden] [Einstellungen]   →→   [● Kunde 01:23:47] [☾]
-```
-
-- Nav background: `var(--nav-bg)` + `backdrop-filter: blur(20px)` + `border-bottom: 1px solid var(--card-border)`
-- Active tab: `background: var(--accent)`, `color: #fff`, `border-radius: 24px` (pill)
-- Inactive tab: `color: var(--text2)`, no background, `hover: rgba(255,255,255,0.10)`
-- **Running timer in the nav:** pill with `var(--green-bg)` + `var(--green)` color + pulsing dot + `JetBrains Mono` time
-- Theme toggle: icon button (☾ / ☀) on the far right
-
----
-
-### Ambient blobs (background glow)
-
-Two `position: fixed`, `pointer-events: none`, `z-index: 0` divs:
-
-- Top-right: `var(--accent-bg)`, `filter: blur(80px)`, `400×400px`, `border-radius: 50%`
-- Bottom-left: `var(--green-bg)`, `filter: blur(80px)`, `300×300px`, `border-radius: 50%`
-
----
-
-### Settings view
-
-Each section: `Section` = heading (11px, uppercase, `--text3`) + `GlassCard` below.  
-Each row: `Row` = label on the left (`--text`, 13px, 500) + optional hint (`--text3`, 11px) + control on the right.
-
-| Setting type                     | Control                                           |
-| -------------------------------- | ------------------------------------------------- |
-| Boolean (on/off)                 | **Toggle** (see above)                            |
-| Single-pick from a few options   | **Segmented Control** (`border-radius: 8px`)      |
-| Text input                       | **Glass Input** inline display                    |
-| File picker                      | Small `border` button "Datei auswählen…"          |
-| Info/path                        | `JetBrains Mono`, `--text3`, `overflow: ellipsis` |
-
----
-
-### Icons (inline SVG, no icon package)
-
-All icons as inline SVG, `stroke="currentColor"`, `strokeWidth="1.6"`, `strokeLinecap="round"`:
-
-| Name                      | Usage                                       |
-| ------------------------- | ------------------------------------------- |
-| Edit (pencil)             | Edit entry / client                         |
-| Trash (bin)               | Delete (danger color)                       |
-| Archive / Unarchive (box) | Archive / reactivate client                 |
-| Plus (cross)              | New entry / new client                      |
-| ChevLeft / ChevRight      | Calendar navigation                         |
-| ChevDown                  | Select arrow                                |
-| Play (filled)             | Timer start                                 |
-| Stop (square, filled)     | Timer stop                                  |
-| Clock                     | Logo mark in nav                            |
-| File                      | PDF / export                                |
-| X                         | Close modal                                 |
-| Check                     | Confirmation                                |
-| Sun / Moon                | Theme toggle                                |
-| Dot (8px circle)          | Client color, pulsing on the active timer   |
-
----
-
-### Content layout
-
-- Maximum content width: `max-w-3xl` (approx. 740px) with `margin: 0 auto`
-- Settings view: max `580px`
-- Clients view: max `600px`
-- Timer view: centered (`align-items: center`, `justify-content: center`) with a large clock
-- Padding: `22px 28px` in the main content area
-
----
-
-### Animations
-
-```css
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-@keyframes pulse-dot {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(0.85);
-  }
-}
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-```
-
-- Views on mount: `animation: fadeIn .2s ease`
-- Running timer dot: `animation: pulse-dot 2s infinite`
-- Drawer (CalendarDrawer): `animation: slideIn .2s ease`
-- All interactive elements: `transition: all .15s` (hover states)
-
----
-
-### Scrollbar
-
-```css
-::-webkit-scrollbar {
-  width: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
-}
-```
+The switches and the code behind them stay until the owner decides to remove them, once the design has run for a while. The calendar drawer is not part of that: it is the layout for narrow windows.
 
 ---
 
@@ -566,13 +381,16 @@ time-tracking/
 
 ---
 
-_Design status: REVIEWED — CEO + eng review completed. Glass Design System v1.8 implemented (issue #76)._
+_Design status: REVIEWED — CEO + eng review completed. Messinstrument design system implemented (supersedes Glass v1.8, #76)._
 
 **Reviews:** /office-hours ✓ | /plan-ceo-review ✓ (SELECTIVE EXPANSION) | /plan-eng-review ✓
 
 ---
 
-## v1.2 Visual Tokens (stub)
+## v1.2 Visual Tokens (stub) — historical
+
+> Superseded, first by the v1.8 Glass system and now by the Messinstrument design
+> system above. Kept for history; none of these values are current.
 
 Minimal token sheet introduced with v1.2 (#26 Calendar, #30 Today, #28 Edit/Delete).
 Full state-matrix and component catalogue follow in v1.3.
