@@ -7,7 +7,12 @@ import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
 import { createBackup, listBackups, restoreBackup as restoreBackupFile } from './backup'
-import { createManualEntry, updateManualEntry, startTimer, stopEntry } from './entryMutations'
+import {
+  createManualEntry,
+  updateManualEntry,
+  switchTimerAndNotify,
+  stopEntry
+} from './entryMutations'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
@@ -23,7 +28,12 @@ import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
-import { readTodayEntries, readTotals, readWeekDaySeconds } from './dashboardTotals'
+import {
+  readTodayEntries,
+  readTopClients30d,
+  readTotals,
+  readWeekDaySeconds
+} from './dashboardTotals'
 import type {
   Client,
   Entry,
@@ -31,6 +41,7 @@ import type {
   CreateClientInput,
   UpdateClientInput,
   CreateEntryInput,
+  SwitchTimerResult,
   CreateManualEntryInput,
   UpdateEntryInput,
   CreateProjectInput,
@@ -187,16 +198,35 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // ── Entries ───────────────────────────────────────────────────
   ipcMain.handle('entries:start', (_e, input: CreateEntryInput): IpcResult<Entry> => {
     try {
-      const res = startTimer(db, input)
-      // Fire-and-forget outbound webhooks (#134). Never awaited, never throws —
-      // a broken webhook must not affect the timer. Covers tray/mini/hotkey too,
-      // since they all funnel through this handler.
-      if (res.ok) emitWebhooks(db, 'timer.started', res.data, { log: logWebhookDelivery })
-      return res
+      const res = startOrSwitch(input)
+      return res.ok ? ok(res.data.entry) : res
     } catch (e) {
       return fail(e)
     }
   })
+
+  // B1 — the quick-start switch: same mutation as entries:start, but the
+  // renderer also gets the stopped entry (quick-note prompt for it).
+  ipcMain.handle('entries:switch', (_e, input: CreateEntryInput): IpcResult<SwitchTimerResult> => {
+    try {
+      return startOrSwitch(input)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
+  /**
+   * One start path for entries:start and entries:switch: stop + start at one
+   * instant (switchTimer), then fire-and-forget outbound webhooks (#134) —
+   * `timer.stopped` for the ended entry BEFORE `timer.started`. Never awaited,
+   * never throws: a broken webhook must not affect the timer. Covers
+   * tray/mini/hotkey too, since they all funnel through here.
+   */
+  function startOrSwitch(input: CreateEntryInput): IpcResult<SwitchTimerResult> {
+    return switchTimerAndNotify(db, input, (event, entry) =>
+      emitWebhooks(db, event, entry, { log: logWebhookDelivery })
+    )
+  }
 
   ipcMain.handle('entries:stop', (_e, id: number): IpcResult<Entry> => {
     try {
@@ -542,48 +572,13 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           )
           .all() as Entry[]
 
-        const topClients30d = db
-          .prepare(
-            `SELECT c.id AS client_id, c.name, c.color,
-                    COALESCE(SUM(
-                      CASE
-                        WHEN e.stopped_at IS NULL
-                          THEN CAST(strftime('%s', 'now') AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER)
-                        ELSE CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER)
-                      END
-                    ), 0) AS seconds,
-                    (SELECT project_id FROM entries
-                       WHERE client_id = c.id AND deleted_at IS NULL
-                       ORDER BY started_at DESC LIMIT 1) AS last_project_id
-               FROM clients c
-               LEFT JOIN entries e ON e.client_id = c.id
-                 AND e.deleted_at IS NULL
-                 AND DATE(e.started_at, 'localtime')
-                       >= DATE('now', 'localtime', '-30 days')
-              GROUP BY c.id
-              HAVING seconds > 0
-              ORDER BY seconds DESC
-              LIMIT 5`
-          )
-          .all() as Array<{
-          client_id: number
-          name: string
-          color: string
-          seconds: number
-          last_project_id: number | null
-        }>
-
         return {
           todaySeconds: totals.today_seconds,
           weekSeconds: totals.week_seconds,
           weekDaySeconds: readWeekDaySeconds(db),
           recentEntries,
           todayEntries: readTodayEntries(db),
-          topClients30d: topClients30d.map((r) => ({
-            ...r,
-            seconds: Math.max(0, Math.floor(r.seconds ?? 0)),
-            last_project_id: r.last_project_id ?? null
-          }))
+          topClients30d: readTopClients30d(db)
         }
       })
       return ok(tx())

@@ -7,6 +7,7 @@ import type {
   CreateClientInput,
   UpdateClientInput,
   CreateEntryInput,
+  SwitchTimerResult,
   CreateManualEntryInput,
   UpdateEntryInput,
   CreateProjectInput,
@@ -118,6 +119,9 @@ const api = {
   entries: {
     start: (input: CreateEntryInput): Promise<IpcResult<Entry>> =>
       ipcRenderer.invoke('entries:start', input),
+    // B1: stop the running entry and start this one at ONE instant.
+    switch: (input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>> =>
+      ipcRenderer.invoke('entries:switch', input),
     stop: (id: number): Promise<IpcResult<Entry>> => ipcRenderer.invoke('entries:stop', id),
     heartbeat: (id: number): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('entries:heartbeat', id),

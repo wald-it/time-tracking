@@ -155,9 +155,7 @@ export const de = {
   'today.error.title': 'Daten konnten nicht geladen werden.',
   'today.stats.today': 'Heute',
   'today.stats.week': 'Diese Woche',
-  'today.quickstart.label': 'Quick-Start',
   'today.quickstart.startFor': 'Timer für {name} starten',
-  'today.quickstart.clientInactive': 'Kunde inaktiv',
   'today.quickstart.noProject': 'Kein Projekt',
   'today.quickstart.holdHint': 'Gedrückt halten für Projektwahl',
   'today.recent.empty': 'Noch kein Eintrag heute',
@@ -192,7 +190,6 @@ export const de = {
   'today.quickstart.legend': 'Schnellstart',
   'today.quickstart.meta': 'h · 30 Tage',
   'today.quickstart.hintIdle': 'Klick startet sofort. Gedrückt halten für Projektwahl.',
-  'today.quickstart.hintRunningLocked': 'Während ein Timer läuft, ist der Schnellstart gesperrt.',
   // Messinstrument PR 5 — preset keys + project list (HANDOFF §3.11, B1)
   'today.quickstart.hintIdlePresets': 'Klick startet sofort · ▾ oder halten: Projekt wählen',
   'today.quickstart.hintRunningSwitch': 'Klick wechselt sofort · ▾ oder halten: Projekt wählen',

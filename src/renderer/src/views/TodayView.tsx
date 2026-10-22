@@ -27,8 +27,9 @@ import { billedMinutes } from '../../../shared/currency'
  * `Heute` — the Messinstrument layout (HANDOFF §4.1):
  *   1. Hero row: display · STOPP/START key · Summen column (today, week,
  *      WeekMeter).
- *   2. Tagesverlauf: the day as a scale with every entry at its clock time.
- *   3. Lower row: entry table · quick start.
+ *   2. Schnellstart: the preset keys, 32px under the hero (from PR 5).
+ *   3. Tagesverlauf: the day as a scale with every entry at its clock time.
+ *   4. Entry table, full width.
  *
  * Data: `dashboard:summary`, re-fetched on mount, on `entriesStore.version`
  * and when the running entry starts/stops. Totals tick live from the shared
@@ -37,7 +38,7 @@ import { billedMinutes } from '../../../shared/currency'
 export default function TodayView(): React.JSX.Element {
   const t = useT()
   const { roundMinutes } = useRounding()
-  const { runningEntry, clients, startWithClient, stop } = useTimer()
+  const { runningEntry, clients, startWithClient, switchTo, stop } = useTimer()
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
@@ -197,7 +198,22 @@ export default function TodayView(): React.JSX.Element {
       )}
       {status === 'ready' && summary && (
         <>
-          {/* 2 — Tagesverlauf */}
+          {/* 2 — Schnellstart (preset keys + project list, B1) */}
+          <QuickStart
+            topClients={summary.topClients30d}
+            running={
+              runningEntry
+                ? { clientId: runningEntry.client_id, projectId: runningEntry.project_id ?? null }
+                : null
+            }
+            clientsById={clientsById}
+            projectsById={projectsById}
+            onStart={(id, projectId) => void startWithClient(id, projectId)}
+            // B1: one main-process switch; the guard is QUICKSTART_SWITCH_WHILE_RUNNING.
+            onSwitch={(id, projectId) => void switchTo(id, projectId)}
+          />
+
+          {/* 3 — Tagesverlauf */}
           <DayScale
             entries={summary.todayEntries}
             clientsById={clientsById}
@@ -206,8 +222,9 @@ export default function TodayView(): React.JSX.Element {
             onSelect={(e) => setEditEntry(e)}
           />
 
-          {/* 3 — Lower row */}
-          <div className="flex flex-wrap items-start gap-10">
+          {/* 4 — Entry table, full width. A block wrapper, so the table's own
+              flex basis (made for the old side-by-side row) has no effect. */}
+          <div>
             <EntryTable
               entries={summary.todayEntries}
               clientsById={clientsById}
@@ -218,13 +235,6 @@ export default function TodayView(): React.JSX.Element {
               onEdit={(e) => setEditEntry(e)}
               onDelete={(e) => setDeleteCandidate(e)}
               onAdd={() => setCreateOpen(true)}
-            />
-            <QuickStart
-              topClients={summary.topClients30d}
-              running={runningEntry !== null}
-              clientsById={clientsById}
-              projectsById={projectsById}
-              onStart={(id, projectId) => void startWithClient(id, projectId)}
             />
           </div>
         </>

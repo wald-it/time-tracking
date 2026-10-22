@@ -11,6 +11,8 @@ import {
   startTimer,
   stopEntry,
   stopRunningTimer,
+  switchTimer,
+  switchTimerAndNotify,
   validateProjectForClient
 } from './entryMutations'
 
@@ -279,5 +281,115 @@ describe('entryMutations', () => {
     if (!r.ok) return
     expect(r.data.stopped_at).not.toBeNull()
     expect(stopEntry(db, 99999).ok).toBe(false)
+  })
+})
+
+describe('switchTimer (B1)', () => {
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+  })
+
+  it('ends the running entry at the instant the new one begins and returns both', () => {
+    const first = startTimer(db, {
+      client_id: 1,
+      description: '',
+      started_at: '2026-06-10T09:00:00.000Z'
+    })
+    if (!first.ok) throw new Error('setup failed')
+    const r = switchTimer(db, {
+      client_id: 2,
+      description: '',
+      started_at: '2026-06-10T10:15:00.000Z'
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.data.entry.client_id).toBe(2)
+    expect(r.data.entry.stopped_at).toBeNull()
+    expect(r.data.stopped?.id).toBe(first.data.id)
+    // One instant: no gap, no overlap.
+    expect(r.data.stopped?.stopped_at).toBe(r.data.entry.started_at)
+    expect(r.data.stopped?.heartbeat_at).toBe(r.data.entry.started_at)
+  })
+
+  it('returns stopped: null when nothing ran', () => {
+    const r = switchTimer(db, {
+      client_id: 1,
+      description: '',
+      started_at: '2026-06-10T09:00:00.000Z'
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data.stopped).toBeNull()
+  })
+
+  it('a failing start leaves the old entry running (one transaction)', () => {
+    const first = startTimer(db, {
+      client_id: 1,
+      description: '',
+      started_at: '2026-06-10T09:00:00.000Z'
+    })
+    if (!first.ok) throw new Error('setup failed')
+    // The insert itself fails (NOT NULL on description) after the UPDATE ran;
+    // the IPC handler turns the throw into { ok: false }.
+    expect(() =>
+      switchTimer(db, {
+        client_id: 2,
+        description: null as unknown as string,
+        started_at: '2026-06-10T10:00:00.000Z'
+      })
+    ).toThrow()
+    const row = db.prepare(`SELECT stopped_at FROM entries WHERE id = ?`).get(first.data.id) as {
+      stopped_at: string | null
+    }
+    expect(row.stopped_at).toBeNull()
+  })
+
+  it('notifies timer.stopped for the ended entry before timer.started', () => {
+    const first = startTimer(db, {
+      client_id: 1,
+      description: '',
+      started_at: '2026-06-10T09:00:00.000Z'
+    })
+    if (!first.ok) throw new Error('setup failed')
+    const events: Array<[string, number]> = []
+    const r = switchTimerAndNotify(
+      db,
+      { client_id: 2, description: '', started_at: '2026-06-10T10:00:00.000Z' },
+      (event, entry) => events.push([event, entry.id])
+    )
+    if (!r.ok) throw new Error('switch failed')
+    expect(events).toEqual([
+      ['timer.stopped', first.data.id],
+      ['timer.started', r.data.entry.id]
+    ])
+  })
+
+  it('notifies only timer.started when nothing ran, and nothing on failure', () => {
+    const events: string[] = []
+    switchTimerAndNotify(
+      db,
+      { client_id: 1, description: '', started_at: '2026-06-10T09:00:00.000Z' },
+      (event) => events.push(event)
+    )
+    switchTimerAndNotify(
+      db,
+      { client_id: 42, description: '', started_at: '2026-06-10T10:00:00.000Z' },
+      (event) => events.push(event)
+    )
+    expect(events).toEqual(['timer.started'])
+  })
+
+  it('refuses a start before the running entry began', () => {
+    startTimer(db, { client_id: 1, description: '', started_at: '2026-06-10T09:00:00.000Z' })
+    const r = switchTimer(db, {
+      client_id: 2,
+      description: '',
+      started_at: '2026-06-10T08:00:00.000Z'
+    })
+    expect(r.ok).toBe(false)
+    const n = db.prepare(`SELECT COUNT(*) AS n FROM entries`).get() as { n: number }
+    expect(n.n).toBe(1)
   })
 })

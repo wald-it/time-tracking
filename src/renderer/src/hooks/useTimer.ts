@@ -26,6 +26,7 @@ export interface UseTimerResult {
   start: () => Promise<void>
   stop: () => Promise<void>
   startWithClient: (clientId: number, projectId?: number | null) => Promise<void>
+  switchTo: (clientId: number, projectId: number | null) => Promise<void>
   idleKeep: () => void
   idleStopAtIdle: () => Promise<void>
   idleMarkPause: () => Promise<void>
@@ -251,6 +252,54 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     [clients]
   )
 
+  /**
+   * B1 — quick start while a timer runs: stop the running entry and start
+   * (client, project) at ONE instant, in one main-process transaction
+   * (`entries:switch`). If that fails, the old entry keeps running.
+   *
+   * Unlike startWithClient this must NOT dismiss the quick-note prompt: when
+   * the stopped entry had no description, the prompt opens for it once the
+   * new entry runs — the same prompt a manual stop() shows. A pending idle
+   * event belongs to the stopped entry and is dropped, as in stop().
+   */
+  const switchTo = useCallback(
+    async (clientId: number, projectId: number | null) => {
+      setIsLoading(true)
+      const res = await window.api.entries.switch({
+        client_id: clientId,
+        project_id: projectId,
+        description: '',
+        started_at: new Date().toISOString()
+      })
+      setIsLoading(false)
+      if (!res.ok) return
+      const { entry, stopped } = res.data
+      // Client and project together, as in startWithClient (global hotkey).
+      setSelectedClientId(clientId)
+      useTimerStore.getState().setSelectedProjectId(projectId)
+      setRunningEntry(entry)
+      setDescription('')
+      if (useTimerStore.getState().idleEvent) {
+        setIdleEvent(null)
+        window.api.idle.dismiss()
+      }
+      const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
+      await pushTrayUpdate(true, clientName)
+      if (stopped && stopped.description.trim() === '') setQuickNoteEntry(stopped)
+    },
+    // The store setters are stable; listed so this new callback adds no lint
+    // warning (the older ones above carry theirs in the baseline).
+    [
+      clients,
+      setIsLoading,
+      setSelectedClientId,
+      setRunningEntry,
+      setDescription,
+      setIdleEvent,
+      setQuickNoteEntry
+    ]
+  )
+
   const dismissIdle = useCallback(() => {
     setIdleEvent(null)
     window.api.idle.dismiss()
@@ -384,6 +433,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     start,
     stop,
     startWithClient,
+    switchTo,
     idleKeep,
     idleStopAtIdle,
     idleMarkPause

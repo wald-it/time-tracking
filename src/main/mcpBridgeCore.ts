@@ -12,6 +12,7 @@ import {
   createManualEntry,
   updateManualEntry,
   startTimer,
+  switchTimer,
   stopRunningTimer,
   validateManualEntry,
   validateProjectForClient
@@ -496,8 +497,8 @@ async function handleControllerRequest(
   }
 
   // toggle_timer — target is (client_id, project_id|null); stop on exact
-  // match, otherwise start (startTimer stops any other running entry in the
-  // same transaction — same implicit-switch semantics as the MCP op).
+  // match, otherwise start (switchTimer stops any other running entry in the
+  // same transaction, at the same instant).
   const client_id = Number(args.client_id)
   const project_id = asProjectId(args.project_id, null)
   const description = asString(args.description)
@@ -545,7 +546,10 @@ async function handleControllerRequest(
     return { ok: true, data: { action: 'stopped', entry: r.data } }
   }
 
-  const r = startTimer(db, {
+  // Same switch path as the app's quick start (B1): the running entry ends
+  // at the instant the new one begins, and the receiver hears
+  // `timer.stopped` for it before `timer.started`.
+  const r = switchTimer(db, {
     client_id,
     description,
     started_at: new Date().toISOString(),
@@ -556,12 +560,16 @@ async function handleControllerRequest(
   ctx.audit({
     op: 'toggle_timer',
     source: 'controller',
-    id: r.data?.id ?? null,
+    id: r.data.entry.id,
     client_id,
-    started_at: r.data?.started_at ?? null
+    started_at: r.data.entry.started_at
   })
-  ctx.emitWebhook?.('start_timer', r.data)
-  return { ok: true, data: { action: running ? 'switched' : 'started', entry: r.data } }
+  if (r.data.stopped) ctx.emitWebhook?.('stop_running_timer', r.data.stopped)
+  ctx.emitWebhook?.('start_timer', r.data.entry)
+  return {
+    ok: true,
+    data: { action: r.data.stopped ? 'switched' : 'started', entry: r.data.entry }
+  }
 }
 
 /**

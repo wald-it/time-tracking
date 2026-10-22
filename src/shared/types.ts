@@ -271,7 +271,16 @@ export interface CreateEntryInput {
 }
 
 /**
- * Manual-entry creation (Today "+ Eintrag nachtragen" / Calendar drawer
+ * Result of `entries:switch` (B1): the entry that now runs, and the one that
+ * was stopped at the same instant (null when nothing ran).
+ */
+export interface SwitchTimerResult {
+  entry: Entry
+  stopped: Entry | null
+}
+
+/**
+ *Manual-entry creation (Today "+ Eintrag nachtragen" / Calendar drawer
  * "+ Eintrag hinzufügen"). Distinct from CreateEntryInput because manual
  * entries always carry a stopped_at; running entries are created via
  * `entries:start` only.
@@ -353,6 +362,10 @@ export interface DashboardSummary {
   recentEntries: Entry[]
   /** Every entry of today (started today or still running), newest first. */
   todayEntries: Entry[]
+  /**
+   * Up to five ACTIVE clients by hours in the last 30 days. `last_project_id`
+   * is the last used project that is still active (see `readTopClients30d`).
+   */
   topClients30d: Array<{
     client_id: number
     name: string

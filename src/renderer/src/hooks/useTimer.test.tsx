@@ -68,6 +68,7 @@ interface Listeners {
 interface ApiMock {
   listeners: Listeners
   start: ReturnType<typeof vi.fn>
+  switch: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
   heartbeat: ReturnType<typeof vi.fn>
@@ -90,19 +91,43 @@ interface UpdatePayload {
   stopped_at: string
 }
 
-function mockApi(opts: { clients?: Client[]; running?: Entry | null } = {}): ApiMock {
+interface MockOpts {
+  clients?: Client[]
+  running?: Entry | null
+  /** entries:switch answers { ok: false } — the main transaction rolled back. */
+  switchFails?: boolean
+}
+
+function mockApi(opts: MockOpts = {}): ApiMock {
   let nextId = 100
   const listeners: Listeners = {}
-  const start = vi.fn(async (payload: StartPayload) => ({
-    ok: true as const,
-    data: makeEntry({
+  // The entry the mocked main process considers running.
+  let current: Entry | null = opts.running ?? null
+  const start = vi.fn(async (payload: StartPayload) => {
+    const entry = makeEntry({
       id: nextId++,
       client_id: payload.client_id,
       project_id: payload.project_id ?? null,
       description: payload.description,
       started_at: payload.started_at
     })
-  }))
+    current = entry
+    return { ok: true as const, data: entry }
+  })
+  // entries:switch — the main process stops whatever runs and starts the new
+  // entry at ONE instant (switchTimer); mirrored here on the mock's own state.
+  const switchFn = vi.fn(async (payload: StartPayload) => {
+    if (opts.switchFails) return { ok: false as const, error: 'boom' }
+    const stopped = current ? { ...current, stopped_at: payload.started_at } : null
+    current = makeEntry({
+      id: nextId++,
+      client_id: payload.client_id,
+      project_id: payload.project_id ?? null,
+      description: payload.description,
+      started_at: payload.started_at
+    })
+    return { ok: true as const, data: { entry: current, stopped } }
+  })
   const stop = vi.fn(async (id: number) => ({
     ok: true as const,
     data: makeEntry({ id, stopped_at: new Date().toISOString() })
@@ -121,6 +146,7 @@ function mockApi(opts: { clients?: Client[]; running?: Entry | null } = {}): Api
     entries: {
       getRunning: async () => ({ ok: true as const, data: opts.running ?? null }),
       start,
+      switch: switchFn,
       stop,
       update,
       heartbeat
@@ -147,7 +173,7 @@ function mockApi(opts: { clients?: Client[]; running?: Entry | null } = {}): Api
     }
   }
   ;(window as unknown as { api: typeof api }).api = api
-  return { listeners, start, stop, update, heartbeat, trayUpdate, idleDismiss }
+  return { listeners, start, switch: switchFn, stop, update, heartbeat, trayUpdate, idleDismiss }
 }
 
 type Hook = RenderHookResult<UseTimerResult, unknown>
@@ -156,7 +182,7 @@ type Hook = RenderHookResult<UseTimerResult, unknown>
  * Fresh module instance + fresh api mock, rendered and settled. Init always
  * ends in a tray push (running or not), so that is the "init done" signal.
  */
-async function setup(opts: { clients?: Client[]; running?: Entry | null } = {}): Promise<{
+async function setup(opts: MockOpts = {}): Promise<{
   api: ApiMock
   hook: Hook
 }> {
@@ -355,6 +381,89 @@ describe('useTimer — startWithClient keeps the selection consistent', () => {
     })
     expect(useTimerStore.getState().selectedClientId).toBe(2)
     expect(useTimerStore.getState().selectedProjectId).toBeNull()
+  })
+})
+
+describe('useTimer — switchTo (B1)', () => {
+  // Owner correction to B1: the switch is ONE main-process path. When the
+  // stopped entry had no description, the quick-note prompt opens for it
+  // AFTER the new entry runs — startWithClient would dismiss it.
+  it('runs the new entry AND opens the quick note for the stopped one', async () => {
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients })
+    const first = await startTimer(hook)
+
+    await act(async () => {
+      await hook.result.current.switchTo(2, null)
+    })
+
+    expect(api.switch).toHaveBeenCalledWith({
+      client_id: 2,
+      project_id: null,
+      description: '',
+      started_at: expect.any(String)
+    })
+    expect(api.stop).not.toHaveBeenCalled()
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+    expect(hook.result.current.quickNoteEntry?.id).toBe(first.id)
+    expect(api.trayUpdate).toHaveBeenLastCalledWith(
+      true,
+      'Beta',
+      0,
+      hook.result.current.runningEntry?.started_at
+    )
+  })
+
+  it('opens no quick note when the stopped entry had a description', async () => {
+    const { hook } = await setup()
+    act(() => hook.result.current.setDescription('work'))
+    await startTimer(hook)
+
+    await act(async () => {
+      await hook.result.current.switchTo(1, null)
+    })
+
+    expect(hook.result.current.quickNoteEntry).toBeNull()
+  })
+
+  it('keeps a pending quick note open (no dismiss on the switch path)', async () => {
+    const { hook } = await setup()
+    act(() => hook.result.current.setDescription('work'))
+    await startTimer(hook)
+    // An earlier, unanswered prompt; the described run that now stops opens
+    // none of its own, and the start must not close this one.
+    act(() => hook.result.current.setQuickNoteEntry(makeEntry({ id: 55, description: '' })))
+
+    await act(async () => {
+      await hook.result.current.switchTo(1, null)
+    })
+
+    expect(hook.result.current.quickNoteEntry?.id).toBe(55)
+  })
+
+  it('drops a pending idle event, as stop() does', async () => {
+    const { api, hook } = await setup()
+    await startTimer(hook)
+    act(() => api.listeners.idleDetected?.(IDLE))
+
+    await act(async () => {
+      await hook.result.current.switchTo(1, null)
+    })
+
+    expect(hook.result.current.idleEvent).toBeNull()
+    expect(api.idleDismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed switch leaves the old entry running and opens nothing', async () => {
+    const { hook } = await setup({ switchFails: true })
+    const first = await startTimer(hook)
+
+    await act(async () => {
+      await hook.result.current.switchTo(1, null)
+    })
+
+    expect(hook.result.current.runningEntry?.id).toBe(first.id)
+    expect(hook.result.current.quickNoteEntry).toBeNull()
   })
 })
 
