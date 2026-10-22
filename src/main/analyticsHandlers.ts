@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { IpcResult, MonthQuery, AnalyticsSummary } from '../shared/types'
-import { feeCentSql } from '../shared/currency'
+import { billedMinutesSql, feeCentSql } from '../shared/currency'
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -68,13 +68,10 @@ export function buildAnalyticsSummary(
         .get() as { value: string } | undefined
       const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
 
-      // SQL helper: per-entry seconds, optionally rounded up to `roundStep` minutes.
-      // Uses SQLite integer arithmetic for ceiling: (n + d - 1) / d * d
-      const RAW_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
-      const ENTRY_SEC =
-        roundStep > 0
-          ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
-          : RAW_SEC
+      // Billed seconds per entry, the same minutes the invoice charges (shared/currency.ts):
+      // hours and revenue in one tile follow one rule, and a sub-second entry that
+      // bills a minute is not counted as zero time beside its revenue.
+      const ENTRY_SEC = `(${billedMinutesSql(roundStep)} * 60)`
       // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
       const FEE_CENT = feeCentSql(roundStep)
 

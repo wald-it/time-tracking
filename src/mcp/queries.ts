@@ -13,7 +13,7 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
-import { feeCentSql } from '../shared/currency'
+import { billedMinutesSql, feeCentSql } from '../shared/currency'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
 import type { PrivacyConfig } from './privacy'
@@ -582,11 +582,10 @@ export function getAnalytics(
     .get() as { value: string } | undefined
   const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
 
-  const RAW_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
-  const ENTRY_SEC =
-    roundStep > 0
-      ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
-      : RAW_SEC
+  // Billed seconds per entry, the same minutes the invoice charges (shared/currency.ts):
+  // hours and revenue in one tile follow one rule, and a sub-second entry that
+  // bills a minute is not counted as zero time beside its revenue.
+  const ENTRY_SEC = `(${billedMinutesSql(roundStep)} * 60)`
   // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
   const REVENUE = feeCentSql(roundStep)
   const monthKey = `${year}-${String(month).padStart(2, '0')}`
