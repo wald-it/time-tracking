@@ -204,6 +204,7 @@ export const de = {
   'today.quickstart.actionSwitch': 'wechseln',
   'today.quickstart.listHelp': '↑↓ wählen · ↵ starten · Esc zu',
   'today.quickstart.switchTo': 'Zu {name} wechseln',
+  'today.quickstart.alreadyRunning': '{name} läuft bereits',
   'header.navAria': 'Hauptnavigation',
   'today.table.editAria': 'Eintrag {time} bearbeiten',
   'today.table.deleteAria': 'Eintrag {time} löschen',

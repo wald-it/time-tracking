@@ -202,6 +202,7 @@ export const en: Record<TranslationKey, string> = {
   'today.quickstart.actionSwitch': 'switch',
   'today.quickstart.listHelp': '↑↓ choose · ↵ start · Esc close',
   'today.quickstart.switchTo': 'Switch to {name}',
+  'today.quickstart.alreadyRunning': '{name} is already running',
   'today.quickstart.hintRunningLocked': 'Quick start is locked while a timer runs.',
   'header.navAria': 'Main navigation',
   'today.table.editAria': 'Edit entry {time}',
