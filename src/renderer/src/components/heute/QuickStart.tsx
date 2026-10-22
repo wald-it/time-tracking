@@ -49,9 +49,7 @@ export function QuickStart({
             key={c.client_id}
             clientId={c.client_id}
             name={c.name}
-            color={
-              (c.last_project_id != null && projectsById.get(c.last_project_id)?.color) || c.color
-            }
+            color={c.color}
             seconds={c.seconds}
             lastProjectId={c.last_project_id}
             projectsById={projectsById}
@@ -112,6 +110,7 @@ function QuickStartKey({
 }: {
   clientId: number
   name: string
+  /** Client colour — also the fan's fallback for projects without one. */
   color: string
   seconds: number
   lastProjectId: number | null
@@ -412,7 +411,14 @@ function QuickStartKey({
             : t('today.quickstart.clientInactive')
         }
       >
-        <span aria-hidden="true" className="h-3 w-3 flex-none" style={{ background: color }} />
+        <span
+          aria-hidden="true"
+          className="h-3 w-3 flex-none"
+          style={{
+            // The key starts the last project, so its square shows that colour.
+            background: (lastProjectId != null && projectsById.get(lastProjectId)?.color) || color
+          }}
+        />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-sm font-semibold">{name}</span>
           {lastProject && (
