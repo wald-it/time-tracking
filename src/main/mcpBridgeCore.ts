@@ -24,6 +24,14 @@ import type {
 } from '../shared/types'
 import type { McpAuditEntry } from './mcpAudit'
 import { readRoundMinutes, readRoundedTotals, readTotals } from './dashboardTotals'
+import {
+  formatLocalMoment,
+  formatLocalSpan,
+  offsetHint,
+  parseZonedTimestamp,
+  toLocalIso,
+  zonedTimestampError
+} from '../shared/zonedTimestamp'
 import { roundDuration } from '../shared/duration'
 
 type Db = Database.Database
@@ -114,6 +122,43 @@ function asProjectId(v: unknown, fallback: number | null): number | null {
   if (typeof v === 'number') return v
   return fallback
 }
+/**
+ * An MCP time field: real date, time of day and zone (owner decision
+ * 2026-10-22). Returns the stored form (UTC, ms, `Z`) or an error that names
+ * the field. MCP scope only — controller ops (#133) send no timestamps.
+ */
+function zonedField(
+  field: string,
+  value: unknown
+): { iso: string; hint: string | null } | { error: string } {
+  const r = parseZonedTimestamp(value)
+  return r.ok
+    ? { iso: r.iso, hint: offsetHint(r.iso, r.offsetMin) }
+    : { error: zonedTimestampError(field, value, r.reason) }
+}
+
+/**
+ * Offset notes for the confirmation dialog and the preview (owner review
+ * 2026-10-22): a written offset that is not the local one on that day is
+ * accepted but called out, usually summer time copied past the change.
+ */
+type OffsetHints = Partial<Record<'started_at' | 'stopped_at', string>>
+
+const FIELD_LABEL = { started_at: 'Start', stopped_at: 'Ende' } as const
+
+/** The confirmation text with one line per offset note. */
+function withHints(summary: string, hints: OffsetHints): string {
+  const lines = (Object.keys(hints) as Array<keyof OffsetHints>).map(
+    (f) => `${FIELD_LABEL[f]}: ${hints[f]}`
+  )
+  return lines.length ? `${summary}\n${lines.join('\n')}` : summary
+}
+
+/** Preview fields; the notes sit under their own key so nothing overwrites them. */
+function hintPreview(hints: OffsetHints): Record<string, unknown> {
+  return Object.keys(hints).length ? { zeit_hinweise: hints } : {}
+}
+
 function durationMin(started_at: string, stopped_at: string): number {
   return Math.round((Date.parse(stopped_at) - Date.parse(started_at)) / 60000)
 }
@@ -123,6 +168,12 @@ function durationMin(started_at: string, stopped_at: string): number {
 interface Plan {
   summary: string
   preview: Record<string, unknown>
+  /**
+   * Offset notes, also returned with the executed write: with "for this
+   * session" or confirm mode silent no dialog shows them, so the reply is the
+   * only place the client learns of them (owner review 2026-10-22).
+   */
+  hints?: OffsetHints
   run: () => { ok: true; data: Entry | null } | { ok: false; error: string }
   audit: (result: Entry | null) => McpAuditEntry
 }
@@ -131,11 +182,18 @@ interface Plan {
 function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { error: string } {
   switch (op) {
     case 'create_manual_entry': {
+      const start = zonedField('started_at', args.started_at)
+      if ('error' in start) return start
+      const stop = zonedField('stopped_at', args.stopped_at)
+      if ('error' in stop) return stop
+      const hints: OffsetHints = {}
+      if (start.hint) hints.started_at = start.hint
+      if (stop.hint) hints.stopped_at = stop.hint
       const input: CreateManualEntryInput = {
         client_id: Number(args.client_id),
         description: asString(args.description),
-        started_at: asString(args.started_at),
-        stopped_at: asString(args.stopped_at),
+        started_at: start.iso,
+        stopped_at: stop.iso,
         tags: asString(args.tags),
         reference: asString(args.reference),
         billable: asBillable(args.billable, 1),
@@ -145,15 +203,22 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       const vErr = validateManualEntry(db, input)
       if (vErr) return { error: vErr }
       return {
-        summary: `Eintrag nachtragen — Kunde ${input.client_id}, ${input.started_at} → ${input.stopped_at} (${durationMin(input.started_at, input.stopped_at)} min): "${input.description}"`,
+        summary: withHints(
+          `Eintrag nachtragen — Kunde ${input.client_id}, ${formatLocalSpan(input.started_at, input.stopped_at)} (${durationMin(input.started_at, input.stopped_at)} min): "${input.description}"`,
+          hints
+        ),
         preview: {
           action: 'create_manual_entry',
           client_id: input.client_id,
           started_at: input.started_at,
           stopped_at: input.stopped_at,
+          started_local: toLocalIso(input.started_at),
+          stopped_local: toLocalIso(input.stopped_at),
           duration_min: durationMin(input.started_at, input.stopped_at),
-          project_id: input.project_id
+          project_id: input.project_id,
+          ...hintPreview(hints)
         },
+        hints,
         run: () => createManualEntry(db, input),
         audit: (r) => ({
           op,
@@ -179,14 +244,30 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
             'Laufende Einträge können nicht über update_entry_fields bearbeitet werden — erst stop_running_timer nutzen'
         }
       }
+      // Only the time fields the caller actually passed are checked; an update
+      // without them keeps the stored values and is not affected by the rule.
+      const hints: OffsetHints = {}
+      let startedAt = existing.started_at
+      if (args.started_at !== undefined) {
+        const r = zonedField('started_at', args.started_at)
+        if ('error' in r) return r
+        startedAt = r.iso
+        if (r.hint) hints.started_at = r.hint
+      }
+      let stoppedAt = existing.stopped_at ?? ''
+      if (args.stopped_at !== undefined) {
+        const r = zonedField('stopped_at', args.stopped_at)
+        if ('error' in r) return r
+        stoppedAt = r.iso
+        if (r.hint) hints.stopped_at = r.hint
+      }
       const input: UpdateEntryInput = {
         id,
         client_id: args.client_id === undefined ? existing.client_id : Number(args.client_id),
         description:
           args.description === undefined ? existing.description : asString(args.description),
-        started_at: args.started_at === undefined ? existing.started_at : asString(args.started_at),
-        stopped_at:
-          args.stopped_at === undefined ? (existing.stopped_at ?? '') : asString(args.stopped_at),
+        started_at: startedAt,
+        stopped_at: stoppedAt,
         tags: args.tags === undefined ? existing.tags : asString(args.tags),
         reference: args.reference === undefined ? existing.reference : asString(args.reference),
         billable:
@@ -203,7 +284,11 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       const vErr = validateManualEntry(db, input, id, existing.link_id ?? undefined)
       if (vErr) return { error: vErr }
       return {
-        summary: `Eintrag #${id} ändern — ${input.started_at} → ${input.stopped_at}: "${input.description}"`,
+        summary: withHints(
+          `Eintrag #${id} ändern — vorher ${formatLocalSpan(existing.started_at, existing.stopped_at)}, ` +
+            `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}: "${input.description}"`,
+          hints
+        ),
         preview: {
           action: 'update_entry_fields',
           id,
@@ -211,6 +296,8 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
             description: existing.description,
             started_at: existing.started_at,
             stopped_at: existing.stopped_at,
+            started_local: toLocalIso(existing.started_at),
+            stopped_local: toLocalIso(existing.stopped_at),
             tags: existing.tags,
             reference: existing.reference,
             billable: existing.billable,
@@ -220,12 +307,16 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
             description: input.description,
             started_at: input.started_at,
             stopped_at: input.stopped_at,
+            started_local: toLocalIso(input.started_at),
+            stopped_local: toLocalIso(input.stopped_at),
             tags: input.tags,
             reference: input.reference,
             billable: input.billable,
             project_id: input.project_id
-          }
+          },
+          ...hintPreview(hints)
         },
+        hints,
         run: () => updateManualEntry(db, input),
         audit: (r) => ({
           op,
@@ -238,10 +329,21 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
     }
     case 'start_timer': {
+      // Absent (or empty) means "now", as before; a given start must be zoned.
+      let startedAt = new Date().toISOString()
+      let given = false
+      const hints: OffsetHints = {}
+      if (args.started_at !== undefined && args.started_at !== '') {
+        const r = zonedField('started_at', args.started_at)
+        if ('error' in r) return r
+        startedAt = r.iso
+        given = true
+        if (r.hint) hints.started_at = r.hint
+      }
       const input: CreateEntryInput = {
         client_id: Number(args.client_id),
         description: asString(args.description),
-        started_at: asString(args.started_at) || new Date().toISOString(),
+        started_at: startedAt,
         project_id: asProjectId(args.project_id, null)
       }
       const client = db.prepare(`SELECT id FROM clients WHERE id = ?`).get(input.client_id) as
@@ -253,13 +355,19 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
         if (pErr) return { error: pErr }
       }
       return {
-        summary: `Timer starten — Kunde ${input.client_id}: "${input.description}"`,
+        summary: withHints(
+          `Timer starten — Kunde ${input.client_id}, ${given ? `ab ${formatLocalMoment(input.started_at)}` : 'ab jetzt'}: "${input.description}"`,
+          hints
+        ),
         preview: {
           action: 'start_timer',
           client_id: input.client_id,
           started_at: input.started_at,
-          project_id: input.project_id
+          started_local: toLocalIso(input.started_at),
+          project_id: input.project_id,
+          ...hintPreview(hints)
         },
+        hints,
         run: () => startTimer(db, input),
         audit: (r) => ({
           op,
@@ -500,5 +608,8 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
   ctx.audit(plan.audit(result.data))
   // Same emission point as the IPC handlers, one level up from the mutation.
   ctx.emitWebhook?.(req.op as WriteOp, result.data)
+  if (plan.hints && Object.keys(plan.hints).length) {
+    return { ok: true, data: { ...(result.data ?? {}), zeit_hinweise: plan.hints } }
+  }
   return { ok: true, data: result.data }
 }

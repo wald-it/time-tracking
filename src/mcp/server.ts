@@ -19,6 +19,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import { localTimeZoneName, zonedTimestampExample } from '../shared/zonedTimestamp'
 import { openReadonly } from './db'
 import { resolveDbPath } from './dbPath'
 import { resolvePrivacy, type PrivacyConfig } from './privacy'
@@ -313,6 +314,16 @@ export function buildServer(): McpServer {
     'Nur Vorschau: in TimeTrack wurde nichts angelegt oder geändert. Zum Ausführen denselben ' +
     'Aufruf ohne preview wiederholen.'
 
+  // Write tools take only zoned timestamps (owner decision 2026-10-22). The
+  // example uses the offset of the day this server started; it goes stale
+  // across a clock change, so the text names the zone and says the offset has
+  // to fit the date — the app adds a note when it does not.
+  const ZONED =
+    `ISO-Zeitstempel mit Uhrzeit und Zeitzone, z. B. ${zonedTimestampExample()} ` +
+    `(oder mit Z für UTC). Der Rechner läuft in ${localTimeZoneName()}; der Offset muss ` +
+    'zum Datum passen (Sommer-/Winterzeit). Ohne Zone oder als reines Datum wird der Aufruf ' +
+    'abgelehnt'
+
   async function runWrite(
     op: string,
     args: Record<string, unknown>,
@@ -335,10 +346,8 @@ export function buildServer(): McpServer {
       inputSchema: {
         client_id: z.number().int().describe('Kunden-ID'),
         description: z.string().describe('Tätigkeitsbeschreibung. Max. 500 Zeichen.'),
-        started_at: z.string().describe('Startzeit als ISO-Zeitstempel'),
-        stopped_at: z
-          .string()
-          .describe('Endzeit als ISO-Zeitstempel. Max. 24 Stunden nach der Startzeit.'),
+        started_at: z.string().describe(`Startzeit: ${ZONED}.`),
+        stopped_at: z.string().describe(`Endzeit: ${ZONED}. Max. 24 Stunden nach der Startzeit.`),
         tags: z.string().optional().describe("Serialisierte Tags, z. B. ',bug,ux,'"),
         reference: z.string().optional().describe('Ticket/Referenz. Max. 200 Zeichen.'),
         billable: z.boolean().optional().describe('Abrechenbar (Default true)'),
@@ -380,11 +389,11 @@ export function buildServer(): McpServer {
         id: z.number().int().describe('ID des Eintrags'),
         client_id: z.number().int().optional().describe('Neuer Kunde'),
         description: z.string().optional().describe('Neue Beschreibung. Max. 500 Zeichen.'),
-        started_at: z.string().optional().describe('Neue Startzeit (ISO)'),
+        started_at: z.string().optional().describe(`Neue Startzeit: ${ZONED}.`),
         stopped_at: z
           .string()
           .optional()
-          .describe('Neue Endzeit (ISO). Max. 24 Stunden nach der Startzeit.'),
+          .describe(`Neue Endzeit: ${ZONED}. Max. 24 Stunden nach der Startzeit.`),
         tags: z.string().optional().describe("Neue Tags, z. B. ',bug,'"),
         reference: z.string().optional().describe('Neue Referenz. Max. 200 Zeichen.'),
         billable: z.boolean().optional().describe('Abrechenbar'),
@@ -423,7 +432,7 @@ export function buildServer(): McpServer {
       inputSchema: {
         client_id: z.number().int().describe('Kunden-ID'),
         description: z.string().optional().describe('Beschreibung'),
-        started_at: z.string().optional().describe('Startzeit (ISO); Default jetzt'),
+        started_at: z.string().optional().describe(`Startzeit: ${ZONED}. Default jetzt.`),
         project_id: z.number().int().nullable().optional().describe('Projekt-ID oder null'),
         preview: z
           .boolean()

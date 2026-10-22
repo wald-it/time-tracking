@@ -4,101 +4,15 @@
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import type Database from 'better-sqlite3'
-import { handleRequest, type BridgeCtx, type BridgeRequest } from './mcpBridgeCore'
-import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { handleRequest, type BridgeRequest } from './mcpBridgeCore'
+import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { CREATE, countEntries, makeCtx, seed } from '../test/bridgeKit'
 
 let DatabaseImpl: DatabaseCtor
 
 beforeAll(async () => {
   DatabaseImpl = await loadSqlite()
 })
-
-function seed(db: Database.Database): void {
-  db.pragma('foreign_keys = ON')
-  applyMigrations(db)
-  db.prepare(
-    `INSERT INTO clients (id, name, color, active, rate_cent) VALUES (1,'Acme','#111',1,0)`
-  ).run()
-  db.prepare(
-    `INSERT INTO clients (id, name, color, active, rate_cent) VALUES (2,'Beta','#222',1,0)`
-  ).run()
-  db.prepare(
-    `INSERT INTO projects (id, client_id, name, status, active) VALUES (10, 1, 'Rollout', 'active', 1)`
-  ).run()
-  db.prepare(
-    `INSERT INTO projects (id, client_id, name, status, active) VALUES (20, 2, 'Audit', 'active', 1)`
-  ).run()
-  db.prepare(
-    `INSERT INTO projects (id, client_id, name, status, active) VALUES (30, 1, 'Altlast', 'archived', 0)`
-  ).run()
-}
-
-interface Spies {
-  confirmCalls: number
-  backupCalls: number
-  auditCalls: number
-  changeCalls: number
-  webhooks: string[]
-}
-
-function makeCtx(
-  db: Database.Database,
-  o: Partial<{
-    token: string | null
-    incomingWriteEnabled: boolean
-    approve: boolean
-    controllerToken: string | null
-    controllerEnabled: boolean
-  }> = {}
-): { ctx: BridgeCtx; spies: Spies } {
-  const spies: Spies = {
-    confirmCalls: 0,
-    backupCalls: 0,
-    auditCalls: 0,
-    changeCalls: 0,
-    webhooks: []
-  }
-  const ctx: BridgeCtx = {
-    db,
-    token: o.token === undefined ? 'secret' : o.token,
-    isWriteEnabled: () => o.incomingWriteEnabled !== false,
-    controllerToken: o.controllerToken === undefined ? 'ctl' : o.controllerToken,
-    isControllerEnabled: () => o.controllerEnabled !== false,
-    confirm: async () => {
-      spies.confirmCalls++
-      return o.approve !== false
-    },
-    ensureBackup: async () => {
-      spies.backupCalls++
-    },
-    audit: () => {
-      spies.auditCalls++
-    },
-    onChange: () => {
-      spies.changeCalls++
-    },
-    emitWebhook: (op) => {
-      spies.webhooks.push(op)
-    }
-  }
-  return { ctx, spies }
-}
-
-const CREATE: BridgeRequest = {
-  v: 1,
-  token: 'secret',
-  op: 'create_manual_entry',
-  args: {
-    client_id: 1,
-    description: 'Feature',
-    started_at: '2026-06-10T09:00:00.000Z',
-    stopped_at: '2026-06-10T10:00:00.000Z'
-  }
-}
-
-function countEntries(db: Database.Database): number {
-  return (db.prepare(`SELECT COUNT(*) AS n FROM entries`).get() as { n: number }).n
-}
 
 describe('handleRequest', () => {
   let db: Database.Database
@@ -288,6 +202,179 @@ function runningRow(
       .get() as { client_id: number; project_id: number | null } | undefined) ?? null
   )
 }
+
+describe('handleRequest — MCP time fields need a date, a time and a zone', () => {
+  let db: Database.Database
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+  })
+
+  function create(
+    started_at: unknown,
+    stopped_at: unknown = '2026-10-01T10:00:00Z',
+    preview = false
+  ): BridgeRequest {
+    return {
+      v: 1,
+      token: 'secret',
+      op: 'create_manual_entry',
+      args: { client_id: 1, description: 'x', started_at, stopped_at },
+      preview
+    }
+  }
+
+  it('accepts an offset and stores it as UTC', async () => {
+    const { ctx } = makeCtx(db)
+    const res = await handleRequest(ctx, create('2026-10-01T09:00:00+02:00'))
+    expect(res.ok).toBe(true)
+    const row = db.prepare(`SELECT started_at, stopped_at FROM entries`).get()
+    expect(row).toEqual({
+      started_at: '2026-10-01T07:00:00.000Z',
+      stopped_at: '2026-10-01T10:00:00.000Z'
+    })
+  })
+
+  it('accepts Z', async () => {
+    const { ctx } = makeCtx(db)
+    expect((await handleRequest(ctx, create('2026-10-01T09:00:00Z'))).ok).toBe(true)
+  })
+
+  for (const preview of [false, true]) {
+    const mode = preview ? 'preview' : 'write'
+
+    it(`refuses a value without a zone, naming the field (${mode})`, async () => {
+      const { ctx, spies } = makeCtx(db)
+      const res = await handleRequest(ctx, create('2026-10-01T09:00:00', undefined, preview))
+      expect(res).toMatchObject({ ok: false, code: 'invalid' })
+      if (!res.ok) {
+        expect(res.error).toMatch(
+          /^started_at: Zeitzone fehlt, z\. B\. \d{4}-\d{2}-\d{2}T09:00:00[+-]\d{2}:\d{2}/
+        )
+      }
+      expect(countEntries(db)).toBe(0)
+      expect(spies.confirmCalls).toBe(0)
+    })
+
+    it(`refuses a bare date (${mode})`, async () => {
+      const { ctx } = makeCtx(db)
+      const res = await handleRequest(ctx, create('2026-10-01', undefined, preview))
+      expect(res.ok).toBe(false)
+      if (!res.ok) expect(res.error).toMatch(/^started_at: Uhrzeit fehlt/)
+    })
+
+    it(`refuses an impossible date instead of rolling it over (${mode})`, async () => {
+      const { ctx } = makeCtx(db)
+      const res = await handleRequest(
+        ctx,
+        create('2026-02-28T09:00:00Z', '2026-02-30T10:00:00Z', preview)
+      )
+      expect(res.ok).toBe(false)
+      if (!res.ok) expect(res.error).toMatch(/^stopped_at: kein gültiges Datum/)
+    })
+  }
+
+  it('update_entry_fields without time fields is not affected', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, create('2026-10-01T09:00:00Z'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, description: 'neu' }
+    })
+    expect(res.ok).toBe(true)
+  })
+
+  it('update_entry_fields checks only the time field it was given, by name', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, create('2026-10-01T09:00:00Z'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, stopped_at: '2026-10-01T11:00:00' }
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/^stopped_at: Zeitzone fehlt/)
+  })
+
+  it('update_entry_fields stores a given zoned time in the stored form', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, create('2026-10-01T09:00:00Z'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, stopped_at: '2026-10-01T13:00:00+02:00' }
+    })
+    expect(res.ok).toBe(true)
+    // updateManualEntry may re-insert the row; read the live one.
+    const row = db.prepare(`SELECT stopped_at FROM entries WHERE deleted_at IS NULL`).get()
+    expect(row).toEqual({ stopped_at: '2026-10-01T11:00:00.000Z' })
+  })
+
+  it('start_timer stores a given zoned start in the stored form', async () => {
+    const { ctx } = makeCtx(db)
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2026-10-01T09:00:00+02:00' }
+    })
+    expect(res.ok).toBe(true)
+    const row = db.prepare(`SELECT started_at FROM entries WHERE stopped_at IS NULL`).get()
+    expect(row).toEqual({ started_at: '2026-10-01T07:00:00.000Z' })
+  })
+
+  it('preview of update_entry_fields and start_timer is refused the same way', async () => {
+    const { ctx, spies } = makeCtx(db)
+    await handleRequest(ctx, create('2026-10-01T09:00:00Z'))
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const upd = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, started_at: '2026-10-01' },
+      preview: true
+    })
+    expect(upd.ok).toBe(false)
+    if (!upd.ok) expect(upd.error).toMatch(/^started_at: Uhrzeit fehlt/)
+    const start = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2026-10-01T09:00:00' },
+      preview: true
+    })
+    expect(start.ok).toBe(false)
+    if (!start.ok) expect(start.error).toMatch(/^started_at: Zeitzone fehlt/)
+    // the create above confirmed once; the two refused previews add nothing
+    expect(spies.confirmCalls).toBe(1)
+  })
+
+  it('start_timer refuses a start without a zone, and still defaults to now without one', async () => {
+    const { ctx } = makeCtx(db)
+    const bad = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2026-10-01T09:00:00' }
+    })
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.error).toMatch(/^started_at: Zeitzone fehlt/)
+    const ok = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1 }
+    })
+    expect(ok.ok).toBe(true)
+  })
+})
 
 describe('handleRequest — controller scope', () => {
   let db: Database.Database
