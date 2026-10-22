@@ -54,7 +54,7 @@ export default function MiniApp(): React.JSX.Element {
         className="
           drag-region
           flex h-10 w-[200px] items-center gap-2 px-3
-          rounded-[var(--r-key)] bg-[var(--disp,#1b1b19)]
+          rounded-[var(--r-key,4px)] bg-[var(--disp,#1b1b19)]
           text-sm text-[var(--disp-ink,#edebe4)]
           select-none
         "
@@ -63,7 +63,7 @@ export default function MiniApp(): React.JSX.Element {
         <span className="flex-1 truncate" title={state.label}>
           {state.label || t('miniWidget.timerRunning')}
         </span>
-        <span className="font-num text-xs" style={{ color: 'var(--text2)' }}>
+        <span className="font-num text-xs" style={{ color: 'var(--disp-dim,#8f8c83)' }}>
           {formatDuration(elapsed)}
         </span>
         <button
@@ -87,7 +87,7 @@ export default function MiniApp(): React.JSX.Element {
       className="
         drag-region
         flex h-10 w-[200px] items-center gap-2 px-3
-        rounded-[var(--r-key)] bg-[var(--disp,#1b1b19)]
+        rounded-[var(--r-key,4px)] bg-[var(--disp,#1b1b19)]
         text-sm text-[var(--disp-ink,#edebe4)]
         select-none
       "
