@@ -148,6 +148,10 @@ async function setup(
     dashboard: {
       todayTotal: async () => ({ ok: true as const, data: 0 })
     },
+    // The entry form's tag input asks for the known tags.
+    tags: {
+      getAllWithCount: async () => ({ ok: true as const, data: [] })
+    },
     tray: { update: vi.fn() },
     idle: { dismiss: vi.fn() },
     onHotkeyToggle: () => {},
@@ -685,5 +689,88 @@ describe('CalendarView — final review fixes (PR 3)', () => {
 
     fireEvent.click(within(drawer).getByRole('button', { name: '#konzept' }))
     expect(within(drawer).getByTestId('details-revenue').textContent).toBe('150,00 €')
+  })
+})
+
+describe('CalendarView — open form holds back the panel/drawer switch (PR 3)', () => {
+  /** matchMedia whose answer can be flipped, with change listeners. */
+  function flippableMatchMedia(initialWide: boolean): (wide: boolean) => void {
+    let wide = initialWide
+    const listeners = new Set<() => void>()
+    ;(window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+      get matches() {
+        return wide && query === DAY_PANEL_MEDIA_QUERY
+      },
+      media: query,
+      addEventListener: (_: string, cb: () => void) => listeners.add(cb),
+      removeEventListener: (_: string, cb: () => void) => listeners.delete(cb)
+    })
+    return (w: boolean) => {
+      wide = w
+      act(() => listeners.forEach((cb) => cb()))
+    }
+  }
+
+  function textarea(): HTMLTextAreaElement | null {
+    return document.querySelector('textarea')
+  }
+
+  it('narrowing keeps the panel and the typed input while an edit is open', async () => {
+    const flip = flippableMatchMedia(true)
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Bearbeiten' })[0])
+    fireEvent.change(textarea()!, { target: { value: 'half typed' } })
+
+    flip(false)
+    expect(textarea()?.value).toBe('half typed')
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }))
+    // Back to what the width says: no panel, and no drawer either.
+    expect(screen.queryByText('Ausgewählter Tag')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('widening keeps the drawer and the typed input while an edit is open', async () => {
+    const flip = flippableMatchMedia(false)
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    const drawer = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
+    fireEvent.click(within(drawer).getAllByRole('button', { name: 'Bearbeiten' })[0])
+    fireEvent.change(drawer.querySelector('textarea')!, { target: { value: 'half typed' } })
+
+    flip(true)
+    const still = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
+    expect(still.querySelector('textarea')?.value).toBe('half typed')
+
+    fireEvent.click(within(still).getByRole('button', { name: 'Abbrechen' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closing an edit with Escape hands focus back to its edit key in the drawer', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    const drawer = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
+    fireEvent.click(within(drawer).getAllByRole('button', { name: 'Bearbeiten' })[0])
+    drawer.querySelector('textarea')!.focus()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(drawer.querySelector('textarea')).toBeNull()
+    // The first entry's edit key again (re-rendered after the form closed).
+    expect(document.activeElement).toBe(
+      within(drawer).getAllByRole('button', { name: 'Bearbeiten' })[0]
+    )
+  })
+
+  it('closing the backfill form hands focus back to the backfill key', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
+    fireEvent.click(cell('2026-08-10'))
+    const drawer = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
+    fireEvent.click(within(drawer).getByRole('button', { name: /nachtragen/ }))
+    drawer.querySelector('textarea')!.focus()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(document.activeElement).toBe(within(drawer).getByRole('button', { name: /nachtragen/ }))
   })
 })

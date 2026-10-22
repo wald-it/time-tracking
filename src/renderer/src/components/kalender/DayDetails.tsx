@@ -34,7 +34,8 @@ export function DayDetails({
   entries,
   clients,
   projects,
-  onEscape
+  onEscape,
+  onBusyChange
 }: {
   /** ISO date YYYY-MM-DD (LOCAL) of the day shown. */
   dateISO: string
@@ -49,6 +50,12 @@ export function DayDetails({
   projects: Project[] | null
   /** Escape with nothing left to cancel here. The drawer passes `onClose`. */
   onEscape?: () => void
+  /**
+   * Whether an edit or backfill form is open. The calendar holds back the
+   * panel/drawer switch while it is: the form keeps its field values itself,
+   * so remounting it in the other container would drop the input.
+   */
+  onBusyChange?: (busy: boolean) => void
 }): React.JSX.Element {
   const showToast = useToastStore((s) => s.show)
   const t = useT()
@@ -61,6 +68,41 @@ export function DayDetails({
   const [editingId, setEditingId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
+
+  const busy = editingId !== null || creating
+  const onBusyChangeRef = useRef(onBusyChange)
+  useEffect(() => {
+    onBusyChangeRef.current = onBusyChange
+  })
+  useEffect(() => {
+    onBusyChangeRef.current?.(busy)
+  }, [busy])
+  // Unmounted (other day selected, drawer closed): nothing is open any more.
+  useEffect(() => () => onBusyChangeRef.current?.(false), [])
+
+  // A closed form takes the focused field with it. Inside the modal drawer that
+  // would leave focus on <body>, outside the dialog; hand it back to what opened
+  // the form (the entry's edit key, else the backfill key). Focus that already
+  // moved elsewhere is left alone.
+  const lastForm = useRef<{ editingId: number | null; creating: boolean }>({
+    editingId: null,
+    creating: false
+  })
+  useEffect(() => {
+    const prev = lastForm.current
+    lastForm.current = { editingId, creating }
+    const closedEdit = prev.editingId !== null && editingId === null
+    const closedBackfill = prev.creating && !creating
+    if (!closedEdit && !closedBackfill) return
+    const active = document.activeElement
+    if (active && active !== document.body) return
+    const section = sectionRef.current
+    const target =
+      (closedEdit
+        ? section?.querySelector<HTMLElement>(`[data-edit-for="${prev.editingId}"]`)
+        : null) ?? section?.querySelector<HTMLElement>('[data-add-entry]')
+    target?.focus()
+  }, [editingId, creating])
 
   // Latest values for the Escape handler, so the listener is registered once.
   const escapeState = useRef({ editingId, creating, deleteCandidate, onEscape })
@@ -298,6 +340,7 @@ export function DayDetails({
                   <button
                     type="button"
                     onClick={() => setEditingId(e.id)}
+                    data-edit-for={e.id}
                     className={ICON_BUTTON}
                     aria-label={t('common.edit')}
                     title={t('common.edit')}
@@ -338,6 +381,7 @@ export function DayDetails({
         <button
           type="button"
           onClick={() => setCreating(true)}
+          data-add-entry
           disabled={clients.length === 0}
           className="key-hover mt-[6px] flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-4 text-[13px] font-semibold text-[var(--ink)] shadow-[inset_0_-2px_0_var(--key-edge)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
         >

@@ -12,6 +12,8 @@ interface Props {
   clients: Client[]
   /** null while not loaded: the details then show no amount. */
   projects: Project[] | null
+  /** An edit or backfill form is open (see `DayDetails`). */
+  onBusyChange?: (busy: boolean) => void
   onClose: () => void
 }
 
@@ -32,6 +34,7 @@ export function CalendarDrawer({
   entries,
   clients,
   projects,
+  onBusyChange,
   onClose
 }: Props): React.ReactElement | null {
   const t = useT()
@@ -82,6 +85,7 @@ export function CalendarDrawer({
             entries={entries}
             clients={clients}
             projects={projects}
+            onBusyChange={onBusyChange}
             onEscape={onClose}
           />
         </div>

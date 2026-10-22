@@ -16,12 +16,15 @@ export function DayPanel({
   dateISO,
   entries,
   clients,
-  projects
+  projects,
+  onBusyChange
 }: {
   dateISO: string
   entries: Entry[]
   clients: Client[]
   projects: Project[] | null
+  /** An edit or backfill form is open (see `DayDetails`). */
+  onBusyChange?: (busy: boolean) => void
 }): React.JSX.Element {
   return (
     <DayDetails
@@ -30,6 +33,7 @@ export function DayPanel({
       entries={entries}
       clients={clients}
       projects={projects}
+      onBusyChange={onBusyChange}
     />
   )
 }

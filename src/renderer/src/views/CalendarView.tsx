@@ -103,12 +103,29 @@ export default function CalendarView(): React.JSX.Element {
   // The overlay drawer is only the narrow-width fallback; at wide widths it
   // never opens (the aside panel shows the selected day instead).
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // An open edit or backfill form holds back the switch between panel and
+  // drawer (owner decision, PR 3): the form keeps its field values itself, and
+  // moving it to the other container would remount it and drop the input. The
+  // panel then stays (wrapped below the grid at narrow widths), the drawer
+  // stays open at wide widths; after save or cancel `wide` decides again.
+  const [panelBusy, setPanelBusy] = useState(false)
+  const [drawerBusy, setDrawerBusy] = useState(false)
+  const showPanel = wide || panelBusy
   // Widening to the panel layout closes the drawer for good; otherwise it would
   // reappear by itself when the window narrows again.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reacts to an external signal (window width via matchMedia); no render-time equivalent
-    if (wide) setDrawerOpen(false)
-  }, [wide])
+    if (wide && !drawerBusy) setDrawerOpen(false)
+  }, [wide, drawerBusy])
+  const panelRef = useRef<HTMLDivElement>(null)
+  // The kept panel wraps below the grid when the window narrows: bring the
+  // open form back into view.
+  useEffect(() => {
+    if (wide || !panelBusy) return
+    const panel = panelRef.current
+    const target = panel?.querySelector('form') ?? panel
+    target?.scrollIntoView?.({ block: 'nearest' })
+  }, [wide, panelBusy])
   const [focusDay, setFocusDay] = useState<Date>(() => new Date())
   const [importOpen, setImportOpen] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -410,13 +427,16 @@ export default function CalendarView(): React.JSX.Element {
         {/* min-w-0: a flex item's automatic minimum is its min-content width;
             one long description would otherwise push the aside below the grid. */}
         <aside className="flex min-w-0 flex-col gap-9" style={{ flex: '1 1 300px' }}>
-          {wide && (
-            <DayPanel
-              dateISO={selectedKey}
-              entries={selectedEntries}
-              clients={clients}
-              projects={loadedProjects}
-            />
+          {showPanel && (
+            <div ref={panelRef}>
+              <DayPanel
+                dateISO={selectedKey}
+                entries={selectedEntries}
+                clients={clients}
+                projects={loadedProjects}
+                onBusyChange={setPanelBusy}
+              />
+            </div>
           )}
           <ClientBreakdown
             entries={entries}
@@ -429,11 +449,12 @@ export default function CalendarView(): React.JSX.Element {
       </div>
 
       <CalendarDrawer
-        open={!wide && drawerOpen}
+        open={drawerOpen && (!wide || drawerBusy)}
         dateISO={selectedKey}
         entries={selectedEntries}
         clients={clients}
         projects={loadedProjects}
+        onBusyChange={setDrawerBusy}
         onClose={() => setDrawerOpen(false)}
       />
 
