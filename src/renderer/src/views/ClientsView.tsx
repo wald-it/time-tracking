@@ -690,7 +690,11 @@ function ProjectItem({
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const dotColor = p.color || (clientColor ? shiftColor(clientColor) : '')
   const rateLabel =
-    p.rate_cent !== null ? formatRateInput(p.rate_cent) + ' €/h' : t('projects.inheritedRate')
+    p.rate_cent === null
+      ? t('projects.inheritedRate')
+      : p.rate_cent === 0
+        ? t('projects.goodwillRate')
+        : formatRateInput(p.rate_cent) + ' €/h'
 
   const statsLabel = (() => {
     const count = p.entry_count ?? 0
@@ -1303,7 +1307,9 @@ function ProjectFormModal({
         setRateError(t('projects.form.rateNegative'))
         return
       }
-      rate_cent = parsed === 0 ? null : parsed
+      // An entered 0 is goodwill work billed at 0 €; only an empty field
+      // inherits the client rate.
+      rate_cent = parsed
     }
     let budget_minutes: number | null = null
     if (budgetInput.trim() !== '') {

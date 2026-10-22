@@ -505,7 +505,10 @@ function dayRevenueCent(
       e.project_id != null ? projects.find((p) => p.id === e.project_id)?.rate_cent : null
     const rate = effectiveRateCent(projectRate, clientRate)
     if (rate <= 0) continue
-    sum += feeCent(billedMinutes(entryDurationSeconds(e) * 1000, roundStep), rate)
+    // Milliseconds, not entryDurationSeconds: the invoice ceils the exact span.
+    const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : Date.now()
+    const rawMs = Math.max(0, stop - new Date(e.started_at).getTime())
+    sum += feeCent(billedMinutes(rawMs, roundStep), rate)
   }
   return sum
 }

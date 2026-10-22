@@ -11,6 +11,12 @@ All notable changes to TimeTrack are documented here.
 
 - **The calendar shows each day's billable revenue** — A day with rated, billable time now shows its amount under the hour total ("250,00 €"); days without a rate show nothing, so nothing changes for anyone who never set one. The amount is computed per entry exactly like the PDF invoice: non-billable entries stay out (#104), minutes are rounded up to the configured step, and a project rate wins over the client rate (#120). Both rules now live in one place that the PDF uses as well, so the calendar and the invoice cannot drift apart.
 
+### Changed
+
+- **One revenue rule everywhere, and a project rate of 0 means goodwill** — Revenue was computed three ways: the PDF invoice per entry with minutes rounded up, analytics and the MCP server in SQL to the second with cents rounded only on the total, and the start-timer dialog with yet another reading of the project rate. They now all bill like the invoice; analytics and MCP use an SQL twin of the shared rule, and a test runs both over the same entries so they cannot drift apart again.
+
+  A project's rate now means what it says: left empty, the project inherits the client rate; set to 0, the time is billed at 0 € (goodwill) and shows as "0,00 €" on the invoice. Before, the project form silently turned an entered 0 into "empty", so goodwill work was billed at the full client rate. The project list labels such a project "0 €/h (Kulanz)".
+
 ### Fixed
 
 - **An MCP preview now says that nothing was written** — A write tool called with `preview: true` returned the planned change as plain JSON, which looked exactly like a success. The server even advised clients to preview first, but never to execute afterwards, so an assistant could stop after the preview and report an entry that TimeTrack never showed. Preview replies now carry a `hinweis` that nothing was created and that the same call without `preview` executes it; the server instructions and the `preview` parameter of all four write tools say the same.
@@ -18,6 +24,8 @@ All notable changes to TimeTrack are documented here.
 - **Re-running a release no longer demotes a complete release to a prerelease (#234)** — On a re-run for an existing tag, the prerelease mark was decided from that run's build jobs alone. If one installer job failed in the re-run, the release was marked as a prerelease and its notes gained a "missing" notice, although the installers and update feeds from the first run were still attached — and electron-updater ignores prereleases, so a valid version was withdrawn from stable updates. A re-run now decides from the assets attached to the release after its upload: a release whose installers and `latest.yml` / `latest-mac.yml` are all present stays a normal release, and a gap that is still open keeps it a prerelease.
 
 - **The release smoke test no longer touches the user's database** — `--smoke-test` opened the database in the default userData, migrated it, and deleted the client with id 9999 after seeding its own. On a machine with real data that would delete a real client carrying that id; and since smoke mode skips the single-instance lock, it could do so next to a running TimeTrack. Smoke mode now moves userData to a fresh temp directory before the app is ready, refuses to open a database if the resolved location is still the default one, and removes the temp directory afterwards (on Windows through a detached cleaner once the process has exited, because Chromium holds its profile files until then).
+
+- **The 12-month revenue trend counted non-billable time** — the trend line in Analytics summed revenue over all entries, unlike the month tile next to it (#104). It now counts billable entries only.
 
 ## [1.20.0] — 2026-09-25
 

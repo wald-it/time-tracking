@@ -13,6 +13,7 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
+import { feeCentSql } from '../shared/currency'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
 import type { PrivacyConfig } from './privacy'
@@ -586,7 +587,8 @@ export function getAnalytics(
     roundStep > 0
       ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
       : RAW_SEC
-  const REVENUE = `(COALESCE(p.rate_cent, c.rate_cent, 0) * ${ENTRY_SEC} / 3600.0)`
+  // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
+  const REVENUE = feeCentSql(roundStep)
   const monthKey = `${year}-${String(month).padStart(2, '0')}`
 
   const totals = db

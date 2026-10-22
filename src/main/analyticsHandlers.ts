@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { IpcResult, MonthQuery, AnalyticsSummary } from '../shared/types'
+import { feeCentSql } from '../shared/currency'
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -74,6 +75,8 @@ export function buildAnalyticsSummary(
         roundStep > 0
           ? `(((${RAW_SEC} + 59) / 60 + ${roundStep} - 1) / ${roundStep} * ${roundStep} * 60)`
           : RAW_SEC
+      // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
+      const FEE_CENT = feeCentSql(roundStep)
 
       // ── 1. Month stats ─────────────────────────────────────────────
       type MonthRow = {
@@ -93,11 +96,7 @@ export function buildAnalyticsSummary(
             ELSE 0 END
           ), 0) AS billable_sec,
           COALESCE(SUM(
-            CASE WHEN e.billable = 1 THEN
-              COALESCE(p.rate_cent, c.rate_cent, 0)
-              * ${ENTRY_SEC}
-              / 3600.0
-            ELSE 0 END
+            CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS revenue_cent
         FROM entries e
         JOIN clients c ON c.id = e.client_id
@@ -149,11 +148,7 @@ export function buildAnalyticsSummary(
             ${ENTRY_SEC}
           ), 0) AS h,
           COALESCE(SUM(
-            CASE WHEN e.billable = 1 THEN
-              COALESCE(p.rate_cent, c.rate_cent, 0)
-              * ${ENTRY_SEC}
-              / 3600.0
-            ELSE 0 END
+            CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS rev
         FROM entries e
         JOIN clients c ON c.id = e.client_id
@@ -237,9 +232,7 @@ export function buildAnalyticsSummary(
             ${ENTRY_SEC}
           ), 0) AS h,
           COALESCE(SUM(
-            COALESCE(p.rate_cent, c.rate_cent, 0)
-            * ${ENTRY_SEC}
-            / 3600.0
+            CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS r
         FROM entries e
         JOIN clients c ON c.id = e.client_id

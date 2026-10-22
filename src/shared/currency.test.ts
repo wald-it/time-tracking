@@ -116,12 +116,14 @@ describe('billedMinutes', () => {
 })
 
 describe('effectiveRateCent', () => {
-  it('prefers a positive project rate', () => {
+  it('uses a project rate of its own', () => {
     expect(effectiveRateCent(15000, 10000)).toBe(15000)
   })
-  it('falls back to the client rate for null, undefined or 0', () => {
+  it('inherits the client rate when the project has none', () => {
     expect(effectiveRateCent(null, 10000)).toBe(10000)
     expect(effectiveRateCent(undefined, 10000)).toBe(10000)
-    expect(effectiveRateCent(0, 10000)).toBe(10000)
+  })
+  it('keeps a deliberate project rate of 0 (goodwill), never the client rate', () => {
+    expect(effectiveRateCent(0, 10000)).toBe(0)
   })
 })
