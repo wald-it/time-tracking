@@ -40,8 +40,9 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* Key hover (HANDOFF §2.4): an outline instead of a colour change. */
-.key-hover:hover {
+/* Key hover (HANDOFF §2.4): an outline instead of a colour change. Not while
+   the key has keyboard focus — the 2px focus ring must stay visible. */
+.key-hover:hover:not(:focus-visible) {
   outline: 1px solid var(--ink3);
   outline-offset: 2px;
 }
