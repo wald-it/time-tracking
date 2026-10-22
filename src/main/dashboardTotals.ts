@@ -9,6 +9,7 @@
  * is then true by construction instead of by assertion.
  */
 import type Database from 'better-sqlite3'
+import type { Entry } from '../shared/types'
 import {
   parseWeekStart,
   weekStartModifiers,
@@ -94,4 +95,54 @@ export function readTotals(db: Db): DayWeekTotals {
     today_seconds: Math.max(0, Math.floor(today.seconds ?? 0)),
     week_seconds: Math.max(0, Math.floor(week.seconds ?? 0))
   }
+}
+
+/**
+ * The week total split by day, in `week_start` order (7 values) — the
+ * WeekMeter on "Heute". Same window and same running-entry rule as
+ * `readTotals`, so `days[today] === today_seconds` and the slots sum to
+ * `week_seconds`: a running entry always sits in today's slot, even when it
+ * started before midnight or before the week began.
+ */
+export function readWeekDaySeconds(db: Db): number[] {
+  const ws = weekStartExpr(db)
+  const rows = db
+    .prepare(
+      `SELECT CASE
+                WHEN stopped_at IS NULL
+                  THEN CAST(julianday(DATE('now', 'localtime')) - julianday(${ws}) AS INTEGER)
+                ELSE CAST(julianday(DATE(started_at, 'localtime')) - julianday(${ws}) AS INTEGER)
+              END AS idx,
+              SUM(${SECONDS}) AS seconds
+         FROM entries
+        WHERE deleted_at IS NULL
+          AND (DATE(started_at, 'localtime') >= ${ws}
+               OR stopped_at IS NULL)
+        GROUP BY idx`
+    )
+    .all() as Array<{ idx: number; seconds: number }>
+
+  const days = [0, 0, 0, 0, 0, 0, 0]
+  for (const r of rows) {
+    if (r.idx >= 0 && r.idx < 7) days[r.idx] = Math.max(0, Math.floor(r.seconds ?? 0))
+  }
+  return days
+}
+
+/**
+ * Every entry of today, newest first — the DayScale and the entry table on
+ * "Heute" (B5). Same window as `today_seconds`: started today (local) or still
+ * running. `recentEntries` (the last five overall) is a different list and
+ * keeps its meaning.
+ */
+export function readTodayEntries(db: Db): Entry[] {
+  return db
+    .prepare(
+      `SELECT * FROM entries
+        WHERE deleted_at IS NULL
+          AND (DATE(started_at, 'localtime') = DATE('now', 'localtime')
+               OR stopped_at IS NULL)
+        ORDER BY started_at DESC`
+    )
+    .all() as Entry[]
 }

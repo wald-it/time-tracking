@@ -10,7 +10,13 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
-import { readRoundMinutes, readTotals, readWeekStart } from './dashboardTotals'
+import {
+  readRoundMinutes,
+  readTodayEntries,
+  readTotals,
+  readWeekDaySeconds,
+  readWeekStart
+} from './dashboardTotals'
 import { weekStartModifiers } from '../shared/weekStart'
 import { getDashboard, type SqliteDb } from '../mcp/queries'
 
@@ -235,4 +241,150 @@ describe('readTotals', () => {
       expect(mine.week_seconds).toBe(theirs.week_seconds)
     })
   }
+})
+
+/**
+ * The WeekMeter on "Heute" (Messinstrument, HANDOFF §3.7/§4.1) splits the week
+ * total by day. It must be the SAME week as `readTotals`, split — not a second
+ * definition that drifts: today's slot equals `today_seconds`, the slots sum
+ * to `week_seconds`, under both week-start settings, including a timer that
+ * runs across midnight (it belongs to today, as in `readTotals`).
+ */
+describe('readWeekDaySeconds', () => {
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    db.pragma('foreign_keys = ON')
+    applyMigrations(db)
+    db.prepare(
+      `INSERT INTO clients (id, name, color, active, rate_cent) VALUES (1,'Acme','#111',1,0)`
+    ).run()
+  })
+
+  function weekStartDay(week: 'monday' | 'sunday'): string {
+    return (
+      db.prepare(`SELECT DATE('now','localtime',${weekStartModifiers(week)}) AS d`).get() as {
+        d: string
+      }
+    ).d
+  }
+
+  function todayIndex(week: 'monday' | 'sunday'): number {
+    return (
+      db
+        .prepare(`SELECT CAST(julianday(DATE('now','localtime')) - julianday(?) AS INTEGER) AS i`)
+        .get(weekStartDay(week)) as { i: number }
+    ).i
+  }
+
+  function setWeek(week: 'monday' | 'sunday'): void {
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('week_start', ?)`).run(week)
+  }
+
+  it('is seven zeros on an empty database', () => {
+    expect(readWeekDaySeconds(db)).toEqual([0, 0, 0, 0, 0, 0, 0])
+  })
+
+  for (const week of ['monday', 'sunday'] as const) {
+    it(`today's slot is today_seconds and the slots sum to week_seconds — ${week}`, () => {
+      setWeek(week)
+      addClosed(db, daysAgoAt10(0).toISOString(), 45)
+      addClosed(db, daysAgoAt10(2).toISOString(), 90)
+      addClosed(db, daysAgoAt10(5).toISOString(), 75)
+      addClosed(db, daysAgoAt10(20).toISOString(), 30)
+
+      const days = readWeekDaySeconds(db)
+      const totals = readTotals(db)
+      expect(days).toHaveLength(7)
+      expect(days[todayIndex(week)]).toBe(totals.today_seconds)
+      expect(days.reduce((a, b) => a + b, 0)).toBe(totals.week_seconds)
+      // Nothing after today: the future slots stay empty.
+      for (let i = todayIndex(week) + 1; i < 7; i++) expect(days[i]).toBe(0)
+    })
+
+    it(`an entry on the first day of the week lands in slot 0, the day before nowhere — ${week}`, () => {
+      setWeek(week)
+      const start = weekStartDay(week)
+      const before = (db.prepare(`SELECT DATE(?, '-1 day') AS d`).get(start) as { d: string }).d
+      addClosed(db, atLocalNoon(start), 30)
+      addClosed(db, atLocalNoon(before), 60)
+
+      const days = readWeekDaySeconds(db)
+      expect(days[0]).toBe(30 * 60)
+      expect(days.reduce((a, b) => a + b, 0)).toBe(30 * 60)
+    })
+  }
+
+  it('puts a timer running since yesterday evening into today, like readTotals', () => {
+    const yesterdayEvening = daysAgoAt10(1)
+    yesterdayEvening.setHours(22, 0, 0, 0)
+    db.prepare(
+      `INSERT INTO entries (client_id, description, started_at, billable)
+       VALUES (1, 'overnight', ?, 1)`
+    ).run(yesterdayEvening.toISOString())
+
+    const days = readWeekDaySeconds(db)
+    const totals = readTotals(db)
+    // A running entry is measured against 'now' inside SQLite, so the two
+    // reads may be one second apart.
+    expect(Math.abs(days[todayIndex('monday')] - totals.today_seconds)).toBeLessThanOrEqual(1)
+    expect(Math.abs(days.reduce((a, b) => a + b, 0) - totals.week_seconds)).toBeLessThanOrEqual(1)
+  })
+
+  it('ignores deleted entries', () => {
+    db.prepare(
+      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable, deleted_at)
+       VALUES (1, 'trash', ?, ?, 1, ?)`
+    ).run(iso(-7_200_000), iso(-3_600_000), iso(0))
+    expect(readWeekDaySeconds(db)).toEqual([0, 0, 0, 0, 0, 0, 0])
+  })
+})
+
+/**
+ * "Heute" lists ALL of today's entries (B5, HANDOFF §4.1) — the DayScale and
+ * the entry table need them with start and end. `recentEntries` (last five
+ * overall) keeps its meaning; this is a separate list with the same window as
+ * today's total.
+ */
+describe('readTodayEntries', () => {
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    db.pragma('foreign_keys = ON')
+    applyMigrations(db)
+    db.prepare(
+      `INSERT INTO clients (id, name, color, active, rate_cent) VALUES (1,'Acme','#111',1,0)`
+    ).run()
+  })
+
+  it('returns every entry of today, newest first — more than five', () => {
+    const base = daysAgoAt10(0)
+    for (let i = 0; i < 7; i++) {
+      addClosed(db, new Date(base.getTime() - i * 20 * 60_000).toISOString(), 10)
+    }
+    const list = readTodayEntries(db)
+    expect(list).toHaveLength(7)
+    const starts = list.map((e) => Date.parse(e.started_at))
+    expect([...starts].sort((a, b) => b - a)).toEqual(starts)
+  })
+
+  it('includes a timer running since yesterday, excludes yesterday and deleted entries', () => {
+    addClosed(db, daysAgoAt10(0).toISOString(), 30)
+    addClosed(db, daysAgoAt10(1).toISOString(), 30)
+    const yesterdayEvening = daysAgoAt10(1)
+    yesterdayEvening.setHours(22, 0, 0, 0)
+    db.prepare(
+      `INSERT INTO entries (client_id, description, started_at, billable)
+       VALUES (1, 'overnight', ?, 1)`
+    ).run(yesterdayEvening.toISOString())
+    db.prepare(
+      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable, deleted_at)
+       VALUES (1, 'trash', ?, ?, 1, ?)`
+    ).run(iso(-7_200_000), iso(-3_600_000), iso(0))
+
+    const list = readTodayEntries(db)
+    expect(list.map((e) => e.description).sort()).toEqual(['overnight', 'x'])
+  })
 })

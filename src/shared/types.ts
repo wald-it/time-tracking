@@ -341,7 +341,15 @@ export type UpdateStatus =
 export interface DashboardSummary {
   todaySeconds: number
   weekSeconds: number
+  /**
+   * The week split by day, 7 values in `week_start` order (Messinstrument
+   * WeekMeter). Today's slot equals `todaySeconds`, the sum `weekSeconds`.
+   */
+  weekDaySeconds: number[]
+  /** Last five entries overall, newest first. */
   recentEntries: Entry[]
+  /** Every entry of today (started today or still running), newest first. */
+  todayEntries: Entry[]
   topClients30d: Array<{
     client_id: number
     name: string
