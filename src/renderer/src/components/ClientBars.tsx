@@ -19,6 +19,7 @@ export function ClientBars({ clients }: ClientBarsProps): React.JSX.Element {
   const rest = clients.slice(MAX_CLIENT_BARS)
 
   const restH = rest.reduce((s, r) => s + r.h, 0)
+  const restB = rest.reduce((s, r) => s + r.b, 0)
   const restRev = rest.reduce((s, r) => s + r.rev, 0)
 
   const items: AnalyticsSummary['byClient'] =
@@ -30,6 +31,7 @@ export function ClientBars({ clients }: ClientBarsProps): React.JSX.Element {
             name: t('analytics.clients.other'),
             color: 'var(--text3)',
             h: restH,
+            b: restB,
             rev: restRev,
             rest: true
           }

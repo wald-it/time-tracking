@@ -30,6 +30,9 @@ const DE_MONTH_SHORT = [
   'Dez'
 ]
 
+/** The weekday average covers this many completed days, ending yesterday. */
+export const WEEKDAY_SPAN_DAYS = 90
+
 /**
  * B2 switch (HANDOFF §6): while the selected month is the current one, the
  * previous-month figures cover only its first `daysElapsed` days, so a
@@ -154,6 +157,7 @@ export function buildAnalyticsSummary(
         name: string
         color: string
         h: number
+        b: number
         rev: number
       }
 
@@ -165,6 +169,7 @@ export function buildAnalyticsSummary(
           COALESCE(SUM(
             ${ENTRY_SEC}
           ), 0) AS h,
+          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${ENTRY_SEC} ELSE 0 END), 0) AS b,
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS rev
@@ -182,6 +187,7 @@ export function buildAnalyticsSummary(
         name: r.name,
         color: r.color,
         h: Math.round(r.h ?? 0),
+        b: Math.round(r.b ?? 0),
         rev: Math.round(r.rev ?? 0)
       }))
 
@@ -292,24 +298,43 @@ export function buildAnalyticsSummary(
         })
       }
 
-      // ── 5. Weekday average (last 90 days global) ───────────────────
-      type WeekdayRow = { dow: number; avg_sec: number }
+      // ── 5. Weekday average (last 90 completed days, global) ────────
+      // Per calendar day (owner decision 2026-10-22): for each weekday, the
+      // worked seconds of the last 90 completed days (up to yesterday — today
+      // is still running) divided by how often that weekday occurs in the span
+      // (12 or 13). Days off count, so the seven values add up to the average
+      // week. It used to be AVG over entries — the average entry length.
+      type WeekdayRow = { dow: number; sec: number }
+      const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+      const spanStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - WEEKDAY_SPAN_DAYS
+      )
+      const ymd = (d: Date): string =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
       const weekdaySql = `
         SELECT
           CAST(strftime('%w', e.started_at, 'localtime') AS INTEGER) AS dow,
-          AVG(
-            ${ENTRY_SEC}
-          ) AS avg_sec
+          COALESCE(SUM(${ENTRY_SEC}), 0) AS sec
         FROM entries e
         WHERE e.deleted_at IS NULL
           AND e.stopped_at IS NOT NULL
-          AND DATE(e.started_at, 'localtime') >= DATE('now', 'localtime', '-90 days')
-        GROUP BY dow
-        ORDER BY dow ASC`
+          AND DATE(e.started_at, 'localtime') BETWEEN ? AND ?
+        GROUP BY dow`
 
-      const weekdayRows = db.prepare(weekdaySql).all() as WeekdayRow[]
-      const dowMap = new Map(weekdayRows.map((r) => [r.dow, r.avg_sec]))
+      const weekdayRows = db.prepare(weekdaySql).all(ymd(spanStart), ymd(yesterday)) as WeekdayRow[]
+      const secByDow = new Map(weekdayRows.map((r) => [r.dow, r.sec]))
+      // How often each weekday (0 = Sunday … 6) occurs in the span.
+      const daysByDow = new Map<number, number>()
+      for (let i = 1; i <= WEEKDAY_SPAN_DAYS; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+        daysByDow.set(d.getDay(), (daysByDow.get(d.getDay()) ?? 0) + 1)
+      }
+      const dowMap = new Map(
+        [...secByDow].map(([dow, sec]) => [dow, sec / (daysByDow.get(dow) ?? 1)])
+      )
 
       // Map SQLite %w (0=Sun,1=Mon…6=Sat) to Mon-Sun order
       const DOW_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']

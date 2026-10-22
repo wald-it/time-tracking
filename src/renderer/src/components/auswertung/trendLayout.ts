@@ -182,6 +182,9 @@ export function runningIndex(mode: 'week' | 'month', anchor: YearMonth, nowMs: n
     const count = 12
     return now.getFullYear() === anchor.year && now.getMonth() + 1 === anchor.month ? count - 1 : -1
   }
+  // A past month's last week can contain today, but its data stops at that
+  // month's end and will never grow: not running (review, PR 4).
+  if (now.getFullYear() !== anchor.year || now.getMonth() + 1 !== anchor.month) return -1
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   return weekMondays(anchor).findIndex((mon) => {
     const start = mon.getTime()
@@ -213,12 +216,5 @@ export function formatQuota(billableSec: number, totalSec: number): string {
   return `${Math.round((Math.max(0, billableSec) / totalSec) * 100)} %`
 }
 
-/** Revenue in whole euros with a thousands dot: "13.078 €" (cents rounded half-up). */
-export function formatEurWhole(cents: number): string {
-  const euros = Math.round((Number.isFinite(cents) ? cents : 0) / 100)
-  const sign = euros < 0 ? '-' : ''
-  const digits = Math.abs(euros)
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${sign}${digits} €`
-}
+/** Shared with the KPI row and the client list (shared/currency). */
+export { formatEurWhole } from '../../../../shared/currency'

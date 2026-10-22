@@ -814,6 +814,7 @@ export const de = {
   'analytics.legend.revenue': 'Umsatz',
   'analytics.axis.kiloEuro': 'T€',
   'analytics.column.aria': '{period}: {hours} h, davon {billable} h abrechenbar, Umsatz {revenue}',
+  'analytics.column.ariaNoRevenue': '{period}: {hours} h, davon {billable} h abrechenbar',
 
   // ── Settings — Tags (v1.12 #107) ──────────────────────────────────────────
   'settings.nav.tags': 'Tags',

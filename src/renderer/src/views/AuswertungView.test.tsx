@@ -47,9 +47,23 @@ function summary(over: Partial<AnalyticsSummary['month']> = {}): AnalyticsSummar
     weeks: [],
     months: [],
     byClient: [
-      { client_id: 1, name: 'Nordlicht', color: '#1f4fa8', h: 59 * H + 7 * 60, rev: 679_800 },
-      { client_id: 2, name: 'Brandt', color: '#d4a017', h: 26 * H + 55 * 60, rev: 336_400 },
-      { client_id: 3, name: 'wald-it intern', color: '#e07aa8', h: 13 * H + 30 * 60, rev: 0 }
+      {
+        client_id: 1,
+        name: 'Nordlicht',
+        color: '#1f4fa8',
+        h: 59 * H + 7 * 60,
+        b: 59 * H + 7 * 60,
+        rev: 679_800
+      },
+      {
+        client_id: 2,
+        name: 'Brandt',
+        color: '#d4a017',
+        h: 26 * H + 55 * 60,
+        b: 26 * H + 55 * 60,
+        rev: 336_400
+      },
+      { client_id: 3, name: 'wald-it intern', color: '#e07aa8', h: 13 * H + 30 * 60, b: 0, rev: 0 }
     ],
     weekday: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((d, i) => ({
       d,
@@ -152,6 +166,14 @@ describe('AuswertungView — KPI row', () => {
     expect(hours.querySelector('svg')).toBeNull()
   })
 
+  it('ABRECHENBAR shows no change when the comparison period is empty', async () => {
+    await setup({ data: () => summary({ hoursPrev: 0, billablePrev: 0 }) })
+    const billable = kpi('Abrechenbar')
+    expect(within(billable).getByText('vs. 0 %')).toBeTruthy()
+    expect(within(billable).queryByText(/pp/)).toBeNull()
+    expect(billable.querySelector('svg')).toBeNull()
+  })
+
   it('shows no percentage when the comparison period is empty', async () => {
     await setup({ data: () => summary({ hoursPrev: 0 }) })
     const hours = kpi('Stunden')
@@ -168,6 +190,14 @@ describe('AuswertungView — KPI row', () => {
 })
 
 describe('AuswertungView — header (B2)', () => {
+  it('"Stand" is the day the data was computed for, not the running clock', async () => {
+    // The clock already says 23 October; the loaded data is for the 22nd.
+    await setup({ now: new Date(2026, 9, 23, 0, 5), data: () => summary({ daysElapsed: 22 }) })
+    await waitFor(() =>
+      expect(screen.getByTestId('compare-note').textContent).toContain('Stand Do 22.10.')
+    )
+  })
+
   it('current month: same-period note and next month disabled', async () => {
     await setup()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Oktober 2026')
@@ -193,6 +223,38 @@ describe('AuswertungView — header (B2)', () => {
 })
 
 describe('AuswertungView — Stunden nach Kunde', () => {
+  it('a goodwill client shows "—", only a client without billable time "intern"', async () => {
+    const base = summary()
+    await setup({
+      data: () => ({
+        ...base,
+        byClient: [
+          ...base.byClient,
+          // billable time on a goodwill project: no revenue, but not internal
+          { client_id: 7, name: 'Kulanz GmbH', color: '#444', h: 2 * H, b: 2 * H, rev: 0 }
+        ]
+      })
+    })
+    const row = (name: string): HTMLElement =>
+      screen.getByText(name).closest('[data-client-row]') as HTMLElement
+    expect(within(row('Kulanz GmbH')).getByText('—')).toBeTruthy()
+    expect(within(row('Kulanz GmbH')).queryByText('intern')).toBeNull()
+    expect(within(row('wald-it intern')).getByText('intern')).toBeTruthy()
+  })
+
+  it('without any rate there is no revenue column and no revenue band', async () => {
+    const base = summary()
+    await setup({
+      data: () => ({ ...base, month: { ...base.month, hasRateConfigured: false } })
+    })
+    expect(screen.getByText('laufender Monat')).toBeTruthy()
+    expect(screen.queryByText('Umsatz rechts', { exact: false })).toBeNull()
+    expect(screen.queryByText('6.798 €')).toBeNull()
+    expect(screen.queryByText('intern')).toBeNull()
+    expect(screen.queryByTestId('revenue-line')).toBeNull()
+    expect(screen.queryAllByTestId('revenue-dot')).toHaveLength(0)
+  })
+
   it('rows with raw hours, revenue in whole euros, "intern" without revenue', async () => {
     await setup()
     expect(screen.getByText('laufender Monat · Umsatz rechts')).toBeTruthy()
@@ -212,9 +274,9 @@ describe('AuswertungView — Stunden nach Kunde', () => {
         ...base,
         byClient: [
           ...base.byClient,
-          { client_id: 4, name: 'Vier', color: '#111', h: 5 * H, rev: 50_000 },
-          { client_id: 5, name: 'Fünf', color: '#222', h: 2 * H, rev: 20_000 },
-          { client_id: 6, name: 'Sechs', color: '#333', h: 1 * H, rev: 10_000 }
+          { client_id: 4, name: 'Vier', color: '#111', h: 5 * H, b: 5 * H, rev: 50_000 },
+          { client_id: 5, name: 'Fünf', color: '#222', h: 2 * H, b: 2 * H, rev: 20_000 },
+          { client_id: 6, name: 'Sechs', color: '#333', h: 1 * H, b: 1 * H, rev: 10_000 }
         ]
       })
     })

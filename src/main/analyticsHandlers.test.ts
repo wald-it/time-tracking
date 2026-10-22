@@ -496,6 +496,27 @@ describe('buildAnalyticsSummary — worked time, rounded sub-line, fair comparis
     expect(s.month.hoursPrev).toBe(3600)
   })
 
+  it('the weekday average is per calendar day over the last 90 completed days', () => {
+    // now = Thu 22 Oct; the span is Fri 24 Jul … Wed 21 Oct: 12 Thursdays,
+    // 13 of every other weekday.
+    for (let i = 0; i < 4; i++) add('2026-10-19', '09:00', '11:00') // Mon: 4 × 2 h
+    add('2026-10-17', '09:00', '14:00') // Sat: 5 h
+    add('2026-10-15', '09:00', '15:00') // Thu: 6 h
+    add('2026-10-22', '09:00', '12:00') // today: not counted
+    const s = summary(2026, 10, OCT_22)
+    const byDay = new Map(s.weekday.map((w) => [w.d, w.h]))
+    expect(byDay.get('Mo')).toBe(Math.round((8 * 3600) / 13))
+    expect(byDay.get('Sa')).toBe(Math.round((5 * 3600) / 13))
+    expect(byDay.get('Do')).toBe((6 * 3600) / 12)
+    expect(byDay.get('Di')).toBe(0)
+  })
+
+  it('byClient carries the billable seconds next to all seconds', () => {
+    add('2026-09-10', '10:00', '11:00')
+    add('2026-09-11', '10:00', '10:30', 0)
+    expect(summary(2026, 9, OCT_22).byClient[0]).toMatchObject({ h: 5400, b: 3600 })
+  })
+
   it('the compared span is clamped to the length of the previous month', () => {
     add('2026-02-27', '10:00', '11:00')
     const s = summary(2026, 3, new Date(2026, 2, 31, 12))

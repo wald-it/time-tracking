@@ -804,6 +804,7 @@ export const en: Record<TranslationKey, string> = {
   'analytics.legend.revenue': 'Revenue',
   'analytics.axis.kiloEuro': 'k€',
   'analytics.column.aria': '{period}: {hours} h, {billable} h billable, revenue {revenue}',
+  'analytics.column.ariaNoRevenue': '{period}: {hours} h, {billable} h billable',
 
   // ── Settings — Tags (v1.12 #107) ──────────────────────────────────────────
   'settings.nav.tags': 'Tags',

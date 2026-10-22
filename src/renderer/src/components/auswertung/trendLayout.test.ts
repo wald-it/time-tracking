@@ -143,6 +143,13 @@ describe('runningIndex', () => {
     expect(runningIndex('week', oct, local(2026, 10, 26, 0))).toBe(11)
     expect(runningIndex('week', oct, local(2026, 12, 1))).toBe(-1)
   })
+
+  it('marks no week of a past month, even when its last column holds today', () => {
+    // Fri 2 Oct: the last column of September (KW40) contains today, but its
+    // data stops on 30 September and will not grow.
+    const sep = { year: 2026, month: 9 }
+    expect(runningIndex('week', sep, local(2026, 10, 2))).toBe(-1)
+  })
 })
 
 describe('moveIndex', () => {

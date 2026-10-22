@@ -5,7 +5,8 @@ import { useRounding } from '../contexts/RoundingContext'
 import type { AnalyticsSummary } from '../../../shared/types'
 import type { Locale } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/locales/de'
-import { formatEur, formatHoursMinutes } from '../../../shared/currency'
+import { formatEurWholeDigits, formatSecondsHm } from '../../../shared/currency'
+import { localDateKey } from '../../../shared/dateRanges'
 import { KpiReadout, type KpiDelta } from '../components/auswertung/KpiReadout'
 import { ClientHours } from '../components/auswertung/ClientHours'
 import { WeekdayAverage } from '../components/auswertung/WeekdayAverage'
@@ -44,15 +45,8 @@ const MONTHS_KEYS: TranslationKey[] = [
 
 // ── Formatters ─────────────────────────────────────────────────────────────
 
-/** Worked seconds → "H:MM" (completed duration, §2.2). */
-function hm(sec: number): string {
-  return formatHoursMinutes(Math.max(0, Math.floor(sec / 60)))
-}
-
-/** Cents → "13.078" (whole euros, no sign, no unit). */
-function wholeEurDigits(cents: number): string {
-  return formatEur(Math.round(cents / 100) * 100).replace(/,00 €$/, '')
-}
+const hm = formatSecondsHm
+const wholeEurDigits = formatEurWholeDigits
 
 /** Relative change in percent, rounded to the one decimal it is shown with. */
 function pctChange(cur: number, prev: number): number | null {
@@ -132,10 +126,13 @@ export default function AuswertungView(): React.JSX.Element {
     }
   }, [])
 
+  // Reload when the local day changes too, not only on month navigation:
+  // the same-period comparison (B2) moves with today (Codex + review, PR 4).
+  const dayKey = localDateKey(now)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — asynchroner Datenabruf pro Monatsnavigation
     void load(year, month)
-  }, [year, month, load])
+  }, [year, month, load, dayKey])
 
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
 
@@ -219,7 +216,9 @@ export default function AuswertungView(): React.JSX.Element {
               prevPeriodDays: data.month.prevPeriodDays,
               year,
               month,
-              now,
+              // "Stand …" is the day the data was computed for, so the note and
+              // the compared span never come from two different days.
+              now: new Date(year, month - 1, data.month.daysElapsed),
               locale,
               monthNames,
               t
@@ -323,12 +322,17 @@ export default function AuswertungView(): React.JSX.Element {
               legend={t('analytics.month.billable')}
               ratio={data.month.billable}
               ratioPrev={data.month.billablePrev}
+              hasBase={data.month.hoursPrev > 0}
             />
           </section>
 
           {/* Middle row (§4.3.3) */}
           <div className="flex flex-wrap items-start gap-12">
-            <ClientHours clients={data.byClient} isCurrentMonth={isCurrentMonth} />
+            <ClientHours
+              clients={data.byClient}
+              isCurrentMonth={isCurrentMonth}
+              showRevenue={data.month.hasRateConfigured}
+            />
             <WeekdayAverage weekday={data.weekday} />
           </div>
 
@@ -340,6 +344,7 @@ export default function AuswertungView(): React.JSX.Element {
               mode={chartMode}
               onModeChange={setChartMode}
               anchor={{ year, month }}
+              showRevenue={data.month.hasRateConfigured}
             />
           ) : (
             <TrendChart
@@ -359,11 +364,14 @@ export default function AuswertungView(): React.JSX.Element {
 function BillableKpi({
   legend,
   ratio,
-  ratioPrev
+  ratioPrev,
+  hasBase
 }: {
   legend: string
   ratio: number
   ratioPrev: number
+  /** false when the comparison period has no time: no change, like pctDelta. */
+  hasBase: boolean
 }): React.JSX.Element {
   const pct = Math.round(ratio * 100)
   const pctPrev = Math.round(ratioPrev * 100)
@@ -374,11 +382,15 @@ function BillableKpi({
       legend={legend}
       value={String(pct)}
       unit="%"
-      delta={{
-        direction: direction(pp),
-        change: `${sign(pp)}${Math.abs(pp)} pp`,
-        vs: `${pctPrev} %`
-      }}
+      delta={
+        hasBase
+          ? {
+              direction: direction(pp),
+              change: `${sign(pp)}${Math.abs(pp)} pp`,
+              vs: `${pctPrev} %`
+            }
+          : { direction: 'flat', change: null, vs: `${pctPrev} %` }
+      }
     />
   )
 }

@@ -1,5 +1,5 @@
 import type { AnalyticsSummary } from '../../../../shared/types'
-import { formatHoursMinutes } from '../../../../shared/currency'
+import { formatSecondsHm } from '../../../../shared/currency'
 import { useT } from '../../contexts/I18nContext'
 
 /** Plot height of the 0–10 h axis in px (the row is 180 px; 20 px headroom for labels). */
@@ -7,9 +7,7 @@ const PLOT_PX = 160
 const AXIS_MAX_H = 10
 const AXIS_STEPS = [0, 2, 4, 6, 8, 10]
 
-function hm(sec: number): string {
-  return formatHoursMinutes(Math.max(0, Math.floor(sec / 60)))
-}
+const hm = formatSecondsHm
 
 /**
  * Wochentag-Schnitt (HANDOFF §3.15): axis 0–10 h every 2 h, 7 bars at 56 %
@@ -64,7 +62,7 @@ export function WeekdayAverage({
           {AXIS_STEPS.filter((v) => v > 0).map((v) => (
             <span
               key={v}
-              className="absolute right-0 left-0 h-px bg-[var(--line)]"
+              className="absolute right-0 left-0 h-0 border-t border-dotted border-[var(--line)]"
               style={{ bottom: (v / AXIS_MAX_H) * PLOT_PX }}
             />
           ))}

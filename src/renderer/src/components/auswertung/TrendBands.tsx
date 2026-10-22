@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { AnalyticsSummary } from '../../../../shared/types'
 import type { TranslationKey } from '../../../../shared/locales/de'
-import { formatHoursMinutes } from '../../../../shared/currency'
+import { formatSecondsHm } from '../../../../shared/currency'
 import { useT } from '../../contexts/I18nContext'
 import { useNow } from '../../contexts/NowContext'
 import { SegmentedControl } from './SegmentedControl'
@@ -41,12 +41,12 @@ const MONTH_KEYS: TranslationKey[] = [
 ]
 
 const ROWS = `${HOURS_BAND_PX}px ${BAND_GAP_PX}px ${REVENUE_BAND_PX}px ${LABEL_ROW_PX}px`
+/** Without a rate there is no revenue band; its rows collapse. */
+const ROWS_HOURS_ONLY = `${HOURS_BAND_PX}px 0px 0px ${LABEL_ROW_PX}px`
 const HATCH = 'repeating-linear-gradient(135deg, var(--tick) 0 2px, transparent 2px 4px)'
 const LEGEND = 'font-semibold uppercase tracking-[0.14em] [font-stretch:118%]'
 
-/** Minutes for `H:MM` (completed durations, §2.2). */
-const hm = (seconds: number): string =>
-  formatHoursMinutes(Math.max(0, Math.floor((Number.isFinite(seconds) ? seconds : 0) / 60)))
+const hm = formatSecondsHm
 
 interface Column {
   lbl: string
@@ -74,13 +74,19 @@ export function TrendBands({
   months,
   mode,
   onModeChange,
-  anchor
+  anchor,
+  showRevenue = true
 }: {
   weeks: AnalyticsSummary['weeks']
   months: AnalyticsSummary['months']
   mode: 'week' | 'month'
   onModeChange: (mode: 'week' | 'month') => void
   anchor: YearMonth
+  /**
+   * false when no client or project has a rate: no revenue band, axis,
+   * legend entry, cursor cell or revenue in the column labels.
+   */
+  showRevenue?: boolean
 }): React.JSX.Element {
   const t = useT()
   const nowMs = useNow()
@@ -119,6 +125,7 @@ export function TrendBands({
         : Math.max(0, last)
   const point = (index: number): void => setCursor({ key: resetKey, index })
 
+  const rows = showRevenue ? ROWS : ROWS_HOURS_ONLY
   const hAxis = hoursAxis(Math.max(0, ...columns.map((c) => c.total)), mode)
   const rAxis = revenueAxis(Math.max(0, ...columns.map((c) => c.r)), mode)
   const current = columns[active]
@@ -172,7 +179,9 @@ export function TrendBands({
               key: 'analytics.cursor.quota' as const,
               value: formatQuota(current.b, current.total)
             },
-            { key: 'analytics.cursor.revenue' as const, value: formatEurWhole(current.r) }
+            ...(showRevenue
+              ? [{ key: 'analytics.cursor.revenue' as const, value: formatEurWhole(current.r) }]
+              : [])
           ].map((cell) => (
             <div
               key={cell.key}
@@ -198,10 +207,12 @@ export function TrendBands({
           />
           {t('analytics.legend.nonBillable')}
         </span>
-        <span className="flex items-center gap-2">
-          <span aria-hidden="true" className="h-0.5 w-4 bg-[var(--ink2)]" />
-          {t('analytics.legend.revenue')}
-        </span>
+        {showRevenue && (
+          <span className="flex items-center gap-2">
+            <span aria-hidden="true" className="h-0.5 w-4 bg-[var(--ink2)]" />
+            {t('analytics.legend.revenue')}
+          </span>
+        )}
       </div>
 
       {/* min-width: 12 columns of ≥ 44 px plus the axis, so the chart fits the
@@ -211,38 +222,42 @@ export function TrendBands({
           className="grid min-w-[600px]"
           style={{
             gridTemplateColumns: `56px repeat(${Math.max(1, columns.length)}, minmax(0, 1fr))`,
-            gridTemplateRows: ROWS
+            gridTemplateRows: rows
           }}
         >
           <AxisLabels row={1} ticks={hAxis.ticks} top={hAxis.top} bandPx={HOURS_BAND_PX} unit="h" />
           <Gridlines row={1} ticks={hAxis.ticks} top={hAxis.top} bandPx={HOURS_BAND_PX} />
-          <AxisLabels
-            row={3}
-            ticks={rAxis.ticks}
-            top={rAxis.top}
-            bandPx={REVENUE_BAND_PX}
-            unit={t('analytics.axis.kiloEuro')}
-          />
-          <Gridlines row={3} ticks={rAxis.ticks} top={rAxis.top} bandPx={REVENUE_BAND_PX}>
-            <svg
-              viewBox={`0 0 ${columns.length * 10} ${REVENUE_BAND_PX}`}
-              preserveAspectRatio="none"
-              className="absolute inset-0 h-full w-full overflow-visible"
-            >
-              <polyline
-                data-testid="revenue-line"
-                points={revenuePoints(
-                  columns.map((c) => c.r),
-                  rAxis.top
-                )}
-                fill="none"
-                style={{ stroke: 'var(--ink2)' }}
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </Gridlines>
+          {showRevenue && (
+            <AxisLabels
+              row={3}
+              ticks={rAxis.ticks}
+              top={rAxis.top}
+              bandPx={REVENUE_BAND_PX}
+              unit={t('analytics.axis.kiloEuro')}
+            />
+          )}
+          {showRevenue && (
+            <Gridlines row={3} ticks={rAxis.ticks} top={rAxis.top} bandPx={REVENUE_BAND_PX}>
+              <svg
+                viewBox={`0 0 ${columns.length * 10} ${REVENUE_BAND_PX}`}
+                preserveAspectRatio="none"
+                className="absolute inset-0 h-full w-full overflow-visible"
+              >
+                <polyline
+                  data-testid="revenue-line"
+                  points={revenuePoints(
+                    columns.map((c) => c.r),
+                    rAxis.top
+                  )}
+                  fill="none"
+                  style={{ stroke: 'var(--ink2)' }}
+                  strokeWidth={2}
+                  vectorEffect="non-scaling-stroke"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </Gridlines>
+          )}
 
           {columns.map((c, i) => {
             const isActive = i === active
@@ -255,12 +270,20 @@ export function TrendBands({
                 }}
                 type="button"
                 tabIndex={isActive ? 0 : -1}
-                aria-label={t('analytics.column.aria', {
-                  period: c.period,
-                  hours: hm(c.total),
-                  billable: hm(c.b),
-                  revenue: formatEurWhole(c.r)
-                })}
+                aria-label={
+                  showRevenue
+                    ? t('analytics.column.aria', {
+                        period: c.period,
+                        hours: hm(c.total),
+                        billable: hm(c.b),
+                        revenue: formatEurWhole(c.r)
+                      })
+                    : t('analytics.column.ariaNoRevenue', {
+                        period: c.period,
+                        hours: hm(c.total),
+                        billable: hm(c.b)
+                      })
+                }
                 aria-current={isActive ? 'true' : undefined}
                 onMouseEnter={() => point(i)}
                 onFocus={() => point(i)}
@@ -270,7 +293,7 @@ export function TrendBands({
                 style={{
                   gridColumn: i + 2,
                   gridRow: '1 / 5',
-                  gridTemplateRows: ROWS,
+                  gridTemplateRows: rows,
                   background: isActive
                     ? 'color-mix(in srgb, var(--ink) 6%, transparent)'
                     : 'transparent'
@@ -298,15 +321,17 @@ export function TrendBands({
                 </span>
                 <span />
                 <span className="relative">
-                  <span
-                    data-testid="revenue-dot"
-                    className="absolute left-1/2 h-2.5 w-2.5 rounded-full bg-[var(--ink2)]"
-                    style={{
-                      bottom: revenuePx(c.r, rAxis.top),
-                      transform: 'translate(-50%, 50%)',
-                      boxShadow: '0 0 0 2px var(--bg)'
-                    }}
-                  />
+                  {showRevenue && (
+                    <span
+                      data-testid="revenue-dot"
+                      className="absolute left-1/2 h-2.5 w-2.5 rounded-full bg-[var(--ink2)]"
+                      style={{
+                        bottom: revenuePx(c.r, rAxis.top),
+                        transform: 'translate(-50%, 50%)',
+                        boxShadow: '0 0 0 2px var(--bg)'
+                      }}
+                    />
+                  )}
                 </span>
                 <span className="flex flex-col items-center justify-end pb-0.5">
                   <span

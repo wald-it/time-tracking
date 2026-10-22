@@ -426,11 +426,17 @@ export interface AnalyticsSummary {
     color: string
     /** worked seconds */
     h: number
+    /** worked seconds of billable entries; 0 ⇒ the client shows "intern" */
+    b: number
     /** cents */
     rev: number
     rest?: boolean
   }>
-  /** Average worked seconds per day by weekday (Mo–So), last 90 days global. */
+  /**
+   * Average worked seconds per calendar day by weekday (Mo–So) over the last
+   * 90 completed days, global: the weekday's total divided by how often it
+   * occurs in the span (days off count). The seven add up to the average week.
+   */
   weekday: Array<{ d: string; h: number }>
 }
 

@@ -1,5 +1,5 @@
 import type { AnalyticsSummary } from '../../../../shared/types'
-import { formatEur, formatHoursMinutes } from '../../../../shared/currency'
+import { formatEurWhole, formatSecondsHm } from '../../../../shared/currency'
 import { useT } from '../../contexts/I18nContext'
 
 /** Clients shown by name; the rest is summed into one "Sonstige" row (as before). */
@@ -7,15 +7,7 @@ export const MAX_CLIENT_ROWS = 4
 
 type ClientRow = AnalyticsSummary['byClient'][number]
 
-/** Worked seconds → "H:MM" (completed duration, §2.2). */
-function hm(sec: number): string {
-  return formatHoursMinutes(Math.max(0, Math.floor(sec / 60)))
-}
-
-/** Cents → "6.798 €" (whole euros, like the KPI). */
-function wholeEur(cents: number): string {
-  return formatEur(Math.round(cents / 100) * 100).replace(/,00 €$/, ' €')
-}
+const hm = formatSecondsHm
 
 /**
  * Stunden nach Kunde (HANDOFF §3.15): section rule + legend, period meta on
@@ -30,10 +22,13 @@ function wholeEur(cents: number): string {
  */
 export function ClientHours({
   clients,
-  isCurrentMonth
+  isCurrentMonth,
+  showRevenue
 }: {
   clients: AnalyticsSummary['byClient']
   isCurrentMonth: boolean
+  /** false when no client or project has a rate: no revenue column at all. */
+  showRevenue: boolean
 }): React.JSX.Element {
   const t = useT()
 
@@ -48,6 +43,7 @@ export function ClientHours({
             name: t('analytics.clients.other'),
             color: 'var(--tick)',
             h: rest.reduce((s, r) => s + r.h, 0),
+            b: rest.reduce((s, r) => s + r.b, 0),
             rev: rest.reduce((s, r) => s + r.rev, 0),
             rest: true
           }
@@ -75,7 +71,7 @@ export function ClientHours({
           {t('analytics.clients.title')}
         </h2>
         <span className="text-xs text-[var(--ink3)]">
-          {period} · {t('analytics.clients.revenueRight')}
+          {showRevenue ? `${period} · ${t('analytics.clients.revenueRight')}` : period}
         </span>
       </div>
 
@@ -84,7 +80,12 @@ export function ClientHours({
       ) : (
         <div
           className="mt-[22px] grid items-center"
-          style={{ gridTemplateColumns: '170px minmax(0, 1fr) 72px 88px', columnGap: 0 }}
+          style={{
+            gridTemplateColumns: showRevenue
+              ? '170px minmax(0, 1fr) 72px 88px'
+              : '170px minmax(0, 1fr) 72px',
+            columnGap: 0
+          }}
         >
           <span />
           <div
@@ -114,13 +115,22 @@ export function ClientHours({
           <span className="text-right text-[10px] font-semibold tracking-[0.14em] text-[var(--ink3)] uppercase [font-stretch:118%]">
             {t('analytics.clients.colHours')}
           </span>
-          <span className="text-right text-[10px] font-semibold tracking-[0.14em] text-[var(--ink3)] uppercase [font-stretch:118%]">
-            {t('analytics.clients.colRevenue')}
-          </span>
+          {showRevenue && (
+            <span className="text-right text-[10px] font-semibold tracking-[0.14em] text-[var(--ink3)] uppercase [font-stretch:118%]">
+              {t('analytics.clients.colRevenue')}
+            </span>
+          )}
 
           {rows.map((r) => {
-            const internal = r.rev <= 0
-            const revenue = internal ? t('analytics.clients.internal') : wholeEur(r.rev)
+            // "intern" means no billable time at all (owner 2026-10-22). Billable
+            // time without revenue — no rate at that client, or goodwill — is "—".
+            const internal = r.b <= 0
+            const dim = internal || r.rev <= 0
+            const revenue = internal
+              ? t('analytics.clients.internal')
+              : r.rev > 0
+                ? formatEurWhole(r.rev)
+                : '—'
             const width = axisMax > 0 ? Math.min(100, (r.h / 3600 / axisMax) * 100) : 0
             const cell = 'flex min-h-[52px] items-center border-b border-[var(--line)]'
             return (
@@ -140,7 +150,11 @@ export function ClientHours({
                 </div>
                 <div className={`${cell} px-4`}>
                   <div
-                    title={`${r.name}: ${hm(r.h)} h · ${revenue}`}
+                    title={
+                      showRevenue
+                        ? `${r.name}: ${hm(r.h)} h · ${revenue}`
+                        : `${r.name}: ${hm(r.h)} h`
+                    }
                     className="h-[18px]"
                     style={{ width: `${width}%`, background: r.color }}
                   />
@@ -148,12 +162,14 @@ export function ClientHours({
                 <span className={`${cell} font-num justify-end text-sm text-[var(--ink)]`}>
                   {hm(r.h)}
                 </span>
-                <span
-                  className={`${cell} font-num justify-end text-[13px]`}
-                  style={{ color: internal ? 'var(--ink3)' : 'var(--ink)' }}
-                >
-                  {revenue}
-                </span>
+                {showRevenue && (
+                  <span
+                    className={`${cell} font-num justify-end text-[13px]`}
+                    style={{ color: dim ? 'var(--ink3)' : 'var(--ink)' }}
+                  >
+                    {revenue}
+                  </span>
+                )}
               </div>
             )
           })}
