@@ -13,6 +13,8 @@ All notable changes to TimeTrack are documented here.
 
 - **Re-running a release no longer demotes a complete release to a prerelease (#234)** — On a re-run for an existing tag, the prerelease mark was decided from that run's build jobs alone. If one installer job failed in the re-run, the release was marked as a prerelease and its notes gained a "missing" notice, although the installers and update feeds from the first run were still attached — and electron-updater ignores prereleases, so a valid version was withdrawn from stable updates. A re-run now decides from the assets attached to the release after its upload: a release whose installers and `latest.yml` / `latest-mac.yml` are all present stays a normal release, and a gap that is still open keeps it a prerelease.
 
+- **The release smoke test no longer touches the user's database** — `--smoke-test` opened the database in the default userData, migrated it, and deleted the client with id 9999 after seeding its own. On a machine with real data that would delete a real client carrying that id; and since smoke mode skips the single-instance lock, it could do so next to a running TimeTrack. Smoke mode now moves userData to a fresh temp directory before the app is ready, refuses to open a database if the resolved location is still the default one, and removes the temp directory afterwards (on Windows through a detached cleaner once the process has exited, because Chromium holds its profile files until then).
+
 ## [1.20.0] — 2026-09-25
 
 ### Changed
