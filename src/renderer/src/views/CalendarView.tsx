@@ -140,10 +140,10 @@ export default function CalendarView(): React.JSX.Element {
       })
       if (cancelled) return
       if (res.ok) {
-        // getByMonth still cuts the month at UTC boundaries, so it can return
-        // entries of the neighbouring LOCAL month; none of them has a cell, so
-        // none may count in week/month totals, the range or the breakdown.
-        // (The query itself moves to local boundaries in its own fix PR.)
+        // getByMonth cuts at local month boundaries (`shared/dateRanges`). The
+        // filter stays as a guard: an entry outside the shown month has no
+        // cell, so it must never count in week/month totals, the range or the
+        // breakdown.
         setLoaded({
           month: monthKey(cursor),
           entries: res.data.filter((e) => isSameMonth(new Date(e.started_at), cursor))

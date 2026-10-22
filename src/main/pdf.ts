@@ -19,6 +19,7 @@ import {
   formatEur,
   formatHoursMinutes
 } from '../shared/currency'
+import { localDayRange } from '../shared/dateRanges'
 import { deserializeTags } from '../shared/tags'
 import type { Client, Entry, Settings } from '../shared/types'
 
@@ -260,10 +261,9 @@ export function buildPdfPayload(
   ) as unknown as Settings
 
   const roundStep = parseInt(settings.pdf_round_minutes ?? '0', 10) || 0
-  // Range is inclusive; `to` is the start of the day AFTER `toIso` so we
-  // capture entries that ended at 23:59 of the last day.
-  const fromTs = `${req.fromIso}T00:00:00.000Z`
-  const toExclusive = endOfDayIso(req.toIso)
+  // Local days, both inclusive: an entry started at 00:30 on the first day or
+  // 23:30 on the last belongs to the attachment, wherever the user lives.
+  const { start: fromTs, end: toExclusive } = localDayRange(req.fromIso, req.toIso)
 
   const entries = db
     .prepare(
@@ -469,13 +469,6 @@ export function buildPdfPayload(
     effectiveContactPerson,
     hideFeeColumn: req.hideFeeColumn === true
   }
-}
-
-/** Inclusive end-of-day → exclusive next-day-start in ISO. */
-function endOfDayIso(dayIso: string): string {
-  const d = new Date(`${dayIso}T00:00:00.000Z`)
-  d.setUTCDate(d.getUTCDate() + 1)
-  return d.toISOString()
 }
 
 /**

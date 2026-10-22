@@ -131,10 +131,10 @@ describe('durationSeconds (pure)', () => {
 })
 
 describe('monthWindow', () => {
-  it('builds a UTC month window with December rollover', () => {
+  it('builds the LOCAL month window with December rollover', () => {
     expect(monthWindow(2026, 12)).toEqual({
-      start: '2026-12-01T00:00:00.000Z',
-      end: '2027-01-01T00:00:00.000Z'
+      start: new Date(2026, 11, 1).toISOString(),
+      end: new Date(2027, 0, 1).toISOString()
     })
   })
 })

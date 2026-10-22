@@ -59,3 +59,52 @@ export const QUICK_RANGE_LABELS: Record<QuickRangeKind, string> = {
   thisMonth: 'Dieser Monat',
   lastMonth: 'Letzter Monat'
 }
+
+/**
+ * Local calendar boundaries as UTC instants, for comparing against the stored
+ * `started_at` (ISO, UTC, `…Z`). A day or month means the user's local one:
+ * an entry started at 00:30 on the 1st belongs to that month, one at 23:30 on
+ * the last day too — cutting at 00:00Z instead moves both into the neighbour
+ * month for anyone east or west of UTC. Built with `new Date(y, m - 1, d)`,
+ * so a day with a clock change keeps its real length (23 or 25 h).
+ *
+ * Every range is half-open: `started_at >= start AND started_at < end`.
+ */
+export interface InstantRange {
+  start: string
+  end: string
+}
+
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+
+function parseDay(dayIso: string): [number, number, number] {
+  const m = DAY_RE.exec(dayIso)
+  if (!m) throw new Error(`Ungültiges Datum: ${dayIso}`)
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const probe = new Date(y, mo - 1, d)
+  if (probe.getFullYear() !== y || probe.getMonth() !== mo - 1 || probe.getDate() !== d) {
+    throw new Error(`Ungültiges Datum: ${dayIso}`)
+  }
+  return [y, mo, d]
+}
+
+/** Local days `fromDay` to `toDay`, both inclusive (`YYYY-MM-DD`). */
+export function localDayRange(fromDay: string, toDay: string): InstantRange {
+  const [fy, fm, fd] = parseDay(fromDay)
+  const [ty, tm, td] = parseDay(toDay)
+  return {
+    start: new Date(fy, fm - 1, fd).toISOString(),
+    end: new Date(ty, tm - 1, td + 1).toISOString()
+  }
+}
+
+/** The local calendar month `month` (1–12) of `year`. */
+export function localMonthRange(year: number, month: number): InstantRange {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    throw new Error(`Ungültiger Monat: ${year}-${month}`)
+  }
+  return {
+    start: new Date(year, month - 1, 1).toISOString(),
+    end: new Date(year, month, 1).toISOString()
+  }
+}
