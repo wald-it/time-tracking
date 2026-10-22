@@ -171,6 +171,7 @@ export const de = {
   'today.dialog.add': 'Eintrag nachtragen',
   'today.dialog.edit': 'Eintrag bearbeiten',
   'header.stopTimer': 'Timer stoppen',
+  'header.stopTimerFor': 'Timer stoppen – {client}',
   'today.display.running': 'Läuft · seit {time}',
   'today.display.ready': 'Bereit',
   'today.display.rounding': 'Takt {step} min · gerundet {total} h',
@@ -203,6 +204,14 @@ export const de = {
   'calendar.nav.today': 'Heute',
   'calendar.status.loading': 'Lade…',
   'calendar.status.error': 'Fehler beim Laden',
+  'calendar.legend': 'Kalender',
+  'calendar.monthTotal': 'Summe {month}',
+  'calendar.footnote': 'Skala je Tag {start}–{end} Uhr · schraffiert = läuft',
+  'calendar.cellAria': '{date}, {hours} Stunden',
+  'calendar.cellAriaEmpty': '{date}, keine Einträge',
+  'calendar.panel.legend': 'Ausgewählter Tag',
+  'calendar.panel.addFor': 'Eintrag für {date} nachtragen',
+  'calendar.breakdown.legend': '{month} nach Kunde',
   'calendar.header.week': 'KW',
   'calendar.days.mon': 'Mo',
   'calendar.days.tue': 'Di',
@@ -339,7 +348,6 @@ export const de = {
   'tags.removeAria': 'Tag {tag} entfernen',
 
   // ── CalendarDrawer ────────────────────────────────────────────────────────
-  'drawer.header.title': 'Einträge für {date}',
   'drawer.entries.one': '1 Eintrag',
   'drawer.entries.other': '{count} Einträge',
   'drawer.entries.filtered': '{filtered} von {total}',
@@ -347,7 +355,6 @@ export const de = {
   'drawer.filter.apply': 'Nach #{tag} filtern',
   'drawer.empty.noEntries': 'Kein Eintrag an diesem Tag.',
   'drawer.empty.noEntriesWithTag': 'Keine Einträge mit Tag #{tag}.',
-  'drawer.footer.addEntry': 'Eintrag für {date} hinzufügen',
   'drawer.aria': 'Einträge für {date}',
 
   // ── IdleModal ─────────────────────────────────────────────────────────────

@@ -171,6 +171,7 @@ export const en: Record<TranslationKey, string> = {
   'today.dialog.add': 'Add entry',
   'today.dialog.edit': 'Edit entry',
   'header.stopTimer': 'Stop timer',
+  'header.stopTimerFor': 'Stop timer – {client}',
   'today.display.running': 'Running · since {time}',
   'today.display.ready': 'Ready',
   'today.display.rounding': 'Step {step} min · rounded {total} h',
@@ -203,6 +204,14 @@ export const en: Record<TranslationKey, string> = {
   'calendar.nav.today': 'Today',
   'calendar.status.loading': 'Loading…',
   'calendar.status.error': 'Error loading',
+  'calendar.legend': 'Calendar',
+  'calendar.monthTotal': 'Total {month}',
+  'calendar.footnote': 'Scale per day {start}–{end} h · hatched = running',
+  'calendar.cellAria': '{date}, {hours} hours',
+  'calendar.cellAriaEmpty': '{date}, no entries',
+  'calendar.panel.legend': 'Selected day',
+  'calendar.panel.addFor': 'Add entry for {date}',
+  'calendar.breakdown.legend': '{month} by client',
   'calendar.header.week': 'Wk',
   'calendar.days.mon': 'Mon',
   'calendar.days.tue': 'Tue',
@@ -338,7 +347,6 @@ export const en: Record<TranslationKey, string> = {
   'tags.removeAria': 'Remove tag {tag}',
 
   // ── CalendarDrawer ────────────────────────────────────────────────────────
-  'drawer.header.title': 'Entries for {date}',
   'drawer.entries.one': '1 entry',
   'drawer.entries.other': '{count} entries',
   'drawer.entries.filtered': '{filtered} of {total}',
@@ -346,7 +354,6 @@ export const en: Record<TranslationKey, string> = {
   'drawer.filter.apply': 'Filter by #{tag}',
   'drawer.empty.noEntries': 'No entries on this day.',
   'drawer.empty.noEntriesWithTag': 'No entries with tag #{tag}.',
-  'drawer.footer.addEntry': 'Add entry for {date}',
   'drawer.aria': 'Entries for {date}',
 
   // ── IdleModal ─────────────────────────────────────────────────────────────
