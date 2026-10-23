@@ -25,6 +25,7 @@ import { handleIcalExport, type IcalRequest } from './icalExport'
 import { mergeExportHandler, mergeOnlyHandler, pdfInfoHandler } from './pdfMergeHandlers'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
+import { budgetUsedMinutesSql } from '../shared/currency'
 import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
@@ -379,6 +380,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     'projects:getAll',
     (_e, req?: { clientId?: number | null }): IpcResult<Project[]> => {
       try {
+        // Budget use counts like the invoice (#285), same step as the PDF.
+        const roundSetting = db
+          .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
+          .get() as { value: string } | undefined
+        const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,
@@ -388,12 +394,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
             SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
             FROM entries WHERE deleted_at IS NULL GROUP BY project_id
           ) ec ON ec.project_id = p.id
-          LEFT JOIN (
-            SELECT project_id, COALESCE(SUM(rounded_min), 0) AS used_minutes
-            FROM entries
-            WHERE deleted_at IS NULL AND stopped_at IS NOT NULL
-            GROUP BY project_id
-          ) bud ON bud.project_id = p.id`
+          LEFT JOIN (${budgetUsedMinutesSql(roundStep)}) bud ON bud.project_id = p.id`
         const order = `ORDER BY CASE WHEN p.status = 'active' THEN 0 WHEN p.status = 'paused' THEN 1 ELSE 2 END, p.name`
         let query: string
         let params: unknown[]

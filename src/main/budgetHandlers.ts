@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { BudgetStatus, IpcResult } from '../shared/types'
+import { budgetUsedMinutesSql } from '../shared/currency'
 
 export type { BudgetStatus }
 
@@ -15,8 +16,9 @@ function fail(error: unknown): IpcResult<never> {
  * Core budget-status computation — extracted so it can be tested without
  * Electron IPC.
  *
- * - `usedMinutes` counts only completed entries (stopped_at IS NOT NULL).
- *   The currently running entry is excluded; it hasn't been rounded yet.
+ * - `usedMinutes` is what the invoice bills for the project (#285): completed,
+ *   billable entries, each rounded with `pdf_round_minutes`. The currently
+ *   running entry is excluded; it hasn't been billed yet.
  * - When the project doesn't exist, returns `{ budgetMinutes: null, usedMinutes: 0 }`
  *   (silent fallback — suppresses any budget toast).
  */
@@ -34,19 +36,19 @@ export function buildBudgetStatus(
       return ok({ budgetMinutes: null, usedMinutes: 0 })
     }
 
+    // Same rounding step as the PDF pipeline.
+    const roundSetting = db
+      .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
+      .get() as { value: string } | undefined
+    const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
+
     const usedRow = db
-      .prepare(
-        `SELECT COALESCE(SUM(rounded_min), 0) AS used_minutes
-         FROM entries
-         WHERE project_id = ?
-           AND deleted_at IS NULL
-           AND stopped_at IS NOT NULL`
-      )
-      .get(projectId) as { used_minutes: number }
+      .prepare(`SELECT used_minutes FROM (${budgetUsedMinutesSql(roundStep)}) WHERE project_id = ?`)
+      .get(projectId) as { used_minutes: number } | undefined
 
     return ok({
       budgetMinutes: project.budget_minutes ?? null,
-      usedMinutes: usedRow.used_minutes
+      usedMinutes: usedRow?.used_minutes ?? 0
     })
   } catch (e) {
     return fail(e)

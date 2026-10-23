@@ -11,6 +11,10 @@ All notable changes to TimeTrack are documented here.
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
 
+### Changed
+
+- **Project budgets count like the invoice, including timer time** — Time recorded with the timer did not count toward a project's budget at all; only manual, edited and imported entries did. The budget now counts what the invoice bills: the project's billable entries, each rounded up with your rounding setting, like the PDF and the Auswertung. Non-billable entries no longer count. After the update, existing budget bars jump up once because the timer time is added, and the 80 % warning may appear sooner than before. The MCP field `used_minutes` follows the same rule ([#285](https://github.com/wald-it/time-tracking/issues/285)).
+
 ### Fixed
 
 - **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).

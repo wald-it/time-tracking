@@ -102,6 +102,21 @@ export function feeCentSql(step: number): string {
 }
 
 /**
+ * Budget consumption per project, one row per `project_id` with
+ * `used_minutes` (#285): what the invoice bills — completed, live, billable
+ * entries, each rounded by `billedMinutes` — over all time. Computed from the
+ * timestamps, not the stored `rounded_min`, which the timer never writes.
+ * Every budget reader (start toast, project list, MCP) uses this one query.
+ */
+export function budgetUsedMinutesSql(step: number): string {
+  return `SELECT e.project_id AS project_id,
+            COALESCE(SUM(${billedMinutesSql(step)}), 0) AS used_minutes
+          FROM entries e
+          WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL AND e.billable = 1
+          GROUP BY e.project_id`
+}
+
+/**
  * Format a minute count as `H:MM` (two-digit minutes). Used for entry rows
  * and totals in the PDF. Examples: 84 → "1:24", 600 → "10:00", 5 → "0:05".
  */
