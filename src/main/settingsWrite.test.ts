@@ -8,6 +8,7 @@ import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import type { IpcHooks } from './ipc'
+import type { HotkeyChange } from './hotkeySlot'
 import {
   RENDERER_WRITABLE_SETTINGS,
   readSettingSync,
@@ -22,20 +23,27 @@ beforeAll(async () => {
 let db: Database.Database
 let calls: string[]
 
-function hooks(): IpcHooks {
+/** `hotkey` is what the shortcut hooks answer: accepted unless said otherwise. */
+function hooks(hotkey: HotkeyChange = { ok: true }): IpcHooks {
   const record =
     (name: string) =>
     (...args: unknown[]): boolean => {
       calls.push(`${name}(${args.join(',')})`)
       return true
     }
+  const hotkeyHook =
+    (name: string) =>
+    (accelerator: string): HotkeyChange => {
+      calls.push(`${name}(${accelerator})`)
+      return hotkey
+    }
   return {
     refreshTrayClients: record('refreshTrayClients'),
-    setHotkey: record('setHotkey'),
+    setHotkey: hotkeyHook('setHotkey'),
     setAutoStart: record('setAutoStart'),
     setIdleThreshold: record('setIdleThreshold'),
     setMiniEnabled: record('setMiniEnabled'),
-    setMiniHotkey: record('setMiniHotkey'),
+    setMiniHotkey: hotkeyHook('setMiniHotkey'),
     setMcpWriteEnabled: record('setMcpWriteEnabled'),
     setControllerEnabled: record('setControllerEnabled'),
     pokePresence: record('pokePresence'),
@@ -69,6 +77,42 @@ describe('settings:set allow-list', () => {
     expect(res).toEqual({ ok: true, data: undefined })
     expect(stored('hotkey_toggle')).toBe('Alt+Shift+T')
     expect(calls).toEqual(['setHotkey(Alt+Shift+T)'])
+  })
+
+  // #292: refused by the shortcut hook, the stored hotkey stays what the OS
+  // still has registered.
+  it.each(['hotkey_toggle', 'mini_hotkey'])(
+    '%s refused by the OS: stored value unchanged, previous one kept',
+    (key) => {
+      db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(key, 'Alt+Shift+S')
+      const res = writeSettingFromRenderer(
+        db,
+        hooks({ ok: false, reason: 'refused', previousKept: true }),
+        key,
+        'Ctrl+Alt+Del'
+      )
+      expect(res).toEqual({
+        ok: false,
+        error: 'Hotkey "Ctrl+Alt+Del" konnte nicht registriert werden.'
+      })
+      expect(stored(key)).toBe('Alt+Shift+S')
+    }
+  )
+
+  it('refused, and the previous hotkey is lost as well: says both, stores nothing new', () => {
+    db.prepare("INSERT INTO settings (key, value) VALUES ('hotkey_toggle', 'Alt+Shift+S')").run()
+    const res = writeSettingFromRenderer(
+      db,
+      hooks({ ok: false, reason: 'refused', previousKept: false }),
+      'hotkey_toggle',
+      'Ctrl+Alt+Del'
+    )
+    expect(res).toEqual({
+      ok: false,
+      error:
+        'Hotkey "Ctrl+Alt+Del" konnte nicht registriert werden. Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
+    })
+    expect(stored('hotkey_toggle')).toBe('Alt+Shift+S')
   })
 
   it('refuses an unknown key and writes nothing', () => {

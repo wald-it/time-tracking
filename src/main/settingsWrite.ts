@@ -77,6 +77,19 @@ export function writeSettingFromRenderer(
   }
   if (typeof value !== 'string') return fail(`Ungültiger Wert für ${key}`)
   try {
+    // #292: a hotkey is stored only once it is registered, so the setting and
+    // the active shortcut agree; refused, the previous one stays in both.
+    if (key === 'hotkey_toggle' || key === 'mini_hotkey') {
+      const change = key === 'hotkey_toggle' ? hooks.setHotkey(value) : hooks.setMiniHotkey(value)
+      if (!change.ok) {
+        const lost = change.previousKept
+          ? ''
+          : ' Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
+        return fail(`Hotkey "${value}" konnte nicht registriert werden.${lost}`)
+      }
+      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
+      return ok(undefined)
+    }
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
     // Apply side-effects for known keys.
     if (key === 'idle_threshold_minutes') {
@@ -84,14 +97,8 @@ export function writeSettingFromRenderer(
       if (Number.isFinite(n)) hooks.setIdleThreshold(n)
     } else if (key === 'auto_start') {
       hooks.setAutoStart(value === '1')
-    } else if (key === 'hotkey_toggle') {
-      const okHotkey = hooks.setHotkey(value)
-      if (!okHotkey) return fail(`Hotkey "${value}" konnte nicht registriert werden`)
     } else if (key === 'mini_enabled') {
       hooks.setMiniEnabled(value === '1')
-    } else if (key === 'mini_hotkey') {
-      const okHotkey = hooks.setMiniHotkey(value)
-      if (!okHotkey) return fail(`Hotkey "${value}" konnte nicht registriert werden`)
     } else if (key === 'mcp_write_enabled') {
       hooks.setMcpWriteEnabled(value === '1')
     } else if (key === 'controller_enabled') {

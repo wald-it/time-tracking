@@ -53,6 +53,7 @@ import {
   type BridgeDeps
 } from './mcpBridge'
 import { initAutoUpdater } from './updater'
+import { changeHotkey, type HotkeyChange, type HotkeySlot } from './hotkeySlot'
 import { readRunning } from './mcpBridgeCore'
 import { reconcilePresence, type PresenceDeps } from './graphPresence'
 import { graphAccountDepsFor } from './graphHandlers'
@@ -169,8 +170,10 @@ if (isSecondInstance) {
 // ── Hotkey registration state ────────────────────────────────────
 // Tracked per-slot so `registerHotkey` and `registerMiniHotkey` can update
 // independently without clobbering each other (no more `unregisterAll`).
-let currentToggleHotkey = ''
-let currentMiniHotkey = ''
+const toggleSlot: HotkeySlot = { current: '' }
+const miniSlot: HotkeySlot = { current: '' }
+/** True while the Settings view captures a new hotkey (shortcuts paused). */
+let shortcutsSuspended = false
 
 // ── State for tray quick-start ──────────────────────────────────
 let cachedActiveClients: Client[] = []
@@ -267,26 +270,31 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   tray.setContextMenu(buildTrayMenu())
 }
 
-function registerHotkey(accelerator: string): boolean {
-  // Cross-slot collision check (v1.4 PR B). Without this, suspending
-  // shortcuts during capture would let the user silently steal the
-  // mini-widget's accelerator, since the OS-level register call would
-  // succeed while the other slot is paused.
-  if (accelerator && accelerator === currentMiniHotkey) {
-    console.warn(`[hotkey] ${accelerator} is already bound to mini_hotkey`)
-    return false
+const onToggleHotkey = (): void => {
+  mainWindow?.webContents.send('timer:hotkey-toggle')
+}
+
+/** Log a refused change; the slot itself is left as `changeHotkey` says. */
+function logHotkeyChange(tag: string, accelerator: string, change: HotkeyChange): HotkeyChange {
+  if (!change.ok) {
+    console.warn(
+      `[${tag}] ${accelerator} not registered (${change.reason}); ` +
+        (change.previousKept ? 'previous kept' : 'previous lost as well')
+    )
   }
-  if (currentToggleHotkey) {
-    globalShortcut.unregister(currentToggleHotkey)
-    currentToggleHotkey = ''
-  }
-  if (!accelerator) return false
-  const ok = globalShortcut.register(accelerator, () => {
-    mainWindow?.webContents.send('timer:hotkey-toggle')
-  })
-  if (ok) currentToggleHotkey = accelerator
-  else console.warn(`[hotkey] Could not register ${accelerator}`)
-  return ok
+  return change
+}
+
+function registerHotkey(accelerator: string): HotkeyChange {
+  return logHotkeyChange(
+    'hotkey',
+    accelerator,
+    changeHotkey(globalShortcut, toggleSlot, accelerator, {
+      other: miniSlot.current,
+      onPress: onToggleHotkey,
+      suspended: shortcutsSuspended
+    })
+  )
 }
 
 /**
@@ -294,22 +302,16 @@ function registerHotkey(accelerator: string): boolean {
  * enabled in Settings). Tracked separately from `hotkey_toggle` so changing
  * one doesn't clobber the other (we used to call `unregisterAll`).
  */
-function registerMiniHotkey(accelerator: string): boolean {
-  if (accelerator && accelerator === currentToggleHotkey) {
-    console.warn(`[mini-hotkey] ${accelerator} is already bound to hotkey_toggle`)
-    return false
-  }
-  if (currentMiniHotkey) {
-    globalShortcut.unregister(currentMiniHotkey)
-    currentMiniHotkey = ''
-  }
-  if (!accelerator) return false
-  const ok = globalShortcut.register(accelerator, () => {
-    toggleMini()
-  })
-  if (ok) currentMiniHotkey = accelerator
-  else console.warn(`[mini-hotkey] Could not register ${accelerator}`)
-  return ok
+function registerMiniHotkey(accelerator: string): HotkeyChange {
+  return logHotkeyChange(
+    'mini-hotkey',
+    accelerator,
+    changeHotkey(globalShortcut, miniSlot, accelerator, {
+      other: toggleSlot.current,
+      onPress: toggleMini,
+      suspended: shortcutsSuspended
+    })
+  )
 }
 
 /**
@@ -319,21 +321,15 @@ function registerMiniHotkey(accelerator: string): boolean {
  * Restored via {@link resumeGlobalShortcuts}.
  */
 function suspendGlobalShortcuts(): void {
-  if (currentToggleHotkey) globalShortcut.unregister(currentToggleHotkey)
-  if (currentMiniHotkey) globalShortcut.unregister(currentMiniHotkey)
+  shortcutsSuspended = true
+  if (toggleSlot.current) globalShortcut.unregister(toggleSlot.current)
+  if (miniSlot.current) globalShortcut.unregister(miniSlot.current)
 }
 
 function resumeGlobalShortcuts(): void {
-  if (currentToggleHotkey) {
-    globalShortcut.register(currentToggleHotkey, () => {
-      mainWindow?.webContents.send('timer:hotkey-toggle')
-    })
-  }
-  if (currentMiniHotkey) {
-    globalShortcut.register(currentMiniHotkey, () => {
-      toggleMini()
-    })
-  }
+  shortcutsSuspended = false
+  if (toggleSlot.current) globalShortcut.register(toggleSlot.current, onToggleHotkey)
+  if (miniSlot.current) globalShortcut.register(miniSlot.current, toggleMini)
 }
 
 function applyAutoStart(enabled: boolean): void {
@@ -367,7 +363,7 @@ function loadStartupSettings(): void {
     applyAutoStart(auto)
     // v1.4 PR B — mini-widget hotkey + restore visibility from last session.
     const miniHotkey = map.mini_hotkey ?? 'Alt+Shift+M'
-    const miniHotkeyOk = registerMiniHotkey(miniHotkey)
+    const miniHotkeyOk = registerMiniHotkey(miniHotkey).ok
     if (!miniHotkeyOk && map.mini_enabled === '1') {
       // Surface the conflict at startup so the user knows their hotkey
       // is silently dead. Non-blocking dialog — the app continues to work,
