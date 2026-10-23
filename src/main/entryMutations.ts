@@ -353,6 +353,23 @@ export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<En
     db.prepare(
       `UPDATE entries SET link_id = ? WHERE id = ? OR (link_id IS NOT NULL AND link_id = ?)`
     ).run(existingLinkId, row.id, row.link_id)
+    // And it takes the entry's new fields (not its own time), so a restored
+    // part is the same entry, not a half with other client or billing.
+    db.prepare(
+      `UPDATE entries
+          SET client_id = ?, project_id = ?, description = ?, tags = ?, reference = ?,
+              billable = ?, private_note = ?
+        WHERE link_id = ? AND deleted_at IS NOT NULL`
+    ).run(
+      row.client_id,
+      row.project_id,
+      row.description,
+      row.tags,
+      row.reference,
+      row.billable,
+      row.private_note,
+      existingLinkId
+    )
     return db.prepare(`SELECT * FROM entries WHERE id = ?`).get(row.id) as Entry
   })
   return ok(tx())

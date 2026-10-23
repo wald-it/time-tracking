@@ -354,4 +354,36 @@ describe('editing one half of a split entry (#311)', () => {
     ).toEqual({ ok: false, error: SPLIT_GAP_ERROR })
     expect(rows()).toEqual(before)
   })
+  it('a restored half carries the fields the entry got while it was in the trash', () => {
+    const [first, second] = rows()
+    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(local(12, 9), first.id)
+    const edited = updateManualEntry(db, {
+      id: second.id,
+      client_id: 2,
+      description: 'Umgebucht',
+      started_at: second.started_at,
+      stopped_at: second.stopped_at,
+      billable: 0,
+      tags: ',x,'
+    })
+    if (!edited.ok) throw new Error(edited.error)
+    db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(first.id)
+    const fields = db
+      .prepare(
+        `SELECT client_id, description, billable, tags, started_at FROM entries
+          WHERE deleted_at IS NULL ORDER BY started_at`
+      )
+      .all()
+    // Both halves are one entry again: same fields, the restored half keeps its time.
+    expect(fields).toEqual([
+      {
+        client_id: 2,
+        description: 'Umgebucht',
+        billable: 0,
+        tags: ',x,',
+        started_at: local(10, 20)
+      },
+      { client_id: 2, description: 'Umgebucht', billable: 0, tags: ',x,', started_at: local(11, 0) }
+    ])
+  })
 })
