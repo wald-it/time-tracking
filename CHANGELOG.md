@@ -7,21 +7,35 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Breaking for MCP clients and integrations
+
+If you call TimeTrack's MCP tools from your own scripts or agents, check this before updating.
+
+- **`list_projects` `used_minutes` counts like the invoice.** It now holds the billed minutes of the project's billable entries, rounded per entry with the app's rounding setting, and includes finished entries recorded with the timer (a running timer counts once it stops). Non-billable entries no longer count, and the stored `rounded_min` of an entry is no longer its basis. Details in the entry under Changed ([#285](https://github.com/wald-it/time-tracking/issues/285)).
+
 ### Added
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
+
+### Changed
+
+- **Project budgets count like the invoice, including timer time** — Time recorded with the timer did not count toward a project's budget unless the entry was edited later; manual, edited and imported entries counted, and so did old entries that a v1.2 data update had filled in. The budget now counts what the invoice bills: the project's billable entries, each rounded up with your rounding setting, like the PDF and the Auswertung. Non-billable entries no longer count. After the update, existing budget bars jump up once because the timer time is added, and the 80 % warning may appear sooner than before. The MCP field `used_minutes` follows the same rule ([#285](https://github.com/wald-it/time-tracking/issues/285)).
 
 ### Fixed
 
 - **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).
 - **The About dialog shows the app's actual licence** — Its licence text was a separate copy that named a different copyright holder than the `LICENSE` file. The dialog now takes the text from `LICENSE` when the app is built, so the two can no longer differ ([#276](https://github.com/wald-it/time-tracking/issues/276)).
+- **The app's file information names the copyright holder from the licence** — The copyright field of `TimeTrack.exe` on Windows and of the app's info on macOS named the publisher, wald-it. It now says "Copyright (c) 2026 Robin Wald", the same as `LICENSE` and the About dialog. The publisher stays wald-it.
+- **A failed update download shows as an error.** After a successful update check at start, TimeTrack ignored the next update error. If the download of a found update then failed, Settings → About → Updates showed "Ready" instead of the error. A check at start that fails, for example because the computer is offline, still stays quiet ([#284](https://github.com/wald-it/time-tracking/issues/284)).
 - **Smoke cleaner tests no longer time out under load** — The two tests of the smoke userData cleaner waited for Node's `exit` event of the processes they spawn. Under load, Windows can take many seconds to finish tearing down an exited process, and the event waits for that, so the tests ran into their 15 s timeout (4 of 10 runs on a busy machine). The cleaner now prints its outcome (`skipped`, `removed` or `failed`), and the tests wait for that line instead. The app starts the cleaner with its output discarded, so nothing changes there ([#264](https://github.com/wald-it/time-tracking/issues/264)).
 - **Editing an imported entry no longer brings the meeting back into the import** — An edit is saved by writing the entry anew, and that dropped its link to the calendar meeting it was imported from, so the next calendar import offered the same meeting again. It also reset the entry's creation time to the time of the edit. Both are now kept, in the app and for MCP `update_entry_fields`, including entries split at midnight ([#299](https://github.com/wald-it/time-tracking/issues/299)).
+- **PRIVACY.md now says what Teams presence sends.** It said nothing from your time entries goes to Microsoft. With **Show client name in the status** on, the Teams status message names the client and project of the running entry, and your colleagues see it. PRIVACY.md now describes the status message and the Busy status, what is never sent, when they are cleared and how long they can stay up when clearing fails or the app quits, and that `main.log` records the status message ([#287](https://github.com/wald-it/time-tracking/issues/287)).
 - **A start or switch that fails now says so.** When TimeTrack could not start a timer from the start dialog or a quick-start key, or could not switch to another client while a timer ran, nothing happened on screen. The dialog closed, and the old timer, if any, kept running. A message now names the reason and, for a switch, says that the running timer keeps running. Also, a timer action that got no answer from the app's background process no longer locks the start key: before, starting from the dialog and every quick-start switch stayed blocked until the app was restarted.
 
 ### Internal
 
 - **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job runs the whole test suite on Linux with `TZ=Europe/Berlin`, so JS and SQLite both run in Berlin. New tests there check, for 25 October 2026, that today's total (also the rounded one), today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. They sit in their own Vitest project, `berlin`, which is only registered when the process runs in Europe/Berlin; elsewhere `pnpm test` leaves it out.
+- **Every pull request now builds and tests the packaged app (#269).** A new `package-smoke` job in the test workflow packages the app on Windows and macOS, checks what the package contains, runs the app's `--smoke-test` and starts the bundled MCP server from it (initialize, `tools/list`, one tool call that has to reach SQLite). On Windows it builds the real NSIS installer, so `build/installer.nsh` is compiled on every PR; the installer is built, not run. Until now only the release workflow packaged anything, so a broken package first showed up after the tag was pushed.
 
 ### Security
 

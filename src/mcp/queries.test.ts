@@ -170,6 +170,28 @@ describe('query layer', () => {
     expect(website.rate_cent).toBeUndefined() // hidden
   })
 
+  // #285: used_minutes is what the invoice bills — billable entries, rounded
+  // per entry with pdf_round_minutes — not a sum of the stored rounded_min,
+  // which the seed (like the timer) never writes.
+  it('listProjects used_minutes counts like the invoice', () => {
+    db.prepare(
+      `INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', '15')`
+    ).run()
+    // Non-billable 20 minutes on the same project: not billed, not counted.
+    db.prepare(
+      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, billable)
+       VALUES (1, 10, '2026-06-14T09:00:00.000Z', '2026-06-14T09:20:00.000Z', 0)`
+    ).run()
+    // Billable 7:40 → 8 started minutes → 15.
+    db.prepare(
+      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, billable)
+       VALUES (1, 10, '2026-06-15T09:00:00.000Z', '2026-06-15T09:07:40.000Z', 1)`
+    ).run()
+    const website = listProjects(sdb, HIDE, { clientId: 1 }).find((p) => p.id === 10)!
+    // Entry 100 (1 h) + 15; entry 102 is soft-deleted, 103 runs on no project.
+    expect(website.used_minutes).toBe(75)
+  })
+
   it('listEntries by month returns live entries with totals', () => {
     const now = Date.parse('2026-06-13T09:30:00.000Z') // running at 30m
     const res = listEntries(sdb, HIDE, { year: 2026, month: 6 }, now)
