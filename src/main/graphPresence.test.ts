@@ -548,6 +548,70 @@ describe('reconcilePresence', () => {
     expect(recorded.some((u) => u.endsWith('/clearPresence'))).toBe(true)
   })
 
+  // ── Intent recorded before the request, not after its success ───────────
+  it('a status write that reached Teams but whose answer was lost still counts as ours at stop', async () => {
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    const inner = deps.fetchFn!
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/setStatusMessage')) {
+        await inner(url, init) // Teams stores it…
+        throw new Error('TimeoutError') // …but the answer never arrives
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, { ...RUNNING, client_name: 'Beta' })
+    expect(teams.content).toBe('🔴 Fokus: Beta — Rollout')
+    deps.fetchFn = inner
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('a pending session end of the sweep still runs after the feature is switched off', async () => {
+    teams.content = '🔴 Fokus: Old'
+    teams.availability = 'Busy'
+    const on = makeDeps()
+    const inner = on.deps.fetchFn!
+    on.deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/clearPresence')) {
+        await inner(url, init)
+        return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(on.deps, null) // message withdrawn, session end fails
+    teams.availability = 'Busy'
+    const off = makeDeps({ enabled: false })
+    await reconcilePresence(off.deps, null)
+    expect(sessionCalls(off.calls).map((c) => c.url.split('/presence/')[1])).toEqual([
+      'clearPresence'
+    ])
+    expect(teams.availability).toBe('Available')
+  })
+
+  it('a failed Busy-only session end of the sweep is retried even behind Do not disturb', async () => {
+    teams.content = 'Back at 3' // the user's own message replaced ours before the crash
+    teams.availability = 'Busy'
+    const { deps } = makeDeps()
+    const inner = deps.fetchFn!
+    let sessionFails = true
+    const ends: string[] = []
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/clearPresence')) {
+        ends.push(sessionFails ? 'failed' : 'ok')
+        await inner(url, init)
+        if (sessionFails) return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null)
+    teams.availability = 'DoNotDisturb'
+    sessionFails = false
+    await reconcilePresence(deps, null)
+    expect(ends).toEqual(['failed', 'ok'])
+    expect(teams.content).toBe('Back at 3')
+  })
+
   it('a failed set at the first poke leaves the leftover to the next poke', async () => {
     teams.content = '🔴 Fokus: Old — Leftover'
     teams.availability = 'Busy'

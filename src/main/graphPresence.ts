@@ -236,7 +236,14 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
 
   // Feature off: leave Teams alone — except to withdraw our own last message.
   const wantsClear = !enabled || running === null
-  if (wantsClear && (state.message === null || state.message === '') && !sweepDue) return
+  if (
+    wantsClear &&
+    (state.message === null || state.message === '') &&
+    !sweepDue &&
+    !state.sessionPending
+  ) {
+    return
+  }
 
   const view = deps.getAccountStatus()
   if (!view.connected || view.personalAccount) return
@@ -254,7 +261,7 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
       )
   const unchanged = state.message === message
   const fresh = now - state.at < REFRESH_AFTER_MS
-  if (unchanged && (message === '' || fresh)) return
+  if (unchanged && (message === '' || fresh) && !state.sessionPending) return
 
   const fetchFn = deps.fetchFn ?? fetch
   // The caller fires and forgets (index.ts): a refresh that throws (offline)
@@ -296,6 +303,16 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   const clearMessage = (): Promise<boolean> =>
     post('setStatusMessage', { statusMessage: { message: { content: '', contentType: 'text' } } })
 
+  // Intents are recorded BEFORE the request they belong to, and dropped only
+  // on confirmed success: a request can reach Teams and still fail on the way
+  // back (timeout), and a failed one must stay due.
+  if (state.sessionPending && !enabled) {
+    // A session end the sweep still owes. Ending our own session is never
+    // unasked-for, so it runs with the feature switched off, too.
+    if (await post('clearPresence', { sessionId })) state.sessionPending = false
+    return
+  }
+
   if (sweepDue && running === null) {
     // Nothing applied in this run, no timer: only a leftover can need
     // withdrawing. The message is recognised by its shape, since its exact
@@ -306,12 +323,12 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
     const current = await readPresence(fetchFn, token, userId, log)
     if (!current) return // retried at the next poke
     const leftover = current.text !== null && looksOurs(current.text)
+    if (leftover || current.availability === 'Busy') state.sessionPending = true
     if (leftover) {
       if (!(await clearMessage())) return
-      state.sessionPending = true
       log('presence: withdrew a status message left from a previous run')
     }
-    if (state.sessionPending || current.availability === 'Busy') {
+    if (state.sessionPending) {
       if (!(await post('clearPresence', { sessionId }))) return
       state.sessionPending = false
     }
@@ -345,13 +362,16 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   } else {
     // Busy/InACall is the only plain-"red" combination setPresence accepts;
     // DoNotDisturb/Presenting would suppress the user's notifications.
+    // Ours from the moment it is sent: a write whose answer is lost may well
+    // have reached Teams. An unsent candidate only widens the "is it ours"
+    // match at stop, which is harmless.
+    state.sent = message
     const accepted = await post('setStatusMessage', {
       statusMessage: {
         message: { content: message, contentType: 'text' },
         expiryDateTime: expiryAt(now)
       }
     })
-    if (accepted) state.sent = message
     ok =
       accepted &&
       (await post('setPresence', {
@@ -364,6 +384,8 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   if (!ok) return
   state.message = message
   state.at = now
+  // Our session was just replaced (set) or ended (clear): nothing owed.
+  state.sessionPending = false
   // Only now: a set that failed must leave a crash leftover to the sweep.
   state.swept = true
   if (message === '') {
