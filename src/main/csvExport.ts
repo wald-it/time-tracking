@@ -16,6 +16,7 @@ import { formatCsv, type CsvOptions } from '../shared/csv'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
 import { appLocale, cancelledResult, dialogT, exportFileName } from './mainI18n'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 
 export interface CsvRequest {
   clientId: number
@@ -71,11 +72,15 @@ export async function handleCsvExport(
 
     const result = await dialog.showSaveDialog({
       title: t('mainDialog.csv.title'),
-      defaultPath: exportFileName(locale, 'csv', {
-        client: client.name,
-        project: proj?.name ?? null,
-        month: req.fromIso.slice(0, 7)
-      }),
+      defaultPath: await exportDefaultPath(
+        db,
+        'csv',
+        exportFileName(locale, 'csv', {
+          client: client.name,
+          project: proj?.name ?? null,
+          month: req.fromIso.slice(0, 7)
+        })
+      ),
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (result.canceled || !result.filePath) {
@@ -103,6 +108,7 @@ export async function handleCsvExport(
     const csv = formatCsv(entries, clientMap, opts)
 
     writeFileSync(result.filePath, csv, 'utf8')
+    rememberExportFolder(db, 'csv', result.filePath)
     return ok({ path: result.filePath })
   } catch (e) {
     return fail(e)

@@ -24,6 +24,7 @@ import { formatIcal } from '../shared/ical'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
 import { appLocale, cancelledResult, dialogT, exportFileName } from './mainI18n'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 
 export interface IcalRequest {
   clientId: number
@@ -84,11 +85,15 @@ export async function handleIcalExport(
 
     const result = await dialog.showSaveDialog({
       title: t('mainDialog.ical.title'),
-      defaultPath: exportFileName(locale, 'ical', {
-        client: client.name,
-        project: proj || null,
-        month: req.fromIso.slice(0, 7)
-      }),
+      defaultPath: await exportDefaultPath(
+        db,
+        'ical',
+        exportFileName(locale, 'ical', {
+          client: client.name,
+          project: proj || null,
+          month: req.fromIso.slice(0, 7)
+        })
+      ),
       filters: [{ name: 'iCalendar', extensions: ['ics'] }]
     })
     if (result.canceled || !result.filePath) {
@@ -101,6 +106,7 @@ export async function handleIcalExport(
     })
 
     writeFileSync(result.filePath, ics, 'utf8')
+    rememberExportFolder(db, 'ical', result.filePath)
     return ok({ path: result.filePath })
   } catch (e) {
     return fail(e)

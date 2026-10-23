@@ -64,7 +64,9 @@ beforeEach(async () => {
     setControllerEnabled: noop,
     pokePresence: noop,
     setIcalFeedEnabled: noop,
-    restartIcalFeed: noop
+    restartIcalFeed: noop,
+    confirmSensitiveSetting: async () => true,
+    forgetMcpApproval: noop
   })
 })
 

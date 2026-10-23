@@ -7,11 +7,10 @@
  * environment into a green summary — `334 passed | 201 skipped` reads as
  * success, not as "a third of your coverage did not run".
  *
- * `pnpm test` now runs on the Electron binary in Node mode (see
- * `scripts/run-vitest.mjs`), so the ABI always matches and there is no longer
- * a legitimate reason for these suites to be unavailable. `loadSqlite()`
- * therefore **throws** instead of skipping: if the module cannot load, the run
- * is red and says exactly what to do about it.
+ * Since #269 `better-sqlite3` is an N-API module with prebuilt binaries for
+ * every runtime the suite uses, so there is no legitimate reason for these
+ * suites to be unavailable. `loadSqlite()` therefore **throws** instead of
+ * skipping: if the module cannot load, the run is red and says what to do.
  */
 import { copyFileSync } from 'fs'
 import { join } from 'path'
@@ -24,21 +23,15 @@ export type DatabaseCtor = new (path: string) => Database.Database
 const HINT = [
   'better-sqlite3 could not be loaded — the DB-backed tests cannot run.',
   '',
-  'The binary is compiled against the Electron ABI (the app needs that at',
-  'runtime), so the suite must run on Electron in Node mode. Use the package',
-  'script, which does that for you:',
+  'The package ships prebuilt N-API binaries in',
+  'node_modules/better-sqlite3/prebuilds/ that load under Node and Electron',
+  'alike, so this means the install is broken: the file for this platform is',
+  'missing or was replaced. Reinstall:',
   '',
-  '    pnpm test',
+  '    pnpm install --frozen-lockfile',
   '',
-  'Running `vitest` directly under a system Node will always fail here.',
-  '',
-  'If `pnpm test` itself fails this way, the binary is stale — most likely',
-  'because `pnpm rebuild better-sqlite3` replaced it with a Node-ABI build.',
-  'Note that `pnpm install` does NOT repair this: electron-builder caches the',
-  'ABI marker in node_modules/better-sqlite3/build/Release/.forge-meta and',
-  'skips the rebuild. Force it:',
-  '',
-  '    pnpm exec electron-rebuild -f -w better-sqlite3'
+  'Do not rebuild the module (electron-rebuild, pnpm rebuild): nothing needs',
+  'compiling, and without Visual Studio or Xcode the rebuild fails.'
 ].join('\n')
 
 let cached: DatabaseCtor | null = null

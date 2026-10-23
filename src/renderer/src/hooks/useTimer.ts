@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import type { Client, Entry, IpcResult, UpdateEntryInput } from '../../../shared/types'
 import { useTimerStore } from '../store/timerStore'
 import { useClientsStore } from '../store/clientsStore'
+import { readLastStartPair, useStartTimerModalStore } from '../store/startTimerModalStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
 
 /**
@@ -51,6 +52,21 @@ async function pushTrayUpdate(running: boolean, label: string): Promise<void> {
 }
 
 /**
+ * Counts the timer starts and switches that went to main (each one passes
+ * withLoading). The selection-less start notes it before it looks up the
+ * last pair and yields if it changed meanwhile: a quick start that began
+ * during the lookup wins even before its reply is back (#297).
+ */
+let startEpoch = 0
+/**
+ * Counts external writes (`data:changed`: MCP, Stream Deck, …), bumped as
+ * the event arrives, before the resync's reply is back. The fallback yields
+ * if it changed during the lookup: the external write may be a start main
+ * would otherwise switch away from (#297).
+ */
+let externalEpoch = 0
+
+/**
  * Run one timer IPC call with `isLoading` set, and clear it whatever happens.
  * A call that rejects (no answer from main) comes back as a failed result,
  * so callers report it like a refusal — used where the caller shows the
@@ -59,6 +75,7 @@ async function pushTrayUpdate(running: boolean, label: string): Promise<void> {
  * path ignored every later call until the window was reloaded.
  */
 async function withLoading<T>(call: () => Promise<IpcResult<T>>): Promise<IpcResult<T>> {
+  startEpoch++
   useTimerStore.getState().setIsLoading(true)
   try {
     return await call()
@@ -104,7 +121,34 @@ const globalQuickStartRef: { current: (clientId: number, projectId?: number | nu
 }
 const globalStopRef: { current: () => void } = { current: () => {} }
 const globalResyncRef: { current: () => void } = { current: () => {} }
+const globalStartRef: { current: () => Promise<string | null> } = {
+  current: async () => null
+}
 let listenersInstalled = false
+// One start() at a time: the selection-less start awaits the last pair before
+// it knows whether a timer runs, and a second press meanwhile would take the
+// switch path and leave the first entry with zero length (#297).
+let startPending = false
+
+/**
+ * #297: main sends `timer:open-start` when the start hotkey or the mini
+ * widget's play key finds nothing to start in the database, after bringing
+ * the window forward. Main does not know the renderer's selection, so the
+ * answer is the same start path: a valid selection starts, else the last
+ * pair, else the START dialog opens — in a window that is visible now.
+ * Nothing happens if a timer runs by then: a window-forward event must not
+ * switch away from it. Resolves to the error of a refused start, for the
+ * caller (App) to show as the dialog does.
+ */
+export async function handleOpenStart(): Promise<string | null> {
+  if (useTimerStore.getState().runningEntry) return null
+  try {
+    return await globalStartRef.current()
+  } catch (e) {
+    // An IPC call that rejects (instead of answering ok:false) is shown too.
+    return e instanceof Error ? e.message : String(e)
+  }
+}
 
 function installGlobalListenersOnce(
   setIdleEvent: (e: { idleSince: string; idleSeconds: number } | null) => void
@@ -114,7 +158,10 @@ function installGlobalListenersOnce(
   window.api.onHotkeyToggle(() => globalToggleRef.current())
   window.api.onTrayQuickStart((clientId) => globalQuickStartRef.current(clientId))
   window.api.onTrayStop(() => globalStopRef.current())
-  window.api.onDataChanged(() => globalResyncRef.current())
+  window.api.onDataChanged(() => {
+    externalEpoch++
+    globalResyncRef.current()
+  })
   window.api.onIdleDetected((data) => {
     if (useTimerStore.getState().runningEntry) {
       setIdleEvent(data)
@@ -273,41 +320,94 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   )
 
   const start = useCallback(async (): Promise<string | null> => {
-    // Resolve which client to start. If the user hasn't picked one (e.g. the
-    // hotkey fires from Today/Calendar where there is no selector at all),
-    // fall back to the first active client so Alt+Shift+S always does
-    // *something* instead of silently no-op'ing.
-    let clientId = selectedClientId
-    if (!clientId) {
-      const fallback = clients.find((c) => c.active === 1)
-      if (!fallback) return null
-      clientId = fallback.id
-      setSelectedClientId(clientId)
+    if (startPending) return null
+    startPending = true
+    try {
+      // Resolve which client to start. If the user hasn't picked one (the
+      // hotkey or the mini widget's play key, from anywhere), start what the
+      // START dialog offers: the last entry's client and project (#297; it
+      // used to be the first active client, a client the user may not work
+      // for). Client and project are set together, so no stale project of
+      // another client travels along. Without such a pair the dialog opens.
+      // A selection of a client archived since counts as none: the selector
+      // lists active clients only, so the user cannot see it. With no client
+      // list at all (not loaded yet, or the load failed) nothing says so, and
+      // the selection starts as it always did.
+      const selectionValid =
+        selectedClientId !== null &&
+        (clients.length === 0 || clients.some((c) => c.id === selectedClientId && c.active === 1))
+      let clientId = selectionValid ? selectedClientId : null
+      if (!clientId) {
+        // The fallback only ever starts; it never switches a running timer
+        // (e.g. one whose client was archived since, which leaves exactly
+        // such a selection behind). Nothing to do then.
+        if (useTimerStore.getState().runningEntry) return null
+        // The stale selection goes, so the dialog does not show its projects.
+        if (selectedClientId !== null) {
+          setSelectedClientId(null)
+          useTimerStore.getState().setSelectedProjectId(null)
+        }
+        // Busy while the pair resolves: the dialog's start key and switchTo
+        // wait. A quick-start key does not check the flag, so a timer that
+        // started meanwhile wins below.
+        setIsLoading(true)
+        const epoch = startEpoch
+        const external = externalEpoch
+        let pair: Awaited<ReturnType<typeof readLastStartPair>>
+        try {
+          pair = await readLastStartPair()
+        } finally {
+          // Only if no other start began meanwhile: then its withLoading owns
+          // the flag and clears it when its reply is back.
+          if (startEpoch === epoch) setIsLoading(false)
+        }
+        // Someone else started a timer while the pair resolved (a quick-start
+        // key, MCP, the Stream Deck), or began to and its reply is not back
+        // yet: theirs stands, the fallback does not switch it away.
+        if (
+          startEpoch !== epoch ||
+          externalEpoch !== external ||
+          useTimerStore.getState().runningEntry
+        ) {
+          return null
+        }
+        if (!pair) {
+          void useStartTimerModalStore.getState().openStart()
+          return null
+        }
+        clientId = pair.clientId
+        setSelectedClientId(clientId)
+        // A dropped (archived) project starts as "no project".
+        useTimerStore.getState().setSelectedProjectId(pair.projectId ?? null)
+      }
+      const projectId = useTimerStore.getState().selectedProjectId
+      // A timer already runs (the start dialog was open while one started
+      // elsewhere): take the same switch path as a quick-start key (owner
+      // decision for 1.22) — one instant in the main process, the quick-note
+      // prompt for the stopped entry if it had no description, and an open
+      // prompt is NOT dismissed.
+      if (useTimerStore.getState().runningEntry) {
+        return await switchToEntry(clientId, projectId ?? null, description)
+      }
+      const startClientId = clientId
+      const res = await withLoading(() =>
+        window.api.entries.start({
+          client_id: startClientId,
+          project_id: projectId ?? undefined,
+          description,
+          started_at: new Date().toISOString()
+        })
+      )
+      if (!res.ok) return res.error
+      setRunningEntry(res.data)
+      // Dismiss quicknote modal if user starts a new timer before answering
+      if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
+      const clientName = clients.find((c) => c.id === startClientId)?.name ?? ''
+      await pushTrayUpdate(true, clientName)
+      return null
+    } finally {
+      startPending = false
     }
-    const projectId = useTimerStore.getState().selectedProjectId
-    // A timer already runs (the start dialog was open while one started
-    // elsewhere): take the same switch path as a quick-start key (owner
-    // decision for 1.22) — one instant in the main process, the quick-note
-    // prompt for the stopped entry if it had no description, and an open
-    // prompt is NOT dismissed.
-    if (useTimerStore.getState().runningEntry) {
-      return switchToEntry(clientId, projectId ?? null, description)
-    }
-    const res = await withLoading(() =>
-      window.api.entries.start({
-        client_id: clientId,
-        project_id: projectId ?? undefined,
-        description,
-        started_at: new Date().toISOString()
-      })
-    )
-    if (!res.ok) return res.error
-    setRunningEntry(res.data)
-    // Dismiss quicknote modal if user starts a new timer before answering
-    if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
-    const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
-    await pushTrayUpdate(true, clientName)
-    return null
   }, [selectedClientId, description, clients, switchToEntry])
 
   const stop = useCallback(async () => {
@@ -484,6 +584,8 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   // Keep refs current so listeners always call the latest fn
   // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)
   globalToggleRef.current = runningEntry ? stop : start
+  // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)
+  globalStartRef.current = start
   // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)
   globalQuickStartRef.current = startWithClient
   // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)

@@ -1,6 +1,23 @@
 import { configDefaults, defineConfig, type TestProjectInlineConfiguration } from 'vitest/config'
 import { resolve } from 'path'
 
+// #269: the suite runs in the runtime the app ships — Electron in Node mode,
+// started by `pnpm test` (scripts/run-vitest.mjs). Since better-sqlite3 is an
+// N-API module it also loads under a system Node, so a direct `vitest` call
+// would no longer fail on its own: it would pass on the host's Node instead of
+// Electron's. Refuse it here, before any test runs.
+if (!process.versions.electron) {
+  throw new Error(
+    [
+      'Run the tests with `pnpm test`, not `vitest` directly.',
+      '',
+      `This process runs on Node ${process.versions.node}; the app ships Electron's own`,
+      'Node, and the suite must run on that one. `pnpm test` starts Vitest on the',
+      'Electron binary in Node mode (scripts/run-vitest.mjs).'
+    ].join('\n')
+  )
+}
+
 /**
  * #263: tests that need the whole process — JS and SQLite — in Europe/Berlin.
  * SQLite's 'localtime' reads the zone the process starts in and ignores a

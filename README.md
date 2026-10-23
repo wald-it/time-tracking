@@ -14,7 +14,7 @@ the running timer, hard keys, scales with ticks, in two themes (**Papier**,
 | Platform | Build | Notes |
 | -------- | ----- | ----- |
 | Windows 10/11 (x64) | NSIS installer | not code-signed — SmartScreen warns on first run |
-| macOS (Apple silicon) | DMG / ZIP (arm64) | signed ad hoc, not notarized — macOS 15 and later: System Settings → Privacy & Security → Open Anyway; older versions: right-click → Open; Intel Macs: no build yet ([#168](https://github.com/wald-it/time-tracking/issues/168)) |
+| macOS 13 or later (Apple silicon) | DMG / ZIP (arm64) | signed ad hoc, not notarized — macOS 15 and later: System Settings → Privacy & Security → Open Anyway; older versions: right-click → Open; Intel Macs: no build yet ([#168](https://github.com/wald-it/time-tracking/issues/168)) |
 
 Every release lists SHA-256 checksums and carries a build provenance
 attestation; see [SECURITY.md](SECURITY.md#release-integrity) for how to check a
@@ -55,7 +55,7 @@ What is planned lives in [ROADMAP.md](ROADMAP.md), what was deferred with a reas
 
 | Layer    | Library                 |
 | -------- | ----------------------- |
-| Shell    | Electron 39 (move to 44 planned) |
+| Shell    | Electron 44 |
 | Build    | electron-vite 5         |
 | UI       | React 19 + TypeScript 5 |
 | Styling  | Tailwind CSS 4          |
@@ -68,7 +68,7 @@ What is planned lives in [ROADMAP.md](ROADMAP.md), what was deferred with a reas
 **Requirements:** Node.js 22, pnpm 10 (the versions CI uses). Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
-# Install dependencies (also compiles native SQLite module)
+# Install dependencies
 pnpm install
 
 # Start dev server with hot reload
@@ -84,19 +84,17 @@ pnpm test
 pnpm build:win
 ```
 
-> **Why `pnpm test` and not `vitest`:** `better-sqlite3` is built against the
-> **Electron** ABI (`postinstall` → `electron-builder install-app-deps`), because
-> the app needs it at runtime. A system Node cannot load this binary.
-> `pnpm test` therefore starts Vitest via `scripts/run-vitest.mjs` on the
-> Electron binary in Node mode (`ELECTRON_RUN_AS_NODE=1`) — the same answer as
-> the MCP server, see below. This way local and CI runs execute the same tests,
-> without a second binary copy and without the rebuild back-and-forth that would
-> break `pnpm dev`.
+> **Why `pnpm test` and not `vitest`:** the tests run in the runtime the app
+> ships. `pnpm test` starts Vitest via `scripts/run-vitest.mjs` on the Electron
+> binary in Node mode (`ELECTRON_RUN_AS_NODE=1`), so the suite runs on
+> Electron's own Node, not on whichever Node is installed. The MCP server uses
+> the same launch path (see below).
 >
-> Calling `pnpm exec vitest run` **directly** fails accordingly — with a hint
-> pointing to `pnpm test`. This is intentional: previously the DB tests would
-> silently skip themselves in that case and a third of the coverage disappeared
-> behind a green summary ([#151](https://github.com/wald-it/time-tracking/issues/151)).
+> Calling `pnpm exec vitest run` **directly** fails on purpose, with a hint
+> pointing to `pnpm test` (`vitest.config.ts` refuses to load outside Electron).
+> `better-sqlite3` is an N-API module with prebuilt binaries since
+> [#269](https://github.com/wald-it/time-tracking/issues/269), so there is no
+> native rebuild step, neither on install nor before the tests.
 
 ## MCP Integration
 
@@ -145,10 +143,10 @@ separately installed Node required.
 }
 ```
 
-> **Why the app starts itself:** `better-sqlite3` is built against the **Electron** ABI
-> (`electron-builder install-app-deps`); a system Node cannot load the module.
-> `ELECTRON_RUN_AS_NODE=1` runs the Electron binary as plain Node — same ABI
-> as the bundled module, without a second binary copy in the installer.
+> **Why the app starts itself:** the server is a Node program, and TimeTrack
+> does not assume a Node installation on your machine. `ELECTRON_RUN_AS_NODE=1`
+> runs the app's own Electron binary as plain Node, which loads the bundled
+> `better-sqlite3` from the installation.
 
 > **Updates while MCP servers are running (#198):** Because each server runs the
 > installed binary, it holds `TimeTrack.exe` open — which would block the Windows
@@ -301,7 +299,7 @@ On start the app stops entries whose heartbeat is older than five minutes (crash
 - Renderer with `contextIsolation`, no Node integration, a strict Content Security Policy; all database access in the main process.
 - Links leave the app only as `http(s)` links; app windows never navigate away from the app.
 - Local interfaces (MCP write bridge, hardware keys, iCal feed) are off by default and protected by random tokens.
-- Releases are not code-signed; checksums and build provenance are published. The current Electron line (39) is out of support; the move to 44 follows after 1.22.
+- Releases are not code-signed; checksums and build provenance are published. TimeTrack runs on Electron 44, which receives security updates until March 2027.
 - Reporting a vulnerability and the full scope: [SECURITY.md](SECURITY.md).
 
 ## Contributing
