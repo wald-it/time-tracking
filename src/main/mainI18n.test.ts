@@ -5,7 +5,8 @@
  * shipped with, and moving them into the locale files must not change them.
  * The last block guards the call sites in the files directly under src/main
  * (where every dialog lives today): no title, message, detail, checkbox,
- * button or filter name written as a literal.
+ * button or filter name written as a literal or a CAPS constant at a dialog
+ * call. Texts handed to a dialog through a callback stay outside its view.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readdirSync, readFileSync } from 'fs'
@@ -181,7 +182,10 @@ describe('no dialog text is written into a call site', () => {
 
   it('titles, messages, buttons and filter names come from the locale files', () => {
     const literal =
-      // A literal, or a constant in CAPS (how #288 first passed its restore title).
+      // A literal, or a constant in CAPS (how #288 first passed its restore
+      // title), as a dialog option or the first argument of showErrorBox. Only
+      // in files that call dialog.show* themselves: texts built elsewhere (a
+      // `report(…)` callback in backup.ts, a `const message = …`) are not seen.
       /\b(title|message|detail|checkboxLabel):\s*(['"`]|[A-Z][A-Z0-9_]+\b)|buttons:\s*\[\s*(['"`]|[A-Z][A-Z0-9_]+\b)|showErrorBox\(\s*(['"`]|[A-Z][A-Z0-9_]+\b)/
     for (const [file, src] of sources()) {
       if (!/dialog\.show\w+\(|showSaveDialog/.test(src)) continue

@@ -121,16 +121,22 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
   // Native dialogs follow the app language (#270); with the handle closed
   // (after a restore attempt) the system language, as at start.
-  const dialogLocale = (): Locale =>
-    readLanguageOr(db, () => localeFromSystem(app.getPreferredSystemLanguages()))
+  const systemLocale = (): Locale => localeFromSystem(app.getPreferredSystemLanguages())
+  const dialogLocale = (): Locale => readLanguageOr(db, systemLocale)
   const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
-  // A restore failure must reach the user whatever the database says, so any
-  // error in reading the setting falls back to the system language here.
+  // A restore failure must reach the user whatever the database says: this
+  // never throws. Read once, before the restore can close the handle; if
+  // neither the setting nor the system language can be read, the app's own
+  // default (German, as in migration 002).
   const restoreLocale = (): Locale => {
     try {
       return dialogLocale()
     } catch {
-      return localeFromSystem(app.getPreferredSystemLanguages())
+      try {
+        return systemLocale()
+      } catch {
+        return 'de'
+      }
     }
   }
 
@@ -699,18 +705,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle(
     'backup:restore',
     (_e, filename: unknown): IpcResult<{ safetyBackupPath: string }> => {
+      const locale = restoreLocale()
       try {
         return restoreListedBackupOrReport(
           db,
           filename,
           getBackupPathSetting() || undefined,
           getDbPath(),
-          restoreLocale(),
+          locale,
           (title, message) => dialog.showErrorBox(title, message)
         )
       } catch (e) {
         // Same rule as inside: the renderer relaunches next, so say it here.
-        const t = dialogT(restoreLocale())
+        const t = dialogT(locale)
         const message = t('mainDialog.restore.failed', {
           cause: e instanceof Error ? e.message : String(e)
         })

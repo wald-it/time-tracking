@@ -381,16 +381,15 @@ describe('restoreListedBackupOrReport', () => {
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: Array<[string, string]> = []
-    restoreListedBackupOrReport(db, 'nope.sqlite', undefined, currentDb, 'en', (t, m) =>
+    const res = restoreListedBackupOrReport(db, 'nope.sqlite', undefined, currentDb, 'en', (t, m) =>
       reports.push([t, m])
     )
-    expect(reports).toEqual([
-      [
-        'TimeTrack — Backup not restored',
-        'Backup not restored: this backup file is not in the backup list.'
-      ]
-    ])
+    const message = 'Backup not restored: this backup file is not in the backup list.'
+    expect(res).toEqual({ ok: false, error: message })
+    expect(reports).toEqual([['TimeTrack — Backup not restored', message]])
+    expect(db.open).toBe(true)
     db.close()
+    expect(readValues(currentDb)).toEqual(['CURRENT'])
   })
 
   it('reports an unreachable backup folder instead of failing silently', async () => {
