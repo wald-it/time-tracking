@@ -242,7 +242,9 @@ describe('smoke userData isolation', () => {
 
     expect(await outcome).toBe('removed')
     expect(existsSync(dir)).toBe(false)
-    // The removal came after the holder ended, however late the cleaner started.
+    // Catches a cleaner that does not wait even when it starts after the 400 ms
+    // check. Only while this test reads the outcome before the holder's end:
+    // a test starved past 1.5 s would find the marker either way.
     expect(existsSync(marker)).toBe(true)
     expect(isRunning(holder)).toBe(false)
   }, 15_000)
