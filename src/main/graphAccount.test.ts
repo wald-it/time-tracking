@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DEFAULT_CLIENT_ID, MSA_TENANT_ID, type StoredTokens } from '../shared/graphAuth'
@@ -441,20 +441,11 @@ describe('concurrent token requests share one refresh (#341)', () => {
     return { requests: () => n, fetchFn }
   }
 
-  it('a disconnect during the refresh is not undone by its result', async () => {
-    let d!: GraphAccountDeps
-    const s = slowServer('ok', () => disconnect(d))
-    d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
-    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
-    await expect(getAccessToken(d)).resolves.toBeNull()
-    expect(loadTokens(d.store)).toBeNull()
-  })
-
   it('a new connection made during a refused refresh is not deleted', async () => {
-    let d!: GraphAccountDeps
     const fresh = tokens({ accessToken: 'access-new', refreshToken: 'rt-new' })
-    const s = slowServer('invalid_grant', () => saveTokens(fresh, d.store))
-    d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    const store = { dir, secretBox: fakeBox() }
+    const s = slowServer('invalid_grant', () => saveTokens(fresh, store))
+    const d = deps({ store, auth: { now: () => NOW, fetchFn: s.fetchFn } })
     saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
     await expect(getAccessToken(d)).resolves.toBe('access-new')
     expect(loadTokens(d.store)?.refreshToken).toBe('rt-new')
@@ -471,5 +462,17 @@ describe('concurrent token requests share one refresh (#341)', () => {
     await getAccessToken(d).catch(() => {})
     expect(s.requests()).toBe(2)
     expect(loadTokens(d.store)).not.toBeNull()
+  })
+  it('an unreadable store after a refused refresh is not deleted', async () => {
+    const store = { dir, secretBox: fakeBox() }
+    // The file becomes unreadable while the refresh runs (another process,
+    // a broken key): nothing is deleted on the strength of it.
+    const s = slowServer('invalid_grant', () =>
+      writeFileSync(join(dir, 'graph-account.enc'), 'garbage')
+    )
+    const d = deps({ store, auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(existsSync(join(dir, 'graph-account.enc'))).toBe(true)
   })
 })

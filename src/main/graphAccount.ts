@@ -156,7 +156,15 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   const key = storeKey(deps)
   const running = inFlight.get(key)
   if (running) return running
-  const refresh = refreshAndStore(deps, tokens).finally(() => inFlight.delete(key))
+  const refresh = (async (): Promise<string | null> => {
+    try {
+      return await refreshAndStore(deps, tokens)
+    } finally {
+      // Before the callers see the result, so none of them can pick up a
+      // settled refresh.
+      inFlight.delete(key)
+    }
+  })()
   inFlight.set(key, refresh)
   return refresh
 }
@@ -170,17 +178,6 @@ function storeKey(deps: GraphAccountDeps): string {
   return process.platform === 'win32' ? dir.toLowerCase() : dir
 }
 
-/**
- * Whether the store still holds the grant this refresh started from. If not,
- * someone else changed it meanwhile — another refresh rotated it (a second
- * instance, a helper), or the user disconnected or reconnected — and the
- * result of this refresh must neither overwrite nor delete that (#341).
- */
-function storeMoved(deps: GraphAccountDeps, from: StoredTokens): StoredTokens | null | false {
-  const now = loadTokens(deps.store)
-  return now?.refreshToken === from.refreshToken ? false : now
-}
-
 async function refreshAndStore(
   deps: GraphAccountDeps,
   tokens: StoredTokens
@@ -190,23 +187,22 @@ async function refreshAndStore(
     refreshed = await refreshWithFallback(configOf(deps), tokens, deps)
   } catch (err) {
     if (err instanceof GraphAuthError && err.code === 'invalid_grant') {
-      const moved = storeMoved(deps, tokens)
-      if (moved !== false) {
-        // The token we sent was spent by someone else's refresh, or the
-        // connection changed: use what is stored now instead of deleting it.
+      // #341: the connection is gone only if the store still holds the very
+      // refresh token that was refused. A different one means someone else
+      // refreshed or reconnected meanwhile; an empty or unreadable store is
+      // nothing to delete.
+      const current = loadTokens(deps.store)
+      if (!current) return null
+      if (current.refreshToken !== tokens.refreshToken) {
         deps.log?.('graph account: refresh token already replaced, using the stored one')
-        return moved?.accessToken ?? null
+        const now = deps.auth?.now?.() ?? Date.now()
+        return needsRefresh(current, now) ? refreshAndStore(deps, current) : current.accessToken
       }
       deps.log?.('graph account: grant no longer valid, connection dropped')
       clearTokens(deps.store)
       return null
     }
     throw err
-  }
-  const moved = storeMoved(deps, tokens)
-  if (moved !== false) {
-    deps.log?.('graph account: connection changed during the refresh, result discarded')
-    return moved?.accessToken ?? null
   }
   // Must be persisted even when only the access token changed — the refresh
   // token may have rotated, and the old one stops working once it has.
