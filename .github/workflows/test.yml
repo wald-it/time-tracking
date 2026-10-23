@@ -189,7 +189,7 @@ jobs:
     permissions:
       contents: read
     env:
-      TZ: Europe/Berlin
+      TZ: UTC
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 

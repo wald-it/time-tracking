@@ -44,7 +44,7 @@ export default defineConfig({
           name: 'berlin',
           environment: 'node',
           include: [BERLIN_TESTS],
-          setupFiles: ['./src/test/isolateLogs.ts', './src/test/requireBerlinZone.ts']
+          setupFiles: ['./src/test/isolateLogs.ts']
         }
       },
       {
