@@ -208,9 +208,18 @@ export default function TodayView(): React.JSX.Element {
             }
             clientsById={clientsById}
             projectsById={projectsById}
-            onStart={(id, projectId) => void startWithClient(id, projectId)}
+            // A refused start or switch changes nothing; the toast says so.
+            onStart={(id, projectId) =>
+              void startWithClient(id, projectId).then((error) => {
+                if (error) showToast(t('timer.startFailed', { error }))
+              })
+            }
             // B1: one main-process switch; the guard is QUICKSTART_SWITCH_WHILE_RUNNING.
-            onSwitch={(id, projectId) => void switchTo(id, projectId)}
+            onSwitch={(id, projectId) =>
+              void switchTo(id, projectId).then((error) => {
+                if (error) showToast(t('timer.switchFailed', { error }))
+              })
+            }
           />
 
           {/* 3 — Tagesverlauf */}
