@@ -27,13 +27,19 @@ function cleanerOutcome(cleaner: ChildProcess): Promise<string> {
     let err = ''
     cleaner.stdout!.on('data', (chunk) => {
       out += chunk
-      if (out.includes('\n')) resolve(out.split('\n')[0].trim())
+      if (!out.includes('\n')) return
+      resolve(out.split('\n')[0].trim())
+      // Let the test end without waiting for the teardown either.
+      cleaner.stdout!.destroy()
+      cleaner.stderr!.destroy()
+      cleaner.unref()
     })
     cleaner.stderr!.on('data', (chunk) => (err += chunk))
     cleaner.once('error', reject)
-    // Printed nothing (a broken script): report it with its stderr. This path
+    // Printed nothing (a broken script): report it with its stderr. `close`,
+    // not `exit`, so that output still in the pipe is read first. This path
     // does wait for the teardown, so under load it may still hit the timeout.
-    cleaner.once('exit', (code) =>
+    cleaner.once('close', (code) =>
       resolve(out.trim() || `exit ${code} without outcome: ${err.trim()}`)
     )
   })
@@ -211,11 +217,19 @@ describe('smoke userData isolation', () => {
   it('cleaner waits for the given process to exit, then removes the directory', async () => {
     const dir = createSmokeUserDataDir(root)
     writeFileSync(join(dir, 'timetrack.sqlite'), 'x')
-    // Stand-in for the smoke process: lives ~1.5 s.
-    const holder = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1500)'], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-      stdio: 'ignore'
-    })
+    // Stand-in for the smoke process: lives ~1.5 s and leaves a marker (outside
+    // `dir`) as its last act — evidence of its end that owes nothing to the
+    // liveness check the cleaner itself relies on.
+    const marker = join(root, 'holder-done')
+    const holder = spawn(
+      process.execPath,
+      ['-e', "setTimeout(() => require('fs').writeFileSync(process.env.TT_TEST_MARKER, ''), 1500)"],
+      {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', TT_TEST_MARKER: marker },
+        stdio: 'ignore'
+      }
+    )
+    holder.unref()
     const { command, args, env } = buildCleanerCommand(process.execPath, dir, holder.pid!)
     const cleaner = spawn(command, args, {
       env: { ...process.env, ...env },
@@ -229,6 +243,7 @@ describe('smoke userData isolation', () => {
     expect(await outcome).toBe('removed')
     expect(existsSync(dir)).toBe(false)
     // The removal came after the holder ended, however late the cleaner started.
+    expect(existsSync(marker)).toBe(true)
     expect(isRunning(holder)).toBe(false)
   }, 15_000)
 
