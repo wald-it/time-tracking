@@ -176,8 +176,8 @@ jobs:
   # the way JS does). They can only be tested in Europe/Berlin when the whole
   # job runs there: Linux, with TZ on the job. vitest.config.ts registers the
   # `berlin` project only in that zone, which is why the UTC jobs above never
-  # see it. The rest of the suite
-  # runs here too, so every test also runs once with JS and SQLite in Berlin.
+  # see it. The rest of the suite runs here too, so every test also runs once
+  # with JS and SQLite in Berlin.
   #
   # No licences, lint or Stream Deck steps: those are platform-independent or
   # Windows-only by design (see the test job above), and Linux is not a release
