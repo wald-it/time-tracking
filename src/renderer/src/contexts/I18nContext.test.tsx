@@ -1,6 +1,6 @@
 /**
- * The UI language follows the stored `language` setting in both directions
- * (#296: the provider used to switch only to English, never back).
+ * The UI language follows the stored `language` setting in both directions,
+ * with the shared rule from shared/i18n (#296).
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { act, render } from '@testing-library/react'

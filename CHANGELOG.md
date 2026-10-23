@@ -21,6 +21,7 @@ If you call TimeTrack's MCP tools from your own scripts or agents, check this be
 ### Changed
 
 - **Project budgets count like the invoice, including timer time** — Time recorded with the timer did not count toward a project's budget unless the entry was edited later; manual, edited and imported entries counted, and so did old entries that a v1.2 data update had filled in. The budget now counts what the invoice bills: the project's billable entries, each rounded up with your rounding setting, like the PDF and the Auswertung. Non-billable entries no longer count. After the update, existing budget bars jump up once because the timer time is added, and the 80 % warning may appear sooner than before. The MCP field `used_minutes` follows the same rule ([#285](https://github.com/wald-it/time-tracking/issues/285)).
+- **Tray and suggested file names follow the app language** ([#296](https://github.com/wald-it/time-tracking/issues/296), part 1). With the app set to English, the tray menu and its tooltip are English and switch as soon as you change the language. Save dialogs suggest English file names: `Timesheet-Acme-2026-04.pdf`, `Time-entries-Acme-2026-04.csv` and `.ics`, and a merged PDF is named `<invoice>_incl_Timesheet.pdf`. The PDF merge still recognizes these files as timesheets. With the app set to German, all names stay as before (`Stundennachweis-…`, `Zeiterfassung-…`, `_inkl_Stundennachweis`), so existing archive folders keep their names. The text of the PDF, the CSV column headers and the iCal event titles are not affected.
 
 ### Fixed
 
