@@ -172,7 +172,7 @@ describe('index.ts — the dialogs at start', () => {
   it('hotkey conflict, German as before and English', () => {
     expect(hotkeyConflictDialog('de', 'Alt+Shift+M')).toEqual({
       title: 'TimeTrack — Hotkey-Konflikt',
-      message: 'Der Mini-Widget-Hotkey "Alt+Shift+M" konnte nicht registriert werden.',
+      message: 'Der Mini-Widget-Hotkey „Alt+Shift+M“ konnte nicht registriert werden.',
       detail:
         'Eine andere Anwendung verwendet diese Tastenkombination bereits.\n\n' +
         'Du kannst in den Einstellungen einen anderen Hotkey wählen.',
@@ -395,7 +395,7 @@ describe('updater.ts — the notification after a download (#309)', () => {
   it('German and English, word for word', () => {
     expect(updateDownloadedNotification('de', '1.23.0')).toEqual({
       title: 'Ein neues Update kann installiert werden',
-      body: 'TimeTrack 1.23.0 wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf "Jetzt neu starten".'
+      body: 'TimeTrack 1.23.0 wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf „Jetzt neu starten“.'
     })
     expect(updateDownloadedNotification('en', '1.23.0')).toEqual({
       title: 'A new update is ready to install',
@@ -407,7 +407,9 @@ describe('updater.ts — the notification after a download (#309)', () => {
     '%s: names exactly the label the update banner renders',
     (locale) => {
       const label = dialogT(locale)('update.ready.install')
-      expect(updateDownloadedNotification(locale, '1.23.0').body).toContain(`"${label}"`)
+      // German quotes „…“ (#296 part B), English straight ones.
+      const quoted = locale === 'de' ? `„${label}“` : `"${label}"`
+      expect(updateDownloadedNotification(locale, '1.23.0').body).toContain(quoted)
     }
   )
 })

@@ -115,7 +115,7 @@ describe('TagInput — suggestion list', () => {
     const { input } = await setup()
     fireEvent.change(input, { target: { value: 'u' } })
     // 'u' matches 'ux' by prefix and is itself not a known tag → create option.
-    expect(optionTexts()).toEqual(['#ux', "+ 'u' erstellen"])
+    expect(optionTexts()).toEqual(['#ux', '+ „u“ erstellen'])
   })
 
   it('3 — kein Erstellen-Eintrag bei exaktem Treffer', async () => {

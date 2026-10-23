@@ -106,7 +106,7 @@ describe('settings:set allow-list', () => {
       )
       expect(res).toEqual({
         ok: false,
-        error: 'Hotkey "Ctrl+Alt+Del" konnte nicht registriert werden.'
+        error: 'Hotkey „Ctrl+Alt+Del“ konnte nicht registriert werden.'
       })
       expect(stored(key)).toBe('Alt+Shift+S')
     }
@@ -123,7 +123,7 @@ describe('settings:set allow-list', () => {
     expect(res).toEqual({
       ok: false,
       error:
-        'Hotkey "Ctrl+Alt+Del" konnte nicht registriert werden. Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
+        'Hotkey „Ctrl+Alt+Del“ konnte nicht registriert werden. Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
     })
     expect(stored('hotkey_toggle')).toBe('Alt+Shift+S')
   })
