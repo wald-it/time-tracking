@@ -206,7 +206,13 @@ export function hasSqliteHeader(path: string): boolean {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
     throw err
   } finally {
-    if (fd !== undefined) closeSync(fd)
+    if (fd !== undefined) {
+      try {
+        closeSync(fd)
+      } catch {
+        // Never let a failing close replace the read result or its error.
+      }
+    }
   }
 }
 

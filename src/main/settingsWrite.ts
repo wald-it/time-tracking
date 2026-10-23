@@ -50,7 +50,8 @@ export const RENDERER_WRITABLE_SETTINGS: ReadonlySet<string> = new Set([
   'presence_show_client',
   'ical_feed_enabled',
   'ical_feed_port',
-  // #273 — automatic update check switch.
+  // #273 — automatic update check switch (read by updater.ts at start; the
+  // key is UPDATE_CHECK_SETTING_KEY in shared/updateCheck.ts).
   'update_check_enabled'
 ])
 

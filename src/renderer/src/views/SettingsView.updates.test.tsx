@@ -42,7 +42,7 @@ describe('Settings → Updates section (#274)', () => {
   it('has no version row', async () => {
     const { container } = render(
       <I18nProvider>
-        <UpdatesSection />
+        <UpdatesSection autoCheck onAutoCheckChange={() => {}} />
       </I18nProvider>
     )
     // Guards against a vacuous pass: init() has finished loading and the

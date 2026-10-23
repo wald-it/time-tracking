@@ -692,8 +692,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         )
       } catch (e) {
         // Same rule as inside: the renderer relaunches next, so say it here.
-        const message = `Wiederherstellung nicht durchgeführt: ${(e as Error).message}`
-        dialog.showErrorBox(RESTORE_FAILED_TITLE, message)
+        const message = `Wiederherstellung nicht durchgeführt: ${e instanceof Error ? e.message : String(e)}`
+        try {
+          dialog.showErrorBox(RESTORE_FAILED_TITLE, message)
+        } catch {
+          // The dialog itself may be what failed; still answer the renderer.
+        }
         return fail(message)
       }
     }

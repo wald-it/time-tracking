@@ -126,12 +126,8 @@ describe('settings:set allow-list', () => {
     const missing = [...written].filter((k) => !RENDERER_WRITABLE_SETTINGS.has(k))
     expect(missing).toEqual([])
     // And the other way round: a key nothing writes any more leaves the list,
-    // so the list cannot grow into "anything goes". Keys of open issues wait
-    // here, each with its issue; remove the entry when that issue's UI lands
-    // (the check below fails as soon as the key is written).
-    const pending = new Map([['update_check_enabled', '#273']])
-    for (const k of pending.keys()) expect(written.has(k), `${k} is written now`).toBe(false)
-    const unused = [...RENDERER_WRITABLE_SETTINGS].filter((k) => !written.has(k) && !pending.has(k))
+    // so the list cannot grow into "anything goes".
+    const unused = [...RENDERER_WRITABLE_SETTINGS].filter((k) => !written.has(k))
     expect(unused).toEqual([])
   })
 })
