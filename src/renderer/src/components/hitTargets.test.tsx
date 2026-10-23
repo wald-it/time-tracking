@@ -38,7 +38,6 @@ describe('44 px keys in toast and update banner', () => {
     ;(window as unknown as { api: unknown }).api = {
       update: {
         onStatus: () => () => {},
-        getVersion: async () => ({ ok: true as const, data: '1.0.0' }),
         getStatus: async () => ({
           ok: true as const,
           data: { status: 'ready' as const, version: '9.9.9' }

@@ -3,11 +3,17 @@ import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
 import { dialog } from 'electron'
 import { writeFileSync, readFileSync, mkdirSync, readdirSync } from 'fs'
-import { dirname, join, normalize, resolve, sep } from 'path'
+import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
-import { createBackup, listBackups, restoreBackupOrReport } from './backup'
+import {
+  createBackup,
+  listBackups,
+  restoreListedBackupOrReport,
+  RESTORE_FAILED_TITLE
+} from './backup'
+import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
 import {
   createManualEntry,
   updateManualEntry,
@@ -25,11 +31,13 @@ import { handleIcalExport, type IcalRequest } from './icalExport'
 import { mergeExportHandler, mergeOnlyHandler, pdfInfoHandler } from './pdfMergeHandlers'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
+import { budgetUsedMinutesSql } from '../shared/currency'
 import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
+  readRoundMinutes,
   readTodayEntries,
   readTopClients30d,
   readTotals,
@@ -379,6 +387,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     'projects:getAll',
     (_e, req?: { clientId?: number | null }): IpcResult<Project[]> => {
       try {
+        // Budget use counts like the invoice (#285), same step as the PDF.
+        const roundStep = readRoundMinutes(db)
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,
@@ -388,12 +398,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
             SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
             FROM entries WHERE deleted_at IS NULL GROUP BY project_id
           ) ec ON ec.project_id = p.id
-          LEFT JOIN (
-            SELECT project_id, COALESCE(SUM(rounded_min), 0) AS used_minutes
-            FROM entries
-            WHERE deleted_at IS NULL AND stopped_at IS NOT NULL
-            GROUP BY project_id
-          ) bud ON bud.project_id = p.id`
+          LEFT JOIN (${budgetUsedMinutesSql(roundStep)}) bud ON bud.project_id = p.id`
         const order = `ORDER BY CASE WHEN p.status = 'active' THEN 0 WHEN p.status = 'paused' THEN 1 ELSE 2 END, p.name`
         let query: string
         let params: unknown[]
@@ -602,45 +607,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
-  ipcMain.handle('settings:set', (_e, key: string, value: string): IpcResult<void> => {
-    try {
-      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
-      // Apply side-effects for known keys.
-      if (key === 'idle_threshold_minutes') {
-        const n = parseInt(value, 10)
-        if (Number.isFinite(n)) hooks.setIdleThreshold(n)
-      } else if (key === 'auto_start') {
-        hooks.setAutoStart(value === '1')
-      } else if (key === 'hotkey_toggle') {
-        const okHotkey = hooks.setHotkey(value)
-        if (!okHotkey) return fail(`Hotkey "${value}" konnte nicht registriert werden`)
-      } else if (key === 'mini_enabled') {
-        hooks.setMiniEnabled(value === '1')
-      } else if (key === 'mini_hotkey') {
-        const okHotkey = hooks.setMiniHotkey(value)
-        if (!okHotkey) return fail(`Hotkey "${value}" konnte nicht registriert werden`)
-      } else if (key === 'mcp_write_enabled') {
-        hooks.setMcpWriteEnabled(value === '1')
-      } else if (key === 'controller_enabled') {
-        hooks.setControllerEnabled(value === '1')
-      } else if (
-        key === 'presence_enabled' ||
-        key === 'presence_show_client' ||
-        key === 'language'
-      ) {
-        // Toggling mirroring off clears our own status message; the language
-        // and privacy switches re-render it while a timer runs.
-        hooks.pokePresence()
-      } else if (key === 'ical_feed_enabled') {
-        hooks.setIcalFeedEnabled(value === '1')
-      } else if (key === 'ical_feed_port') {
-        hooks.restartIcalFeed()
-      }
-      return ok(undefined)
-    } catch (e) {
-      return fail(e)
-    }
-  })
+  // #272: only keys on the renderer allow-list (see settingsWrite.ts).
+  ipcMain.handle(
+    'settings:set',
+    (_e, key: unknown, value: unknown): IpcResult<void> =>
+      writeSettingFromRenderer(db, hooks, key, value)
+  )
 
   // ── iCal feed (#169) ───────────────────────────────────────────
   const readSetting = (key: string): string | undefined =>
@@ -673,16 +645,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   // ── Synchronous settings read (preload FOUC fix only) ──────────
   // ipcMain.on + event.returnValue is the only synchronous IPC pattern.
-  // Used exclusively by preload to read theme_mode before first paint.
-  ipcMain.on('settings:getSync', (event, key: string) => {
-    try {
-      const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
-        | { value: string }
-        | undefined
-      event.returnValue = row?.value ?? null
-    } catch {
-      event.returnValue = null
-    }
+  // Used exclusively by preload to read theme_mode before first paint, and
+  // answers nothing else (#272).
+  ipcMain.on('settings:getSync', (event, key: unknown) => {
+    event.returnValue = readSettingSync(db, key)
   })
 
   // ── Backups ───────────────────────────────────
@@ -708,28 +674,30 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  // #272: the renderer names a backup from `backup:list` by its file name; a
+  // path is never accepted. Snapshots the current DB, closes it, then replaces
+  // the file. A failure is shown as a native dialog here: the renderer
+  // relaunches right after, and its own message would vanish with the window.
   ipcMain.handle(
     'backup:restore',
-    (_e, filePath: string): IpcResult<{ safetyBackupPath: string }> => {
+    (_e, filename: unknown): IpcResult<{ safetyBackupPath: string }> => {
       try {
-        // Guard: allow paths from the default dir OR the user-configured dir.
-        // Use resolve() on both sides so casing/relative-path differences don't
-        // cause false rejections on Windows.
-        const defaultDir = resolve(getDefaultBackupsDir())
-        const configuredPath = getBackupPathSetting()
-        const configuredDir = configuredPath ? resolve(configuredPath) : defaultDir
-        const resolved = resolve(filePath)
-        if (!resolved.startsWith(defaultDir + sep) && !resolved.startsWith(configuredDir + sep)) {
-          return fail('Ungültiger Backup-Pfad')
-        }
-        // Snapshots the current DB, closes it, then replaces the file. A
-        // failure is shown as a native dialog here: the renderer relaunches
-        // right after, and its own message would vanish with the window.
-        return restoreBackupOrReport(db, filePath, getDbPath(), (title, message) =>
-          dialog.showErrorBox(title, message)
+        return restoreListedBackupOrReport(
+          db,
+          filename,
+          getBackupPathSetting() || undefined,
+          getDbPath(),
+          (title, message) => dialog.showErrorBox(title, message)
         )
       } catch (e) {
-        return fail(e)
+        // Same rule as inside: the renderer relaunches next, so say it here.
+        const message = `Wiederherstellung nicht durchgeführt: ${e instanceof Error ? e.message : String(e)}`
+        try {
+          dialog.showErrorBox(RESTORE_FAILED_TITLE, message)
+        } catch {
+          // The dialog itself may be what failed; still answer the renderer.
+        }
+        return fail(message)
       }
     }
   )

@@ -303,44 +303,113 @@ describe('listBackups with override', () => {
   })
 })
 
-describe('backup:restore path guard logic', () => {
-  it('accepts file path inside the default backups dir', async () => {
-    const { getDefaultBackupsDir, getBackupsDir } = await loadBackup()
-    const { resolve, normalize, sep } = await import('path')
-    const defaultDir = getDefaultBackupsDir()
-    // Mimic the guard from ipc.ts
-    const configuredPath = ''
-    const configuredDir = configuredPath ? normalize(configuredPath) : defaultDir
-    const testPath = join(getBackupsDir(), 'backup-daily-2026-04-01.sqlite')
-    const resolved = resolve(testPath)
-    const allowed =
-      resolved.startsWith(defaultDir + sep) || resolved.startsWith(configuredDir + sep)
-    expect(allowed).toBe(true)
+// #272: `backup:restore` takes the file name of a listed backup, never a path,
+// and never puts a non-database file in place of the DB.
+describe('restoreListedBackupOrReport', () => {
+  const NAME = 'backup-manual-2026-04-01T00-00-00-000Z.sqlite'
+
+  function listedBackup(dir: string, value = 'BACKUP'): void {
+    walDb(join(dir, NAME), value).close()
+  }
+
+  it('restores a backup named by its listed file name', async () => {
+    const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
+    listedBackup(getBackupsDir())
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreListedBackupOrReport(db, NAME, undefined, currentDb, (t) => reports.push(t))
+    expect(res.ok).toBe(true)
+    expect(reports).toEqual([])
+    expect(readValues(currentDb)).toEqual(['BACKUP'])
   })
 
-  it('accepts file path inside a custom configured dir', async () => {
-    const { getDefaultBackupsDir } = await loadBackup()
-    const { resolve, normalize, sep, join: pjoin } = await import('path')
-    const defaultDir = getDefaultBackupsDir()
-    const configuredPath = join(userDataDir, 'custom-backups')
-    const configuredDir = normalize(configuredPath)
-    const testPath = pjoin(configuredPath, 'backup-manual-2026-04-01T00-00-00-000Z.sqlite')
-    const resolved = resolve(testPath)
-    const allowed =
-      resolved.startsWith(defaultDir + sep) || resolved.startsWith(configuredDir + sep)
-    expect(allowed).toBe(true)
+  it.each([
+    ['a full path, even to a listed backup', (dir: string) => join(dir, NAME)],
+    ['a name that climbs out of the folder', () => '../current.sqlite'],
+    ['a name that is not listed', () => 'backup-manual-unknown.sqlite'],
+    ['a value that is not a string', () => ({ filename: NAME })]
+  ])('refuses %s and leaves the database open and unchanged', async (_label, value) => {
+    const { restoreListedBackupOrReport, getBackupsDir, RESTORE_UNKNOWN_MESSAGE } =
+      await loadBackup()
+    const dir = getBackupsDir()
+    listedBackup(dir)
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreListedBackupOrReport(db, value(dir), undefined, currentDb, (_t, m) =>
+      reports.push(m)
+    )
+    expect(res).toEqual({ ok: false, error: RESTORE_UNKNOWN_MESSAGE })
+    expect(reports).toEqual([RESTORE_UNKNOWN_MESSAGE])
+    expect(db.open).toBe(true)
+    db.close()
+    expect(readValues(currentDb)).toEqual(['CURRENT'])
   })
 
-  it('rejects file path outside both default and configured dir', async () => {
-    const { getDefaultBackupsDir } = await loadBackup()
-    const { resolve, normalize, sep, join: pjoin } = await import('path')
-    const defaultDir = getDefaultBackupsDir()
-    const configuredPath = join(userDataDir, 'custom-backups')
-    const configuredDir = normalize(configuredPath)
-    const maliciousPath = pjoin(userDataDir, '..', '..', 'etc', 'passwd')
-    const resolved = resolve(maliciousPath)
-    const allowed =
-      resolved.startsWith(defaultDir + sep) || resolved.startsWith(configuredDir + sep)
-    expect(allowed).toBe(false)
+  it('reports an unreachable backup folder instead of failing silently', async () => {
+    const { restoreListedBackupOrReport } = await loadBackup()
+    // A file where the folder should be: creating or reading it throws.
+    const blocked = join(userDataDir, 'blocked')
+    makeFile(blocked)
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreListedBackupOrReport(db, NAME, blocked, currentDb, (_t, m) =>
+      reports.push(m)
+    )
+    expect(res.ok).toBe(false)
+    expect(reports).toHaveLength(1)
+    expect(db.open).toBe(true)
+    db.close()
+  })
+
+  it('looks only in the configured backup folder, not the default one', async () => {
+    const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
+    listedBackup(getBackupsDir()) // default folder
+    const customDir = getBackupsDir(join(userDataDir, 'custom'))
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const res = restoreListedBackupOrReport(db, NAME, customDir, currentDb, () => {})
+    expect(res.ok).toBe(false)
+    expect(db.open).toBe(true)
+    db.close()
+  })
+
+  it('refuses a listed file that is not a SQLite database', async () => {
+    const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
+    makeFile(join(getBackupsDir(), NAME), 'not a database')
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreListedBackupOrReport(db, NAME, undefined, currentDb, (_t, m) =>
+      reports.push(m)
+    )
+    expect(res.ok).toBe(false)
+    expect(reports[0]).toMatch(/Not a SQLite database/)
+    // Refused before the snapshot: the open database was not closed.
+    expect(db.open).toBe(true)
+    db.close()
+    expect(readValues(currentDb)).toEqual(['CURRENT'])
+  })
+})
+
+describe('hasSqliteHeader', () => {
+  it('tells a database from other files', async () => {
+    const { hasSqliteHeader } = await loadBackup()
+    const dbFile = join(userDataDir, 'real.sqlite')
+    walDb(dbFile, 'x').close()
+    makeFile(join(userDataDir, 'short.sqlite'), 'SQLite')
+    makeFile(join(userDataDir, 'text.sqlite'), 'SQLite format 4\0 and more')
+    expect(hasSqliteHeader(dbFile)).toBe(true)
+    expect(hasSqliteHeader(join(userDataDir, 'short.sqlite'))).toBe(false)
+    expect(hasSqliteHeader(join(userDataDir, 'text.sqlite'))).toBe(false)
+    expect(hasSqliteHeader(join(userDataDir, 'missing.sqlite'))).toBe(false)
+  })
+
+  it('passes other read errors through instead of calling the file "not a database"', async () => {
+    const { hasSqliteHeader } = await loadBackup()
+    // A directory: opening or reading it fails with something other than ENOENT.
+    expect(() => hasSqliteHeader(userDataDir)).toThrow()
   })
 })

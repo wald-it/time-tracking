@@ -35,8 +35,8 @@ vi.mock('electron-updater', () => ({ default: { autoUpdater: updater } }))
 
 import { UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
 
-// updater.ts keeps module-level state (last status, last check, the
-// suppressed first error), and the app calls initAutoUpdater once per run —
+// updater.ts keeps module-level state (last status, last check, the running
+// start-up check), and the app calls initAutoUpdater once per run —
 // so every test gets a fresh copy of the module.
 let initAutoUpdater: typeof import('./updater').initAutoUpdater
 
