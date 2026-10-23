@@ -11,6 +11,10 @@ All notable changes to TimeTrack are documented here.
 
 - **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).
 
+### Internal
+
+- **Every pull request now builds and tests the packaged app (#269).** A new `package-smoke` job in the test workflow packages the app on Windows and macOS, checks what the package contains, runs the app's `--smoke-test` and starts the bundled MCP server from it (initialize, `tools/list`, one tool call that has to reach SQLite). On Windows it builds the real NSIS installer, so `build/installer.nsh` is compiled on every PR; the installer is built, not run. Until now only the release workflow packaged anything, so a broken package first showed up after the tag was pushed.
+
 ## [1.22.0] — 2026-10-23
 
 ### Breaking for MCP clients and integrations
