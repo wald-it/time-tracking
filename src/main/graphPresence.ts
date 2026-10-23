@@ -76,6 +76,7 @@ export function resetPresenceStateForTests(): void {
   state.at = 0
   state.userId = null
   state.swept = false
+  queue = Promise.resolve()
 }
 
 /**
@@ -85,23 +86,48 @@ export function resetPresenceStateForTests(): void {
  */
 const OWN_MESSAGE = /^🔴 (Fokus|Focus)(: .+)?$/u
 
+function flat(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+/** A numeric entity's character, or the entity unchanged when it names none. */
+function codePoint(code: number, raw: string): string {
+  return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : raw
+}
+
 /**
- * Compare-ready form of a status message. How Graph returns a message set as
- * contentType "text" has not been observed against a real tenant: as set, or
- * HTML-wrapped (`<p>…</p>`, `&nbsp;`). Both reduce to the same plain text.
+ * Graph content read as HTML. How Graph returns a message set as contentType
+ * "text" has not been observed against a real tenant: as set, or HTML-wrapped
+ * (`<p>…</p>`, `&nbsp;`, entities). This is the second reading; `flat` the first.
  */
-function plainMessage(content: string): string {
-  return content
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
-    .trim()
+function fromHtml(content: string): string {
+  return flat(
+    content
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#x([0-9a-f]+);/gi, (raw, hex: string) => codePoint(parseInt(hex, 16), raw))
+      .replace(/&#(\d+);/g, (raw, dec: string) => codePoint(Number(dec), raw))
+      .replace(/&amp;/g, '&')
+  )
+}
+
+/**
+ * Whether Graph's content is the plain-text message we set. Our own text is
+ * never HTML, so it is only whitespace-normalised; Graph's is tried as-is and
+ * read as HTML, so a client named "Foo <Bar>" matches in both forms.
+ */
+function isMessage(content: string, own: string): boolean {
+  const target = flat(own)
+  return flat(content) === target || fromHtml(content) === target
+}
+
+/** Whether Graph's content has the shape of a message we set (#317). */
+function looksOurs(content: string): boolean {
+  return OWN_MESSAGE.test(flat(content)) || OWN_MESSAGE.test(fromHtml(content))
 }
 
 function scopeGranted(view: PresenceAccountView): boolean {
@@ -151,13 +177,27 @@ async function resolveUserId(
 }
 
 /**
+ * Pokes are fire-and-forget (index.ts), and one reconcile awaits several
+ * requests. Without a queue a start-up sweep still reading could clear the
+ * message a parallel poke had just set; so every reconcile waits for the one
+ * before it.
+ */
+let queue: Promise<void> = Promise.resolve()
+
+/**
  * Bring the Teams status message in line with the current timer state.
  * Safe to call often; talks to Graph only when something actually changed.
  */
-export async function reconcilePresence(
+export function reconcilePresence(
   deps: PresenceDeps,
   running: RunningStatus | null
 ): Promise<void> {
+  const run = queue.then(() => reconcileOnce(deps, running))
+  queue = run.catch(() => undefined)
+  return run
+}
+
+async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null): Promise<void> {
   const log = deps.log ?? ((): void => {})
   const now = deps.now?.() ?? Date.now()
   const enabled = deps.getSetting('presence_enabled') === '1'
@@ -221,19 +261,25 @@ export async function reconcilePresence(
 
   if (sweepDue && running === null) {
     // Nothing applied in this run, no timer: only a leftover can need
-    // withdrawing. Recognised by its shape, since its exact text is gone with
-    // the previous run; a message the user wrote is left alone.
+    // withdrawing. The message is recognised by its shape, since its exact
+    // text is gone with the previous run; a message the user wrote is left
+    // alone. Our Busy session ends whenever Teams shows Busy, too: the user may
+    // have replaced the message, or a previous clear may have stopped
+    // half-way. (Ending our own session cannot touch anyone else's Busy.)
     const current = await readPresence(fetchFn, token, userId, log)
     if (!current) return // retried at the next poke
-    if (current.content !== null && OWN_MESSAGE.test(plainMessage(current.content))) {
-      if (!((await clearMessage()) && (await post('clearPresence', { sessionId })))) return
-      log('presence: withdrew a status message left from a previous run')
+    const leftover = current.content !== null && looksOurs(current.content)
+    if (leftover && !(await clearMessage())) return
+    if (
+      (leftover || current.availability === 'Busy') &&
+      !(await post('clearPresence', { sessionId }))
+    ) {
+      return
     }
+    if (leftover) log('presence: withdrew a status message left from a previous run')
     state.swept = true
     return
   }
-  // A timer runs at the first poke: the set below replaces any leftover.
-  state.swept = true
 
   let ok: boolean
   if (message === '') {
@@ -241,11 +287,16 @@ export async function reconcilePresence(
     // written their own in Teams while the timer ran. Our Busy session is
     // ours by definition and always ends.
     const current = await readPresence(fetchFn, token, userId, log)
-    if (!current) return // retried at the next poke; erring toward keeping the user's text
+    if (!current) {
+      // The message waits for a successful read (erring toward keeping the
+      // user's text) and is retried at the next poke; Busy ends now.
+      await post('clearPresence', { sessionId })
+      return
+    }
     const ours =
       current.content !== null &&
       state.message !== null &&
-      plainMessage(current.content) === plainMessage(state.message)
+      isMessage(current.content, state.message)
     if (current.content !== null && !ours) {
       log('presence: status message was changed in Teams — left as is')
     }
@@ -270,11 +321,14 @@ export async function reconcilePresence(
   if (!ok) return
   state.message = message
   state.at = now
-  log(
-    message === ''
-      ? 'presence: cleared (session, message if ours)'
-      : 'presence: set (message + Busy)'
-  )
+  // Only now: a set that failed must leave a crash leftover to the sweep.
+  state.swept = true
+  if (message === '') {
+    // The read before the clear already showed what Teams held.
+    log('presence: cleared (session, message if ours)')
+    return
+  }
+  log('presence: set (message + Busy)')
   await readBack(fetchFn, token, userId, message, log)
 }
 
@@ -307,7 +361,7 @@ async function readPresence(
     const content = body.statusMessage?.message?.content
     return {
       availability: typeof body.availability === 'string' ? body.availability : null,
-      content: typeof content === 'string' && plainMessage(content) !== '' ? content : null
+      content: typeof content === 'string' && fromHtml(content) !== '' ? content : null
     }
   } catch (err) {
     log(`presence: read failed (${err instanceof Error ? err.name : 'error'})`)
@@ -332,10 +386,6 @@ async function readBack(
   const current = await readPresence(fetchFn, token, userId, log)
   if (!current) return
   const message =
-    current.content === null
-      ? 'none'
-      : expected !== '' && plainMessage(current.content) === plainMessage(expected)
-        ? 'matches'
-        : 'differs'
+    current.content === null ? 'none' : isMessage(current.content, expected) ? 'matches' : 'differs'
   log(`presence: read-back availability=${String(current.availability)} statusMessage=${message}`)
 }

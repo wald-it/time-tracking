@@ -51,7 +51,14 @@ function resetTeams(): void {
  * second form so both are tested.
  */
 function served(content: string): string {
-  return teams.html ? `<p>${content.replace(/ /g, '&nbsp;')}</p>` : content
+  if (!teams.html) return content
+  const escaped = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/🔴/g, '&#x1F534;')
+    .replace(/ /g, '&nbsp;')
+  return `<p>${escaped}</p>`
 }
 
 function makeDeps(
@@ -336,8 +343,8 @@ describe('reconcilePresence', () => {
     expect(teams.content).toBe('In a workshop')
   })
 
-  it('stop with an unreadable presence writes nothing and retries at the next poke', async () => {
-    const { deps, calls } = makeDeps()
+  it('stop with an unreadable presence ends Busy, keeps the message and retries it at the next poke', async () => {
+    const { deps } = makeDeps()
     await reconcilePresence(deps, RUNNING)
     const inner = deps.fetchFn!
     let readFails = true
@@ -348,14 +355,46 @@ describe('reconcilePresence', () => {
       }
       return inner(url, init)
     }) as typeof fetch
-    const before = writes(calls).length
     await reconcilePresence(deps, null)
-    expect(writes(calls).length).toBe(before)
+    expect(teams.availability).toBe('Available')
     expect(teams.content).toBe('🔴 Fokus')
 
     readFails = false
     await reconcilePresence(deps, null)
     expect(teams.content).toBeNull()
+  })
+
+  it('a client name with angle brackets is still recognised as ours, plain and HTML', async () => {
+    const odd = { ...RUNNING, client_name: 'Foo <Bar>', project_name: 'A & B' }
+    for (const html of [false, true]) {
+      resetPresenceStateForTests()
+      resetTeams()
+      teams.html = html
+      const { deps } = makeDeps({ showClient: true })
+      await reconcilePresence(deps, odd)
+      await reconcilePresence(deps, null)
+      expect(teams.content).toBeNull()
+    }
+  })
+
+  it('an entity that names no character does not break the read', async () => {
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    teams.content = 'note &#9999999; and &#xFFFFFFF;'
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('note &#9999999; and &#xFFFFFFF;')
+    expect(teams.availability).toBe('Available')
+  })
+
+  it('overlapping pokes are serialised: a sweep still reading cannot clear a fresh message', async () => {
+    teams.content = '🔴 Fokus' // leftover from a previous run
+    const { deps } = makeDeps({ showClient: true })
+    // Fire-and-forget like index.ts: the start-up poke and a timer start overlap.
+    const sweep = reconcilePresence(deps, null)
+    const start = reconcilePresence(deps, RUNNING)
+    await Promise.all([sweep, start])
+    expect(teams.content).toBe('🔴 Fokus: Acme — Rollout')
+    expect(teams.availability).toBe('Busy')
   })
 
   // ── #317: a status left behind by a crash or quit ────────────────────────
@@ -382,12 +421,25 @@ describe('reconcilePresence', () => {
     expect(teams.content).toBeNull()
   })
 
-  it('first poke of a run leaves a message the user wrote', async () => {
+  it('first poke of a run leaves a message the user wrote, but ends our old Busy session', async () => {
     teams.content = 'Out until Monday'
+    teams.availability = 'Busy' // our session from the crashed run
     const { deps, calls } = makeDeps()
     await reconcilePresence(deps, null)
     expect(teams.content).toBe('Out until Monday')
-    expect(writes(calls)).toHaveLength(0)
+    expect(statusCalls(calls)).toHaveLength(0)
+    expect(teams.availability).toBe('Available')
+  })
+
+  it('a failed set at the first poke leaves the leftover to the next poke', async () => {
+    teams.content = '🔴 Fokus: Old — Leftover'
+    teams.availability = 'Busy'
+    const failing = makeDeps({ failWith: 503 })
+    await reconcilePresence(failing.deps, RUNNING) // restart with a timer, offline
+    const ok = makeDeps()
+    await reconcilePresence(ok.deps, null) // back online, timer stopped
+    expect(teams.content).toBeNull()
+    expect(teams.availability).toBe('Available')
   })
 
   it('feature off at start: no read, no write', async () => {
