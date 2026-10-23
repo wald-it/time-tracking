@@ -212,6 +212,10 @@ export const SPLIT_EDGE_ERROR =
   'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. ' +
   'Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten.'
 
+/** An MCP edit whose entry changed while the owner was being asked (#311). */
+export const STALE_EDIT_ERROR =
+  'Der Eintrag hat sich während der Rückfrage geändert. Bitte die Änderung erneut anfragen.'
+
 type Range = { started_at: string; stopped_at: string }
 
 /**
@@ -225,7 +229,8 @@ type Range = { started_at: string; stopped_at: string }
  *   its end on the last): that edge of the entry moves.
  * Anything else — moving an edge at a midnight cut, a new range across
  * midnight, both edges at once — is refused (null), because each of those
- * would have to guess what happens to the other half. Before this, the other
+ * would have to guess what happens to the other half. A group of one row (a
+ * sibling removed for good) has no other half, so its edges are both outer. Before this, the other
  * half was simply deleted.
  *
  * `group` is every row of the entry, also halves in the trash: their cuts are

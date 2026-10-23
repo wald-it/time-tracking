@@ -11,6 +11,7 @@ import type Database from 'better-sqlite3'
 import {
   createManualEntry,
   resolveEditRange,
+  STALE_EDIT_ERROR,
   updateManualEntry,
   switchTimer,
   FUTURE_START_TOLERANCE_MS,
@@ -522,9 +523,20 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
           ...hintPreview(hints)
         },
         hints,
-        // The half's own input: updateManualEntry maps it again against the
-        // state at confirmation, so a plan gone stale is refused, not applied.
-        run: () => updateManualEntry(db, given),
+        // Mapped again at confirmation: if the entry changed while the owner
+        // was asked (a half trashed or edited elsewhere), the range would no
+        // longer be the one in the dialog, so the edit is refused instead.
+        run: () => {
+          const now = resolveEditRange(db, given)
+          if ('error' in now) return { ok: false as const, error: now.error }
+          if (
+            now.input.started_at !== input.started_at ||
+            now.input.stopped_at !== input.stopped_at
+          ) {
+            return { ok: false as const, error: STALE_EDIT_ERROR }
+          }
+          return updateManualEntry(db, given)
+        },
         audit: (r) => ({
           op,
           id: r?.id ?? id,

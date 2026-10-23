@@ -271,7 +271,7 @@ describe('editing one half of a split entry (#311)', () => {
     expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([[local(11, 0), local(11, 5)]])
   })
 
-  it('an MCP edit is mapped again at confirmation and never revives a half trashed meanwhile', async () => {
+  it('an MCP edit whose entry changed while the owner was asked is refused, not applied', async () => {
     const { ctx } = makeCtx(db)
     const [first, second] = rows()
     // The first half goes to the trash while the dialog is open.
@@ -285,8 +285,8 @@ describe('editing one half of a split entry (#311)', () => {
       op: 'update_entry_fields',
       args: { id: second.id, stopped_at: local(11, 5) }
     })
-    expect(res.ok).toBe(true)
-    // Mapped again at confirmation: only the live half, its end moved.
-    expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([[local(11, 0), local(11, 5)]])
+    expect(res).toMatchObject({ ok: false })
+    // The live half is as it was; nothing the owner did not see was written.
+    expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([[local(11, 0), local(11, 4)]])
   })
 })
