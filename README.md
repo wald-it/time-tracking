@@ -109,7 +109,12 @@ hours for client X in June by project" or "log the meeting I forgot".
 project number), `list_entries` (month or date range, filter by client/project/tag,
 summary-only mode), `get_running_timer`, `get_dashboard`, `get_analytics` (monthly
 worked time to the second, plus `rounded_seconds` / `billable_rounded_seconds`
-rounded per entry like the invoice; revenue optional).
+rounded per entry like the invoice; revenue optional), `get_report` (the same figures
+for any range of up to 366 days, grouped by client, project and/or day in one call).
+
+**Recipes:** the server also offers three prompts, for logging time you forgot, preparing
+the monthly close and checking a period for gaps. Each shows a preview before any change.
+The texts and how to use them are in [docs/mcp-recipes.md](docs/mcp-recipes.md).
 
 **Write tools** (opt-in, see below): `create_manual_entry`, `update_entry_fields`,
 `start_timer`, `stop_running_timer` — each with `preview: true` for a preview without a commit.

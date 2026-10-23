@@ -8,7 +8,7 @@
  *
  * Read tools:
  *   list_clients · list_projects · list_entries · get_running_timer
- *   get_dashboard · get_analytics
+ *   get_dashboard · get_analytics · get_report
  * Write tools (require write mode enabled in the app; each supports preview):
  *   create_manual_entry · update_entry_fields · start_timer · stop_running_timer
  *
@@ -30,9 +30,12 @@ import {
   getRunningTimer,
   getDashboard,
   getAnalytics,
+  getReport,
   readStoredPrivacy,
+  REPORT_MAX_DAYS,
   type SqliteDb
 } from './queries'
+import { RECIPES } from './recipes'
 import { sendWrite } from './writeClient'
 import { userDataDir } from './socketPath'
 import {
@@ -114,7 +117,8 @@ export function buildServer(): McpServer {
     {
       instructions:
         'Zugriff auf die lokale TimeTrack-Zeiterfassung. Lesen: list_entries/get_analytics ' +
-        'für Auswertungen (Stunden pro Kunde/Projekt), get_dashboard für Tag/Woche. ' +
+        'für Auswertungen (Stunden pro Kunde/Projekt), get_report für beliebige Zeiträume nach ' +
+        'Kunde, Projekt und Tag, get_dashboard für Tag/Woche. ' +
         'Schreiben (create_manual_entry, update_entry_fields, start_timer, stop_running_timer) ' +
         'erfordert aktivierten Schreibzugriff in der App und kann eine Bestätigung auslösen — ' +
         'rufe Write-Tools bevorzugt zuerst mit preview:true auf. Eine Vorschau legt nichts an: ' +
@@ -340,6 +344,74 @@ export function buildServer(): McpServer {
       }
     }
   )
+
+  server.registerTool(
+    'get_report',
+    {
+      annotations: READ_TOOL_ANNOTATIONS,
+      title: 'Bericht über einen Zeitraum',
+      description:
+        'Bericht über beliebige Tage (from/to als lokale Tage YYYY-MM-DD, beide eingeschlossen, ' +
+        `höchstens ${REPORT_MAX_DAYS} Tage), gruppiert nach group_by in der angegebenen ` +
+        'Reihenfolge: client, project, day (leer = nur Summen). Je Zeile und in totals: ' +
+        'entry_count, seconds und billable_seconds (gearbeitete Zeit, ungerundet, wie ' +
+        'list_entries), rounded_seconds und billable_rounded_seconds (je Eintrag gerundet wie die ' +
+        'Rechnung; billable_rounded_seconds ist, was die Rechnungen abrechnen), revenue_cent nur ' +
+        'bei freigeschalteten Stundensätzen. Nur abgeschlossene Einträge, wie get_analytics; ein ' +
+        'Monat nach Kunde gruppiert ergibt dieselben Zahlen wie get_analytics. Keine ' +
+        'Beschreibungen oder Notizen; dafür list_entries.',
+      inputSchema: {
+        from: z.string().describe('Erster Tag, YYYY-MM-DD (lokal)'),
+        to: z.string().describe('Letzter Tag, YYYY-MM-DD (lokal), eingeschlossen'),
+        group_by: z
+          .array(z.enum(['client', 'project', 'day']))
+          .max(3)
+          .default([])
+          .describe('Gruppierung, äußerste zuerst, z. B. ["client", "project"]'),
+        client_id: z.number().int().optional().describe('Nur dieser Kunde'),
+        project_id: z.number().int().optional().describe('Nur dieses Projekt'),
+        billable_only: z.boolean().optional().describe('Nur abrechenbare Einträge')
+      }
+    },
+    async ({ from, to, group_by, client_id, project_id, billable_only }) => {
+      try {
+        const report = withDb((db, privacy) =>
+          getReport(db, privacy, {
+            from,
+            to,
+            groupBy: group_by,
+            clientId: client_id,
+            projectId: project_id,
+            billableOnly: billable_only
+          })
+        )
+        return jsonResult(report)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  // ── Recipes (Q17) ───────────────────────────────────────────────────────
+  // Tested prompts; the text lives in recipes.ts, which docs/mcp-recipes.md
+  // mirrors for clients without prompt support.
+  for (const recipe of RECIPES) {
+    const argsSchema = Object.fromEntries(
+      recipe.args.map((a) => [
+        a.name,
+        a.required
+          ? z.string().describe(a.description)
+          : z.string().optional().describe(a.description)
+      ])
+    )
+    server.registerPrompt(
+      recipe.name,
+      { title: recipe.title, description: recipe.description, argsSchema },
+      (args: Record<string, string | undefined>) => ({
+        messages: [{ role: 'user', content: { type: 'text', text: recipe.text(args) } }]
+      })
+    )
+  }
 
   // ── Write tools (v1.14 #127) ────────────────────────────────────────────
   // These forward to the running TimeTrack app over a local socket; they do
