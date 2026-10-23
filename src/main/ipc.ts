@@ -26,9 +26,11 @@ import {
   mergeExportHandler,
   mergeOnlyHandler,
   pdfInfoHandler,
+  realFsDeps,
   saveDialogIn
 } from './pdfMergeHandlers'
-import { dialogT, readLanguage } from './mainI18n'
+import { dialogT, localeFromSystem, readLanguageOr } from './mainI18n'
+import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { registerTagHandlers } from './tagHandlers'
@@ -116,6 +118,10 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+  // Native dialogs follow the app language (#270); with the handle closed
+  // (after a restore attempt) the system language, as at start.
+  const dialogLocale = (): Locale =>
+    readLanguageOr(db, () => localeFromSystem(app.getPreferredSystemLanguages()))
 
   // ── Clients ──────────────────────────────────────────────────
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
@@ -731,12 +737,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         // Snapshots the current DB, closes it, then replaces the file. A
         // failure is shown as a native dialog here: the renderer relaunches
         // right after, and its own message would vanish with the window.
-        return restoreBackupOrReport(
-          db,
-          filePath,
-          getDbPath(),
-          readLanguage(db),
-          (title, message) => dialog.showErrorBox(title, message)
+        return restoreBackupOrReport(db, filePath, getDbPath(), dialogLocale(), (title, message) =>
+          dialog.showErrorBox(title, message)
         )
       } catch (e) {
         return fail(e)
@@ -748,7 +750,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openDirectory', 'createDirectory'],
-        title: dialogT(readLanguage(db))('mainDialog.backupPath.title')
+        title: dialogT(dialogLocale())('mainDialog.backupPath.title')
       })
       if (canceled || filePaths.length === 0) return ok('')
       const dir = filePaths[0]
@@ -877,7 +879,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const today = new Date().toISOString().slice(0, 10)
       const result = await dialog.showSaveDialog({
-        title: dialogT(readLanguage(db))('mainDialog.exportJson.title'),
+        title: dialogT(dialogLocale())('mainDialog.exportJson.title'),
         defaultPath: `timetrack-export-${today}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
@@ -924,7 +926,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           }
         }
         const result = await dialog.showSaveDialog({
-          title: dialogT(readLanguage(db))('mainDialog.pdf.saveTitle'),
+          title: dialogT(dialogLocale())('mainDialog.pdf.saveTitle'),
           defaultPath: `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
@@ -959,13 +961,13 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // target directory is not writable (e.g. a corporate archive folder).
   // Core logic lives in pdfMergeHandlers.ts for testability.
   ipcMain.handle('pdf:merge-export', (_e, req) =>
-    mergeExportHandler(db, req, undefined, saveDialogIn(readLanguage(db)))
+    mergeExportHandler(db, req, realFsDeps, saveDialogIn(dialogLocale))
   )
 
   // PDF merge-only: merges two existing PDFs (Stundennachweis + invoice) without
   // re-rendering. Core logic lives in pdfMergeHandlers.ts for testability.
   ipcMain.handle('pdf:merge-only', (_e, req) =>
-    mergeOnlyHandler(req, undefined, saveDialogIn(readLanguage(db)))
+    mergeOnlyHandler(req, realFsDeps, saveDialogIn(dialogLocale))
   )
 
   // PDF info: returns page count for a given PDF path. Used by the renderer to
@@ -979,7 +981,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     async (): Promise<IpcResult<{ filePath: string } | null>> => {
       try {
         const result = await dialog.showOpenDialog({
-          title: dialogT(readLanguage(db))('mainDialog.pdf.openTitle'),
+          title: dialogT(dialogLocale())('mainDialog.pdf.openTitle'),
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
           properties: ['openFile']
         })
@@ -995,7 +997,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // and persists the path into settings.pdf_logo_path.
   ipcMain.handle('logo:set', async (): Promise<IpcResult<{ path: string }>> => {
     try {
-      const t = dialogT(readLanguage(db))
+      const t = dialogT(dialogLocale())
       const result = await dialog.showOpenDialog({
         title: t('mainDialog.logo.title'),
         properties: ['openFile'],

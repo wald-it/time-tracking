@@ -93,8 +93,11 @@ export interface BridgeCtx {
   controllerToken?: string | null
   /** Re-checked per request from the settings table. Absent ⇒ disabled. */
   isControllerEnabled?: () => boolean
-  /** Ask the user; encapsulates per-write/session/silent. Resolves to approval. */
-  confirm: (summary: string) => Promise<boolean>
+  /**
+   * Ask the user; encapsulates per-write/session/silent. Resolves to approval.
+   * `locale` is the language `summary` was written in; the dialog uses it too.
+   */
+  confirm: (summary: string, locale: Locale) => Promise<boolean>
   /** Make the one-per-session pre-write backup (idempotent). */
   ensureBackup: () => Promise<void>
   audit: (entry: McpAuditEntry) => void
@@ -332,7 +335,12 @@ interface Plan {
 }
 
 /** Build an executable plan for an op, or return an error string. */
-function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { error: string } {
+function planOp(
+  db: Db,
+  op: WriteOp,
+  args: Record<string, unknown>,
+  say: Say
+): Plan | { error: string } {
   switch (op) {
     case 'create_manual_entry': {
       const start = zonedField('started_at', args.started_at)
@@ -358,7 +366,6 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       const project = projectName(db, input.project_id ?? null)
       const billable = input.billable ?? 1
       const hasNote = (input.private_note ?? '') !== ''
-      const say = sayFor(db)
       // Only what departs from an empty entry gets a line.
       const fieldLines: string[] = []
       if (project !== null) fieldLines.push(line(say, 'project', showProject(say, project)))
@@ -470,7 +477,6 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       // Every field the commit actually changes, before → after: one line in
       // the dialog each, and the same set under `changes` in the preview.
       // Times stay in the first line as before (local, with offsets).
-      const say = sayFor(db)
       const fieldLines: string[] = []
       const textLines: string[] = []
       const changes: Record<string, { before: unknown; after: unknown } | { changed: true }> = {}
@@ -656,7 +662,6 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       const sameDay =
         running &&
         new Date(running.started_at).toDateString() === new Date(input.started_at).toDateString()
-      const say = sayFor(db)
       const ends = running
         ? say.t('mainDialog.mcp.startEnds', {
             id: running.id,
@@ -747,11 +752,10 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
            ORDER BY started_at DESC LIMIT 1`
         )
         .get() as { id: number; client_id: number } | undefined
-      const { t } = sayFor(db)
       return {
         summary: running
-          ? t('mainDialog.mcp.stop', { id: running.id })
-          : t('mainDialog.mcp.stopNone'),
+          ? say.t('mainDialog.mcp.stop', { id: running.id })
+          : say.t('mainDialog.mcp.stopNone'),
         preview: { action: 'stop_running_timer', running: running ?? null },
         run: () => stopRunningTimer(db),
         audit: (r) => ({ op, id: r?.id ?? null, client_id: r?.client_id ?? null })
@@ -960,14 +964,17 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
     return err('not_allowed', `Operation nicht erlaubt: ${req.op}`)
   }
 
-  const plan = planOp(ctx.db, req.op as WriteOp, req.args ?? {})
+  // One language for the whole request: the summary and the dialog around it
+  // (title, buttons) must not disagree (#270).
+  const say = sayFor(ctx.db)
+  const plan = planOp(ctx.db, req.op as WriteOp, req.args ?? {}, say)
   if ('error' in plan) return err('invalid', plan.error)
 
   if (req.preview) {
     return { ok: true, data: { preview: true, ...plan.preview } }
   }
 
-  const approved = await ctx.confirm(plan.summary)
+  const approved = await ctx.confirm(plan.summary, say.locale)
   if (!approved) return err('confirm_declined', 'Änderung wurde in TimeTrack abgelehnt')
 
   await ctx.ensureBackup()

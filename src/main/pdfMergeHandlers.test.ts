@@ -62,7 +62,7 @@ function mockFs(files: Record<string, Buffer | 'EBUSY' | 'EPERM'>): FsDeps {
 const noDialog: DialogDeps = {
   // Electron liefert bei Abbruch einen leeren `filePath` (nicht undefined).
   showSaveDialog: async () => ({ canceled: true, filePath: '' }),
-  locale: 'de'
+  locale: () => 'de'
 }
 
 // ── mergeOnlyHandler tests ────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ describe('mergeOnlyHandler', () => {
     }
     const mockDialog: DialogDeps = {
       showSaveDialog: async () => ({ canceled: false, filePath: 'C:/fallback_merged.pdf' }),
-      locale: 'de'
+      locale: () => 'de'
     }
     const res = await mergeOnlyHandler(
       { stundennachweisPath: 'C:/sn.pdf', invoicePath: 'C:/inv.pdf' },
@@ -588,7 +588,7 @@ describe('mergeExportHandler — successful merge', () => {
         titles.push(o.title)
         return { canceled: false, filePath: fallbackPath }
       },
-      locale: 'en'
+      locale: () => 'en'
     }
     const res = await mergeExportHandler(
       mockDb(),

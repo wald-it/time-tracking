@@ -25,7 +25,8 @@ import { handleRequest, type BridgeCtx, type BridgeRequest } from './mcpBridgeCo
 import { emitWebhooks, eventForWriteOp } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { socketPathForDir, tokenPathForDir, controllerTokenPathForDir } from '../mcp/socketPath'
-import { localeFromSetting, mcpConfirmDialog } from './mainI18n'
+import { mcpConfirmDialog } from './mainI18n'
+import type { Locale } from '../shared/i18n'
 
 export interface BridgeDeps {
   getDb: () => Database.Database
@@ -110,7 +111,7 @@ function confirmMode(): 'per-write' | 'session' | 'silent' {
 }
 
 /** Native confirm honouring per-write / session / silent + "remember". */
-async function confirm(summary: string): Promise<boolean> {
+async function confirm(summary: string, locale: Locale): Promise<boolean> {
   const mode = confirmMode()
   if (mode === 'silent') return true
   // Once approved-for-session — either via 'session' mode or the "remember"
@@ -122,7 +123,7 @@ async function confirm(summary: string): Promise<boolean> {
     if (!win.isVisible()) win.show()
     win.focus()
   }
-  const opts = mcpConfirmDialog(localeFromSetting(deps?.getSetting('language')), summary)
+  const opts = mcpConfirmDialog(locale, summary)
   const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
   const approved = res.response === 1
   if (approved && (mode === 'session' || res.checkboxChecked)) sessionApproved = true

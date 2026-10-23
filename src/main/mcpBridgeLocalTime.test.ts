@@ -596,6 +596,19 @@ Beschreibung: "Workshop"
       expect(asked[3]).toBe('Stop the running timer (none running)')
     })
 
+    it('the dialog gets the language its summary was written in', async () => {
+      const { ctx } = makeCtx(db)
+      const locales: string[] = []
+      ctx.confirm = async (_summary, locale) => {
+        locales.push(locale)
+        return false
+      }
+      await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
+      db.prepare(`UPDATE settings SET value = 'de' WHERE key = 'language'`).run()
+      await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
+      expect(locales).toEqual(['en', 'de'])
+    })
+
     it('errors to the MCP client stay German', async () => {
       const { ctx } = recording()
       const res = await handleRequest(ctx, {

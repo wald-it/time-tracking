@@ -10,8 +10,7 @@
  * without a zone as UTC, for the read-only range filter.
  */
 import { translateLiteral, type Locale } from './i18n'
-import { de } from './locales/de'
-import { en } from './locales/en'
+import { LOCALE_STRINGS } from './locales'
 
 export type ZonedTimestampResult =
   | {
@@ -109,7 +108,6 @@ const WEEKDAYS: Record<Locale, readonly string[]> = {
   de: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
   en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 }
-const LOCALES: Record<Locale, Record<string, string>> = { de, en }
 
 function isoDay(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -198,7 +196,7 @@ export function offsetHint(iso: string, offsetMin: number | null, locale: Locale
   const local = localOffsetAt(iso)
   if (local === offsetMin) return null
   const d = new Date(iso)
-  return translateLiteral(LOCALES[locale], 'mainDialog.mcp.offsetHint', {
+  return translateLiteral(LOCALE_STRINGS[locale], 'mainDialog.mcp.offsetHint', {
     offset: formatOffset(offsetMin),
     day: locale === 'en' ? isoDay(d) : `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.`,
     local: formatOffset(local),

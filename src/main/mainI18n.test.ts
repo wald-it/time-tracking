@@ -19,7 +19,8 @@ import {
   localeFromSystem,
   mcpConfirmDialog,
   migrationErrorDialog,
-  readLanguage
+  readLanguage,
+  readLanguageOr
 } from './mainI18n'
 
 let DatabaseImpl: DatabaseCtor
@@ -42,13 +43,25 @@ describe('the language of a main-process dialog', () => {
     db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
     expect(readLanguage(db)).toBe('en')
     expect(dialogT(readLanguage(db))('mainDialog.pdf.saveTitle')).toBe('Save timesheet')
+    expect(readLanguageOr(db, () => 'de')).toBe('en')
     db.close()
+  })
+
+  it('with the handle closed (after a restore attempt): the fallback', () => {
+    const db = new DatabaseImpl(':memory:')
+    applyMigrations(db)
+    db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+    db.close()
+    expect(() => readLanguage(db)).toThrow()
+    expect(readLanguageOr(db, () => 'de')).toBe('de')
   })
 
   it('before the database is open: the first system language', () => {
     expect(localeFromSystem(['de-DE', 'en-US'])).toBe('de')
     expect(localeFromSystem(['de'])).toBe('de')
     expect(localeFromSystem(['DE-at'])).toBe('de')
+    expect(localeFromSystem(['de_DE'])).toBe('de')
+    expect(localeFromSystem(['de_DE.UTF-8'])).toBe('de')
     expect(localeFromSystem(['en-GB', 'de-DE'])).toBe('en')
     expect(localeFromSystem(['dev'])).toBe('en')
     expect(localeFromSystem([])).toBe('en')

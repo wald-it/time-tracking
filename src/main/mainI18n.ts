@@ -9,10 +9,8 @@
  */
 import type Database from 'better-sqlite3'
 import { translateLiteral, type Locale } from '../shared/i18n'
-import { de, type TranslationKey } from '../shared/locales/de'
-import { en } from '../shared/locales/en'
-
-const LOCALES: Record<Locale, Record<string, string>> = { de, en }
+import type { TranslationKey } from '../shared/locales/de'
+import { LOCALE_STRINGS } from '../shared/locales'
 
 export type DialogT = (key: TranslationKey, vars?: Record<string, string | number>) => string
 
@@ -31,7 +29,19 @@ export function readLanguage(db: Database.Database): Locale {
 
 /** The text function for one locale. Values are filled in literally (translateLiteral). */
 export function dialogT(locale: Locale): DialogT {
-  return (key, vars) => translateLiteral(LOCALES[locale], key, vars)
+  return (key, vars) => translateLiteral(LOCALE_STRINGS[locale], key, vars)
+}
+
+/**
+ * `readLanguage` for a dialog that must still show when the handle is
+ * closed (a restore attempt closes it): the system language then, as at start.
+ */
+export function readLanguageOr(db: Database.Database, fallback: () => Locale): Locale {
+  try {
+    return readLanguage(db)
+  } catch {
+    return fallback()
+  }
 }
 
 /**
@@ -99,5 +109,6 @@ export function dbErrorDialog(locale: Locale, cause: string): { title: string; m
  * regional forms, English for everything else.
  */
 export function localeFromSystem(languages: readonly string[]): Locale {
-  return /^de(-|$)/i.test(languages[0] ?? '') ? 'de' : 'en'
+  // `de`, `de-DE`, and the `de_DE` / `de_DE.UTF-8` forms some Linux setups report.
+  return /^de([-_.]|$)/i.test(languages[0] ?? '') ? 'de' : 'en'
 }
