@@ -13,7 +13,7 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
-import { billedMinutesSql, feeCentSql } from '../shared/currency'
+import { billedMinutesSql, budgetUsedMinutesSql, feeCentSql } from '../shared/currency'
 import { localMonthRange } from '../shared/dateRanges'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
@@ -52,6 +52,7 @@ export interface McpProject {
   start_date: string | null
   end_date: string | null
   budget_minutes: number | null
+  /** Budget used: billed minutes of billable entries, as on the invoice (#285). */
   used_minutes: number | null
   entry_count: number
   last_used_at: string | null
@@ -256,6 +257,11 @@ export function listProjects(
   privacy: PrivacyConfig,
   opts: ListProjectsOptions = {}
 ): McpProject[] {
+  // Budget use counts like the invoice (#285), same step as the PDF.
+  const roundRow = db
+    .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
+    .get() as { value: string } | undefined
+  const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
   const base = `
     SELECT p.*,
       COALESCE(ec.cnt, 0) AS entry_count,
@@ -266,12 +272,7 @@ export function listProjects(
       SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
       FROM entries WHERE deleted_at IS NULL GROUP BY project_id
     ) ec ON ec.project_id = p.id
-    LEFT JOIN (
-      SELECT project_id, COALESCE(SUM(rounded_min), 0) AS used_minutes
-      FROM entries
-      WHERE deleted_at IS NULL AND stopped_at IS NOT NULL
-      GROUP BY project_id
-    ) bud ON bud.project_id = p.id`
+    LEFT JOIN (${budgetUsedMinutesSql(roundStep)}) bud ON bud.project_id = p.id`
   const filters: string[] = []
   const params: unknown[] = []
   if (opts.clientId === null) {
