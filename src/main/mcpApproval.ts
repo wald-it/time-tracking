@@ -8,6 +8,10 @@
  * whichever comes first. Then TimeTrack asks again. Adding or changing an
  * entry always asks (owner decision, 2026-10-23).
  *
+ * The call whose dialog grants the approval does not count against the
+ * budget: after the grant, 20 writes go through without a dialog, and the
+ * 21st asks again (owner decision 2026-10-23, matching the setting's hint).
+ *
  * The budget counts approved calls, not successful writes: a call the bridge
  * lets through and that then fails (the timer changed since the preview, or
  * nothing ran to stop) still uses one. That keeps the bound simple and errs
