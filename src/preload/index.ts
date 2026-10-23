@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import type {
   Client,
   Entry,
@@ -149,8 +148,8 @@ const api = {
   backups: {
     list: (): Promise<IpcResult<BackupInfo[]>> => ipcRenderer.invoke('backup:list'),
     create: (): Promise<IpcResult<string>> => ipcRenderer.invoke('backup:create'),
-    restore: (filePath: string): Promise<IpcResult<{ safetyBackupPath: string }>> =>
-      ipcRenderer.invoke('backup:restore', filePath),
+    restore: (filename: string): Promise<IpcResult<{ safetyBackupPath: string }>> =>
+      ipcRenderer.invoke('backup:restore', filename),
     setPath: (): Promise<IpcResult<string>> => ipcRenderer.invoke('backup:set-path'),
     resetPath: (): Promise<IpcResult<void>> => ipcRenderer.invoke('backup:reset-path'),
     getPathInfo: (): Promise<IpcResult<{ dir: string; isCustom: boolean; isReachable: boolean }>> =>
@@ -303,16 +302,16 @@ const api = {
   }
 }
 
+// #272: the renderer gets the app's own API and nothing else — no generic
+// ipcRenderer, no process.env. This also keeps the preload free of
+// non-`electron` imports, which a sandboxed preload could not load.
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
 }

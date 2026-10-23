@@ -313,7 +313,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                 <button
                   type="button"
                   onClick={async () => {
-                    const res = await window.api.backups.restore(availableBackups[0].fullPath)
+                    const res = await window.api.backups.restore(availableBackups[0].filename)
                     // Relaunch regardless: if restore failed, db.close() already ran in the
                     // main process so subsequent IPC calls would hit a closed DB anyway.
                     await window.api.app.relaunch()
