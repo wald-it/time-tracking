@@ -190,7 +190,11 @@ export function listBackups(backupPathOverride?: string): BackupInfo[] {
 
 const SQLITE_HEADER = Buffer.from('SQLite format 3\0', 'latin1')
 
-/** True when the file starts with the 16-byte SQLite database header. */
+/**
+ * True when the file starts with the 16-byte SQLite database header. A missing
+ * file is false; any other read error (locked, access denied) is thrown with
+ * its own cause, so a busy backup is not reported as "not a database".
+ */
 export function hasSqliteHeader(path: string): boolean {
   let fd: number | undefined
   try {
@@ -198,8 +202,9 @@ export function hasSqliteHeader(path: string): boolean {
     const buf = Buffer.alloc(SQLITE_HEADER.length)
     const read = readSync(fd, buf, 0, buf.length, 0)
     return read === buf.length && buf.equals(SQLITE_HEADER)
-  } catch {
-    return false
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw err
   } finally {
     if (fd !== undefined) closeSync(fd)
   }

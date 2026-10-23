@@ -7,7 +7,12 @@ import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
-import { createBackup, listBackups, restoreListedBackupOrReport } from './backup'
+import {
+  createBackup,
+  listBackups,
+  restoreListedBackupOrReport,
+  RESTORE_FAILED_TITLE
+} from './backup'
 import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
 import {
   createManualEntry,
@@ -686,7 +691,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           (title, message) => dialog.showErrorBox(title, message)
         )
       } catch (e) {
-        return fail(e)
+        // Same rule as inside: the renderer relaunches next, so say it here.
+        const message = `Wiederherstellung nicht durchgeführt: ${(e as Error).message}`
+        dialog.showErrorBox(RESTORE_FAILED_TITLE, message)
+        return fail(message)
       }
     }
   )

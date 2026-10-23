@@ -406,4 +406,10 @@ describe('hasSqliteHeader', () => {
     expect(hasSqliteHeader(join(userDataDir, 'text.sqlite'))).toBe(false)
     expect(hasSqliteHeader(join(userDataDir, 'missing.sqlite'))).toBe(false)
   })
+
+  it('passes other read errors through instead of calling the file "not a database"', async () => {
+    const { hasSqliteHeader } = await loadBackup()
+    // A directory: opening or reading it fails with something other than ENOENT.
+    expect(() => hasSqliteHeader(userDataDir)).toThrow()
+  })
 })
