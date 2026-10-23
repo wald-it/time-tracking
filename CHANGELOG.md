@@ -18,6 +18,10 @@ All notable changes to TimeTrack are documented here.
 - **Smoke cleaner tests no longer time out under load** — The two tests of the smoke userData cleaner waited for Node's `exit` event of the processes they spawn. Under load, Windows can take many seconds to finish tearing down an exited process, and the event waits for that, so the tests ran into their 15 s timeout (4 of 10 runs on a busy machine). The cleaner now prints its outcome (`skipped`, `removed` or `failed`), and the tests wait for that line instead. The app starts the cleaner with its output discarded, so nothing changes there ([#264](https://github.com/wald-it/time-tracking/issues/264)).
 - **Native dialogs follow the app language** ([#270](https://github.com/wald-it/time-tracking/issues/270)). With the app set to English, the dialogs the app opens itself are now English too: the MCP write confirmation (title, buttons, every line; dates there as `Tue 2026-10-27`), the restore error, the hotkey conflict at start, and the titles of the save and open dialogs (CSV, iCal, PDF, merged PDF, data export, backup folder, logo). The migration and database errors at start come up before the setting can be read, so they follow the system language. The German texts are unchanged. Replies to MCP clients (preview, `zeit_hinweise`, error messages) stay German.
 
+### Internal
+
+- **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job runs the whole test suite on Linux with `TZ=Europe/Berlin`, so JS and SQLite both run in Berlin. New tests there check, for 25 October 2026, that today's total (also the rounded one), today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. They sit in their own Vitest project, `berlin`, which is only registered when the process runs in Europe/Berlin; elsewhere `pnpm test` leaves it out.
+
 ## [1.22.0] — 2026-10-23
 
 ### Breaking for MCP clients and integrations
