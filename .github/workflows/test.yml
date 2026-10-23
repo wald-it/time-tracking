@@ -29,6 +29,16 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      # A rebase once left conflict markers in CHANGELOG.md and they were
+      # pushed (release 1.22). Fail before anything else runs.
+      - name: No merge conflict markers
+        shell: bash
+        run: |
+          if git grep -nE '^(<<<<<<<|>>>>>>>)( |$)' -- . ':!node_modules'; then
+            echo "::error::Merge conflict markers found (lines above)."
+            exit 1
+          fi
+
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
           version: 10
