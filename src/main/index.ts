@@ -1,6 +1,5 @@
 import {
   app,
-  shell,
   BrowserWindow,
   globalShortcut,
   Tray,
@@ -28,6 +27,7 @@ import {
 import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
+import { guardWindowLinks } from './externalLinks'
 import { localDateKey } from '../shared/dateRanges'
 import {
   WINDOW_BOUNDS_KEY,
@@ -471,10 +471,9 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  // New windows never open; web links go to the system browser, nothing else
+  // does; the window never navigates away from the app.
+  guardWindowLinks(mainWindow)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])

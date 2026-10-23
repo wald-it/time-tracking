@@ -32,6 +32,8 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
+- **Links open in the browser only when they are web links** — TimeTrack hands a link to the system only when it starts with `https://` or `http://`, from the main window, the mini widget and the in-app link buttons alike; other kinds of links are not opened. The app windows also no longer navigate away from the app.
+
 - **CSV export keeps text cells as text in spreadsheet apps** — A client name, description, tag or reference that starts with `=`, `+`, `-`, `@`, a tab or a carriage return now gets a leading `'`, so Excel, LibreOffice and Google Sheets show it as typed instead of reading it as a formula. The same applies to the tag labels of grouped exports. Dates, times, durations, rates and amounts are never prefixed. Both the DE and the US format behave the same.
 
 - **JSON export leaves out stored secrets** — The settings in the JSON export no longer contain the iCal feed token or the webhook targets (their URLs often carry a token, and their HMAC secrets are secret), nor any setting whose name contains token, secret or password. Tokens for Microsoft 365, MCP and the Stream Deck were never part of it, they live in separate files. The JSON export is for reading and checking your data, not for restoring; the SQLite backup is unchanged and still holds everything.

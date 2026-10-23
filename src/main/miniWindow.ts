@@ -2,6 +2,7 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { getDb } from './db'
+import { guardWindowLinks } from './externalLinks'
 
 /**
  * v1.4 PR B — Mini-Widget. A frameless 200×40 always-on-top overlay that
@@ -126,6 +127,8 @@ export function showMini(): void {
       nodeIntegration: false
     }
   })
+
+  guardWindowLinks(miniWindow)
 
   // Keep the widget above fullscreen apps (browsers, IDEs).
   miniWindow.setAlwaysOnTop(true, 'screen-saver')
