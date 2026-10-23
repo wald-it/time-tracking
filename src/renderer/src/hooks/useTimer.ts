@@ -423,12 +423,16 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
           started_at: pauseStart
         })
         if (pauseStartRes.ok) {
+          // entries:start takes no billable flag, so the pause is closed here
+          // as not billable: it is time not worked and must stay off the
+          // client's timesheet (#298).
           await window.api.entries.update({
             id: pauseStartRes.data.id,
             client_id: entry.client_id,
             description: 'Pause',
             started_at: pauseStart,
-            stopped_at: pauseEnd
+            stopped_at: pauseEnd,
+            billable: 0
           })
         }
         setRunningEntry(null)
