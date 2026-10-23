@@ -17,7 +17,8 @@ import {
   GraphAuthError,
   isPersonalAccount,
   needsRefresh,
-  PRESENCE_SCOPE
+  PRESENCE_SCOPE,
+  hasScope
 } from '../shared/graphAuth'
 import type { AccountInfo, StoredTokens } from '../shared/graphAuth'
 import { refreshTokens } from './graphAuth'
@@ -138,6 +139,8 @@ export function disconnect(deps: GraphAccountDeps): AccountStatus {
  * On `invalid_grant` the stored connection is dropped: the grant is gone for
  * good (revoked, password changed, unused too long), and keeping a dead blob
  * around would make the settings page claim a connection that cannot work.
+ * With a feature scope in the request, that holds for the calendar-only
+ * retry (#308): a refused feature scope can arrive as `invalid_grant` too.
  */
 export async function getAccessToken(deps: GraphAccountDeps): Promise<string | null> {
   const tokens = loadTokens(deps.store)
@@ -148,7 +151,7 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
 
   let refreshed: StoredTokens
   try {
-    refreshed = await refreshTokens(configOf(deps), tokens, deps.auth)
+    refreshed = await refreshWithFallback(configOf(deps), tokens, deps)
   } catch (err) {
     if (err instanceof GraphAuthError && err.code === 'invalid_grant') {
       deps.log?.('graph account: grant no longer valid, connection dropped')
@@ -161,6 +164,48 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   // token may have rotated, and the old one stops working once it has.
   saveTokens(refreshed, deps.store)
   return refreshed.accessToken
+}
+
+/**
+ * #308: Entra refreshes only scopes "equivalent to or a subset of" those
+ * granted. With a feature switched on whose scope is not consented yet (Teams
+ * presence before the reconnect, or a tenant that needs an admin for it), a
+ * refresh asking for it is refused — and the calendar import with it. So a
+ * refused refresh that carried feature scopes is retried once with the
+ * calendar scopes alone. When the consent exists, the first refresh simply
+ * succeeds; the outcome never depends on how the server spells its scopes.
+ * Only a failure of the calendar-only refresh speaks for the connection.
+ */
+async function refreshWithFallback(
+  cfg: GraphAuthConfig,
+  tokens: StoredTokens,
+  deps: GraphAccountDeps
+): Promise<StoredTokens> {
+  const base = CALENDAR_SCOPES as readonly string[]
+  const extras = (cfg.scopes ?? base).filter((s) => !hasScope(base, s))
+  try {
+    return await refreshTokens(cfg, tokens, deps.auth)
+  } catch (err) {
+    // Only a refusal of the scopes; a network error, an outage or throttling
+    // must not cost a consented feature its scope.
+    if (extras.length === 0 || !(err instanceof GraphAuthError) || !isRefusal(err.code)) {
+      throw err
+    }
+    deps.log?.(
+      `graph account: refresh with ${extras.join(' ')} refused (${err.code}); retrying with the calendar scopes alone, if that fails too the grant itself is gone`
+    )
+    return refreshTokens({ ...cfg, scopes: [...CALENDAR_SCOPES] }, tokens, deps.auth)
+  }
+}
+
+/** OAuth codes with which the token endpoint refuses a grant or its scopes. */
+function isRefusal(code: string | null): boolean {
+  return (
+    code === 'invalid_grant' ||
+    code === 'consent_required' ||
+    code === 'interaction_required' ||
+    code === 'invalid_scope'
+  )
 }
 
 /** Outcome of "check connection" — proves the stored token is accepted by Graph. */

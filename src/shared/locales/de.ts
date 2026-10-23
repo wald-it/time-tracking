@@ -27,6 +27,10 @@ export const de = {
   'update.ready.text': 'Version {version} bereit — App neu starten?',
   'update.ready.install': 'Jetzt neu starten',
   'update.ready.dismiss': 'Nicht jetzt',
+  // System notification after a download (main process, #309). {button} is 'update.ready.install'.
+  'mainNotification.update.title': 'Ein neues Update kann installiert werden',
+  'mainNotification.update.body':
+    'TimeTrack {version} wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf "{button}".',
   'update.error.text': 'Update-Fehler: {message}',
   'update.error.details': 'Details in Einstellungen',
 
@@ -140,6 +144,8 @@ export const de = {
   'common.deleteEntryTitle': 'Eintrag löschen?',
   'common.deleteEntryMessage':
     '{client} · {date} · {duration} — Wirklich löschen? Du kannst es 5 Sekunden lang rückgängig machen.',
+  'common.deleteEntryMessageLinked':
+    '{client} · {date} · {duration} — Der Eintrag geht über Mitternacht und wird an beiden Tagen gelöscht. Wirklich löschen? Du kannst es 5 Sekunden lang rückgängig machen.',
   'common.stopRunningFirst': 'Laufenden Timer zuerst stoppen',
   'common.error': 'Fehler: {error}',
 

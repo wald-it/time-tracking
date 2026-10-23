@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import type { Client, Entry, IpcResult } from '../../../shared/types'
+import type { Client, Entry, IpcResult, UpdateEntryInput } from '../../../shared/types'
 import { useTimerStore } from '../store/timerStore'
 import { useClientsStore } from '../store/clientsStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
@@ -66,6 +66,33 @@ async function withLoading<T>(call: () => Promise<IpcResult<T>>): Promise<IpcRes
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   } finally {
     useTimerStore.getState().setIsLoading(false)
+  }
+}
+
+/**
+ * The entries:update input that stops `entry` at `stoppedAt` and otherwise
+ * keeps it (entries:update trims the description, as on every write).
+ * entries:update re-inserts the row and defaults every field it is not given,
+ * so all of them travel along (the same rule as QuickNoteModal). Without them
+ * the idle prompt dropped the project (#313). Of the optional fields, a
+ * running entry today only ever carries a project — switchTimer, the one
+ * writer of running rows, sets no other — but the rest travels along too, so
+ * a later way to set them on a running entry is not reset here.
+ * The store's running entry is current: a running entry cannot be edited (MCP
+ * update_entry_fields refuses it, the app edits stopped entries only).
+ */
+function stopAtInput(entry: Entry, stoppedAt: string): UpdateEntryInput {
+  return {
+    id: entry.id,
+    client_id: entry.client_id,
+    project_id: entry.project_id ?? null,
+    description: entry.description,
+    started_at: entry.started_at,
+    stopped_at: stoppedAt,
+    billable: entry.billable,
+    tags: entry.tags,
+    reference: entry.reference,
+    private_note: entry.private_note
   }
 }
 
@@ -376,13 +403,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     setIsLoading(true)
     let res: IpcResult<Entry>
     try {
-      res = await window.api.entries.update({
-        id: entry.id,
-        client_id: entry.client_id,
-        description: entry.description,
-        started_at: entry.started_at,
-        stopped_at: ev.idleSince
-      })
+      res = await window.api.entries.update(stopAtInput(entry, ev.idleSince))
     } finally {
       setIsLoading(false)
     }
@@ -402,35 +423,23 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       return
     }
     setIsLoading(true)
-    // Three calls in a row, so not withLoading: the flag spans all of them,
-    // and a rejection still reaches the caller, but never leaves it set.
+    // Two calls in a row, so not withLoading: the flag spans both, and a
+    // rejection still reaches the caller, but never leaves it set.
     try {
       // 1. Stop the running entry at idleSince
-      const stopRes = await window.api.entries.update({
-        id: entry.id,
-        client_id: entry.client_id,
-        description: entry.description,
-        started_at: entry.started_at,
-        stopped_at: ev.idleSince
-      })
+      const stopRes = await window.api.entries.update(stopAtInput(entry, ev.idleSince))
       if (stopRes.ok) {
-        // 2. Insert pause entry from idleSince to now
-        const pauseStart = ev.idleSince
-        const pauseEnd = new Date().toISOString()
-        const pauseStartRes = await window.api.entries.start({
+        // 2. Book the pause from idleSince to now in one step, closed and not
+        // billable: it is time not worked and must stay off the client's
+        // timesheet (#298). Starting it as a timer and closing it afterwards
+        // left a running, billable "Pause" whenever the second call failed.
+        await window.api.entries.create({
           client_id: entry.client_id,
           description: 'Pause',
-          started_at: pauseStart
+          started_at: ev.idleSince,
+          stopped_at: new Date().toISOString(),
+          billable: 0
         })
-        if (pauseStartRes.ok) {
-          await window.api.entries.update({
-            id: pauseStartRes.data.id,
-            client_id: entry.client_id,
-            description: 'Pause',
-            started_at: pauseStart,
-            stopped_at: pauseEnd
-          })
-        }
         setRunningEntry(null)
         setDescription('')
         await pushTrayUpdate(false, '')

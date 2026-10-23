@@ -71,6 +71,7 @@ interface ApiMock {
   switch: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
+  create: ReturnType<typeof vi.fn>
   heartbeat: ReturnType<typeof vi.fn>
   trayUpdate: ReturnType<typeof vi.fn>
   idleDismiss: ReturnType<typeof vi.fn>
@@ -136,6 +137,11 @@ function mockApi(opts: MockOpts = {}): ApiMock {
     ok: true as const,
     data: makeEntry(payload)
   }))
+  // entries:create — a closed entry in one step (the idle pause, #298).
+  const create = vi.fn(async (payload: UpdatePayload & { billable?: number }) => ({
+    ok: true as const,
+    data: makeEntry({ ...payload, id: nextId++ })
+  }))
   const heartbeat = vi.fn(async () => ({ ok: true as const, data: undefined }))
   const trayUpdate = vi.fn()
   const idleDismiss = vi.fn()
@@ -149,6 +155,7 @@ function mockApi(opts: MockOpts = {}): ApiMock {
       switch: switchFn,
       stop,
       update,
+      create,
       heartbeat
     },
     dashboard: {
@@ -173,7 +180,17 @@ function mockApi(opts: MockOpts = {}): ApiMock {
     }
   }
   ;(window as unknown as { api: typeof api }).api = api
-  return { listeners, start, switch: switchFn, stop, update, heartbeat, trayUpdate, idleDismiss }
+  return {
+    listeners,
+    start,
+    switch: switchFn,
+    stop,
+    update,
+    create,
+    heartbeat,
+    trayUpdate,
+    idleDismiss
+  }
 }
 
 type Hook = RenderHookResult<UseTimerResult, unknown>
@@ -773,12 +790,19 @@ describe('useTimer — idle transitions', () => {
       await hook.result.current.idleStopAtIdle()
     })
 
+    // The whole entry travels along: entries:update re-inserts the row and
+    // defaults every field it is not given (#313).
     expect(api.update).toHaveBeenCalledWith({
       id: entry.id,
       client_id: entry.client_id,
+      project_id: entry.project_id ?? null,
       description: entry.description,
       started_at: entry.started_at,
-      stopped_at: IDLE.idleSince
+      stopped_at: IDLE.idleSince,
+      billable: entry.billable,
+      tags: entry.tags,
+      reference: entry.reference,
+      private_note: entry.private_note
     })
     expect(hook.result.current.runningEntry).toBeNull()
     expect(hook.result.current.idleEvent).toBeNull()
@@ -810,20 +834,20 @@ describe('useTimer — idle transitions', () => {
         stopped_at: IDLE.idleSince
       })
     )
-    // 2. A "Pause" entry covers idleSince → now (created running, then closed).
-    expect(api.start).toHaveBeenLastCalledWith({
+    // 2. A "Pause" entry covers idleSince → now, booked closed and not
+    // billable in one step (#298: it used to be started as a running timer
+    // and closed afterwards, which left a running billable pause whenever
+    // the closing write failed).
+    expect(api.create).toHaveBeenCalledTimes(1)
+    expect(api.create).toHaveBeenCalledWith({
       client_id: entry.client_id,
       description: 'Pause',
-      started_at: IDLE.idleSince
+      started_at: IDLE.idleSince,
+      stopped_at: NOW.toISOString(),
+      billable: 0
     })
-    expect(api.update).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        description: 'Pause',
-        started_at: IDLE.idleSince,
-        stopped_at: NOW.toISOString()
-      })
-    )
+    expect(api.start).toHaveBeenCalledTimes(1) // startTimer() above, not the pause
+    expect(api.update).toHaveBeenCalledTimes(1)
     expect(hook.result.current.runningEntry).toBeNull()
     expect(hook.result.current.idleEvent).toBeNull()
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
@@ -841,5 +865,54 @@ describe('useTimer — idle transitions', () => {
 
     expect(hook.result.current.idleEvent).toBeNull()
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
+  })
+})
+
+// #313: the idle prompt stops the running entry through entries:update, which
+// defaults every field it is not sent. Today only the project of a running
+// entry can differ from the defaults; the other fields are sent along anyway,
+// and this pins that, so a later way to set them on a running entry is not
+// reset by the idle prompt.
+describe('useTimer — the idle prompt sends the whole running entry (#313)', () => {
+  const RUNNING = makeEntry({
+    id: 5,
+    project_id: 7,
+    billable: 0,
+    tags: ',ops,',
+    reference: 'JIRA-7',
+    private_note: 'intern'
+  })
+  const KEPT = {
+    id: 5,
+    project_id: 7,
+    billable: 0,
+    tags: ',ops,',
+    reference: 'JIRA-7',
+    private_note: 'intern',
+    stopped_at: IDLE.idleSince
+  }
+
+  it('idleStopAtIdle()', async () => {
+    const { api, hook } = await setup({ running: RUNNING })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(5))
+    act(() => api.listeners.idleDetected?.(IDLE))
+
+    await act(async () => {
+      await hook.result.current.idleStopAtIdle()
+    })
+
+    expect(api.update).toHaveBeenCalledWith(expect.objectContaining(KEPT))
+  })
+
+  it('idleMarkPause()', async () => {
+    const { api, hook } = await setup({ running: RUNNING })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(5))
+    act(() => api.listeners.idleDetected?.(IDLE))
+
+    await act(async () => {
+      await hook.result.current.idleMarkPause()
+    })
+
+    expect(api.update).toHaveBeenNthCalledWith(1, expect.objectContaining(KEPT))
   })
 })

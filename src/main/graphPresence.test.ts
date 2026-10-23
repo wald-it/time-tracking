@@ -28,6 +28,39 @@ interface FetchCall {
   body: unknown
 }
 
+/**
+ * What the fake Teams holds: the status message and availability. Shared by
+ * every makeDeps() of a test, like the real Teams is shared across pokes;
+ * reset with the module state.
+ */
+const teams: { content: string | null; availability: string; html: boolean } = {
+  content: null,
+  availability: 'Available',
+  html: false
+}
+
+function resetTeams(): void {
+  teams.content = null
+  teams.availability = 'Available'
+  teams.html = false
+}
+
+/**
+ * How Graph hands back a stored message has not been observed against a real
+ * tenant (#316): plain, as set, or wrapped as HTML. `teams.html` serves the
+ * second form so both are tested.
+ */
+function served(content: string): string {
+  if (!teams.html) return content
+  const escaped = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/🔴/g, '&#x1F534;')
+    .replace(/ /g, '&nbsp;')
+  return `<p>${escaped}</p>`
+}
+
 function makeDeps(
   o: Partial<{
     enabled: boolean
@@ -55,8 +88,35 @@ function makeDeps(
       body: init?.body ? JSON.parse(String(init.body)) : null
     })
     if (o.failWith !== undefined) return new Response('', { status: o.failWith })
-    if (String(url).includes('/me?$select=id')) {
+    const u = String(url)
+    if (u.includes('/me?$select=id')) {
       return new Response(JSON.stringify({ id: 'user-guid-1' }), { status: 200 })
+    }
+    const body = init?.body ? JSON.parse(String(init.body)) : null
+    if (u.endsWith('/setStatusMessage')) {
+      const content = (body as { statusMessage: { message: { content: string } } }).statusMessage
+        .message.content
+      teams.content = content === '' ? null : content
+    } else if (u.endsWith('/setPresence')) {
+      teams.availability = 'Busy'
+    } else if (u.endsWith('/clearPresence')) {
+      teams.availability = 'Available'
+    } else if (u.endsWith('/presence') && (init?.method ?? 'GET') === 'GET') {
+      return new Response(
+        JSON.stringify({
+          availability: teams.availability,
+          statusMessage:
+            teams.content === null
+              ? null
+              : {
+                  message: {
+                    content: served(teams.content),
+                    contentType: teams.html ? 'html' : 'text'
+                  }
+                }
+        }),
+        { status: 200 }
+      )
     }
     return new Response('', { status: 200 })
   }) as typeof fetch
@@ -96,8 +156,16 @@ describe('desiredMessage', () => {
   })
 })
 
+/** The writes only: what actually changes something in Teams. */
+function writes(calls: FetchCall[]): FetchCall[] {
+  return calls.filter((c) => c.method === 'POST')
+}
+
 describe('reconcilePresence', () => {
-  beforeEach(() => resetPresenceStateForTests())
+  beforeEach(() => {
+    resetPresenceStateForTests()
+    resetTeams()
+  })
 
   it('sets the message on start: /me lookup once, then setStatusMessage with expiry', async () => {
     const { deps, calls } = makeDeps({ showClient: true })
@@ -175,8 +243,11 @@ describe('reconcilePresence', () => {
 
   it('clears with empty content on stop — but only after having set something', async () => {
     const { deps, calls } = makeDeps()
-    await reconcilePresence(deps, null) // idle, never set → must not touch Teams
-    expect(calls).toHaveLength(0)
+    // Idle, never set → must not change Teams. Since #317 the first poke of a
+    // run may READ the presence (to withdraw a status a crash left behind),
+    // but it writes nothing.
+    await reconcilePresence(deps, null)
+    expect(writes(calls)).toHaveLength(0)
     await reconcilePresence(deps, RUNNING)
     await reconcilePresence(deps, null)
     const set = statusCalls(calls)
@@ -230,6 +301,355 @@ describe('reconcilePresence', () => {
       throw new Error('offline')
     }) as typeof fetch
     await expect(reconcilePresence(deps, RUNNING)).resolves.toBeUndefined()
+  })
+
+  // ── #316: stop must not erase a message the user wrote ─────────────────
+  it('stop leaves a status message the user wrote meanwhile, and still ends our Busy session', async () => {
+    const { deps, calls } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    teams.content = 'Back at 3, ping me in chat' // typed in Teams while the timer ran
+    await reconcilePresence(deps, null)
+
+    expect(teams.content).toBe('Back at 3, ping me in chat')
+    expect(statusCalls(calls)).toHaveLength(1) // only the set at start
+    expect(sessionCalls(calls).map((c) => c.url.split('/presence/')[1])).toEqual([
+      'setPresence',
+      'clearPresence'
+    ])
+  })
+
+  it('stop still clears our own message when it is unchanged', async () => {
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    expect(teams.content).toBe('🔴 Fokus: Acme — Rollout')
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('stop recognises our own message when Graph returns it HTML-wrapped', async () => {
+    teams.html = true
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('stop leaves a user message when Graph returns it HTML-wrapped', async () => {
+    teams.html = true
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    teams.content = 'In a workshop'
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('In a workshop')
+  })
+
+  it('stop with an unreadable presence ends Busy, keeps the message and retries it at the next poke', async () => {
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    const inner = deps.fetchFn!
+    let readFails = true
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (readFails && String(url).endsWith('/presence') && (init?.method ?? 'GET') === 'GET') {
+        await inner(url, init)
+        return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null)
+    expect(teams.availability).toBe('Available')
+    expect(teams.content).toBe('🔴 Fokus')
+
+    readFails = false
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('a client name with angle brackets is still recognised as ours, plain and HTML', async () => {
+    const odd = { ...RUNNING, client_name: 'Foo <Bar>', project_name: 'A & B' }
+    for (const html of [false, true]) {
+      resetPresenceStateForTests()
+      resetTeams()
+      teams.html = html
+      const { deps } = makeDeps({ showClient: true })
+      await reconcilePresence(deps, odd)
+      await reconcilePresence(deps, null)
+      expect(teams.content).toBeNull()
+    }
+  })
+
+  it('an entity that names no character does not break the read', async () => {
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    teams.content = 'note &#9999999; and &#xFFFFFFF;'
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('note &#9999999; and &#xFFFFFFF;')
+    expect(teams.availability).toBe('Available')
+  })
+
+  it('after a stop whose read failed, restarting the same entry sets Busy again', async () => {
+    const { deps, calls } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    const inner = deps.fetchFn!
+    let readFails = true
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (readFails && String(url).endsWith('/presence') && (init?.method ?? 'GET') === 'GET') {
+        await inner(url, init)
+        return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null) // Busy ended, message kept
+    readFails = false
+    await reconcilePresence(deps, RUNNING) // same entry again, within 25 minutes
+    expect(teams.availability).toBe('Busy')
+    expect(sessionCalls(calls).map((c) => c.url.split('/presence/')[1])).toEqual([
+      'setPresence',
+      'clearPresence',
+      'setPresence'
+    ])
+  })
+
+  it('a switch whose Busy update failed still counts its new message as ours at stop', async () => {
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING) // "🔴 Fokus: Acme — Rollout" applied
+    const inner = deps.fetchFn!
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/setPresence')) {
+        await inner(url, init)
+        return new Response('', { status: 504 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, { ...RUNNING, client_name: 'Beta' }) // message lands, Busy fails
+    expect(teams.content).toBe('🔴 Fokus: Beta — Rollout')
+    deps.fetchFn = inner
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('a dependency that throws is logged, not rejected', async () => {
+    const { deps, logs } = makeDeps()
+    deps.getAccountStatus = () => {
+      throw new Error('database closed')
+    }
+    await expect(reconcilePresence(deps, RUNNING)).resolves.toBeUndefined()
+    expect(logs.some((l) => l.includes('reconcile failed'))).toBe(true)
+  })
+
+  it('a throwing token refresh is logged, not rejected', async () => {
+    const { deps, logs } = makeDeps()
+    deps.getAccessToken = async () => {
+      throw new Error('ENOTFOUND')
+    }
+    await expect(reconcilePresence(deps, RUNNING)).resolves.toBeUndefined()
+    expect(logs.some((l) => l.includes('no access token'))).toBe(true)
+  })
+
+  it('a message the user wrote in angle brackets counts as a message', async () => {
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    teams.content = '<OOO>'
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('<OOO>')
+  })
+
+  it('only the newest of several queued pokes is applied', async () => {
+    const { deps, calls } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    // Two pokes queued before either runs: the switch is overtaken by the stop.
+    const b = reconcilePresence(deps, { ...RUNNING, client_name: 'Other' })
+    const c = reconcilePresence(deps, null)
+    await Promise.all([b, c])
+    expect(
+      statusCalls(calls).map(
+        (s) =>
+          (s.body as { statusMessage: { message: { content: string } } }).statusMessage.message
+            .content
+      )
+    ).toEqual(['🔴 Fokus: Acme — Rollout', ''])
+  })
+
+  it('overlapping pokes are serialised: a sweep still reading cannot clear a fresh message', async () => {
+    teams.content = '🔴 Fokus' // leftover from a previous run
+    const { deps } = makeDeps({ showClient: true })
+    // Fire-and-forget like index.ts: the start-up poke and a timer start overlap.
+    const sweep = reconcilePresence(deps, null)
+    const start = reconcilePresence(deps, RUNNING)
+    await Promise.all([sweep, start])
+    expect(teams.content).toBe('🔴 Fokus: Acme — Rollout')
+    expect(teams.availability).toBe('Busy')
+  })
+
+  // ── #317: a status left behind by a crash or quit ────────────────────────
+  it('first poke of a run withdraws our own message left from the previous run', async () => {
+    teams.content = '🔴 Fokus: Acme — Rollout' // the app crashed with this standing
+    teams.availability = 'Busy'
+    const { deps, calls } = makeDeps()
+    await reconcilePresence(deps, null)
+
+    expect(teams.content).toBeNull()
+    expect(teams.availability).toBe('Available')
+    expect(sessionCalls(calls)[0].body).toEqual({ sessionId: 'app-client-id' })
+    // Once per run: a further idle poke does not read again.
+    const reads = calls.length
+    await reconcilePresence(deps, null)
+    expect(calls.length).toBe(reads)
+  })
+
+  it('first poke of a run recognises our leftover message when Graph returns it HTML-wrapped', async () => {
+    teams.html = true
+    teams.content = '🔴 Focus: Acme'
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('first poke of a run leaves a plain-text user message that only looks like ours once read as HTML', async () => {
+    teams.content = '🔴 Fokus <OOO>' // typed by the user; contentType text
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('🔴 Fokus <OOO>')
+  })
+
+  it('first poke of a run leaves a message the user wrote, but ends our old Busy session', async () => {
+    teams.content = 'Out until Monday'
+    teams.availability = 'Busy' // our session from the crashed run
+    const { deps, calls } = makeDeps()
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('Out until Monday')
+    expect(statusCalls(calls)).toHaveLength(0)
+    expect(teams.availability).toBe('Available')
+  })
+
+  it('a sweep whose session end failed still ends it next time, even behind Do not disturb', async () => {
+    teams.content = '🔴 Fokus: Old'
+    teams.availability = 'Busy'
+    const { deps } = makeDeps()
+    const inner = deps.fetchFn!
+    let sessionFails = true
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (sessionFails && String(url).endsWith('/clearPresence')) {
+        await inner(url, init)
+        return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null) // message withdrawn, session end fails
+    expect(teams.content).toBeNull()
+    teams.availability = 'DoNotDisturb' // the user's own override hides our Busy
+    sessionFails = false
+    const recorded: string[] = []
+    const tracked = deps.fetchFn
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      recorded.push(String(url))
+      return tracked(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null)
+    expect(recorded.some((u) => u.endsWith('/clearPresence'))).toBe(true)
+  })
+
+  // ── Intent recorded before the request, not after its success ───────────
+  it('a status write that reached Teams but whose answer was lost still counts as ours at stop', async () => {
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    const inner = deps.fetchFn!
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/setStatusMessage')) {
+        await inner(url, init) // Teams stores it…
+        throw new Error('TimeoutError') // …but the answer never arrives
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, { ...RUNNING, client_name: 'Beta' })
+    expect(teams.content).toBe('🔴 Fokus: Beta — Rollout')
+    deps.fetchFn = inner
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('a pending session end of the sweep still runs after the feature is switched off', async () => {
+    teams.content = '🔴 Fokus: Old'
+    teams.availability = 'Busy'
+    const on = makeDeps()
+    const inner = on.deps.fetchFn!
+    on.deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/clearPresence')) {
+        await inner(url, init)
+        return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(on.deps, null) // message withdrawn, session end fails
+    teams.availability = 'Busy'
+    const off = makeDeps({ enabled: false })
+    await reconcilePresence(off.deps, null)
+    expect(sessionCalls(off.calls).map((c) => c.url.split('/presence/')[1])).toEqual([
+      'clearPresence'
+    ])
+    expect(teams.availability).toBe('Available')
+  })
+
+  it('a failed Busy-only session end of the sweep is retried even behind Do not disturb', async () => {
+    teams.content = 'Back at 3' // the user's own message replaced ours before the crash
+    teams.availability = 'Busy'
+    const { deps } = makeDeps()
+    const inner = deps.fetchFn!
+    let sessionFails = true
+    const ends: string[] = []
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/clearPresence')) {
+        ends.push(sessionFails ? 'failed' : 'ok')
+        await inner(url, init)
+        if (sessionFails) return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null)
+    teams.availability = 'DoNotDisturb'
+    sessionFails = false
+    await reconcilePresence(deps, null)
+    expect(ends).toEqual(['failed', 'ok'])
+    expect(teams.content).toBe('Back at 3')
+  })
+
+  it('a failed set at the first poke leaves the leftover to the next poke', async () => {
+    teams.content = '🔴 Fokus: Old — Leftover'
+    teams.availability = 'Busy'
+    const failing = makeDeps({ failWith: 503 })
+    await reconcilePresence(failing.deps, RUNNING) // restart with a timer, offline
+    const ok = makeDeps()
+    await reconcilePresence(ok.deps, null) // back online, timer stopped
+    expect(teams.content).toBeNull()
+    expect(teams.availability).toBe('Available')
+  })
+
+  it('feature off at start: no read, no write', async () => {
+    teams.content = '🔴 Fokus'
+    const { deps, calls } = makeDeps({ enabled: false })
+    await reconcilePresence(deps, null)
+    expect(calls).toHaveLength(0)
+    expect(teams.content).toBe('🔴 Fokus')
+  })
+
+  it('an unreadable presence at start is retried at the next poke', async () => {
+    teams.content = '🔴 Focus'
+    const failing = makeDeps({ failWith: 503 })
+    await reconcilePresence(failing.deps, null)
+    expect(teams.content).toBe('🔴 Focus')
+    const ok = makeDeps()
+    await reconcilePresence(ok.deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  // ── #318: client and project names stay out of main.log ─────────────────
+  it('the read-back log says whether Teams holds our message, never its text', async () => {
+    const { deps, logs } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    await reconcilePresence(deps, null)
+    const all = logs.join('\n')
+    expect(all).not.toContain('Acme')
+    expect(all).not.toContain('Rollout')
+    expect(logs.some((l) => /read-back .*statusMessage=matches/.test(l))).toBe(true)
   })
 
   it('privacy switch mid-run re-renders the message', async () => {
