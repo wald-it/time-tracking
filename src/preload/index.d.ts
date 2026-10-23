@@ -73,7 +73,7 @@ declare global {
         getByMonth(query: MonthQuery): Promise<IpcResult<Entry[]>>
         create(input: CreateManualEntryInput): Promise<IpcResult<Entry>>
         update(input: UpdateEntryInput): Promise<IpcResult<Entry>>
-        delete(id: number, cascadeLinked?: boolean): Promise<IpcResult<void>>
+        delete(id: number): Promise<IpcResult<void>>
         undelete(id: number): Promise<IpcResult<Entry>>
       }
       settings: {
