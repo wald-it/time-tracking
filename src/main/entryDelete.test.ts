@@ -113,6 +113,19 @@ describe('deleteEntry / undeleteEntry (#323)', () => {
     expect(rowsOf(pair[0].link_id!).every((r) => r.deleted_at === null)).toBe(true)
   })
 
+  it('refuses to delete a half that is already in the trash (a stale view), so undo cannot restore the wrong rows', () => {
+    const pair = createPair()
+    db.prepare(`UPDATE entries SET deleted_at = '2026-06-12T08:00:00.000Z' WHERE id = ?`).run(
+      pair[0].id
+    )
+    const res = deleteEntry(db, pair[0].id)
+    expect(res.ok).toBe(false)
+    // Nothing changed: the live half stays live, the trashed half keeps its time.
+    const after = rowsOf(pair[0].link_id!)
+    expect(after[0].deleted_at).toBe('2026-06-12T08:00:00.000Z')
+    expect(after[1].deleted_at).toBeNull()
+  })
+
   it('refuses an unknown id', () => {
     expect(deleteEntry(db, 999).ok).toBe(false)
     expect(undeleteEntry(db, 999).ok).toBe(false)

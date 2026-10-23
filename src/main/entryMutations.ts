@@ -381,10 +381,13 @@ export function stopRunningTimer(db: Db): IpcResult<Entry | null> {
  * delete removed from ones removed earlier.
  */
 export function deleteEntry(db: Db, id: number): IpcResult<void> {
-  const row = db.prepare(`SELECT link_id FROM entries WHERE id = ?`).get(id) as
-    | { link_id: string | null }
+  const row = db.prepare(`SELECT link_id, deleted_at FROM entries WHERE id = ?`).get(id) as
+    | { link_id: string | null; deleted_at: string | null }
     | undefined
-  if (!row) return fail('Eintrag existiert nicht')
+  // A row already in the trash (a view that has not refreshed) is not deleted
+  // again: its sibling would get a new time and undo would restore the wrong
+  // rows. Same answer as editing a trashed entry.
+  if (!row || row.deleted_at !== null) return fail('Eintrag existiert nicht')
   const now = new Date().toISOString()
   if (row.link_id) {
     db.prepare(`UPDATE entries SET deleted_at = ? WHERE link_id = ? AND deleted_at IS NULL`).run(

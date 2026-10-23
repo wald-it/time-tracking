@@ -77,6 +77,8 @@ describe('day panel: delete and undo an entry across midnight (#323)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Löschen' }))
     const dialog = screen.getByRole('alertdialog')
+    // The question says that both days go, not just the half on screen.
+    expect(dialog.textContent).toContain('an beiden Tagen gelöscht')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Löschen' }))
 
     await waitFor(() => expect(deletedFlags(db, linkId)).toEqual([true, true]))
