@@ -182,8 +182,9 @@ async function writeOne(
     } else if (key === 'controller_enabled') {
       hooks.setControllerEnabled(value === '1')
     } else if (key === 'mcp_write_confirm_mode') {
-      // #301: any change of the confirm mode ends a start/stop approval, also
-      // a switch back to the mode it was granted in.
+      // #301: a confirm-mode change made in Settings ends a start/stop
+      // approval, also a switch back to the mode it was granted in. (The
+      // approval also only holds for the mode it was granted under.)
       if (value !== current) hooks.forgetMcpApproval()
     } else if (key === 'presence_enabled' || key === 'presence_show_client' || key === 'language') {
       // Toggling mirroring off clears our own status message; the language

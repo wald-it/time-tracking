@@ -28,7 +28,7 @@ describe('mcpBridge.ts wiring', () => {
   it('grants only for an approved start or stop, with "remember" or in session mode', () => {
     expect(body).toMatch(/\n\s*const approvable = APPROVABLE_OPS\.has\(op\)/)
     expect(body).toMatch(
-      /\n\s*if \(approved && approvable && \(mode === 'session' \|\| res\.checkboxChecked\)\) \{\s*approval\.grant\(mode\)/
+      /\n\s*if \(approved && approvable && \(mode === 'session' \|\| res\.checkboxChecked\)\) \{[\s\S]*?if \(confirmMode\(\) === mode\) approval\.grant\(mode\)/
     )
   })
 
@@ -146,5 +146,14 @@ describe('ApprovalWindow and the confirm mode', () => {
     wall.advance(-2 * 60 * 60 * 1000)
     mono.advance(APPROVAL_WINDOW_MS)
     expect(w.covers('start_timer', 'session')).toBe(false)
+  })
+})
+
+describe('the production clocks', () => {
+  // All behaviour tests inject both clocks; this pins what mcpBridge.ts gets.
+  it('default to the wall clock and the monotonic clock', () => {
+    const src = readFileSync(join(__dirname, 'mcpApproval.ts'), 'utf8')
+    expect(src).toMatch(/private readonly wall: \(\) => number = Date\.now/)
+    expect(src).toMatch(/private readonly mono: \(\) => number = \(\) => performance\.now\(\)/)
   })
 })

@@ -123,7 +123,7 @@ export function sensitiveSettingDialog(
   const shownUrl = (u: string): string => {
     try {
       const parsed = new URL(u)
-      return `${parsed.host} — ${dialogText(parsed.href)}`
+      return parsed.host ? `${parsed.host} — ${dialogText(parsed.href)}` : dialogText(parsed.href)
     } catch {
       return dialogText(u)
     }

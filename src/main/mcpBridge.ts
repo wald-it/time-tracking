@@ -136,8 +136,10 @@ async function confirm(summary: string, locale: Locale, op: WriteOp): Promise<bo
   const opts = mcpConfirmDialog(locale, summary, approvable && mode === 'per-write')
   const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
   const approved = res.response === 1
+  // A mode change while the dialog was open already ended any approval; the
+  // answer to the old dialog must not start a new one.
   if (approved && approvable && (mode === 'session' || res.checkboxChecked)) {
-    approval.grant(mode)
+    if (confirmMode() === mode) approval.grant(mode)
   }
   return approved
 }

@@ -15,9 +15,11 @@
  *
  * The window must hold on two clocks at once: the wall clock (which keeps
  * running while the machine sleeps) and a monotonic one (which setting the
- * system clock back cannot rewind). Neither sleep nor a clock change can
- * stretch it. An approval also holds only for the confirm mode it was
- * granted under, and the bridge forgets it on any mode change.
+ * system clock back cannot rewind). Sleep alone or a clock change alone
+ * cannot stretch it; sleep followed by setting the clock back by as much
+ * could, and the write budget still caps that case. An approval also holds
+ * only for the confirm mode it was granted under, and a mode change made in
+ * Settings ends it.
  *
  * Electron-free and clock-injected, so the bounds are testable.
  */

@@ -114,5 +114,7 @@ describe('webhook address (#272 A3)', () => {
       fireEvent.focusOut(input, { relatedTarget: remove })
     })
     expect(set).not.toHaveBeenCalled()
+    // The unsaved address does not stay in the field looking saved.
+    expect(input.value).toBe(URL_OLD)
   })
 })

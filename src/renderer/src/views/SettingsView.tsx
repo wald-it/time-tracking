@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Settings, BackupInfo } from '../../../shared/types'
 import { useUpdateStore } from '../store/updateStore'
 import { useT, useLocale } from '../contexts/I18nContext'
@@ -1059,18 +1059,28 @@ export function WebhooksSection({
 
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  async function persist(next: WebhookTarget[]): Promise<void> {
+  // Saves run one after another, so a read-back after a declined save cannot
+  // overtake a later save that is still waiting.
+  const saving = useRef<Promise<void>>(Promise.resolve())
+
+  function persist(next: WebhookTarget[]): Promise<void> {
+    const before = targets
     setTargets(next)
     setSaveError(null)
-    const res = await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
-    // A new address asks natively first (#272); declined or failed, the list
-    // shows what is stored, read back rather than restored from a snapshot
-    // (another save may have landed in between). Only a failure needs a message.
-    if (!res.ok) {
-      if (res.code !== 'cancelled') setSaveError(t('common.error', { error: res.error }))
-      const stored = await window.api.settings.getAll()
-      if (stored.ok) setTargets(parseWebhookTargets(stored.data.webhook_targets))
-    }
+    const run = saving.current.then(async () => {
+      const res = await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
+      // A new address asks natively first (#272); declined or failed, the
+      // list shows what is stored (read back, since another save may have
+      // landed first), or the list from before if that read fails. Only a
+      // failure needs a message.
+      if (!res.ok) {
+        if (res.code !== 'cancelled') setSaveError(t('common.error', { error: res.error }))
+        const stored = await window.api.settings.getAll()
+        setTargets(stored.ok ? parseWebhookTargets(stored.data.webhook_targets) : before)
+      }
+    })
+    saving.current = run.catch(() => undefined)
+    return run
   }
 
   // The address is saved when the field is left, not per keystroke: a new
@@ -1171,9 +1181,18 @@ export function WebhooksSection({
                     }}
                     onBlur={(e) => {
                       // Focus moving to this target's Remove (Shift+Tab) must
-                      // not save the address that is about to go.
+                      // not save the address that is about to go. The draft
+                      // is dropped, so the field shows what is stored and
+                      // nothing unsaved looks saved.
                       const to = e.relatedTarget as HTMLElement | null
-                      if (to?.dataset.webhookRemove === tg.id) return
+                      if (to?.dataset.webhookRemove === tg.id) {
+                        setUrlDrafts((d) => {
+                          const rest = { ...d }
+                          delete rest[tg.id]
+                          return rest
+                        })
+                        return
+                      }
                       commitUrl(tg.id)
                     }}
                     onKeyDown={(e) => {
