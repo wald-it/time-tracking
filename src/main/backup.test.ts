@@ -347,6 +347,23 @@ describe('restoreListedBackupOrReport', () => {
     expect(readValues(currentDb)).toEqual(['CURRENT'])
   })
 
+  it('reports an unreachable backup folder instead of failing silently', async () => {
+    const { restoreListedBackupOrReport } = await loadBackup()
+    // A file where the folder should be: creating or reading it throws.
+    const blocked = join(userDataDir, 'blocked')
+    makeFile(blocked)
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreListedBackupOrReport(db, NAME, blocked, currentDb, (_t, m) =>
+      reports.push(m)
+    )
+    expect(res.ok).toBe(false)
+    expect(reports).toHaveLength(1)
+    expect(db.open).toBe(true)
+    db.close()
+  })
+
   it('looks only in the configured backup folder, not the default one', async () => {
     const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
     listedBackup(getBackupsDir()) // default folder

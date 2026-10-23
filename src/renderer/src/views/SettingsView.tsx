@@ -221,8 +221,9 @@ export default function SettingsView(): React.JSX.Element {
     setStatusMsg(t('settings.data.restoring'))
     const res = await window.api.backups.restore(selectedRestoreFile)
     if (!res.ok) {
-      // db.close() already ran in the main process — subsequent IPC calls would
-      // hit a closed DB. Relaunch unconditionally so the app recovers cleanly.
+      // A failure after the snapshot leaves the DB closed in the main process,
+      // so relaunch unconditionally; the main process has already shown the
+      // reason as a native dialog.
       setStatusMsg(t('common.error', { error: res.error }))
     }
     await window.api.app.relaunch()

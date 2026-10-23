@@ -314,8 +314,9 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                   type="button"
                   onClick={async () => {
                     const res = await window.api.backups.restore(availableBackups[0].filename)
-                    // Relaunch regardless: if restore failed, db.close() already ran in the
-                    // main process so subsequent IPC calls would hit a closed DB anyway.
+                    // Relaunch regardless: a restore that fails after the snapshot has
+                    // already closed the DB in the main process. The main process shows
+                    // every failure as a native dialog, so the relaunch hides nothing.
                     await window.api.app.relaunch()
                     if (!res.ok) console.error('[onboarding] Restore failed:', res.error)
                   }}

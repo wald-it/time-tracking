@@ -111,14 +111,25 @@ describe('settings:set allow-list', () => {
     }
     walk(root)
     const written = new Set<string>()
-    const pattern = /(?:settings\.set|setSetting|\bupdate)\(\s*'([a-z_]+)'/g
+    const call = /(?:settings\.set|setSetting|\bupdate)\(\s*['"`]([a-z_]+)['"`]/g
+    // SettingsView writes the two hotkeys through a variable typed by this union.
+    const hotkeyUnion = /type HotkeyKey = ([^\n]+)/
     for (const f of files) {
-      for (const m of readFileSync(f, 'utf8').matchAll(pattern)) written.add(m[1])
+      const src = readFileSync(f, 'utf8')
+      for (const m of src.matchAll(call)) written.add(m[1])
+      const union = src.match(hotkeyUnion)
+      if (union) for (const m of union[1].matchAll(/'([a-z_]+)'/g)) written.add(m[1])
     }
     // The scan must find something, or a changed call shape would pass vacuously.
     expect(written.size).toBeGreaterThan(20)
+    expect(written.has('mini_hotkey')).toBe(true)
     const missing = [...written].filter((k) => !RENDERER_WRITABLE_SETTINGS.has(k))
     expect(missing).toEqual([])
+    // And the other way round: a key nothing writes any more leaves the list,
+    // so the list cannot grow into "anything goes". Keys of open PRs wait here.
+    const pending = new Set(['update_check_enabled'])
+    const unused = [...RENDERER_WRITABLE_SETTINGS].filter((k) => !written.has(k) && !pending.has(k))
+    expect(unused).toEqual([])
   })
 })
 
@@ -127,6 +138,8 @@ describe('settings:getSync', () => {
     expect(readSettingSync(db, 'theme_mode')).toBe('dark')
   })
 
+  // A narrower surface, not secrecy: the window reads settings through
+  // settings:getAll and the feed URL through icalFeed:url anyway.
   it('answers nothing else, not even an existing key', () => {
     expect(readSettingSync(db, 'ical_feed_token')).toBeNull()
     expect(readSettingSync(db, 42)).toBeNull()

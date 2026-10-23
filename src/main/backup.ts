@@ -335,10 +335,19 @@ export function restoreListedBackupOrReport(
   currentDbPath: string,
   report: (title: string, message: string) => void
 ): { ok: true; data: { safetyBackupPath: string } } | { ok: false; error: string } {
-  const listed =
-    typeof filename === 'string'
-      ? listBackups(backupPathOverride).find((b) => b.filename === filename)
-      : undefined
+  let listed: BackupInfo | undefined
+  try {
+    listed =
+      typeof filename === 'string'
+        ? listBackups(backupPathOverride).find((b) => b.filename === filename)
+        : undefined
+  } catch (err) {
+    // The folder is unreachable (an offline network share): say so here, the
+    // renderer relaunches right after and would swallow its own message.
+    const message = `Wiederherstellung nicht durchgeführt: ${(err as Error).message}`
+    report(RESTORE_FAILED_TITLE, message)
+    return { ok: false, error: message }
+  }
   if (!listed) {
     report(RESTORE_FAILED_TITLE, RESTORE_UNKNOWN_MESSAGE)
     return { ok: false, error: RESTORE_UNKNOWN_MESSAGE }
