@@ -45,6 +45,7 @@ If you call TimeTrack's MCP tools from your own scripts or agents, or receive it
 ### Security
 
 - **Narrower IPC surface, part 1 (#272).** The app window now gets only TimeTrack's own API. The generic `window.electron` object (raw IPC access and `process.env`) is gone. The main process saves only the settings the app's own screens write. The backup folder, the PDF logo path, the window position and the iCal feed token can no longer be set from the window. The theme is now the only setting the window can read synchronously. A backup restore now takes the file name of a backup from the backup list instead of a path, and refuses a file that is not a SQLite database before the open database is touched. The unused `update:getVersion` channel is gone as well (#281).
+- **Narrower IPC surface, part 2 (#272).** The main process now opens, reveals and reads only files it handed out. "Open folder" and "Show in folder" accept the database, the log folder and log file, the backup folder and the PDFs this session's merges wrote. The PDF merge reads only PDFs picked in the file dialog. TimeTrack remembers the 50 most recently used picks across restarts, so the merge dialog still restores its last invoice and time sheets. Once after this update, a remembered selection from before it has to be picked again.
 
 ## [1.22.0] — 2026-10-23
 
