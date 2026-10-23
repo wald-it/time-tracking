@@ -35,7 +35,7 @@ Trag diese Zeit in TimeTrack nach: <was>
 
 1. Finde Kunde und Projekt mit list_clients und list_projects. Passt mehr als eines oder keines, frag mich.
 2. Bestimme Beginn und Ende als Zeitstempel mit Zeitzone. Fehlt eine Uhrzeit, frag nach, statt sie zu raten.
-3. Prüf mit list_entries für denselben Tag, ob sich der Eintrag mit einem bestehenden überschneidet, und sag es mir.
+3. Prüf mit list_entries für denselben und den vorigen Tag, ob sich der Eintrag mit einem bestehenden überschneidet (auch mit einem, der am Vorabend begann und über Mitternacht lief), und sag es mir.
 4. Leg den Eintrag mit create_manual_entry an. Jede Änderung zuerst mit preview:true aufrufen und die Vorschau zeigen. Eine Vorschau legt in TimeTrack nichts an und ändert nichts. Erst wenn ich zustimme, denselben Aufruf ohne preview wiederholen und danach bestätigen, was angelegt oder geändert wurde.
 ```
 
@@ -50,9 +50,9 @@ Einen Monat vor der Abrechnung durchsehen: was an den Einträgen fehlt oder auff
 Bereite den Monatsabschluss für <monat> in TimeTrack vor.
 
 1. Hol die Summen mit get_report über den ganzen Monat, gruppiert nach client und project.
-2. Hol die Einträge des Monats mit list_entries.
+2. Hol die Einträge des Monats mit list_entries und die Projekte der Kunden mit list_projects.
 3. Liste auf, was ich mir ansehen sollte: Einträge ohne Beschreibung, Einträge über zehn Stunden, nicht abrechenbare Einträge, Einträge ohne Projekt bei Kunden mit Projekten und Überschneidungen.
-4. Schlag für Einträge mit fehlender oder unklarer Beschreibung einen Text vor, in diesem Format: <format>
+4. Schlag für Einträge mit fehlender oder unklarer Beschreibung einen Text vor, im Stil der übrigen Beschreibungen des Monats.
 5. Änderungen nur einzeln mit update_entry_fields und nur nach meiner Zustimmung. Jede Änderung zuerst mit preview:true aufrufen und die Vorschau zeigen. Eine Vorschau legt in TimeTrack nichts an und ändert nichts. Erst wenn ich zustimme, denselben Aufruf ohne preview wiederholen und danach bestätigen, was angelegt oder geändert wurde.
 6. Schließ mit den Summen aus Schritt 1: Stunden je Kunde, davon abrechenbar, gerundet wie die Rechnung.
 ```

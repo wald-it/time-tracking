@@ -258,10 +258,7 @@ export function listProjects(
   opts: ListProjectsOptions = {}
 ): McpProject[] {
   // Budget use counts like the invoice (#285), same step as the PDF.
-  const roundRow = db
-    .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-    .get() as { value: string } | undefined
-  const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
+  const roundStep = readRoundStep(db)
   const base = `
     SELECT p.*,
       COALESCE(ec.cnt, 0) AS entry_count,
@@ -596,12 +593,16 @@ function entryFigureSql(roundStep: number): {
   }
 }
 
-/** The app's rounding step (`pdf_round_minutes`); 0 = whole minutes only. */
+/**
+ * The app's rounding step (`pdf_round_minutes`); 0 = whole minutes only. A
+ * negative stored value counts as 0, as the money rule treats it
+ * (billedMinutesSql rounds only for a step above 0).
+ */
 function readRoundStep(db: SqliteDb): number {
   const row = db.prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`).get() as
     | { value: string }
     | undefined
-  return parseInt(row?.value ?? '0', 10) || 0
+  return Math.max(0, parseInt(row?.value ?? '0', 10) || 0)
 }
 
 /**
@@ -782,7 +783,7 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
 function dayNumber(day: string, field: string): number {
   const t = ISO_DAY.test(day) ? Date.parse(`${day}T00:00:00Z`) : NaN
   if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== day) {
-    throw new Error(`${field} muss ein Datum der Form YYYY-MM-DD sein, nicht "${day}"`)
+    throw new Error(`${field} must be a date in the form YYYY-MM-DD, not "${day}"`)
   }
   return t / 86_400_000
 }
@@ -796,12 +797,12 @@ function dayNumber(day: string, field: string): number {
  */
 export function getReport(db: SqliteDb, privacy: PrivacyConfig, q: ReportQuery): McpReport {
   const span = dayNumber(q.to, 'to') - dayNumber(q.from, 'from')
-  if (span < 0) throw new Error(`from (${q.from}) liegt nach to (${q.to})`)
+  if (span < 0) throw new Error(`from (${q.from}) is after to (${q.to})`)
   if (span + 1 > REPORT_MAX_DAYS) {
-    throw new Error(`Ein Bericht umfasst höchstens ${REPORT_MAX_DAYS} Tage, angefragt: ${span + 1}`)
+    throw new Error(`A report covers at most ${REPORT_MAX_DAYS} days, requested: ${span + 1}`)
   }
   if (new Set(q.groupBy).size !== q.groupBy.length) {
-    throw new Error(`group_by nennt eine Gruppe doppelt: ${q.groupBy.join(', ')}`)
+    throw new Error(`group_by names a group twice: ${q.groupBy.join(', ')}`)
   }
 
   const roundStep = readRoundStep(db)
@@ -871,21 +872,27 @@ export function getReport(db: SqliteDb, privacy: PrivacyConfig, q: ReportQuery):
     ...(privacy.exposeRates ? { revenue_cent: Math.round(r.revenue_cent ?? 0) } : {})
   })
 
+  // Like get_analytics' breakdowns, a group with no worked and no billed time
+  // (entries of zero length) is left out of the rows; it still counts in
+  // totals.entry_count.
   const rows: McpReportRow[] = groups.length
-    ? raw.map((r) => ({
-        ...(q.groupBy.includes('client')
-          ? { client_id: r.client_id, client_name: r.client_name }
-          : {}),
-        ...(q.groupBy.includes('project')
-          ? { project_id: r.project_id ?? null, project_name: r.project_name }
-          : {}),
-        ...(q.groupBy.includes('day') ? { day: r.day } : {}),
-        ...figures(r)
-      }))
+    ? raw
+        .filter((r) => (r.seconds ?? 0) > 0 || (r.rounded_seconds ?? 0) > 0)
+        .map((r) => ({
+          ...(q.groupBy.includes('client')
+            ? { client_id: r.client_id, client_name: r.client_name }
+            : {}),
+          ...(q.groupBy.includes('project')
+            ? { project_id: r.project_id ?? null, project_name: r.project_name }
+            : {}),
+          ...(q.groupBy.includes('day') ? { day: r.day } : {}),
+          ...figures(r)
+        }))
     : []
 
-  // Totals are the sum of the rows' integers (or the single ungrouped row),
-  // so a row total and the report total cannot disagree.
+  // Totals are the sum of every group's raw integers, then clamped like each
+  // row. They equal the sum of the rows unless an entry ends before it starts
+  // (negative time); get_analytics sums the same way.
   const zero: Raw = {
     entry_count: 0,
     seconds: 0,

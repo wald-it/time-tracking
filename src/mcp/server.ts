@@ -354,10 +354,11 @@ export function buildServer(): McpServer {
         'Bericht über beliebige Tage (from/to als lokale Tage YYYY-MM-DD, beide eingeschlossen, ' +
         `höchstens ${REPORT_MAX_DAYS} Tage), gruppiert nach group_by in der angegebenen ` +
         'Reihenfolge: client, project, day (leer = nur Summen). Je Zeile und in totals: ' +
-        'entry_count, seconds und billable_seconds (gearbeitete Zeit, ungerundet, wie ' +
-        'list_entries), rounded_seconds und billable_rounded_seconds (je Eintrag gerundet wie die ' +
+        'entry_count, seconds und billable_seconds (gearbeitete Zeit, ungerundet, auf die Sekunde ' +
+        'wie get_analytics), rounded_seconds und billable_rounded_seconds (je Eintrag gerundet wie die ' +
         'Rechnung; billable_rounded_seconds ist, was die Rechnungen abrechnen), revenue_cent nur ' +
         'bei freigeschalteten Stundensätzen. Nur abgeschlossene Einträge, wie get_analytics; ein ' +
+        'laufender Timer zählt nicht mit, anders als in list_entries. Ein ' +
         'Monat nach Kunde gruppiert ergibt dieselben Zahlen wie get_analytics. Keine ' +
         'Beschreibungen oder Notizen; dafür list_entries.',
       inputSchema: {

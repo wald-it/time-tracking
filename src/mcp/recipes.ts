@@ -58,7 +58,7 @@ export const RECIPES: Recipe[] = [
         '',
         '1. Finde Kunde und Projekt mit list_clients und list_projects. Passt mehr als eines oder keines, frag mich.',
         '2. Bestimme Beginn und Ende als Zeitstempel mit Zeitzone. Fehlt eine Uhrzeit, frag nach, statt sie zu raten.',
-        '3. Prüf mit list_entries für denselben Tag, ob sich der Eintrag mit einem bestehenden überschneidet, und sag es mir.',
+        '3. Prüf mit list_entries für denselben und den vorigen Tag, ob sich der Eintrag mit einem bestehenden überschneidet (auch mit einem, der am Vorabend begann und über Mitternacht lief), und sag es mir.',
         `4. Leg den Eintrag mit create_manual_entry an. ${WRITE_RULE}`
       ].join('\n')
   },
@@ -82,7 +82,7 @@ export const RECIPES: Recipe[] = [
         `Bereite den Monatsabschluss für ${ask(a.monat, '(bitte frag mich nach dem Monat)')} in TimeTrack vor.`,
         '',
         '1. Hol die Summen mit get_report über den ganzen Monat, gruppiert nach client und project.',
-        '2. Hol die Einträge des Monats mit list_entries.',
+        '2. Hol die Einträge des Monats mit list_entries und die Projekte der Kunden mit list_projects.',
         '3. Liste auf, was ich mir ansehen sollte: Einträge ohne Beschreibung, Einträge über zehn Stunden, nicht abrechenbare Einträge, Einträge ohne Projekt bei Kunden mit Projekten und Überschneidungen.',
         format
           ? `4. Schlag für Einträge mit fehlender oder unklarer Beschreibung einen Text vor, in diesem Format: ${format}`
@@ -114,10 +114,16 @@ export const RECIPES: Recipe[] = [
   }
 ]
 
-/** The doc block for docs/mcp-recipes.md, generated from RECIPES. */
+/**
+ * The doc block for docs/mcp-recipes.md, generated from RECIPES. Required
+ * fields show as `<name>`; optional ones are left empty, so the doc shows the
+ * default text a user gets without them (the monthly close: no format).
+ */
 export function renderRecipeDoc(): string {
   return RECIPES.map((r) => {
-    const placeholders = Object.fromEntries(r.args.map((a) => [a.name, `<${a.name}>`]))
+    const placeholders = Object.fromEntries(
+      r.args.map((a) => [a.name, a.required ? `<${a.name}>` : undefined])
+    )
     const args = r.args
       .map((a) => `- \`${a.name}\`${a.required ? '' : ' (optional)'}: ${a.description}`)
       .join('\n')

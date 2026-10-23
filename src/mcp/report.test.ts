@@ -311,6 +311,28 @@ describe('get_report (Q17)', () => {
     })
   })
 
+  it('leaves a group of zero-length entries out of the rows, like get_analytics', () => {
+    db.prepare(
+      `INSERT INTO entries (id, client_id, project_id, description, started_at, stopped_at,
+                            tags, reference, billable, private_note)
+       VALUES (9, 2, NULL, 'x', '2026-06-20T12:00:00.000Z', '2026-06-20T12:00:00.000Z', '', '', 1, '')`
+    ).run()
+    const r = getReport(sdb, SHOW, { ...JUNE, groupBy: ['day'] })
+    expect(r.rows.map((row) => row.day)).not.toContain('2026-06-20')
+    expect(r.totals.entry_count).toBe(6)
+    expect(getAnalytics(sdb, SHOW, 2026, 6).by_client.map((c) => c.client_id)).toEqual(
+      getReport(sdb, SHOW, { ...JUNE, groupBy: ['client'] }).rows.map((row) => row.client_id)
+    )
+  })
+
+  it('treats a negative stored rounding step as no step, like the money rule', () => {
+    db.prepare(`UPDATE settings SET value = '-5' WHERE key = 'pdf_round_minutes'`).run()
+    const r = getReport(sdb, SHOW, { ...JUNE, groupBy: [] })
+    expect(r.rounding_minutes).toBe(0)
+    // 67 + 1 + 30 + 60 + 20 whole minutes, no step.
+    expect(r.totals.rounded_seconds).toBe((67 + 1 + 30 + 60 + 20) * 60)
+  })
+
   it('refuses malformed input instead of guessing', () => {
     const at =
       (q: Partial<Parameters<typeof getReport>[2]>): (() => unknown) =>
@@ -318,11 +340,11 @@ describe('get_report (Q17)', () => {
         getReport(sdb, SHOW, { ...JUNE, groupBy: [], ...q })
     expect(at({ from: '2026-6-1' })).toThrow(/YYYY-MM-DD/)
     expect(at({ to: '2026-02-30' })).toThrow(/YYYY-MM-DD/)
-    expect(at({ from: '2026-07-01', to: '2026-06-01' })).toThrow(/nach/)
+    expect(at({ from: '2026-07-01', to: '2026-06-01' })).toThrow(/is after/)
     expect(at({ from: '2025-01-01', to: '2026-01-02' })).toThrow(
       new RegExp(String(REPORT_MAX_DAYS))
     )
-    expect(at({ groupBy: ['client', 'client'] })).toThrow(/doppelt/)
+    expect(at({ groupBy: ['client', 'client'] })).toThrow(/twice/)
     // The longest allowed range passes.
     expect(at({ from: '2025-06-30', to: '2026-06-30' })).not.toThrow()
   })
