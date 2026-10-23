@@ -224,7 +224,6 @@ declare global {
       update: {
         getStatus(): Promise<IpcResult<UpdateStatus>>
         getLastCheck(): Promise<IpcResult<string | null>>
-        getVersion(): Promise<IpcResult<string>>
         check(): Promise<IpcResult<void>>
         install(): Promise<IpcResult<void>>
         onStatus(callback: (status: UpdateStatus) => void): () => void

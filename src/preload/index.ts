@@ -289,7 +289,6 @@ const api = {
     getStatus: (): Promise<IpcResult<UpdateStatus>> => ipcRenderer.invoke('update:getStatus'),
     getLastCheck: (): Promise<IpcResult<string | null>> =>
       ipcRenderer.invoke('update:getLastCheck'),
-    getVersion: (): Promise<IpcResult<string>> => ipcRenderer.invoke('update:getVersion'),
     check: (): Promise<IpcResult<void>> => ipcRenderer.invoke('update:check'),
     install: (): Promise<IpcResult<void>> => ipcRenderer.invoke('update:install'),
     onStatus: (callback: (status: UpdateStatus) => void): (() => void) => {

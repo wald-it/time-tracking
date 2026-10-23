@@ -19,15 +19,18 @@ import { de } from '../../../shared/locales/de'
 afterEach(cleanup)
 
 const VERSION = '9.8.7'
+const LAST_CHECK = '2026-10-23T08:00:00.000Z'
 
 beforeEach(() => {
   const api = {
     settings: { getAll: async () => ({ ok: true as const, data: {} }) },
+    // The version's only source since #281: a version row that came back
+    // would read it here.
+    app: { getVersion: async () => ({ ok: true as const, data: VERSION }) },
     update: {
       onStatus: () => () => {},
-      getVersion: async () => ({ ok: true as const, data: VERSION }),
       getStatus: async () => ({ ok: true as const, data: { status: 'idle' as const } }),
-      getLastCheck: async () => ({ ok: true as const, data: null }),
+      getLastCheck: async () => ({ ok: true as const, data: LAST_CHECK }),
       check: async () => ({ ok: true as const, data: undefined }),
       install: async () => ({ ok: true as const, data: undefined })
     }
@@ -42,9 +45,10 @@ describe('Settings → Updates section (#274)', () => {
         <UpdatesSection />
       </I18nProvider>
     )
-    // Guards against a vacuous pass: init() has loaded the version and the
-    // section rendered, so its absence below is a finding, not an empty store.
-    await waitFor(() => expect(useUpdateStore.getState().appVersion).toBe(VERSION))
+    // Guards against a vacuous pass: init() has finished loading and the
+    // section rendered, so the version's absence below is a finding, not a
+    // render that ran before the store was filled.
+    await waitFor(() => expect(useUpdateStore.getState().lastCheckedAt).toBe(LAST_CHECK))
     const text = container.textContent ?? ''
     expect(text).toContain(de['settings.update.checkNow'])
     expect(text).not.toContain(VERSION)

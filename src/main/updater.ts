@@ -11,7 +11,7 @@
  * offline app start. Errors triggered by an explicit user "check now"
  * are surfaced (so the Settings UI can show "no connection").
  */
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import log from 'electron-log/main'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
@@ -214,7 +214,6 @@ export function initAutoUpdater(opts: { isDev: boolean; getEndpointDir?: () => s
   // ── IPC handlers ───────────────────────────────────────────
   ipcMain.handle('update:getStatus', (): IpcResult<UpdateStatus> => ok(lastStatus))
   ipcMain.handle('update:getLastCheck', (): IpcResult<string | null> => ok(lastCheckIso))
-  ipcMain.handle('update:getVersion', (): IpcResult<string> => ok(app.getVersion()))
 
   ipcMain.handle('update:check', async (): Promise<IpcResult<void>> => {
     if (opts.isDev) {
