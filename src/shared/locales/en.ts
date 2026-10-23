@@ -214,6 +214,9 @@ export const en: Record<TranslationKey, string> = {
   'header.navAria': 'Main navigation',
   'today.table.editAria': 'Edit entry {time}',
   'today.table.deleteAria': 'Delete entry {time}',
+  'today.table.resumeAria': 'Resume entry {time}',
+  'today.table.resume': 'Resume',
+  'today.table.resumeArchived': 'The client is archived.',
   'today.dayscale.running': 'running',
 
   // ── CalendarView ──────────────────────────────────────────────────────────

@@ -15,9 +15,7 @@ afterEach(() => {
 
 const TEXTS = ['Rollout: Planung', 'Rollout: Abstimmung', 'Review']
 
-function setup(
-  opts: { clientId?: number | null; projectId?: number | null } = {}
-): {
+function setup(opts: { clientId?: number | null; projectId?: number | null } = {}): {
   recent: ReturnType<typeof vi.fn>
   onEnter: ReturnType<typeof vi.fn>
   input: () => HTMLInputElement

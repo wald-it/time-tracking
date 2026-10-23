@@ -94,6 +94,8 @@ describe('QuickNoteModal — suggestions (Q8)', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => expect(onDone).toHaveBeenCalled())
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({ description: 'Rollout: Planung' }))
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Rollout: Planung' })
+    )
   })
 })

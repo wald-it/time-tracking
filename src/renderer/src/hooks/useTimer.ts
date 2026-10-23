@@ -28,9 +28,23 @@ export interface UseTimerResult {
   start: () => Promise<string | null>
   stop: () => Promise<void>
   /** Resolves to the error of a refused or failed start, else null. */
-  startWithClient: (clientId: number, projectId?: number | null) => Promise<string | null>
+  startWithClient: (
+    clientId: number,
+    projectId?: number | null,
+    description?: string
+  ) => Promise<string | null>
   /** Resolves to the error of a refused or failed switch, else null. */
-  switchTo: (clientId: number, projectId: number | null) => Promise<string | null>
+  switchTo: (
+    clientId: number,
+    projectId: number | null,
+    description?: string
+  ) => Promise<string | null>
+  /** Q8: start an entry's client, project and description again. */
+  resume: (
+    clientId: number,
+    projectId: number | null,
+    description: string
+  ) => Promise<string | null>
   idleKeep: () => void
   idleStopAtIdle: () => Promise<void>
   idleMarkPause: () => Promise<void>
@@ -439,7 +453,11 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   }, [runningEntry])
 
   const startWithClient = useCallback(
-    async (clientId: number, projectId?: number | null): Promise<string | null> => {
+    async (
+      clientId: number,
+      projectId?: number | null,
+      newDescription = ''
+    ): Promise<string | null> => {
       if (useTimerStore.getState().runningEntry) return null
       // Client and project together: a stale project of the previous client
       // would otherwise travel into the next start() (global hotkey).
@@ -449,13 +467,13 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
         window.api.entries.start({
           client_id: clientId,
           project_id: projectId ?? null,
-          description: '',
+          description: newDescription,
           started_at: new Date().toISOString()
         })
       )
       if (!res.ok) return res.error
       setRunningEntry(res.data)
-      setDescription('')
+      setDescription(newDescription)
       // Dismiss quicknote modal if user starts a new timer before answering
       if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
       const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
@@ -472,14 +490,40 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
    * description.
    */
   const switchTo = useCallback(
-    (clientId: number, projectId: number | null) =>
-      switchToEntry(clientId, projectId, '', () => {
+    (clientId: number, projectId: number | null, newDescription = '') =>
+      switchToEntry(clientId, projectId, newDescription, () => {
         // Client and project together, as in startWithClient (global hotkey).
         setSelectedClientId(clientId)
         useTimerStore.getState().setSelectedProjectId(projectId)
-        setDescription('')
+        setDescription(newDescription)
       }),
     [switchToEntry, setSelectedClientId, setDescription]
+  )
+
+  /**
+   * Q8 (2.0.0) — "Fortsetzen" on a row of Heute's entry table: start that
+   * entry's client, project and description again. Nothing runs → the start
+   * path; another timer runs → the switch path (one instant in main, quick
+   * note for the stopped entry); the same thing already runs → nothing.
+   */
+  const resume = useCallback(
+    async (
+      clientId: number,
+      projectId: number | null,
+      newDescription: string
+    ): Promise<string | null> => {
+      const running = useTimerStore.getState().runningEntry
+      if (!running) return startWithClient(clientId, projectId, newDescription)
+      if (
+        running.client_id === clientId &&
+        (running.project_id ?? null) === projectId &&
+        running.description === newDescription
+      ) {
+        return null
+      }
+      return switchTo(clientId, projectId, newDescription)
+    },
+    [startWithClient, switchTo]
   )
 
   const dismissIdle = useCallback(() => {
@@ -611,6 +655,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     stop,
     startWithClient,
     switchTo,
+    resume,
     idleKeep,
     idleStopAtIdle,
     idleMarkPause

@@ -1318,6 +1318,77 @@ describe('useTimer — handleOpenStart (#297)', () => {
   })
 })
 
+// Q8 (2.0.0): "Fortsetzen" starts an entry's client, project and description
+// again — the start path when nothing runs, the switch path (one instant,
+// quick note for the stopped entry) when another timer runs.
+describe('useTimer — resume (Q8)', () => {
+  const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+
+  it('starts client, project and description when nothing runs', async () => {
+    const { api, hook } = await setup({ clients })
+
+    let error: string | null = 'unset'
+    await act(async () => {
+      error = await hook.result.current.resume(2, 20, 'Review')
+    })
+
+    expect(error).toBeNull()
+    expect(api.start).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 2, project_id: 20, description: 'Review' })
+    )
+    expect(hook.result.current.selectedClientId).toBe(2)
+    expect(hook.result.current.selectedProjectId).toBe(20)
+    expect(hook.result.current.description).toBe('Review')
+  })
+
+  it('switches with the description when another timer runs', async () => {
+    const { api, hook } = await setup({ clients })
+    const first = await startTimer(hook)
+
+    await act(async () => {
+      await hook.result.current.resume(2, 20, 'Review')
+    })
+
+    expect(api.switch).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 2, project_id: 20, description: 'Review' })
+    )
+    expect(api.start).toHaveBeenCalledTimes(1) // startTimer above
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+    expect(hook.result.current.description).toBe('Review')
+    // The stopped entry had no description: its prompt opens, as for a switch.
+    expect(hook.result.current.quickNoteEntry?.id).toBe(first.id)
+  })
+
+  it('does nothing when the same thing already runs', async () => {
+    const { api, hook } = await setup({ clients })
+    act(() => {
+      hook.result.current.setSelectedClientId(2)
+      hook.result.current.setSelectedProjectId(20)
+      hook.result.current.setDescription('Review')
+    })
+    await startTimer(hook)
+
+    await act(async () => {
+      await hook.result.current.resume(2, 20, 'Review')
+    })
+
+    expect(api.switch).not.toHaveBeenCalled()
+    expect(api.start).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns the error of a refused start', async () => {
+    const { api, hook } = await setup({ clients })
+    api.start.mockResolvedValueOnce({ ok: false, error: 'refused' })
+
+    let error: string | null = null
+    await act(async () => {
+      error = await hook.result.current.resume(2, null, 'Review')
+    })
+
+    expect(error).toBe('refused')
+  })
+})
+
 // #313: the idle prompt stops the running entry through entries:update, which
 // defaults every field it is not sent. Today only the project of a running
 // entry can differ from the defaults; the other fields are sent along anyway,
