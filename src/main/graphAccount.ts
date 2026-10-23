@@ -17,8 +17,7 @@ import {
   GraphAuthError,
   isPersonalAccount,
   needsRefresh,
-  PRESENCE_SCOPE,
-  refreshScopes
+  PRESENCE_SCOPE
 } from '../shared/graphAuth'
 import type { AccountInfo, StoredTokens } from '../shared/graphAuth'
 import { refreshTokens } from './graphAuth'
@@ -149,14 +148,7 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
 
   let refreshed: StoredTokens
   try {
-    const cfg = configOf(deps)
-    // Only scopes already granted (#308): asking for one not yet consented
-    // makes the whole refresh fail.
-    refreshed = await refreshTokens(
-      { ...cfg, scopes: refreshScopes(cfg.scopes ?? [], tokens.grantedScopes ?? []) },
-      tokens,
-      deps.auth
-    )
+    refreshed = await refreshWithFallback(configOf(deps), tokens, deps)
   } catch (err) {
     if (err instanceof GraphAuthError && err.code === 'invalid_grant') {
       deps.log?.('graph account: grant no longer valid, connection dropped')
@@ -171,6 +163,35 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   return refreshed.accessToken
 }
 
+/**
+ * #308: Entra refreshes only scopes "equivalent to or a subset of" those
+ * granted. With a feature switched on whose scope is not consented yet (Teams
+ * presence before the reconnect, or a tenant that needs an admin for it), a
+ * refresh asking for it is refused — and the calendar import with it. So a
+ * refused refresh that carried feature scopes is retried once with the
+ * calendar scopes alone. When the consent exists, the first refresh simply
+ * succeeds; the outcome never depends on how the server spells its scopes.
+ * Only a failure of the calendar-only refresh speaks for the connection.
+ */
+async function refreshWithFallback(
+  cfg: GraphAuthConfig,
+  tokens: StoredTokens,
+  deps: GraphAccountDeps
+): Promise<StoredTokens> {
+  const wanted = cfg.scopes ?? CALENDAR_SCOPES
+  const base = CALENDAR_SCOPES as readonly string[]
+  if (wanted.every((s) => base.includes(s))) return refreshTokens(cfg, tokens, deps.auth)
+  try {
+    return await refreshTokens(cfg, tokens, deps.auth)
+  } catch (err) {
+    // Only a refusal by the server; a network error is retried by the caller.
+    if (!(err instanceof GraphAuthError) || err.code === null) throw err
+    deps.log?.(
+      `graph account: refresh with feature scopes refused (${err.code}), retrying with the calendar scopes`
+    )
+    return refreshTokens({ ...cfg, scopes: [...CALENDAR_SCOPES] }, tokens, deps.auth)
+  }
+}
 /** Outcome of "check connection" — proves the stored token is accepted by Graph. */
 export interface VerifyResult {
   /** From Graph's own `/me`, not from the id_token — a second, independent source. */

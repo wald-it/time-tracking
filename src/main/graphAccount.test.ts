@@ -260,57 +260,73 @@ describe('disconnect', () => {
 // granted. With Teams presence switched on but not yet consented (no
 // reconnect, or the tenant needs an admin), every refresh asked for
 // Presence.ReadWrite and failed — the calendar import stopped working.
-describe('a refresh asks only for scopes already granted (#308)', () => {
-  /** The `scope` of the refresh request, and the fetch that answers it. */
-  function capture(): { scopes: () => string[]; fetchFn: typeof fetch } {
-    let body = ''
+describe('a refused refresh with feature scopes falls back to the calendar scopes (#308)', () => {
+  /** Answers each refresh in turn and records the scopes it asked for. */
+  function server(...answers: Array<'ok' | string>): {
+    asked: string[][]
+    fetchFn: typeof fetch
+  } {
+    const asked: string[][] = []
     const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
-      body = String(init?.body ?? '')
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ access_token: 'access-2', expires_in: 3600 })
-      } as unknown as Response
+      const scope = new URLSearchParams(String(init?.body ?? '')).get('scope') ?? ''
+      asked.push(scope.split(' ').filter(Boolean))
+      const a = answers[asked.length - 1] ?? 'ok'
+      return (a === 'ok'
+        ? {
+            ok: true,
+            status: 200,
+            json: async () => ({ access_token: 'access-2', expires_in: 3600, scope })
+          }
+        : {
+            ok: false,
+            status: 400,
+            json: async () => ({ error: a, error_description: 'AADSTS65001' })
+          }) as unknown as Response
     }) as unknown as typeof fetch
-    return {
-      scopes: () => (new URLSearchParams(body).get('scope') ?? '').split(' ').filter(Boolean),
-      fetchFn
-    }
+    return { asked, fetchFn }
   }
 
-  it('presence switched on but not granted: the refresh leaves it out, the token still comes', async () => {
-    const c = capture()
-    const d = withSettings(
-      { presence_enabled: '1' },
-      { auth: { now: () => NOW, fetchFn: c.fetchFn } }
-    )
+  function presenceOn(fetchFn: typeof fetch): GraphAccountDeps {
+    return withSettings({ presence_enabled: '1' }, { auth: { now: () => NOW, fetchFn } })
+  }
+
+  for (const code of ['invalid_grant', 'consent_required', 'interaction_required']) {
+    it(`presence not consented (${code}): the import still gets a token, the connection stays`, async () => {
+      const s = server(code, 'ok')
+      const d = presenceOn(s.fetchFn)
+      saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+      await expect(getAccessToken(d)).resolves.toBe('access-2')
+      expect(s.asked).toHaveLength(2)
+      expect(s.asked[0]).toContain('Presence.ReadWrite')
+      expect(s.asked[1]).toEqual(['offline_access', 'openid', 'profile', 'Calendars.Read'])
+      expect(loadTokens(d.store)?.accessToken).toBe('access-2')
+    })
+  }
+
+  it('presence consented: one refresh, and the token carries it again', async () => {
+    const s = server('ok')
+    const d = presenceOn(s.fetchFn)
+    // Even when the stored list lost the scope (presence was off for a while).
+    saveTokens(tokens({ expiresAtMs: NOW + 1000, grantedScopes: ['Calendars.Read'] }), d.store)
+    await getAccessToken(d)
+    expect(s.asked).toHaveLength(1)
+    expect(s.asked[0]).toContain('Presence.ReadWrite')
+    expect(loadTokens(d.store)?.grantedScopes).toContain('Presence.ReadWrite')
+  })
+
+  it('the calendar-only refresh failing too means the grant is gone', async () => {
+    const s = server('invalid_grant', 'invalid_grant')
+    const d = presenceOn(s.fetchFn)
     saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
-    await expect(getAccessToken(d)).resolves.toBe('access-2')
-    expect(c.scopes()).not.toContain('Presence.ReadWrite')
-    expect(c.scopes()).toContain('Calendars.Read')
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(loadTokens(d.store)).toBeNull()
   })
 
-  it('presence granted: the refresh keeps it, whatever the case of the stored scope', async () => {
-    const c = capture()
-    const d = withSettings(
-      { presence_enabled: '1' },
-      { auth: { now: () => NOW, fetchFn: c.fetchFn } }
-    )
-    saveTokens(
-      tokens({ expiresAtMs: NOW + 1000, grantedScopes: ['Calendars.Read', 'presence.readwrite'] }),
-      d.store
-    )
-    await getAccessToken(d)
-    expect(c.scopes()).toContain('Presence.ReadWrite')
-  })
-
-  it('the calendar scopes are always asked for, even if the stored list is empty', async () => {
-    // The stored list only gates the feature scopes; the base scopes were
-    // asked for at connect, so an odd or empty list cannot break the import.
-    const c = capture()
-    const d = deps({ auth: { now: () => NOW, fetchFn: c.fetchFn } })
-    saveTokens(tokens({ expiresAtMs: NOW + 1000, grantedScopes: [] }), d.store)
-    await getAccessToken(d)
-    expect(c.scopes()).toEqual(['offline_access', 'openid', 'profile', 'Calendars.Read'])
+  it('without feature scopes there is no second attempt', async () => {
+    const s = server('invalid_grant')
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(s.asked).toHaveLength(1)
   })
 })
