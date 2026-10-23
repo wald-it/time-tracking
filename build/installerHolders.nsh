@@ -35,7 +35,7 @@
 !define TT_RM_MAX_LISTED 8
 ; Bounds the walk if $INSTDIR is ever pointed at something much bigger than
 ; an app folder.
-!define TT_RM_MAX_FILES 5000
+!define /ifndef TT_RM_MAX_FILES 5000
 
 ; ${APP_EXECUTABLE_FILENAME} is defined in electron-builder's common.nsh,
 ; which the generated script includes after this file. Functions are compiled
@@ -45,7 +45,11 @@ Var TTAppExe
 Var TTRmSession
 ; Files visited, and of those registered with the Restart Manager.
 Var TTRmSeen
+; 1 when the walk refused a file because of TT_RM_MAX_FILES.
+Var TTRmCut
 Var TTRmFiles
+; 1 when the list holds a service or a system process.
+Var TTHolderService
 Var TTRmStatus
 ; Holders of the last pass, one per line; empty when there is nothing to report.
 Var TTForeignHolders
@@ -93,16 +97,16 @@ Function ttRmRegisterDir
     StrCmp $R2 "" done
     StrCmp $R2 "." next
     StrCmp $R2 ".." next
-    ; Counts visits, not successes: if registration keeps failing, a cap on
-    ; successes would never bound the walk.
-    IntCmp $TTRmSeen ${TT_RM_MAX_FILES} done 0 done
-
     IfFileExists "$INSTDIR$R0\$R2\*.*" 0 isFile
       Push "$R0\$R2"
       Call ttRmRegisterDir
       Goto next
 
     isFile:
+      ; Counts visits, not successes: if registration keeps failing, a cap on
+      ; successes would never bound the walk. Checked here, on a file, so that
+      ; only a file actually left out counts as a cut.
+      IntCmp $TTRmSeen ${TT_RM_MAX_FILES} cut 0 cut
       IntOp $TTRmSeen $TTRmSeen + 1
       ; RmRegisterResources takes an array of string pointers. One file per
       ; call keeps that array at a single element; registrations add up
@@ -122,6 +126,9 @@ Function ttRmRegisterDir
   next:
     FindNext $R1 $R2
     Goto loop
+
+  cut:
+    StrCpy $TTRmCut 1
 
   done:
   FindClose $R1
@@ -147,7 +154,9 @@ Function ttForeignHolderPass
 
   StrCpy $TTForeignHolders ""
   StrCpy $TTRmSeen 0
+  StrCpy $TTRmCut 0
   StrCpy $TTRmFiles 0
+  StrCpy $TTHolderService 0
   StrCpy $7 0
 
   System::Call 'rstrtmgr::RmStartSession(*i .r1, i 0, w .r2)i.r0'
@@ -263,6 +272,11 @@ Function ttForeignHolderPass
       ${EndIf}
     ${EndIf}
 
+    ${If} $1 == 3
+    ${OrIf} $1 == 1000
+      StrCpy $TTHolderService 1
+    ${EndIf}
+
     ${If} $R7 < ${TT_RM_MAX_LISTED}
       ${If} $TTForeignHolders == ""
         StrCpy $TTForeignHolders "$4 ($0)"
@@ -285,7 +299,7 @@ Function ttForeignHolderPass
   ${If} $7 != 0
     System::Free $7
   ${EndIf}
-  ${If} $TTRmSeen >= ${TT_RM_MAX_FILES}
+  ${If} $TTRmCut == 1
     StrCpy $TTRmStatus "$TTRmStatus, walk stopped after ${TT_RM_MAX_FILES} files"
   ${EndIf}
 
@@ -349,9 +363,17 @@ FunctionEnd
       ; defined for every language electron-builder bundles (about 30), or the
       ; -WX build fails; the other languages get the English text.
       ${If} $LANGUAGE == 1031
-        StrCpy $TTHolderMsg "Diese Programme verwenden noch Dateien im Installationsordner:$\r$\n$\r$\n$TTForeignHolders$\r$\n$\r$\nSolange sie laufen, kann das Update von ${PRODUCT_NAME} fehlschlagen. Beende sie und klicke auf Wiederholen.$\r$\n$\r$\nMit Ignorieren läuft die Installation trotzdem weiter, mit Abbrechen endet sie."
+        StrCpy $TTHolderMsg "Diese Programme verwenden noch Dateien im Installationsordner:$\r$\n$\r$\n$TTForeignHolders$\r$\n$\r$\nSolange sie laufen, kann das Update von ${PRODUCT_NAME} fehlschlagen. Beende sie und klicke auf Wiederholen."
+        ${If} $TTHolderService == 1
+          StrCpy $TTHolderMsg "$TTHolderMsg Einen Windows-Dienst hältst du in der Dienste-Verwaltung (services.msc) an. Einen Systemprozess kannst du nicht beenden; dann hilft Ignorieren oder ein Neustart von Windows."
+        ${EndIf}
+        StrCpy $TTHolderMsg "$TTHolderMsg$\r$\n$\r$\nMit Ignorieren läuft die Installation trotzdem weiter, mit Abbrechen endet sie."
       ${Else}
-        StrCpy $TTHolderMsg "These programs are still using files in the install folder:$\r$\n$\r$\n$TTForeignHolders$\r$\n$\r$\nWhile they run, the ${PRODUCT_NAME} update can fail. Close them and click Retry.$\r$\n$\r$\nIgnore continues the installation anyway. Abort ends it."
+        StrCpy $TTHolderMsg "These programs are still using files in the install folder:$\r$\n$\r$\n$TTForeignHolders$\r$\n$\r$\nWhile they run, the ${PRODUCT_NAME} update can fail. Close them and click Retry."
+        ${If} $TTHolderService == 1
+          StrCpy $TTHolderMsg "$TTHolderMsg You can stop a Windows service in the Services console (services.msc). A system process cannot be closed; Ignore or restarting Windows helps then."
+        ${EndIf}
+        StrCpy $TTHolderMsg "$TTHolderMsg$\r$\n$\r$\nIgnore continues the installation anyway. Abort ends it."
       ${EndIf}
 
       MessageBox MB_ABORTRETRYIGNORE|MB_ICONEXCLAMATION "$TTHolderMsg" /SD IDIGNORE IDRETRY ttHoldersRetry IDIGNORE ttHoldersIgnore
