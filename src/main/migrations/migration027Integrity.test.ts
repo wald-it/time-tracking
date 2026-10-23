@@ -24,16 +24,18 @@ import type Database from 'better-sqlite3'
 import { executeMigration, migrations } from './index'
 import { loadSqlite, type DatabaseCtor } from '../../test/sqlite'
 import { monthEntries } from '../entryRanges'
-import { buildPdfPayload } from '../pdf'
 import { billedMinutes } from '../../shared/currency'
 import { localDayRange, localMonthRange } from '../../shared/dateRanges'
 
 let DatabaseImpl: DatabaseCtor
 const previousTz = process.env.TZ
+// Imported after the zone is set: pdf.ts builds its Intl formatters on load.
+let buildPdfPayload: typeof import('../pdf').buildPdfPayload
 
 beforeAll(async () => {
   process.env.TZ = 'Europe/Berlin'
   DatabaseImpl = await loadSqlite()
+  ;({ buildPdfPayload } = await import('../pdf'))
 })
 afterAll(() => {
   if (previousTz === undefined) delete process.env.TZ

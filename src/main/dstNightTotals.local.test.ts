@@ -15,16 +15,20 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { monthEntries } from './entryRanges'
-import { buildPdfPayload } from './pdf'
 import { localDateKey } from '../shared/dateRanges'
 import { entrySeconds } from '../renderer/src/components/kalender/clientShares'
 
 let DatabaseImpl: DatabaseCtor
 const previousTz = process.env.TZ
+// Imported only after the zone is set: pdf.ts builds its Intl date/time
+// formatters when the module loads, and a static import would give them the
+// runner's zone (UTC on CI) — the PDF dates went to 24.10. there.
+let buildPdfPayload: typeof import('./pdf').buildPdfPayload
 
 beforeAll(async () => {
   process.env.TZ = 'Europe/Berlin'
   DatabaseImpl = await loadSqlite()
+  ;({ buildPdfPayload } = await import('./pdf'))
 })
 afterAll(() => {
   if (previousTz === undefined) delete process.env.TZ
