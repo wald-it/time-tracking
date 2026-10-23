@@ -15,6 +15,12 @@ import {
 } from './backup'
 import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
 import {
+  rememberPickedPdf,
+  ShellTargets,
+  SHELL_REFUSED_MESSAGE,
+  unpickedPdfError
+} from './handedOutPaths'
+import {
   createManualEntry,
   updateManualEntry,
   switchTimerAndNotify,
@@ -116,6 +122,26 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+
+  /** The app's own locations, as `paths:get` reports them to Settings. */
+  function appPaths(): { db: string; backups: string; logs: string; logFile: string } {
+    // electron-log returns a File transport whose `getFile()` resolves
+    // the on-disk log path lazily; the directory is its parent.
+    const logFile = log.transports.file.getFile().path
+    let backupsDir: string
+    try {
+      backupsDir = getBackupsDir(getBackupPathSetting() || undefined)
+    } catch {
+      backupsDir = getDefaultBackupsDir()
+    }
+    return { db: getDbPath(), backups: backupsDir, logs: dirname(logFile), logFile }
+  }
+
+  // #272: what the shell helpers may open or reveal.
+  const shellTargets = new ShellTargets(() => {
+    const p = appPaths()
+    return [p.db, p.backups, p.logs, p.logFile, getDefaultBackupsDir()]
+  })
 
   // ── Clients ──────────────────────────────────────────────────
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
@@ -770,8 +796,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   })
 
   // ── Shell helpers ────────────────────────────────
-  ipcMain.handle('shell:openPath', async (_e, path: string): Promise<IpcResult<void>> => {
-    const err = await shell.openPath(path)
+  // #272: only the app's own locations and files it wrote (handedOutPaths.ts).
+  ipcMain.handle('shell:openPath', async (_e, path: unknown): Promise<IpcResult<void>> => {
+    if (!shellTargets.allows(path)) return fail(SHELL_REFUSED_MESSAGE)
+    const err = await shell.openPath(path as string)
     if (err) return fail(err)
     return ok(undefined)
   })
@@ -782,8 +810,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     return ok(undefined)
   })
 
-  ipcMain.handle('shell:showItemInFolder', (_e, path: string): IpcResult<void> => {
-    shell.showItemInFolder(path)
+  ipcMain.handle('shell:showItemInFolder', (_e, path: unknown): IpcResult<void> => {
+    if (!shellTargets.allows(path)) return fail(SHELL_REFUSED_MESSAGE)
+    shell.showItemInFolder(path as string)
     return ok(undefined)
   })
 
@@ -797,20 +826,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       logFile: string
       mcp: McpRegistration
     }> => {
-      // electron-log returns a File transport whose `getFile()` resolves
-      // the on-disk log path lazily; the directory is its parent.
-      const logFile = log.transports.file.getFile().path
-      let backupsDir: string
-      try {
-        backupsDir = getBackupsDir(getBackupPathSetting() || undefined)
-      } catch {
-        backupsDir = getDefaultBackupsDir()
-      }
       return ok({
-        db: getDbPath(),
-        backups: backupsDir,
-        logs: dirname(logFile),
-        logFile,
+        ...appPaths(),
         // Settings → Integrationen renders this as a copy-paste `.mcp.json`.
         mcp: buildMcpRegistration(process.execPath, app.getAppPath())
       })
@@ -917,15 +934,33 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // <stem>_inkl_Stundennachweis.pdf. Falls back to a save dialog when the
   // target directory is not writable (e.g. a corporate archive folder).
   // Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-export', (_e, req) => mergeExportHandler(db, req))
+  // #272: every input PDF must have been picked in pdf:open-pdf-dialog, and the
+  // written file becomes a path the shell helpers may reveal.
+  ipcMain.handle('pdf:merge-export', async (_e, req) => {
+    const refused = unpickedPdfError(db, req)
+    if (refused) return fail(refused)
+    const res = await mergeExportHandler(db, req)
+    if (res.ok) shellTargets.rememberWritten(res.data.path)
+    return res
+  })
 
   // PDF merge-only: merges two existing PDFs (Stundennachweis + invoice) without
   // re-rendering. Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-only', (_e, req) => mergeOnlyHandler(req))
+  ipcMain.handle('pdf:merge-only', async (_e, req) => {
+    const refused = unpickedPdfError(db, req)
+    if (refused) return fail(refused)
+    const res = await mergeOnlyHandler(req)
+    if (res.ok) shellTargets.rememberWritten(res.data.path)
+    return res
+  })
 
   // PDF info: returns page count for a given PDF path. Used by the renderer to
   // show page counts before confirming a merge.
-  ipcMain.handle('pdf:pdf-info', (_e, req) => pdfInfoHandler(req))
+  ipcMain.handle('pdf:pdf-info', (_e, req) => {
+    const refused = unpickedPdfError(db, req)
+    if (refused) return fail(refused)
+    return pdfInfoHandler(req)
+  })
 
   // PDF open dialog: opens a native file picker and returns the selected path.
   // Safer than relying on file.path in the renderer (not available with contextIsolation).
@@ -939,6 +974,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           properties: ['openFile']
         })
         if (result.canceled || !result.filePaths[0]) return ok(null)
+        rememberPickedPdf(db, result.filePaths[0])
         return ok({ filePath: result.filePaths[0] })
       } catch (e) {
         return fail(e)
