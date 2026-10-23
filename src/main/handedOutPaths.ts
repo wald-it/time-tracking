@@ -25,9 +25,10 @@ export const PICKED_PDFS_KEY = 'pdf_merge_picked_paths'
 export const MAIN_ONLY_SETTING_KEYS: ReadonlySet<string> = new Set([PICKED_PDFS_KEY])
 
 /**
- * Enough for a few months of invoices and time sheets. A pick the merge
- * dialog keeps using is refreshed on every successful read, so only paths
- * nobody uses any more drop out.
+ * Enough for a few months of invoices and time sheets. A pick is refreshed
+ * whenever `pdf:pdf-info` reads it, which the merge dialog does on every
+ * pick and every restore, so a selection still in that dialog does not drop
+ * out. The merge handlers themselves do not refresh.
  */
 export const MAX_PICKED_PDFS = 50
 

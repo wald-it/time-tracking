@@ -128,8 +128,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   /**
    * The app's own locations, without touching the file system (no mkdir of a
-   * possibly dead network share). `paths:get` reports these to Settings, and
-   * they are exactly what the shell helpers may open or reveal.
+   * possibly dead network share). The shell helpers accept these, plus the
+   * default backup folder and the files a merge wrote. `paths:get` reports
+   * them too, with its own `backups` value (which creates the folder).
    */
   function appLocations(): { db: string; backups: string; logs: string; logFile: string } {
     // electron-log returns a File transport whose `getFile()` resolves
