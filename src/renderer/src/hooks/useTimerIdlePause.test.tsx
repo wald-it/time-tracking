@@ -13,15 +13,10 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../../../test/sqlite'
 import { seed } from '../../../test/bridgeKit'
-import { createManualEntry, switchTimer, updateManualEntry } from '../../../main/entryMutations'
+import { createManualEntry, updateManualEntry } from '../../../main/entryMutations'
 import { buildPdfPayload } from '../../../main/pdf'
-import type {
-  Client,
-  CreateEntryInput,
-  CreateManualEntryInput,
-  Entry,
-  UpdateEntryInput
-} from '../../../shared/types'
+import { localDateKey } from '../../../shared/dateRanges'
+import type { Client, CreateManualEntryInput, Entry, UpdateEntryInput } from '../../../shared/types'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -61,10 +56,10 @@ function installApi(db: Database.Database): {
             )
             .get() as Entry | undefined) ?? null
       }),
-      // entries:start answers the new entry only (ipc.ts maps the switch result).
-      start: async (input: CreateEntryInput) => {
-        const res = switchTimer(db, input)
-        return res.ok ? { ok: true as const, data: res.data.entry } : res
+      // The pause is booked closed in one step (#298); starting it as a
+      // running timer is the old path that left a billable "Pause" behind.
+      start: async () => {
+        throw new Error('the idle pause must not be started as a timer')
       },
       create: async (input: CreateManualEntryInput) => createManualEntry(db, input),
       update: async (input: UpdateEntryInput) => updateManualEntry(db, input),
@@ -83,12 +78,6 @@ function installApi(db: Database.Database): {
   }
   ;(window as unknown as { api: typeof api }).api = api
   return { trayUpdate, idle }
-}
-
-/** Local calendar date as YYYY-MM-DD, the form the PDF request takes. */
-function localDate(d: Date): string {
-  const p = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
 describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
@@ -147,7 +136,7 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
     // The client's timesheet (PDF attachment) lists the work, not the pause.
     const sheet = buildPdfPayload(
       db,
-      { clientId: 1, fromIso: localDate(NOW), toIso: localDate(NOW) },
+      { clientId: 1, fromIso: localDateKey(NOW), toIso: localDateKey(NOW) },
       ''
     )
     expect(sheet.rows.map((r) => r.description)).not.toContain('Pause')
