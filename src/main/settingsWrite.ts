@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import type { IpcHooks } from './ipc'
 import type { IpcResult } from '../shared/types'
 import { parseWebhookTargets } from '../shared/webhooks'
+import { DEFAULT_CLIENT_ID } from '../shared/graphAuth'
 
 /**
  * #272 — the settings keys the renderer may write through `settings:set`.
@@ -106,8 +107,10 @@ export function sensitiveSettingChange(
       return urls.length > 0 ? { kind: 'webhook', urls } : null
     }
     case 'graph_client_id': {
+      // Against the id in effect: empty means TimeTrack's own registration.
       const id = value.trim()
-      return id !== '' && id !== (current ?? '').trim() ? { kind: 'graphClientId', id } : null
+      const effective = (current ?? '').trim() || DEFAULT_CLIENT_ID
+      return id !== '' && id !== effective ? { kind: 'graphClientId', id } : null
     }
     default:
       return null
@@ -120,11 +123,29 @@ function cancelled(): IpcResult<never> {
 }
 
 /**
+ * Settings writes run one after another. A confirmation dialog awaits the
+ * user; a second write that overtook it would be overwritten by the first,
+ * and the first was decided against a value that is no longer stored.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+
+/**
  * `settings:set`: store a renderer-written setting and apply its side effect.
  * A sensitive change (see `sensitiveSettingChange`) is stored only after the
  * native confirmation in `hooks.confirmSensitiveSetting`.
  */
-export async function writeSettingFromRenderer(
+export function writeSettingFromRenderer(
+  db: Database.Database,
+  hooks: IpcHooks,
+  key: unknown,
+  value: unknown
+): Promise<IpcResult<void>> {
+  const run = queue.then(() => writeOne(db, hooks, key, value))
+  queue = run.catch(() => undefined)
+  return run
+}
+
+async function writeOne(
   db: Database.Database,
   hooks: IpcHooks,
   key: unknown,

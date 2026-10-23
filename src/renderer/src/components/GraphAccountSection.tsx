@@ -110,9 +110,12 @@ export function GraphAccountSection(): React.JSX.Element {
 
   async function onSaveClientId(): Promise<void> {
     const res = await window.api.settings.set('graph_client_id', clientId.trim())
-    // A new app id asks natively first (#272); declined, nothing was saved.
+    // A new app id asks natively first (#272); declined, nothing was saved,
+    // so the field shows the stored id again.
     if (!res.ok) {
       if (res.code !== 'cancelled') setError(res.error)
+      const stored = await window.api.settings.getAll()
+      if (stored.ok) setClientId(stored.data.graph_client_id ?? '')
       return
     }
     setClientIdSaved(true)

@@ -18,6 +18,37 @@ import type { SensitiveSettingChange } from './settingsWrite'
 
 export type DialogT = (key: TranslationKey, vars?: Record<string, string | number>) => string
 
+/** Longest free text shown in the dialog, in characters. */
+const DIALOG_TEXT_MAX = 120
+
+/**
+ * C0/C1 controls (line breaks are handled before) and the bidi marks,
+ * embeddings, overrides and isolates (U+061C, U+200E/F, U+202A–202E,
+ * U+2066–2069) that can make text read in another order than it is stored.
+ */
+const HIDDEN_CHARS =
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
+
+/**
+ * Free text from the MCP client (or a name) as ONE line for the native
+ * confirmation dialog: line breaks become `⏎`, tabs a space, control and bidi
+ * characters go, and it is cut at DIALOG_TEXT_MAX with `…`. Otherwise a
+ * crafted text could forge lines, push the real change lines out of the
+ * visible area with blank lines, or reverse the reading order (owner review
+ * #255). Only the dialog text is cleaned; the preview carries the values as
+ * they are.
+ */
+export function dialogText(v: string): string {
+  const flat = v
+    // U+2028/2029 (line/paragraph separator) break lines in some dialogs too.
+    .replace(/\r\n|\r|\n|\u2028|\u2029/g, ' ⏎ ')
+    .replace(/\t/g, ' ')
+    .replace(HIDDEN_CHARS, '')
+  const chars = [...flat]
+  return chars.length > DIALOG_TEXT_MAX ? chars.slice(0, DIALOG_TEXT_MAX - 1).join('') + '…' : flat
+}
+
 /** The renderer's rule (I18nContext): 'en' is English, anything else German. */
 export function localeFromSetting(value: string | null | undefined): Locale {
   return value === 'en' ? 'en' : 'de'
@@ -81,11 +112,23 @@ export function sensitiveSettingDialog(
 ): MessageBoxOptions & { buttons: string[] } {
   const t = dialogT(locale)
   const k = change.kind
+  // The values come from the renderer this dialog guards against: each URL is
+  // shown as the parser reads it (tabs and newlines gone, IDN as punycode, as
+  // delivery will use it), then flattened like every other dialog value.
+  const shownUrl = (u: string): string => {
+    try {
+      return dialogText(new URL(u).href)
+    } catch {
+      return dialogText(u)
+    }
+  }
   const detail =
     change.kind === 'webhook'
-      ? t('mainDialog.settingConfirm.webhook.detail', { urls: change.urls.join('\n') })
+      ? t('mainDialog.settingConfirm.webhook.detail', {
+          urls: change.urls.map(shownUrl).join('\n')
+        })
       : change.kind === 'graphClientId'
-        ? t('mainDialog.settingConfirm.graphClientId.detail', { id: change.id })
+        ? t('mainDialog.settingConfirm.graphClientId.detail', { id: dialogText(change.id) })
         : t(`mainDialog.settingConfirm.${k}.detail`)
   return {
     type: 'warning',

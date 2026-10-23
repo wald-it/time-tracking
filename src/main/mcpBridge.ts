@@ -123,7 +123,7 @@ function confirmMode(): 'per-write' | 'session' | 'silent' {
 async function confirm(summary: string, locale: Locale, op: WriteOp): Promise<boolean> {
   const mode = confirmMode()
   if (mode === 'silent') return true
-  if (approval.covers(op)) return true
+  if (approval.covers(op, mode)) return true
 
   const win = deps?.getMainWindow() ?? null
   if (win) {
@@ -133,7 +133,7 @@ async function confirm(summary: string, locale: Locale, op: WriteOp): Promise<bo
   const opts = mcpConfirmDialog(locale, summary)
   const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
   const approved = res.response === 1
-  if (approved && (mode === 'session' || res.checkboxChecked)) approval.grant()
+  if (approved && (mode === 'session' || res.checkboxChecked)) approval.grant(mode)
   return approved
 }
 

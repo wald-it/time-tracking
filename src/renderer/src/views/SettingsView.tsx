@@ -1057,12 +1057,19 @@ export function WebhooksSection({
     'entry.updated': t('settings.webhooks.event.entryUpdated')
   }
 
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   async function persist(next: WebhookTarget[]): Promise<void> {
     const before = targets
     setTargets(next)
+    setSaveError(null)
     const res = await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
-    // A new address asks natively first (#272); declined, the list goes back.
-    if (!res.ok) setTargets(before)
+    // A new address asks natively first (#272); declined or failed, the list
+    // goes back. Only a failure needs a message.
+    if (!res.ok) {
+      setTargets(before)
+      if (res.code !== 'cancelled') setSaveError(t('common.error', { error: res.error }))
+    }
   }
 
   // The address is saved when the field is left, not per keystroke: a new
@@ -1096,6 +1103,11 @@ export function WebhooksSection({
   }
 
   function removeTarget(id: string): void {
+    setUrlDrafts((d) => {
+      const rest = { ...d }
+      delete rest[id]
+      return rest
+    })
     void persist(targets.filter((tg) => tg.id !== id))
   }
 
@@ -1106,6 +1118,11 @@ export function WebhooksSection({
           {targets.length === 0 && (
             <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('settings.webhooks.empty')}
+            </p>
+          )}
+          {saveError && (
+            <p role="alert" className="text-xs text-[var(--danger)]">
+              {saveError}
             </p>
           )}
           {targets.map((tg, i) => {
@@ -1129,6 +1146,9 @@ export function WebhooksSection({
                     </label>
                     <button
                       type="button"
+                      // Keep the focus in the address field: its blur would save
+                      // (and ask about) the address the user is removing.
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => removeTarget(tg.id)}
                       className={btnSecondaryClass}
                     >

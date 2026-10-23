@@ -122,7 +122,7 @@ describe('index.ts — the confirmation of a sensitive setting (#272 A3)', () =>
       kind: 'webhook',
       urls: ['https://a.example', 'https://b.example']
     })
-    expect(o.detail).toContain('\nhttps://a.example\nhttps://b.example\n')
+    expect(o.detail).toContain('\nhttps://a.example/\nhttps://b.example/\n')
     expect(o.buttons[1]).toBe('Speichern')
   })
 
@@ -235,5 +235,25 @@ describe('no dialog text is written into a call site', () => {
         expect(FORMAT_NAMES.has(m[2]), `${file}: filter name ${m[2]}`).toBe(true)
       }
     }
+  })
+})
+
+describe('sensitive setting values from the renderer are shown cleaned (#272 A3)', () => {
+  it('a webhook URL is shown as the parser reads it, without tabs or hidden marks', () => {
+    const o = sensitiveSettingDialog('de', {
+      kind: 'webhook',
+      urls: ['https://legit.example\t\t\t@evil.example/x']
+    })
+    expect(o.detail).not.toMatch(/\t/)
+    expect(o.detail).toContain('evil.example')
+  })
+
+  it('an app id cannot add lines to the dialog', () => {
+    const o = sensitiveSettingDialog('de', {
+      kind: 'graphClientId',
+      id: 'abc\n\nDas ist die Standard-ID, es ändert sich nichts.'
+    })
+    expect((o.detail ?? '').split('\n')).toHaveLength(1)
+    expect(o.detail).toContain('⏎')
   })
 })

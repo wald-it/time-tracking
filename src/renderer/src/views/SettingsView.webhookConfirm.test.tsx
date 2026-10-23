@@ -84,4 +84,22 @@ describe('webhook address (#272 A3)', () => {
     })
     expect(input.value).toBe(URL_OLD)
   })
+
+  // Review round 1: the field's blur on "Remove" saved (and asked about) the
+  // address the user was deleting, and the dialog swallowed the click.
+  it('removing a target right after typing does not save the typed address', async () => {
+    const set = mockSet({ ok: true, data: undefined })
+    const input = await renderSection()
+    input.focus()
+    fireEvent.change(input, { target: { value: URL_A } })
+    const remove = screen.getByRole('button', { name: de['settings.webhooks.remove'] })
+    const down = fireEvent.mouseDown(remove)
+    // mousedown is cancelled, so the browser would not move the focus away.
+    expect(down).toBe(false)
+    await act(async () => {
+      fireEvent.click(remove)
+    })
+    expect(set).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(set.mock.calls[0][1])).toEqual([])
+  })
 })

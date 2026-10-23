@@ -37,7 +37,7 @@ import {
 import { roundDuration } from '../shared/duration'
 import { deserializeTags } from '../shared/tags'
 import type { Locale } from '../shared/i18n'
-import { dialogT, readLanguage, type DialogT } from './mainI18n'
+import { dialogT, dialogText, readLanguage, type DialogT } from './mainI18n'
 
 type Db = Database.Database
 
@@ -207,36 +207,23 @@ function projectName(db: Db, id: number | null): string | null {
   return row?.name ?? `#${id}`
 }
 
-/** Longest free text shown in the dialog, in characters. */
-const DIALOG_TEXT_MAX = 120
-
 /**
- * C0/C1 controls (line breaks are handled before) and the bidi marks,
- * embeddings, overrides and isolates (U+061C, U+200E/F, U+202A–202E,
- * U+2066–2069) that can make text read in another order than it is stored.
+ * The entry the app counts as running: the newest live one without a stop
+ * time. The stop plan and both guards ask the same question the same way as
+ * stopRunningTimer, so they cannot compare different rows.
  */
-const HIDDEN_CHARS =
-  // eslint-disable-next-line no-control-regex -- matching control characters is the point
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
-
-/**
- * Free text from the MCP client (or a name) as ONE line for the native
- * confirmation dialog: line breaks become `⏎`, tabs a space, control and bidi
- * characters go, and it is cut at DIALOG_TEXT_MAX with `…`. Otherwise a
- * crafted text could forge lines, push the real change lines out of the
- * visible area with blank lines, or reverse the reading order (owner review
- * #255). Only the dialog text is cleaned; the preview carries the values as
- * they are.
- */
-export function dialogText(v: string): string {
-  const flat = v
-    // U+2028/2029 (line/paragraph separator) break lines in some dialogs too.
-    .replace(/\r\n|\r|\n|\u2028|\u2029/g, ' ⏎ ')
-    .replace(/\t/g, ' ')
-    .replace(HIDDEN_CHARS, '')
-  const chars = [...flat]
-  return chars.length > DIALOG_TEXT_MAX ? chars.slice(0, DIALOG_TEXT_MAX - 1).join('') + '…' : flat
+function runningEntry(db: Db): { id: number; client_id: number } | undefined {
+  return db
+    .prepare(
+      `SELECT id, client_id FROM entries WHERE stopped_at IS NULL AND deleted_at IS NULL
+       ORDER BY started_at DESC LIMIT 1`
+    )
+    .get() as { id: number; client_id: number } | undefined
 }
+
+// dialogText lives in mainI18n (the settings confirmation needs it too);
+// re-exported here for the bridge's own callers and tests.
+export { dialogText }
 
 /** The dialog's language: its locale (for dates) and its text function. */
 interface Say {
@@ -706,12 +693,7 @@ function planOp(
           // The owner confirmed ending exactly this entry (or none). If the
           // timer changed while the dialog was open, nobody approved what
           // switchTimer would now end.
-          const now = db
-            .prepare(
-              `SELECT id FROM entries WHERE stopped_at IS NULL AND deleted_at IS NULL
-                ORDER BY started_at DESC LIMIT 1`
-            )
-            .get() as { id: number } | undefined
+          const now = runningEntry(db)
           if ((now?.id ?? null) !== (running?.id ?? null)) {
             return {
               ok: false as const,
@@ -741,12 +723,7 @@ function planOp(
       }
     }
     case 'stop_running_timer': {
-      const running = db
-        .prepare(
-          `SELECT id, client_id FROM entries WHERE stopped_at IS NULL AND deleted_at IS NULL
-           ORDER BY started_at DESC LIMIT 1`
-        )
-        .get() as { id: number; client_id: number } | undefined
+      const running = runningEntry(db)
       return {
         summary: running
           ? say.t('mainDialog.mcp.stop', { id: running.id })
@@ -756,12 +733,7 @@ function planOp(
           // As in start_timer: the owner confirmed stopping exactly this entry
           // (or none). If the timer changed while the dialog was open, nobody
           // approved what stopRunningTimer would now end.
-          const now = db
-            .prepare(
-              `SELECT id FROM entries WHERE stopped_at IS NULL AND deleted_at IS NULL
-                ORDER BY started_at DESC LIMIT 1`
-            )
-            .get() as { id: number } | undefined
+          const now = runningEntry(db)
           if ((now?.id ?? null) !== (running?.id ?? null)) {
             return {
               ok: false as const,

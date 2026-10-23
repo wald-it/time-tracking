@@ -7,6 +7,7 @@ import { readdirSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { DEFAULT_CLIENT_ID } from '../shared/graphAuth'
 import type { IpcHooks } from './ipc'
 import {
   RENDERER_WRITABLE_SETTINGS,
@@ -237,5 +238,39 @@ describe('sensitive settings ask first', () => {
     expect(res.ok).toBe(true)
     expect(asked).toEqual([])
     expect(stored('controller_enabled')).toBe('0')
+  })
+})
+
+describe('sensitive settings: review round 1', () => {
+  it('setting TimeTrack’s own app id does not ask', () => {
+    expect(sensitiveSettingChange('graph_client_id', DEFAULT_CLIENT_ID, '')).toBeNull()
+    expect(sensitiveSettingChange('graph_client_id', DEFAULT_CLIENT_ID, undefined)).toBeNull()
+  })
+
+  // A write that overtook an open confirmation used to be overwritten by it,
+  // and the confirmed write had been decided against a value no longer stored.
+  it('writes run one after another, a later one sees the earlier result', async () => {
+    let release: (v: boolean) => void = () => {}
+    const h = hooks()
+    h.confirmSensitiveSetting = (change) => {
+      asked.push(change)
+      return new Promise<boolean>((r) => (release = r))
+    }
+    const A = 'https://hooks.example.com/a'
+    const first = writeSettingFromRenderer(
+      db,
+      h,
+      'webhook_targets',
+      JSON.stringify([{ id: 'a', url: A, secret: '', events: ['timer.started'], enabled: true }])
+    )
+    const second = writeSettingFromRenderer(db, h, 'webhook_targets', '[]')
+    await new Promise((r) => setTimeout(r, 10))
+    // The second write waits for the first one's dialog.
+    expect(stored('webhook_targets')).toBeUndefined()
+    release(true)
+    expect((await first).ok).toBe(true)
+    expect((await second).ok).toBe(true)
+    expect(stored('webhook_targets')).toBe('[]')
+    expect(asked).toHaveLength(1)
   })
 })
