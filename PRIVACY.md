@@ -15,6 +15,7 @@ sends and to whom.
 | Database + settings | `%APPDATA%\time-tracking\timetrack.sqlite` | `~/Library/Application Support/time-tracking/timetrack.sqlite` |
 | Backups             | `%APPDATA%\time-tracking\backups\` (or the folder you chose) | `~/Library/Application Support/time-tracking/backups/` (or the folder you chose) |
 | Log files           | `%APPDATA%\time-tracking\logs\`            | `~/Library/Logs/time-tracking/`                                |
+| Installer log       | `%TEMP%\TimeTrack-setup-holders.log`       | —                                                              |
 | Exports (PDF, CSV, iCal, JSON) | where you save them             | where you save them                                            |
 
 **Backups:** a daily backup (the last 7 are kept), plus a backup before every
@@ -28,6 +29,12 @@ interface), `webhooks.log` (per delivery only the target host and, on failure,
 the kind of error — never the payload or a secret) and `mcp-writes.log` (one line
 per write through MCP: operation, entry and client id, times — never the content
 of an internal note and never the token).
+
+**Installer log (Windows):** when you update, the installer checks whether other
+programs still have files open in the install folder. It writes one line per
+check to `TimeTrack-setup-holders.log` in your temp folder: the install folder,
+the result, and the name and process ID of each program it found. Nothing in it
+is sent anywhere.
 
 **Deleting your data:** uninstalling the app does not delete the data folder.
 Delete the folders listed above to remove everything.

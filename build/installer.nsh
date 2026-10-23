@@ -31,6 +31,9 @@
 !include "getProcessInfo.nsh"
 Var pid
 
+; #222 — foreign processes holding files in $INSTDIR (installer build only).
+!include "installerHolders.nsh"
+
 Var TTHolderDir
 
 !macro TIMETRACK_HOLDER_DIR
@@ -89,6 +92,12 @@ Var TTHolderDir
 
   ; Built-in check, for the app window and anything that ignored the request.
   !insertmacro _CHECK_APP_RUNNING
+
+  ; Last, so TimeTrack's own processes have had every chance to go: whatever
+  ; still holds files now is something neither step above can reach.
+  !ifndef BUILD_UNINSTALLER
+    !insertmacro TIMETRACK_FOREIGN_HOLDERS
+  !endif
 !macroend
 
 !macro customInstall
