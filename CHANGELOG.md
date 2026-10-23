@@ -16,6 +16,7 @@ If you call TimeTrack's MCP tools from your own scripts or agents, check this be
 ### Added
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
+- **The Windows installer names programs that block an update.** Before it replaces an existing installation, it asks Windows which programs still have files open in the install folder and lists each by name and process ID, with Retry, Ignore and Abort. It never closes anything itself. TimeTrack's own processes are left to the existing checks, and a silent install continues as before. Each check is logged to `%TEMP%\TimeTrack-setup-holders.log`. A program whose only link to the folder is its working directory is not detected (#222).
 
 ### Changed
 
