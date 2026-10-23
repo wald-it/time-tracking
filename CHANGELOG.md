@@ -10,6 +10,7 @@ All notable changes to TimeTrack are documented here.
 ### Fixed
 
 - **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).
+- **The About dialog shows the app's actual licence** — Its licence text was a separate copy that named a different copyright holder than the `LICENSE` file. The dialog now takes the text from `LICENSE` when the app is built, so the two can no longer differ ([#276](https://github.com/wald-it/time-tracking/issues/276)).
 
 ## [1.22.0] — 2026-10-23
 
