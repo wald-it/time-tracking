@@ -186,4 +186,63 @@ describe('editing one half of a split entry (#311)', () => {
       ['nur die zweite Hälfte', local(11, 0), local(11, 4)]
     ])
   })
+  it('new start and end for one half that stay within its day are refused, nothing is lost', () => {
+    const before = rows()
+    expect(
+      updateManualEntry(db, {
+        id: before[1].id,
+        client_id: 1,
+        description: 'Nachtschicht',
+        started_at: local(11, 0, 30),
+        stopped_at: local(11, 5)
+      })
+    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    expect(rows()).toEqual(before)
+  })
+
+  it('an unusable range on one half gets the usual validation message', () => {
+    const second = rows()[1]
+    expect(
+      updateManualEntry(db, {
+        id: second.id,
+        client_id: 1,
+        description: 'Nachtschicht',
+        started_at: local(11, 3),
+        stopped_at: local(11, 2)
+      })
+    ).toEqual({ ok: false, error: 'Endzeit muss nach der Startzeit liegen' })
+  })
+
+  it('the MCP preview shows the change to the whole entry', async () => {
+    const { ctx } = makeCtx(db)
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      preview: true,
+      args: { id: rows()[1].id, stopped_at: local(11, 5) }
+    })
+    expect(res.ok).toBe(true)
+    const data = (res.ok ? res.data : {}) as {
+      before: { started_at: string; stopped_at: string }
+      after: { started_at: string; stopped_at: string }
+      changes: Record<string, unknown>
+    }
+    expect([data.before.started_at, data.before.stopped_at]).toEqual([local(10, 20), local(11, 4)])
+    expect([data.after.started_at, data.after.stopped_at]).toEqual([local(10, 20), local(11, 5)])
+    expect(Object.keys(data.changes)).toEqual(['stopped_at'])
+  })
+
+  it('MCP refuses a move of the 0:00 edge before asking the owner', async () => {
+    const { ctx, spies } = makeCtx(db)
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id: rows()[1].id, started_at: local(11, 1) }
+    })
+    expect(res).toMatchObject({ ok: false })
+    expect(spies.confirmCalls).toBe(0)
+    expect(totalHours()).toBe(8)
+  })
 })

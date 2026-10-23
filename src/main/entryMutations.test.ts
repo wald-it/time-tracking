@@ -583,15 +583,19 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
     expect([...importedEventIds(db)]).toEqual(['EVT-1'])
   })
 
-  it('a single entry edited into a pair, and back, keeps both fields', () => {
+  it('a single entry edited into a pair, and the pair given a new range, keeps both fields', () => {
     const id = imported(local(10, 9), local(10, 10))
     const pairId = edit(id, ...SPLIT)
     expect(rows().map((r) => [r.graph_event_id, r.created_at])).toEqual([
       ['EVT-1', CREATED],
       [null, CREATED]
     ])
-    const singleId = edit(pairId, local(10, 9), local(10, 10))
-    expect(rows()).toEqual([{ id: singleId, graph_event_id: 'EVT-1', created_at: CREATED }])
+    // A range across midnight given for one half is the entry's new range (#311).
+    edit(pairId, local(10, 21), local(11, 2))
+    expect(rows().map((r) => [r.graph_event_id, r.created_at])).toEqual([
+      ['EVT-1', CREATED],
+      [null, CREATED]
+    ])
   })
 })
 

@@ -210,7 +210,9 @@ export function createManualEntry(db: Db, input: CreateManualEntryInput): IpcRes
  */
 export const SPLIT_EDGE_ERROR =
   'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. ' +
-  'Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten, oder Beginn und Ende zusammen neu setzen.'
+  'Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten.'
+
+type Range = { started_at: string; stopped_at: string }
 
 /**
  * #311: callers hand over the range of the half they were called on — MCP
@@ -218,25 +220,19 @@ export const SPLIT_EDGE_ERROR =
  * drawer sends the times of the half it opened. The edit replaces the whole
  * entry, so that range is mapped onto the entry first: the half's outer edge
  * (the entry's start on the first half, its end on the last) takes the
- * input's value; an edge at a midnight cut keeps the entry's own edge and may
- * not move on its own. A range that crosses midnight, or one with both edges
- * new, replaces the range of the whole entry. Before this, the other half was
- * simply deleted.
+ * input's value, and an edge at a midnight cut keeps the entry's own edge and
+ * may not move (null). A range that itself crosses midnight is the new range
+ * of the whole entry. Before this, the other half was simply deleted.
+ *
+ * An unusable range (invalid, or not ending after it starts) is passed on
+ * unchanged, so validateManualEntry reports it in its own words.
  */
-function rangeOfEntry(
-  half: { started_at: string; stopped_at: string },
-  group: Array<{ started_at: string; stopped_at: string }>,
-  input: { started_at: string; stopped_at: string }
-): { started_at: string; stopped_at: string } | null {
+function rangeOfEntry(half: Range, group: Range[], input: Range): Range | null {
+  const start = Date.parse(input.started_at)
+  const stop = Date.parse(input.stopped_at)
+  if (!Number.isFinite(start) || !Number.isFinite(stop) || stop <= start) return input
+  if (splitAtMidnight(new Date(start), new Date(stop)).length > 1) return input
   const same = (a: string, b: string): boolean => Date.parse(a) === Date.parse(b)
-  const whole = { started_at: input.started_at, stopped_at: input.stopped_at }
-  if (splitAtMidnight(new Date(input.started_at), new Date(input.stopped_at)).length > 1) {
-    return whole
-  }
-  // Both edges new: the caller replaced the range, it is the entry's range.
-  if (!same(input.started_at, half.started_at) && !same(input.stopped_at, half.stopped_at)) {
-    return whole
-  }
   const entryStart = group[0].started_at
   const entryStop = group[group.length - 1].stopped_at
   const atStart = same(half.started_at, entryStart)
@@ -249,8 +245,16 @@ function rangeOfEntry(
   }
 }
 
-/** Update an entry (delete-and-reinsert with cross-midnight bookkeeping). Mirrors `entries:update`. */
-export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<Entry> {
+/**
+ * What an edit of entry row `given.id` really changes (#311): the input
+ * mapped onto the whole entry, and the entry's range before the edit. For a
+ * plain entry both are the row's own. MCP calls this before its preview, so
+ * the owner confirms the change that is applied.
+ */
+export function resolveEditRange(
+  db: Db,
+  given: UpdateEntryInput
+): { input: UpdateEntryInput; before: Range; linkId?: string } | { error: string } {
   const existing = db
     .prepare(
       `SELECT link_id, started_at, stopped_at FROM entries WHERE id = ? AND deleted_at IS NULL`
@@ -258,24 +262,27 @@ export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<En
     .get(given.id) as
     | { link_id: string | null; started_at: string; stopped_at: string | null }
     | undefined
-  if (!existing) return fail('Eintrag existiert nicht')
-  const existingLinkId = existing.link_id ?? undefined
-  let input = given
-  if (existingLinkId && existing.stopped_at) {
-    const group = db
-      .prepare(
-        `SELECT started_at, stopped_at FROM entries
-          WHERE link_id = ? AND deleted_at IS NULL ORDER BY started_at`
-      )
-      .all(existingLinkId) as Array<{ started_at: string; stopped_at: string }>
-    const range = rangeOfEntry(
-      { started_at: existing.started_at, stopped_at: existing.stopped_at },
-      group,
-      given
+  if (!existing) return { error: 'Eintrag existiert nicht' }
+  const linkId = existing.link_id ?? undefined
+  const own = { started_at: existing.started_at, stopped_at: existing.stopped_at ?? '' }
+  if (!linkId || existing.stopped_at === null) return { input: given, before: own, linkId }
+  const group = db
+    .prepare(
+      `SELECT started_at, stopped_at FROM entries
+        WHERE link_id = ? AND deleted_at IS NULL ORDER BY started_at`
     )
-    if (!range) return fail(SPLIT_EDGE_ERROR)
-    input = { ...given, ...range }
-  }
+    .all(linkId) as Range[]
+  const range = rangeOfEntry(own, group, given)
+  if (!range) return { error: SPLIT_EDGE_ERROR }
+  const before = { started_at: group[0].started_at, stopped_at: group[group.length - 1].stopped_at }
+  return { input: { ...given, ...range }, before, linkId }
+}
+
+/** Update an entry (delete-and-reinsert with cross-midnight bookkeeping). Mirrors `entries:update`. */
+export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<Entry> {
+  const resolved = resolveEditRange(db, given)
+  if ('error' in resolved) return fail(resolved.error)
+  const { input, linkId: existingLinkId } = resolved
   const err = validateManualEntry(db, input, input.id, existingLinkId)
   if (err) return fail(err)
   const segments = splitAtMidnight(new Date(input.started_at), new Date(input.stopped_at))

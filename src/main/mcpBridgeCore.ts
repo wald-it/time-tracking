@@ -10,6 +10,7 @@
 import type Database from 'better-sqlite3'
 import {
   createManualEntry,
+  resolveEditRange,
   updateManualEntry,
   switchTimer,
   FUTURE_START_TOLERANCE_MS,
@@ -387,7 +388,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
         stoppedAt = r.iso
         if (r.hint) hints.stopped_at = r.hint
       }
-      const input: UpdateEntryInput = {
+      const given: UpdateEntryInput = {
         id,
         client_id: args.client_id === undefined ? existing.client_id : Number(args.client_id),
         description:
@@ -407,6 +408,13 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
             ? asProjectId(args.project_id, existing.project_id ?? null)
             : (existing.project_id ?? null)
       }
+      // #311: an edit of one half of a split entry applies to the whole entry.
+      // Mapped here, before the dialog and the preview, so the owner confirms
+      // the change that is applied; times compare against the entry's range.
+      const resolved = resolveEditRange(db, given)
+      if ('error' in resolved) return { error: resolved.error }
+      const input = resolved.input
+      const was = resolved.before
       const vErr = validateManualEntry(db, input, id, existing.link_id ?? undefined)
       if (vErr) return { error: vErr }
       // Every field the commit actually changes, before → after: one line in
@@ -415,11 +423,11 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       const fieldLines: string[] = []
       const textLines: string[] = []
       const changes: Record<string, { before: unknown; after: unknown } | { changed: true }> = {}
-      if (input.started_at !== existing.started_at) {
-        changes.started_at = { before: existing.started_at, after: input.started_at }
+      if (input.started_at !== was.started_at) {
+        changes.started_at = { before: was.started_at, after: input.started_at }
       }
-      if (input.stopped_at !== existing.stopped_at) {
-        changes.stopped_at = { before: existing.stopped_at, after: input.stopped_at }
+      if (input.stopped_at !== was.stopped_at) {
+        changes.stopped_at = { before: was.stopped_at, after: input.stopped_at }
       }
       if (input.client_id !== existing.client_id) {
         const before = clientName(db, existing.client_id)
@@ -478,7 +486,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       return {
         summary: withHints(
           dialogSummary(
-            `Eintrag #${id} ändern — vorher ${formatLocalSpan(existing.started_at, existing.stopped_at)}, ` +
+            `Eintrag #${id} ändern — vorher ${formatLocalSpan(was.started_at, was.stopped_at)}, ` +
               `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}`,
             fieldLines,
             textLines
@@ -490,10 +498,10 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
           id,
           before: {
             description: existing.description,
-            started_at: existing.started_at,
-            stopped_at: existing.stopped_at,
-            started_local: toLocalIso(existing.started_at),
-            stopped_local: toLocalIso(existing.stopped_at),
+            started_at: was.started_at,
+            stopped_at: was.stopped_at,
+            started_local: toLocalIso(was.started_at),
+            stopped_local: toLocalIso(was.stopped_at),
             tags: existing.tags,
             reference: existing.reference,
             billable: existing.billable,
