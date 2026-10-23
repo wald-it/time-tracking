@@ -365,15 +365,20 @@ export function initAutoUpdater(opts: {
       .checkForUpdates()
       .then(
         (result) => {
-          // First: the download's rejection must be handled even if settling
-          // the check throws (a broadcast to a window that is going away).
-          notifyWhenDownloaded(result, opts.getSetting)
-          settleStartupCheck(run, null)
+          // Both always run: the download's rejection must be handled even if
+          // settling throws (a broadcast to a window that is going away), and
+          // the check must be settled even if the notify step throws, or its
+          // held errors would stay held for the rest of the run (#284).
+          try {
+            notifyWhenDownloaded(result, opts.getSetting)
+          } finally {
+            settleStartupCheck(run, null)
+          }
         },
         (err: Error) => settleStartupCheck(run, err)
       )
-      // Whatever settling throws stays in the log as a warning, not as an
-      // unhandled rejection (#309).
-      .catch((err: unknown) => log.warn('[updater] settling the start-up check failed', err))
+      // Whatever settling throws is a defect: logged as an error, not left as
+      // an unhandled rejection (#309).
+      .catch((err: unknown) => log.error('[updater] settling the start-up check failed', err))
   }
 }
