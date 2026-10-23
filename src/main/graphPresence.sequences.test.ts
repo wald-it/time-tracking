@@ -53,8 +53,9 @@
  *  (iii) TimeTrack's Busy session is not left behind if the current run knows
  *        it (it set it, or read Busy while it existed); with the feature on,
  *        not at all.
- *  (v)   Liveness, checked after that: with the feature on and a timer
- *        running, a few healthy pokes end with TimeTrack's message and Busy.
+ *  (v)   Liveness, in a second run of the same seed (identical failure
+ *        phase): with the feature on and a timer running, a few healthy
+ *        pokes end with TimeTrack's message and Busy, also after renewal.
  *  (vi)  At any step: with the feature off, nothing is ever set, only
  *        withdrawn.
  * The fake returns messages as set or, for some seeds, HTML-wrapped.
@@ -272,7 +273,8 @@ const STEPS = 25
 const CALM_POKES = 3
 
 async function runSequence(
-  seed: number
+  seed: number,
+  mode: 'cleanup' | 'live'
 ): Promise<{ violations: string[]; exceptions: number; log: string[] }> {
   const rnd = mulberry32(seed)
   const pick = <T>(xs: T[]): T => xs[Math.floor(rnd() * xs.length)]
@@ -358,37 +360,40 @@ async function runSequence(
     await poke(`step ${step}`)
   }
 
-  // From here the network is healthy and the account signed in.
+  // From here the network is healthy and the account signed in. The failure
+  // phase above is identical in both modes (same seed, same draws); each mode
+  // then checks its own invariants straight from the state it left.
   failRate = 0
   w.connected = true
   w.hasToken = true
 
-  // (v) Liveness, straight from whatever state the sequence left: with the
-  // feature on and a timer running, TimeTrack ends up showing its status, and
-  // still does after the 25-minute renewal. A guard that skips too eagerly,
-  // or a set that loses its Busy, keeps every other check green.
-  const enabledAtEnd = w.enabled
-  w.enabled = true
-  timer = running(pick(CLIENTS))
-  const expected = desiredMessage(timer, w.showClient, 'de')
-  w.log.push(
-    `live: feature on, timer ${timer.client_name}, expect ${JSON.stringify(expected)} + Busy`
-  )
-  for (let i = 0; i < CALM_POKES; i++) {
-    w.now += 60 * 1000
-    await poke(`live ${i}`)
-  }
-  w.now += 26 * 60 * 1000
-  await poke('live after renewal')
-  if (w.teams.content !== expected || w.teams.author !== 'tt' || !w.teams.session) {
-    w.violations.push(
-      `(v) live status missing: message ${JSON.stringify(w.teams.content)}, Busy ${w.teams.session}`
+  if (mode === 'live') {
+    // (v) Liveness: with the feature on and a timer running, TimeTrack ends up
+    // showing its status, and still does after the 25-minute renewal. A
+    // guard that skips too eagerly, or a set that loses its Busy, keeps every
+    // clean-up check green.
+    w.enabled = true
+    timer = running(pick(CLIENTS))
+    const expected = desiredMessage(timer, w.showClient, 'de')
+    w.log.push(
+      `live: feature on, timer ${timer.client_name}, expect ${JSON.stringify(expected)} + Busy`
     )
+    for (let i = 0; i < CALM_POKES; i++) {
+      w.now += 60 * 1000
+      await poke(`live ${i}`)
+    }
+    w.now += 26 * 60 * 1000
+    await poke('live after renewal')
+    if (w.teams.content !== expected || w.teams.author !== 'tt' || !w.teams.session) {
+      w.violations.push(
+        `(v) live status missing: message ${JSON.stringify(w.teams.content)}, Busy ${w.teams.session}`
+      )
+    }
+    return { violations: w.violations, exceptions: w.exceptions, log: w.log }
   }
 
-  // Calm phase: the feature switch back as the sequence left it, timer
-  // stopped, a few pokes. Then the clean-up invariants.
-  w.enabled = enabledAtEnd
+  // Calm phase: the feature switch as the sequence left it, timer stopped,
+  // a few pokes. Then the clean-up invariants.
   timer = null
   w.log.push(`calm: timer stopped, feature ${w.enabled ? 'on' : 'off'}`)
   for (let i = 0; i < CALM_POKES; i++) {
@@ -420,13 +425,15 @@ describe('presence under random failure sequences (#331)', () => {
     const failures: Array<{ head: string; log: string }> = []
     let exceptions = 0
     for (const seed of seeds) {
-      const result = await runSequence(seed)
-      exceptions += result.exceptions
-      if (result.violations.length > 0) {
-        failures.push({
-          head: `seed ${seed}: ${result.violations.join('; ')}`,
-          log: result.log.join('\n')
-        })
+      for (const mode of ['cleanup', 'live'] as const) {
+        const result = await runSequence(seed, mode)
+        if (mode === 'cleanup') exceptions += result.exceptions
+        if (result.violations.length > 0) {
+          failures.push({
+            head: `seed ${seed} (${mode}): ${result.violations.join('; ')}`,
+            log: result.log.join('\n')
+          })
+        }
       }
     }
     // The accepted #317 exception, reported rather than hidden.

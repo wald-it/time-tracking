@@ -57,6 +57,8 @@ function served(content: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/🔴/g, '&#x1F534;')
+    .replace(/—/g, '&mdash;')
+    .replace(/ü/g, '&uuml;')
     .replace(/ /g, '&nbsp;')
   return `<p>${escaped}</p>`
 }

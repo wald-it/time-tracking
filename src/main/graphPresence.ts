@@ -144,31 +144,71 @@ function codePoint(code: number, raw: string): string {
 
 /**
  * Named entities an HTML-returning Graph may use for what our messages and
- * German client names contain: the " — " before the project, umlauts, ß,
- * common accents. `&amp;` comes last, so `&amp;lt;` stays the text "&lt;".
+ * client names contain: the " — " before the project, quotes and
+ * apostrophes, umlauts, ß, common accents, €. A whitelist: a client name with
+ * a character named by an entity not listed here is not recognised exactly
+ * (only by form, see `shapeOwed`). A Map, so "&constructor;" is no lookup
+ * into Object.prototype. `&amp;` is decoded last, so `&amp;lt;` stays "&lt;".
  */
-const NAMED_ENTITIES: Record<string, string> = {
-  nbsp: ' ',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  mdash: '—',
-  ndash: '–',
-  hellip: '…',
-  auml: 'ä',
-  ouml: 'ö',
-  uuml: 'ü',
-  Auml: 'Ä',
-  Ouml: 'Ö',
-  Uuml: 'Ü',
-  szlig: 'ß',
-  eacute: 'é',
-  egrave: 'è',
-  aacute: 'á',
-  agrave: 'à',
-  ccedil: 'ç'
-}
+const NAMED_ENTITIES = new Map<string, string>(
+  Object.entries({
+    nbsp: ' ',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    mdash: '—',
+    ndash: '–',
+    hellip: '…',
+    bull: '•',
+    middot: '·',
+    lsquo: '‘',
+    rsquo: '’',
+    ldquo: '“',
+    rdquo: '”',
+    bdquo: '„',
+    sbquo: '‚',
+    laquo: '«',
+    raquo: '»',
+    euro: '€',
+    copy: '©',
+    reg: '®',
+    trade: '™',
+    auml: 'ä',
+    ouml: 'ö',
+    uuml: 'ü',
+    Auml: 'Ä',
+    Ouml: 'Ö',
+    Uuml: 'Ü',
+    szlig: 'ß',
+    aacute: 'á',
+    agrave: 'à',
+    acirc: 'â',
+    eacute: 'é',
+    egrave: 'è',
+    ecirc: 'ê',
+    euml: 'ë',
+    iacute: 'í',
+    icirc: 'î',
+    oacute: 'ó',
+    ocirc: 'ô',
+    oslash: 'ø',
+    uacute: 'ú',
+    ucirc: 'û',
+    ccedil: 'ç',
+    ntilde: 'ñ',
+    aring: 'å',
+    aelig: 'æ',
+    Aacute: 'Á',
+    Agrave: 'À',
+    Eacute: 'É',
+    Egrave: 'È',
+    Oslash: 'Ø',
+    Ccedil: 'Ç',
+    Aring: 'Å',
+    AElig: 'Æ'
+  })
+)
 
 /**
  * Graph content of contentType "html" as plain text. How Graph returns a
@@ -181,7 +221,7 @@ function fromHtml(content: string): string {
   return flat(
     content
       .replace(/<[^>]*>/g, ' ')
-      .replace(/&([a-z]+);/gi, (raw, name: string) => NAMED_ENTITIES[name] ?? raw)
+      .replace(/&([a-z]+);/gi, (raw, name: string) => NAMED_ENTITIES.get(name) ?? raw)
       .replace(/&#39;/g, "'")
       .replace(/&#x([0-9a-f]+);/gi, (raw, hex: string) => codePoint(parseInt(hex, 16), raw))
       .replace(/&#(\d+);/g, (raw, dec: string) => codePoint(Number(dec), raw))
@@ -369,15 +409,20 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   let current: PresenceView | null = null
   if (checkDue) {
     current = await readPresence(fetchFn, token, userId, log)
-    if (!current) return // retried at the next poke
-    state.checked = true
-    // A message in our shape may be a previous run's: owe its withdrawal (a
-    // set below replaces it anyway). A previous run's Busy session cannot be
-    // read reliably: any availability the user sets (Away, Do not disturb,
-    // even a manual Available) hides it. So every run ends our own session
-    // once — one request per start, answered 404 when there is none.
-    if (current.text !== null && looksOurs(current.text)) state.shapeOwed = true
-    state.sessionOwed = true
+    if (current) {
+      state.checked = true
+      // A message in our shape may be a previous run's: owe its withdrawal (a
+      // set below replaces it anyway). A previous run's Busy session cannot be
+      // read reliably: any availability the user sets (Away, Do not disturb,
+      // even a manual Available) hides it. So every run ends our own session
+      // once — one request per start, answered 404 when there is none.
+      if (current.text !== null && looksOurs(current.text)) state.shapeOwed = true
+      state.sessionOwed = true
+    } else if (!want) {
+      return // retried at the next poke
+    }
+    // With a timer running the read is not needed: a confirmed set below
+    // replaces any leftover message and our session. It must not hold the set.
   }
 
   if (want) {
@@ -407,6 +452,9 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
     if (!busy) return
     state.applied = message
     state.at = now
+    // Message and session both replaced: no leftover of a previous run can
+    // remain, so the start-up read is no longer owed.
+    state.checked = true
     log('presence: set (message + Busy)')
     await readBack(fetchFn, token, userId, message, log)
     return

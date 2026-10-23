@@ -121,9 +121,10 @@ finds a new version, the app downloads it in the background as above.
   as sessionId", Microsoft Graph documentation), so all devices signed in to
   the same account share it and write the same status message, so they get
   in each other's way. A device that starts a timer replaces the other's
-  status; a device that stops one ends the shared Busy status, so the other
-  device's message can stay up without Busy until that device renews its
-  status (within about 25 minutes); and a device that starts up takes another
+  status. A device that stops one ends the shared Busy status, and if both
+  devices show the same text (client not shown), it clears the message too;
+  either way the other device shows less than it should until it renews its
+  status, within about 25 minutes. A device that starts up takes another
   device's live status for a leftover of its own and clears it.
 - **Tokens:** stored in a separate file in the data folder, encrypted by the
   operating system (DPAPI / Keychain), not part of backups or exports.
