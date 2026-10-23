@@ -868,7 +868,7 @@ export const de = {
   'tags.manageLink': 'Tags verwalten →',
 
   // ── Native dialogs of the main process (#270) ─────────────────────────────
-  // Filled with translateLiteral. The MCP texts are the owner's guard against
+  // Filled in one pass (translate). The MCP texts are the owner's guard against
   // writes from MCP clients: the German wording is pinned byte for byte, the
   // summary lines in mcpBridgeLocalTime.test.ts, the dialog frame in
   // mainI18n.test.ts. `mainDialog.mcp.offsetHint` in German is also the text
@@ -925,7 +925,28 @@ export const de = {
   'mainDialog.logo.title': 'Logo auswählen',
   'mainDialog.logo.filter': 'Bilder',
   'mainDialog.csv.title': 'CSV speichern',
-  'mainDialog.ical.title': 'iCal speichern'
+  'mainDialog.ical.title': 'iCal speichern',
+
+  // ── Main process: tray, default file names, cancel results (#296) ─────────
+  // The German file names are the ones the app always wrote: archive folders
+  // may rely on them, so they stay byte for byte.
+  'mainTray.idle': 'Kein Timer aktiv',
+  'mainTray.stop': 'Stop',
+  'mainTray.quickStart': 'Quick-Start',
+  'mainTray.noClients': 'Keine aktiven Kunden',
+  'mainTray.showWindow': 'Fenster anzeigen',
+  'mainTray.quit': 'Beenden',
+  'mainTray.tooltipRunning': '● {label} · Heute {today}',
+  'mainTray.tooltipIdle': 'TimeTrack — Heute {today}',
+  'mainFile.pdf': 'Stundennachweis-{client}{project}-{month}.pdf',
+  'mainFile.csv': 'Zeiterfassung-{client}{project}-{month}.csv',
+  'mainFile.ical': 'Zeiterfassung-{client}{project}-{month}.ics',
+  'mainFile.merged': '{name}_inkl_Stundennachweis.pdf',
+  'mainFile.mergedStamped': '{name}_inkl_Stundennachweis_{stamp}.pdf',
+  'mainFile.fallbackClient': 'Kunde',
+  'mainError.exportCancelled': 'Export abgebrochen',
+  'mainError.selectionCancelled': 'Auswahl abgebrochen',
+  'mainError.saveCancelled': 'Speichern abgebrochen'
 } as const
 
 export type TranslationKey = keyof typeof de

@@ -20,10 +20,13 @@ import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
 import {
   dbErrorDialog,
   hotkeyConflictDialog,
-  localeFromSetting,
   localeFromSystem,
-  migrationErrorDialog
+  migrationErrorDialog,
+  appLocale,
+  trayLabels,
+  trayTooltip
 } from './mainI18n'
+import type { Locale } from '../shared/i18n'
 import {
   assertSmokeUserDataIsolated,
   parseSmokeOutPath,
@@ -198,18 +201,29 @@ function refreshActiveClients(): void {
   }
 }
 
-function buildTrayMenu(): Menu {
+/**
+ * The app language for everything index.ts shows: tray, start-up dialogs, the
+ * update notification (#296). The shared rule that never throws and keeps the
+ * last language while the handle is closed after a restore attempt
+ * (mainI18n.appLocale), the same answer the IPC dialogs get.
+ */
+function appLanguage(): Locale {
+  return appLocale(getDb, () => app.getPreferredSystemLanguages())
+}
+
+function buildTrayMenu(locale: Locale = appLanguage()): Menu {
   const items: MenuItemConstructorOptions[] = []
+  const text = trayLabels(locale)
 
   items.push({
-    label: isTimerRunning ? `● ${runningLabel}` : 'Kein Timer aktiv',
+    label: isTimerRunning ? `● ${runningLabel}` : text.idle,
     enabled: false
   })
   items.push({ type: 'separator' })
 
   if (isTimerRunning) {
     items.push({
-      label: 'Stop',
+      label: text.stop,
       click: () => mainWindow?.webContents.send('timer:tray-stop')
     })
   } else if (cachedActiveClients.length > 0) {
@@ -219,15 +233,15 @@ function buildTrayMenu(): Menu {
         label: `▶ ${c.name}`,
         click: () => mainWindow?.webContents.send('timer:tray-quick-start', c.id)
       }))
-    items.push({ label: 'Quick-Start', enabled: false })
+    items.push({ label: text.quickStart, enabled: false })
     items.push(...quickStart)
   } else {
-    items.push({ label: 'Keine aktiven Kunden', enabled: false })
+    items.push({ label: text.noClients, enabled: false })
   }
 
   items.push({ type: 'separator' })
   items.push({
-    label: 'Fenster anzeigen',
+    label: text.showWindow,
     click: () => {
       mainWindow?.show()
       mainWindow?.focus()
@@ -235,7 +249,7 @@ function buildTrayMenu(): Menu {
   })
   items.push({ type: 'separator' })
   items.push({
-    label: 'Beenden',
+    label: text.quit,
     click: () => {
       isQuitting = true
       app.quit()
@@ -254,16 +268,12 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   // grey clock when idle. Both files live in resources/ and are bundled by
   // electron-vite's `?asset` resolver.
   tray.setImage(running ? trayRunningIcon : trayStoppedIcon)
-  // Tooltip format (v1.2 #31):
-  //   running: `● {client} · {HH:MM} · Heute {HH:MM}`
+  // Tooltip format (v1.2 #31), in the app language since #296:
+  //   running: `● {client} · Heute {HH:MM}`
   //   idle:    `TimeTrack — Heute {HH:MM}`
-  // (i18n in tooltip deferred to v1.4 — see DESIGN.md known limitations.)
-  tray.setToolTip(
-    running
-      ? `● ${label} · Heute ${fmtHHMM(todaySeconds)}`
-      : `TimeTrack — Heute ${fmtHHMM(todaySeconds)}`
-  )
-  tray.setContextMenu(buildTrayMenu())
+  const locale = appLanguage()
+  tray.setToolTip(trayTooltip(locale, running, label, fmtHHMM(todaySeconds)))
+  tray.setContextMenu(buildTrayMenu(locale))
 }
 
 /**
@@ -392,7 +402,7 @@ function loadStartupSettings(): void {
       // toggling via Settings still works.
       dialog.showMessageBox({
         type: 'warning',
-        ...hotkeyConflictDialog(localeFromSetting(map.language), miniHotkey)
+        ...hotkeyConflictDialog(appLanguage(), miniHotkey)
       })
     }
     if (map.mini_enabled === '1') applyMiniEnabled(true)
@@ -718,6 +728,9 @@ app.whenReady().then(async () => {
       refreshActiveClients()
       tray?.setContextMenu(buildTrayMenu())
     },
+    // #296: menu and tooltip in the new language right away, not at the next
+    // timer event.
+    refreshTrayLanguage: () => updateTray(isTimerRunning, runningLabel, lastTodaySeconds),
     setHotkey: (accelerator) => registerHotkey(accelerator),
     setAutoStart: (enabled) => applyAutoStart(enabled),
     setIdleThreshold: (minutes) => setIdleThresholdMinutes(minutes),
@@ -793,7 +806,9 @@ app.whenReady().then(async () => {
   initAutoUpdater({
     isDev: is.dev,
     getEndpointDir: () => dirname(getDbPath()),
-    getSetting: (key) => mcpBridgeDeps().getSetting(key)
+    getSetting: (key) => mcpBridgeDeps().getSetting(key),
+    // #296: the same never-throwing app language as tray and dialogs.
+    getLocale: appLanguage
   })
 
   refreshActiveClients()

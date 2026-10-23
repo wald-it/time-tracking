@@ -19,7 +19,7 @@ import type { IpcResult, UpdateStatus } from '../shared/types'
 import { isUpdateCheckEnabled, UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
 import { clearShutdown, releaseHolders, type Holder, type ReleaseOutcome } from '../mcp/holders'
 import type { Locale } from '../shared/i18n'
-import { localeFromSetting, updateDownloadedNotification } from './mainI18n'
+import { updateDownloadedNotification } from './mainI18n'
 
 export type { UpdateStatus }
 
@@ -53,10 +53,7 @@ let startupCheck: StartupCheck | null = null
  * A failed download is reported through the `error` event, so its rejection
  * is only caught here, not reported twice.
  */
-function notifyWhenDownloaded(
-  result: UpdateCheckResult | null,
-  getSetting: (key: string) => string | undefined
-): void {
+function notifyWhenDownloaded(result: UpdateCheckResult | null, getLocale: () => Locale): void {
   if (!result?.downloadPromise) return
   // Never throws: the start-up check is settled right after this call.
   const version = result.updateInfo?.version ?? ''
@@ -64,9 +61,12 @@ function notifyWhenDownloaded(
     .then(
       () => {
         // Read when the download is done, so a language switch meanwhile counts.
+        // index.ts passes mainI18n.appLocale (#296), which never throws and
+        // gives the same answer as the tray and the dialogs. Should a getter
+        // throw anyway, the notification still shows, in German (#309).
         let locale: Locale = 'de'
         try {
-          locale = localeFromSetting(getSetting('language'))
+          locale = getLocale()
         } catch (err) {
           log.warn('[updater] could not read the language for the notification', err)
         }
@@ -266,6 +266,8 @@ export function initAutoUpdater(opts: {
   isDev: boolean
   getEndpointDir?: () => string
   getSetting: (key: string) => string | undefined
+  /** The app language of the download notification, read when it fires. */
+  getLocale: () => Locale
 }): void {
   // Wire up logger from PR A so updater events land in main.log.
   autoUpdater.logger = log
@@ -370,7 +372,7 @@ export function initAutoUpdater(opts: {
           // the check must be settled even if the notify step throws, or its
           // held errors would stay held for the rest of the run (#284).
           try {
-            notifyWhenDownloaded(result, opts.getSetting)
+            notifyWhenDownloaded(result, opts.getLocale)
           } finally {
             settleStartupCheck(run, null)
           }
