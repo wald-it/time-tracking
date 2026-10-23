@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { isSameLocalDay, parseStopToDate, parseTimeToDate, formatTimeHHMM } from './date'
+import {
+  endsAtNextMidnight,
+  isSameLocalDay,
+  parseStopToDate,
+  parseTimeToDate,
+  formatTimeHHMM
+} from './date'
 
 describe('isSameLocalDay', () => {
   it('returns true for two times on the same local day', () => {
@@ -75,23 +81,20 @@ describe('formatTimeHHMM', () => {
   })
 })
 
-describe('parseStopToDate (#334)', () => {
-  it('00:00 after a later start is midnight of the next day', () => {
-    expect(parseStopToDate('2026-06-10', '20:00', '00:00')).toEqual(new Date(2026, 5, 11))
+describe('parseStopToDate / endsAtNextMidnight (#334)', () => {
+  it('00:00 on an entry that ends at the next midnight is that midnight', () => {
+    expect(parseStopToDate('2026-06-10', '00:00', true)).toEqual(new Date(2026, 5, 11))
   })
 
-  it('any other stop stays on the same day', () => {
-    expect(parseStopToDate('2026-06-10', '20:00', '23:30')).toEqual(new Date(2026, 5, 10, 23, 30))
-    expect(parseStopToDate('2026-06-10', '20:00', '19:00')).toEqual(new Date(2026, 5, 10, 19))
+  it('without that, and for any other stop, the stop stays on the same day', () => {
+    expect(parseStopToDate('2026-06-10', '00:00', false)).toEqual(new Date(2026, 5, 10))
+    expect(parseStopToDate('2026-06-10', '23:30', true)).toEqual(new Date(2026, 5, 10, 23, 30))
   })
 
-  it('00:00 to 00:00 stays a zero-length range, not a 24-hour entry', () => {
-    expect(parseStopToDate('2026-06-10', '00:00', '00:00')).toEqual(new Date(2026, 5, 10))
-  })
-
-  it('the next day is a calendar day, also across the clock change', () => {
-    // 2026-10-25 has 25 hours in Europe/Berlin; midnight of the 26th is still 00:00.
-    const d = parseStopToDate('2026-10-25', '20:00', '00:00')
-    expect([d.getDate(), d.getHours(), d.getMinutes()]).toEqual([26, 0, 0])
+  it('endsAtNextMidnight is true only for exactly the next local midnight', () => {
+    expect(endsAtNextMidnight(new Date(2026, 5, 10, 20), new Date(2026, 5, 11))).toBe(true)
+    expect(endsAtNextMidnight(new Date(2026, 5, 10, 0), new Date(2026, 5, 11))).toBe(true)
+    expect(endsAtNextMidnight(new Date(2026, 5, 10, 20), new Date(2026, 5, 10, 23))).toBe(false)
+    expect(endsAtNextMidnight(new Date(2026, 5, 10, 20), new Date(2026, 5, 12))).toBe(false)
   })
 })

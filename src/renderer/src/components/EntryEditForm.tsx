@@ -1,6 +1,11 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import type { Client, Entry, Project } from '../../../shared/types'
-import { formatTimeHHMM, parseStopToDate, parseTimeToDate } from '../../../shared/date'
+import {
+  endsAtNextMidnight,
+  formatTimeHHMM,
+  parseStopToDate,
+  parseTimeToDate
+} from '../../../shared/date'
 import { useEntriesStore } from '../store/entriesStore'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useT } from '../contexts/I18nContext'
@@ -57,6 +62,11 @@ export function EntryEditForm({
     ? new Date(entry.stopped_at)
     : new Date(initialStart.getTime() + 60 * 60 * 1000)
 
+  // #334: the first half of an entry across midnight (or a whole day) ends at
+  // the next midnight, which the form shows as 00:00.
+  const untilMidnight = entry?.stopped_at
+    ? endsAtNextMidnight(entry.started_at, entry.stopped_at)
+    : false
   const [date, setDate] = useState(toDateInputValue(initialStart))
   const [startTime, setStartTime] = useState(formatTimeHHMM(initialStart))
   const [stopTime, setStopTime] = useState(formatTimeHHMM(initialStop))
@@ -103,7 +113,7 @@ export function EntryEditForm({
     let stop: Date
     try {
       start = parseTimeToDate(date, startTime)
-      stop = parseStopToDate(date, startTime, stopTime)
+      stop = parseStopToDate(date, stopTime, untilMidnight)
     } catch (e) {
       return (e as Error).message
     }
@@ -130,7 +140,7 @@ export function EntryEditForm({
     setState('saving')
     setError(null)
     const start = parseTimeToDate(date, startTime).toISOString()
-    const stop = parseStopToDate(date, startTime, stopTime).toISOString()
+    const stop = parseStopToDate(date, stopTime, untilMidnight).toISOString()
     const res = entry
       ? await window.api.entries.update({
           id: entry.id,
