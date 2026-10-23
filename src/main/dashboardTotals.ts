@@ -133,6 +133,22 @@ export function readWeekDaySeconds(db: Db): number[] {
 }
 
 /**
+ * The last entries overall, newest first — `dashboard:summary`'s
+ * recentEntries, and the first of them is the "last pair" of the START dialog
+ * and of a start without a selection (#297, startRequest.ts). One query, so
+ * main and the renderer feed lastStartPair the same row.
+ */
+export function readRecentEntries(db: Db, limit: number): Entry[] {
+  return db
+    .prepare(
+      `SELECT * FROM entries
+         WHERE deleted_at IS NULL
+         ORDER BY started_at DESC LIMIT ?`
+    )
+    .all(limit) as Entry[]
+}
+
+/**
  * Every entry of today, newest first — the DayScale and the entry table on
  * "Heute" (B5). Same window as `today_seconds`: started today (local) or still
  * running. `recentEntries` (the last five overall) is a different list and

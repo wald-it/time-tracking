@@ -77,6 +77,13 @@ const api = {
     ipcRenderer.on('timer:hotkey-toggle', handler)
     return () => ipcRenderer.removeListener('timer:hotkey-toggle', handler)
   },
+  // #297: the start hotkey / mini play found nothing to start — main has
+  // brought the window forward; open the START dialog.
+  onOpenStart: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('timer:open-start', handler)
+    return () => ipcRenderer.removeListener('timer:open-start', handler)
+  },
   onTrayQuickStart: (callback: (clientId: number) => void): (() => void) => {
     const handler = (_e: unknown, clientId: number): void => callback(clientId)
     ipcRenderer.on('timer:tray-quick-start', handler)

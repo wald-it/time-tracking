@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Settings, BackupInfo } from '../../../shared/types'
 import { useUpdateStore } from '../store/updateStore'
 import { useT, useLocale } from '../contexts/I18nContext'
@@ -167,7 +167,8 @@ export default function SettingsView(): React.JSX.Element {
     setSettings({ ...settings, [key]: value })
     const res = await window.api.settings.set(String(key), String(value))
     if (!res.ok) {
-      setStatusMsg(t('common.error', { error: res.error }))
+      // A declined native confirmation (#272) needs no message of its own.
+      if (res.code !== 'cancelled') setStatusMsg(t('common.error', { error: res.error }))
       // revert by reloading
       await loadAll()
     }
@@ -886,7 +887,11 @@ export default function SettingsView(): React.JSX.Element {
                 <>
                   <Row
                     label={t('settings.mcp.confirmMode')}
-                    hint={t('settings.mcp.confirmModeHint')}
+                    hint={
+                      settings.mcp_write_confirm_mode === 'session'
+                        ? t('settings.mcp.confirmSessionHint')
+                        : t('settings.mcp.confirmModeHint')
+                    }
                   >
                     <select
                       aria-label={t('settings.mcp.confirmMode')}
@@ -1035,7 +1040,7 @@ function Row({
  * An in-progress target with an empty/invalid URL is kept in the editor but is
  * dropped by `parseWebhookTargets` on the delivery side, so it never fires.
  */
-function WebhooksSection({
+export function WebhooksSection({
   initialRaw,
   logsPath
 }: {
@@ -1052,9 +1057,60 @@ function WebhooksSection({
     'entry.updated': t('settings.webhooks.event.entryUpdated')
   }
 
-  async function persist(next: WebhookTarget[]): Promise<void> {
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Saves run one after another. A new address asks natively first (#272),
+  // so a save can be declined while later edits wait behind it; those were
+  // built on the declined list and may themselves be confirmed. Once the
+  // queue has drained after any declined or failed save, the list is read
+  // back from what is stored, so the editor never shows something else.
+  const saving = useRef<Promise<void>>(Promise.resolve())
+  const pendingSaves = useRef(0)
+  const saveFailed = useRef(false)
+
+  function persist(next: WebhookTarget[]): Promise<void> {
+    const before = targets
     setTargets(next)
-    await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
+    setSaveError(null)
+    pendingSaves.current++
+    const run = saving.current
+      .then(async () => {
+        const res = await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
+        if (!res.ok) {
+          saveFailed.current = true
+          // Only a failure needs a message, not a declined confirmation.
+          if (res.code !== 'cancelled') setSaveError(t('common.error', { error: res.error }))
+        }
+      })
+      .finally(async () => {
+        pendingSaves.current--
+        if (pendingSaves.current > 0 || !saveFailed.current) return
+        saveFailed.current = false
+        const stored = await window.api.settings.getAll()
+        // An edit made while this read was pending is newer than what it
+        // returned: leave its state and reconcile again once that save drains.
+        if (pendingSaves.current > 0) {
+          saveFailed.current = true
+          return
+        }
+        setTargets(stored.ok ? parseWebhookTargets(stored.data.webhook_targets) : before)
+      })
+    saving.current = run.catch(() => undefined)
+    return run
+  }
+
+  // The address is saved when the field is left, not per keystroke: a new
+  // address asks for confirmation, and that must happen once, for the whole URL.
+  const [urlDrafts, setUrlDrafts] = useState<Record<string, string>>({})
+  function commitUrl(id: string): void {
+    const draft = urlDrafts[id]
+    setUrlDrafts((d) => {
+      const rest = { ...d }
+      delete rest[id]
+      return rest
+    })
+    const current = targets.find((tg) => tg.id === id)
+    if (draft !== undefined && current && draft !== current.url) patch(id, { url: draft })
   }
 
   function patch(id: string, fields: Partial<WebhookTarget>): void {
@@ -1074,6 +1130,11 @@ function WebhooksSection({
   }
 
   function removeTarget(id: string): void {
+    setUrlDrafts((d) => {
+      const rest = { ...d }
+      delete rest[id]
+      return rest
+    })
     void persist(targets.filter((tg) => tg.id !== id))
   }
 
@@ -1086,8 +1147,14 @@ function WebhooksSection({
               {t('settings.webhooks.empty')}
             </p>
           )}
+          {saveError && (
+            <p role="alert" className="text-xs text-[var(--danger)]">
+              {saveError}
+            </p>
+          )}
           {targets.map((tg, i) => {
-            const urlInvalid = tg.url !== '' && !isValidWebhookUrl(tg.url)
+            const shownUrl = urlDrafts[tg.id] ?? tg.url
+            const urlInvalid = shownUrl !== '' && !isValidWebhookUrl(shownUrl)
             return (
               <div key={tg.id} className="flex flex-col gap-2.5 border-t border-[var(--line)] pt-3">
                 <div className="flex items-center justify-between">
@@ -1106,6 +1173,10 @@ function WebhooksSection({
                     </label>
                     <button
                       type="button"
+                      // Keep the focus in the address field: its blur would save
+                      // (and ask about) the address the user is removing.
+                      onMouseDown={(e) => e.preventDefault()}
+                      data-webhook-remove={tg.id}
                       onClick={() => removeTarget(tg.id)}
                       className={btnSecondaryClass}
                     >
@@ -1118,9 +1189,31 @@ function WebhooksSection({
                   {t('settings.webhooks.url')}
                   <input
                     type="url"
-                    value={tg.url}
+                    value={urlDrafts[tg.id] ?? tg.url}
                     placeholder="https://…"
-                    onChange={(e) => patch(tg.id, { url: e.target.value })}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setUrlDrafts((d) => ({ ...d, [tg.id]: v }))
+                    }}
+                    onBlur={(e) => {
+                      // Focus moving to this target's Remove (Shift+Tab) must
+                      // not save the address that is about to go. The draft
+                      // is dropped, so the field shows what is stored and
+                      // nothing unsaved looks saved.
+                      const to = e.relatedTarget as HTMLElement | null
+                      if (to?.dataset.webhookRemove === tg.id) {
+                        setUrlDrafts((d) => {
+                          const rest = { ...d }
+                          delete rest[tg.id]
+                          return rest
+                        })
+                        return
+                      }
+                      commitUrl(tg.id)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                    }}
                     className={inputClass}
                   />
                   {urlInvalid && (

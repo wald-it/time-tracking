@@ -8,7 +8,11 @@ import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
 import { createBackup, listBackups, restoreListedBackupOrReport } from './backup'
-import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
+import {
+  readSettingSync,
+  writeSettingFromRenderer,
+  type SensitiveSettingChange
+} from './settingsWrite'
 import {
   MAIN_ONLY_SETTING_KEYS,
   rememberPickedPdf,
@@ -27,6 +31,7 @@ import {
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 import { buildPdfHtml, buildPdfPayload, type PdfRequest } from './pdf'
 import { renderPdfBuffer } from './pdfWindow'
 import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
@@ -49,6 +54,7 @@ import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
+  readRecentEntries,
   readRoundMinutes,
   readTodayEntries,
   readTopClients30d,
@@ -94,6 +100,13 @@ export interface IpcHooks {
   setIcalFeedEnabled(enabled: boolean): void
   /** Restart the feed server after a port/token change (no-op when disabled). */
   restartIcalFeed(): void
+  /**
+   * #272 (A3): ask natively before a settings change that widens access to the
+   * user's data (settingsWrite.ts → sensitiveSettingChange). True = go ahead.
+   */
+  confirmSensitiveSetting(change: SensitiveSettingChange): Promise<boolean>
+  /** #301: end any MCP start/stop approval (the confirm mode changed). */
+  forgetMcpApproval(): void
 }
 
 function ok<T>(data: T): IpcResult<T> {
@@ -615,13 +628,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         // the Stream Deck dial can never drift apart (#186).
         const totals = readTotals(db)
 
-        const recentEntries = db
-          .prepare(
-            `SELECT * FROM entries
-               WHERE deleted_at IS NULL
-               ORDER BY started_at DESC LIMIT 5`
-          )
-          .all() as Entry[]
+        const recentEntries = readRecentEntries(db, 5)
 
         return {
           todaySeconds: totals.today_seconds,
@@ -654,10 +661,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
-  // #272: only keys on the renderer allow-list (see settingsWrite.ts).
+  // #272: only keys on the renderer allow-list, sensitive ones after a native
+  // confirmation (see settingsWrite.ts).
   ipcMain.handle(
     'settings:set',
-    (_e, key: unknown, value: unknown): IpcResult<void> =>
+    (_e, key: unknown, value: unknown): Promise<IpcResult<void>> =>
       writeSettingFromRenderer(db, hooks, key, value)
   )
 
@@ -888,7 +896,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const locale = dialogLocale()
       const result = await dialog.showSaveDialog({
         title: dialogT(locale)('mainDialog.exportJson.title'),
-        defaultPath: `timetrack-export-${today}.json`,
+        defaultPath: await exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
@@ -897,6 +905,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const payload = buildJsonExportPayload(db, app.getVersion())
       const json = JSON.stringify(payload, null, 2)
       writeFileSync(result.filePath, json, 'utf8')
+      rememberExportFolder(db, 'json', result.filePath)
       return ok({ path: result.filePath, bytes: Buffer.byteLength(json, 'utf8') })
     } catch (e) {
       return fail(e)
@@ -930,11 +939,15 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const locale = dialogLocale()
         const result = await dialog.showSaveDialog({
           title: dialogT(locale)('mainDialog.pdf.saveTitle'),
-          defaultPath: exportFileName(locale, 'pdf', {
-            client: client.name,
-            project: proj?.name ?? null,
-            month: req.fromIso.slice(0, 7) // YYYY-MM
-          }),
+          defaultPath: await exportDefaultPath(
+            db,
+            'pdf',
+            exportFileName(locale, 'pdf', {
+              client: client.name,
+              project: proj?.name ?? null,
+              month: req.fromIso.slice(0, 7) // YYYY-MM
+            })
+          ),
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
         if (result.canceled || !result.filePath) {
@@ -954,6 +967,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const html = buildPdfHtml(payload)
         const buf = await renderPdfBuffer({ html })
         writeFileSync(result.filePath, buf)
+        rememberExportFolder(db, 'pdf', result.filePath)
         return ok({ path: result.filePath })
       } catch (e) {
         return fail(e)
