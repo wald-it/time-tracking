@@ -21,6 +21,20 @@ import { join, resolve } from 'node:path'
 const REPO_ROOT = resolve(__dirname, '..', '..')
 const SCRIPT = join(REPO_ROOT, 'scripts', 'package-smoke.mjs')
 
+/**
+ * The orphan test (#328): the probe must reach its verdict, and outside
+ * Windows end its process, within ORPHAN_LIMIT_MS after the fake server was
+ * up. 60 s, because the time measured still contains the fake server's own
+ * end, which the probe has to wait for: up to 4.8 s measured under the swarm's
+ * load, and #286 measured that kind of Windows teardown at up to 32 s.
+ */
+const ORPHAN_LIMIT_MS = 60_000
+/**
+ * How long the orphan's descendant holds the pipes. Must exceed
+ * ORPHAN_LIMIT_MS, or a probe that waits for the descendant would still pass.
+ */
+const ORPHAN_LIFETIME_MS = 75_000
+
 const FAKE_SERVER = `
 const { existsSync } = require('fs')
 const mode = process.env.FAKE_MODE
@@ -28,9 +42,9 @@ const tools = process.env.FAKE_TOOLS.split(',')
 process.stderr.write('[fake] up\\n')
 if (mode === 'orphan') {
   // Dies at start but leaves a descendant holding its stdout and stderr, the
-  // way a helper process of a packaged app can. It outlives the probe's own
-  // deadline, so only a probe that lets go of the pipes ends in time.
-  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 45000)'], {
+  // way a helper process of a packaged app can. It outlives the test's limit
+  // (ORPHAN_LIMIT_MS), so only a probe that lets go of the pipes stays under it.
+  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, ${ORPHAN_LIFETIME_MS})'], {
     stdio: ['ignore', 'inherit', 'inherit']
   })
   process.exit(1)
@@ -270,18 +284,18 @@ describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => 
     expect(r.timedOut, r.output).toBe(false)
     expect(r.status).toBe(1)
     expect(r.output).toContain('before answering initialize')
-    // 45 s is how long the descendant lives; the probe must neither wait for
-    // it before its verdict nor stay alive for it afterwards (the pipe release
-    // in giveUpOnPipes). Timed from the server's first line, not around the
-    // whole probe process (#328).
+    // The probe must neither wait for the descendant before its verdict nor
+    // stay alive for it afterwards (the pipe release in giveUpOnPipes). Timed
+    // from the server's first line, not around the whole probe process, which
+    // also counts two Electron starts and the probe's own end (#328).
     expect(r.verdictMs).not.toBeNull()
-    expect(r.verdictMs!).toBeLessThan(40_000)
+    expect(r.verdictMs!).toBeLessThan(ORPHAN_LIMIT_MS)
     // The probe's lifetime can only hang on the pipes on POSIX (see above). On
     // Windows its 'exit' event also waits for the OS to tear the process down,
     // which took up to 90 s under load, so it is not asserted there.
     if (process.platform !== 'win32') {
       expect(r.exitMs).not.toBeNull()
-      expect(r.exitMs!).toBeLessThan(40_000)
+      expect(r.exitMs!).toBeLessThan(ORPHAN_LIMIT_MS)
     }
   })
 

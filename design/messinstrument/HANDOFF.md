@@ -347,7 +347,7 @@ rg -n "backdrop-blur|backdrop-filter|linear-gradient|accent-glow|--blur|indigo-|
 - [ ] `DESIGN.md` is rewritten and the CHANGELOG has an entry. The owner map in the vault (`timetrack-architektur.md`) is updated if structure or data flow changed (new summary/analytics fields count).
 
 ### Repo guardrails (from CLAUDE.md, repeated because they bite)
-- **Never run `pnpm rebuild better-sqlite3`**, not even "just for the tests". Run tests with `pnpm test`. If the binary is ever wrong: `pnpm exec electron-rebuild -f -w better-sqlite3` (the `-f` is mandatory).
+- Run tests with `pnpm test`, never `vitest` directly (it refuses to run outside Electron). `better-sqlite3` is N-API since #269: do not add a native rebuild (`electron-rebuild`, `pnpm rebuild`) back.
 - A three-digit skip count means a broken environment, not a green run. Report it.
 - Repository docs are written in English; code comments and identifiers are English.
 

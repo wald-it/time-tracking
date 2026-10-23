@@ -49,6 +49,6 @@ export function splitAtMidnight(start: Date, stop: Date): Segment[] {
  * `d.getFullYear()/Month/Date + 1` so DST transitions move with the host
  * clock automatically (no UTC arithmetic).
  */
-function localMidnightAfter(d: Date): Date {
+export function localMidnightAfter(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0)
 }

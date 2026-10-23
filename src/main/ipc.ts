@@ -8,7 +8,11 @@ import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
 import { createBackup, listBackups, restoreListedBackupOrReport } from './backup'
-import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
+import {
+  readSettingSync,
+  writeSettingFromRenderer,
+  type SensitiveSettingChange
+} from './settingsWrite'
 import {
   MAIN_ONLY_SETTING_KEYS,
   rememberPickedPdf,
@@ -27,6 +31,7 @@ import {
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 import { buildPdfHtml, buildPdfPayload, type PdfRequest } from './pdf'
 import { renderPdfBuffer } from './pdfWindow'
 import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
@@ -39,7 +44,7 @@ import {
   realFsDeps,
   saveDialogIn
 } from './pdfMergeHandlers'
-import { dialogT, localeFromSystem, readLanguageOr, type DialogT } from './mainI18n'
+import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
@@ -49,6 +54,7 @@ import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
+  readRecentEntries,
   readRoundMinutes,
   readTodayEntries,
   readTopClients30d,
@@ -75,14 +81,17 @@ import type {
   LicenseEntry
 } from '../shared/types'
 import { monthEntries } from './entryRanges'
+import type { HotkeyChange } from './hotkeySlot'
 
 export interface IpcHooks {
   refreshTrayClients(): void
-  setHotkey(accelerator: string): boolean
+  /** Rebuild tray menu and tooltip after the app language changed (#296). */
+  refreshTrayLanguage(): void
+  setHotkey(accelerator: string): HotkeyChange
   setAutoStart(enabled: boolean): void
   setIdleThreshold(minutes: number): void
   setMiniEnabled(enabled: boolean): void
-  setMiniHotkey(accelerator: string): boolean
+  setMiniHotkey(accelerator: string): HotkeyChange
   setMcpWriteEnabled(enabled: boolean): void
   setControllerEnabled(enabled: boolean): void
   /** Re-run the presence reconciler (#132) after a relevant settings change. */
@@ -91,6 +100,13 @@ export interface IpcHooks {
   setIcalFeedEnabled(enabled: boolean): void
   /** Restart the feed server after a port/token change (no-op when disabled). */
   restartIcalFeed(): void
+  /**
+   * #272 (A3): ask natively before a settings change that widens access to the
+   * user's data (settingsWrite.ts → sensitiveSettingChange). True = go ahead.
+   */
+  confirmSensitiveSetting(change: SensitiveSettingChange): Promise<boolean>
+  /** #301: end any MCP start/stop approval (the confirm mode changed). */
+  forgetMcpApproval(): void
 }
 
 function ok<T>(data: T): IpcResult<T> {
@@ -130,26 +146,17 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
-  // Native dialogs follow the app language (#270); with the handle closed
-  // (after a restore attempt) the system language, as at start.
-  const systemLocale = (): Locale => localeFromSystem(app.getPreferredSystemLanguages())
-  const dialogLocale = (): Locale => readLanguageOr(db, systemLocale)
+  // Native dialogs, file names and cancel texts follow the app language
+  // (#270, #296). Never throws (mainI18n.appLocale): with the handle closed
+  // after a restore attempt, the language last read in this run, the same
+  // answer the tray gets. The restore reads it once, before it can close the
+  // handle.
+  const dialogLocale = (): Locale =>
+    appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
   const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
-  // A restore failure must reach the user whatever the database says: this
-  // never throws. Read once, before the restore can close the handle. If the
-  // system language cannot be read either: German, the app's default
-  // (migration 002, localeFromSetting).
-  const restoreLocale = (): Locale => {
-    try {
-      return dialogLocale()
-    } catch {
-      try {
-        return systemLocale()
-      } catch {
-        return 'de'
-      }
-    }
-  }
 
   /**
    * The app's own locations, without touching the file system (no mkdir of a
@@ -621,13 +628,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         // the Stream Deck dial can never drift apart (#186).
         const totals = readTotals(db)
 
-        const recentEntries = db
-          .prepare(
-            `SELECT * FROM entries
-               WHERE deleted_at IS NULL
-               ORDER BY started_at DESC LIMIT 5`
-          )
-          .all() as Entry[]
+        const recentEntries = readRecentEntries(db, 5)
 
         return {
           todaySeconds: totals.today_seconds,
@@ -660,10 +661,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
-  // #272: only keys on the renderer allow-list (see settingsWrite.ts).
+  // #272: only keys on the renderer allow-list, sensitive ones after a native
+  // confirmation (see settingsWrite.ts).
   ipcMain.handle(
     'settings:set',
-    (_e, key: unknown, value: unknown): IpcResult<void> =>
+    (_e, key: unknown, value: unknown): Promise<IpcResult<void>> =>
       writeSettingFromRenderer(db, hooks, key, value)
   )
 
@@ -734,7 +736,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle(
     'backup:restore',
     (_e, filename: unknown): IpcResult<{ safetyBackupPath: string }> => {
-      const locale = restoreLocale()
+      const locale = dialogLocale()
       try {
         return restoreListedBackupOrReport(
           db,
@@ -891,17 +893,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('export:json', async (): Promise<IpcResult<{ path: string; bytes: number }>> => {
     try {
       const today = new Date().toISOString().slice(0, 10)
+      const locale = dialogLocale()
       const result = await dialog.showSaveDialog({
-        title: tDialog('mainDialog.exportJson.title'),
-        defaultPath: `timetrack-export-${today}.json`,
+        title: dialogT(locale)('mainDialog.exportJson.title'),
+        defaultPath: await exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
-        return fail('Export abgebrochen')
+        return cancelledResult(locale, 'mainError.exportCancelled')
       }
       const payload = buildJsonExportPayload(db, app.getVersion())
       const json = JSON.stringify(payload, null, 2)
       writeFileSync(result.filePath, json, 'utf8')
+      rememberExportFolder(db, 'json', result.filePath)
       return ok({ path: result.filePath, bytes: Buffer.byteLength(json, 'utf8') })
     } catch (e) {
       return fail(e)
@@ -925,26 +929,29 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           | undefined
         if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
 
-        const monthHint = req.fromIso.slice(0, 7) // YYYY-MM
-        // Strip filesystem-hostile chars from the client name for the suggested filename.
-        const safeName = client.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Kunde'
-        // v1.9 #75: append project name when filtered to a single project.
-        let projectSuffix = ''
-        if (req.projectId != null) {
-          const proj = db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
-            | { name: string }
-            | undefined
-          if (proj) {
-            projectSuffix = `-${proj.name.replace(/[\\/:*?"<>|]/g, '_').trim()}`
-          }
-        }
+        // v1.9 #75: the project name goes into the file name when filtered to one.
+        const proj =
+          req.projectId != null
+            ? (db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
+                | { name: string }
+                | undefined)
+            : undefined
+        const locale = dialogLocale()
         const result = await dialog.showSaveDialog({
-          title: tDialog('mainDialog.pdf.saveTitle'),
-          defaultPath: `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`,
+          title: dialogT(locale)('mainDialog.pdf.saveTitle'),
+          defaultPath: await exportDefaultPath(
+            db,
+            'pdf',
+            exportFileName(locale, 'pdf', {
+              client: client.name,
+              project: proj?.name ?? null,
+              month: req.fromIso.slice(0, 7) // YYYY-MM
+            })
+          ),
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
         if (result.canceled || !result.filePath) {
-          return fail('Export abgebrochen')
+          return cancelledResult(locale, 'mainError.exportCancelled')
         }
 
         const settingsRows = db.prepare(`SELECT key, value FROM settings`).all() as Array<{
@@ -960,6 +967,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const html = buildPdfHtml(payload)
         const buf = await renderPdfBuffer({ html })
         writeFileSync(result.filePath, buf)
+        rememberExportFolder(db, 'pdf', result.filePath)
         return ok({ path: result.filePath })
       } catch (e) {
         return fail(e)
@@ -1036,7 +1044,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // and persists the path into settings.pdf_logo_path.
   ipcMain.handle('logo:set', async (): Promise<IpcResult<{ path: string }>> => {
     try {
-      const t = dialogT(dialogLocale())
+      const locale = dialogLocale()
+      const t = dialogT(locale)
       const result = await dialog.showOpenDialog({
         title: t('mainDialog.logo.title'),
         properties: ['openFile'],
@@ -1045,7 +1054,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         ]
       })
       if (result.canceled || result.filePaths.length === 0) {
-        return fail('Auswahl abgebrochen')
+        return cancelledResult(locale, 'mainError.selectionCancelled')
       }
       const userDataDir = app.getPath('userData')
       const target = saveLogo(result.filePaths[0], userDataDir)
