@@ -17,49 +17,109 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Every job declares its own permissions; nothing is granted by default.
+permissions: {}
+
 jobs:
   # #138: Validate and (for workflow_dispatch) materialize the release tag
-  # before anything is built. On a tag push this job is a cheap no-op guard;
-  # on workflow_dispatch it lets us release a ref whose tag does not exist yet.
+  # before anything is built. On a tag push this job is a cheap guard; on
+  # workflow_dispatch it lets us release a ref whose tag does not exist yet.
+  #
+  # It also binds the release to one commit: `sha` is resolved once here and
+  # every later job checks out exactly that commit, so all installers, the
+  # plugin and the release notes come from the commit the tag points to — not
+  # from whatever a branch name resolves to minutes later in another job.
+  #
+  # The tag and the ref reach shell scripts only through `env:` and are used
+  # as quoted variables; no `${{ }}` expression is expanded inside a `run:`
+  # script (src/test/releaseWorkflow.test.ts checks this).
   prepare:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
     steps:
+      # First step, before checkout and before the write permission is used:
+      # the tag must be a plain release version, and the ref a plain git ref.
+      - name: Validate tag and ref
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag '$TAG' is not of the form vMAJOR.MINOR.PATCH (e.g. v1.22.0)."
+            exit 1
+          fi
+          if [ -n "$REF" ] && { ! [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ "$REF" == -* ]]; }; then
+            echo "::error::Ref '$REF' is not a branch name, tag or commit SHA."
+            exit 1
+          fi
+          echo "Tag $TAG is valid."
+
+      # A tag push builds the pushed tag, a dispatch builds inputs.ref. The
+      # commit this resolves to is fixed in the next step; no later job
+      # resolves a name again.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           ref: ${{ inputs.ref || github.ref }}
 
-      - name: Resolve tag
+      - name: Resolve tag and commit
         id: resolve
-        run: echo "tag=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
-
-      - name: Verify tag matches package.json version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.resolve.outputs.tag }}"
+          SHA="$(git rev-parse HEAD)"
+          # If the tag already exists on origin it must point at this commit.
+          # For an annotated tag, the `^{}` line carries the commit it peels
+          # to; a lightweight tag has only the plain line.
+          REMOTE="$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
+          if [ -n "$REMOTE" ]; then
+            PEELED="$(awk -v ref="refs/tags/$TAG^{}" '$2 == ref { print $1 }' <<< "$REMOTE")"
+            DIRECT="$(awk -v ref="refs/tags/$TAG" '$2 == ref { print $1 }' <<< "$REMOTE")"
+            TAG_SHA="${PEELED:-$DIRECT}"
+            if [ "$TAG_SHA" != "$SHA" ]; then
+              echo "::error::Tag $TAG already exists and points at $TAG_SHA, not at the commit to build ($SHA). Dispatch with ref=$TAG to release the tagged commit, or use a new tag."
+              exit 1
+            fi
+          fi
+          echo "Releasing $TAG from commit $SHA."
+          {
+            echo "tag=$TAG"
+            echo "sha=$SHA"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches package.json version
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
           TAG_VERSION="${TAG#v}"
           PKG_VERSION="$(node -p "require('./package.json').version")"
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Release tag '$TAG' (version '$TAG_VERSION') does not match package.json version '$PKG_VERSION'. Bump package.json or fix the tag before releasing — electron-updater compares the tag against latest.yml."
+            echo "::error::Release tag '$TAG' (version '$TAG_VERSION') does not match package.json version '$PKG_VERSION' at $(git rev-parse --short HEAD). Bump package.json or fix the tag before releasing — electron-updater compares the tag against latest.yml."
             exit 1
           fi
-          echo "Tag $TAG matches package.json version $PKG_VERSION."
+          echo "Tag $TAG matches package.json version $PKG_VERSION at $(git rev-parse --short HEAD)."
 
       - name: Create tag on this commit if it does not exist
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          SHA: ${{ steps.resolve.outputs.sha }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.resolve.outputs.tag }}"
           # Idempotent: on a tag push (or a dispatch with an existing tag) this
-          # is a no-op. A tag pushed with GITHUB_TOKEN does NOT re-trigger the
-          # `on: push: tags` workflow, so this cannot cause a release loop.
+          # is a no-op — the previous step has already checked that the tag
+          # points at $SHA. A tag pushed with GITHUB_TOKEN does NOT re-trigger
+          # the `on: push: tags` workflow, so this cannot cause a release loop.
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists on origin — leaving it untouched."
           else
-            echo "Creating tag $TAG on $(git rev-parse --short HEAD) and pushing it."
-            git tag "$TAG"
+            echo "Creating tag $TAG on $SHA and pushing it."
+            git tag "$TAG" "$SHA"
             git push origin "refs/tags/$TAG"
           fi
 
@@ -86,7 +146,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
@@ -148,7 +208,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
@@ -248,7 +308,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
@@ -364,12 +424,16 @@ jobs:
     needs: [prepare, build-windows, build-macos, pack-streamdeck]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-windows.result == 'success' || needs.build-macos.result == 'success') }}
     runs-on: ubuntu-latest
+    # contents: write to create the release; id-token and attestations only
+    # for the build provenance step below.
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ needs.prepare.outputs.sha }}
 
       # #221: each download only runs for a job that succeeded — a failed job
       # uploaded nothing, and a missing artifact would fail this job too.
@@ -396,9 +460,15 @@ jobs:
           name: timetrack-streamdeck-plugin
           path: dist
 
-      - name: Resolve tag
-        id: tag
-        run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+      # A signed build provenance attestation for every file this run
+      # attaches to the release: it records that the file was built by this
+      # workflow, in this repository, from the commit `prepare` bound the
+      # release to. Users check it with `gh attestation verify` (the release
+      # notes say how).
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
 
       - name: Plan release (complete or partial)
         id: plan
@@ -408,7 +478,7 @@ jobs:
           STREAMDECK_RESULT: ${{ needs.pack-streamdeck.result }}
           NOTICE_FILE: ${{ runner.temp }}/release-notice.md
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.tag.outputs.name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         # #234: on a re-run this plan is provisional (no ::warning:: yet) —
         # the update path re-plans from the attached assets.
         run: |
@@ -419,6 +489,8 @@ jobs:
       - name: Create / update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SHA: ${{ needs.prepare.outputs.sha }}
           PRERELEASE: ${{ steps.plan.outputs.prerelease }}
           # #234: the re-run path plans again, from the attached assets.
           WINDOWS_RESULT: ${{ needs.build-windows.result }}
@@ -426,7 +498,6 @@ jobs:
           STREAMDECK_RESULT: ${{ needs.pack-streamdeck.result }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.tag.outputs.name }}"
           VERSION="${TAG#v}"
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           NOTICE_FILE="$RUNNER_TEMP/release-notice.md"
@@ -455,7 +526,7 @@ jobs:
             echo "Release notes: CHANGELOG.md section [$VERSION] ($(wc -l < "$NOTES_FILE") lines)."
           else
             echo "Release notes: no CHANGELOG.md section for [$VERSION] — using GitHub auto-generated notes."
-            gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
               -f tag_name="$TAG" --jq '.body' > "$NOTES_FILE"
           fi
 
@@ -464,8 +535,33 @@ jobs:
           # re-run path rewrites the notice after it has re-planned.
           CHANGELOG_NOTES="$RUNNER_TEMP/release-notes-changelog.md"
           mv "$NOTES_FILE" "$CHANGELOG_NOTES"
+
+          # The notes close with the SHA-256 checksum of every attached file
+          # and how a user verifies a download. $1 is a directory holding
+          # exactly the files attached to the release.
+          VERIFY_FILE="$RUNNER_TEMP/release-verify.md"
+          # The backticks in single quotes are Markdown, not command substitution.
+          # shellcheck disable=SC2016
+          write_verify_section() {
+            {
+              echo
+              echo '## Verify your download'
+              echo
+              echo "These files were built by the release workflow of this repository from commit \`$SHA\`. SHA-256 checksums:"
+              echo
+              echo '```text'
+              (cd "$1" && sha256sum -- *)
+              echo '```'
+              echo
+              echo 'To check a downloaded file:'
+              echo
+              echo '- Checksum on Windows (PowerShell): `Get-FileHash <file> -Algorithm SHA256`. PowerShell prints the hash in upper case; compare it with the line above ignoring case.'
+              echo '- Checksum on macOS: `shasum -a 256 <file>`'
+              echo "- Build provenance (GitHub CLI): \`gh attestation verify <file> -R $GITHUB_REPOSITORY\`. It confirms the file was built by GitHub Actions in this repository and names the workflow and commit it was built from."
+            } > "$VERIFY_FILE"
+          }
           compose_notes() {
-            cat "$NOTICE_FILE" "$CHANGELOG_NOTES" > "$NOTES_FILE"
+            cat "$NOTICE_FILE" "$CHANGELOG_NOTES" "$VERIFY_FILE" > "$NOTES_FILE"
           }
 
           # The flag is set on both paths: a re-run that completes a partial
@@ -494,6 +590,13 @@ jobs:
               echo "::error::Re-plan from the attached assets gave prerelease='$PRERELEASE'."
               exit 1
             fi
+            # Files a failed job did not rebuild in this run are still attached
+            # from the earlier run, so the checksums are taken from what the
+            # release carries now, not from this run's dist/.
+            ATTACHED_DIR="$RUNNER_TEMP/release-assets"
+            rm -rf "$ATTACHED_DIR"
+            gh release download "$TAG" --dir "$ATTACHED_DIR"
+            write_verify_section "$ATTACHED_DIR"
             compose_notes
             # electron-updater reads /releases/latest, and GitHub does not
             # reliably move that marker when a prerelease becomes a normal
@@ -510,8 +613,12 @@ jobs:
             fi
             gh release edit "$TAG" --notes-file "$NOTES_FILE" --prerelease="$PRERELEASE" "${LATEST_FLAG[@]}"
           else
+            write_verify_section dist
             compose_notes
+            # --verify-tag: never let gh create the tag itself (it would put
+            # it on the default branch); `prepare` has created it on $SHA.
             gh release create "$TAG" \
+              --verify-tag \
               --title "TimeTrack $TAG" \
               --notes-file "$NOTES_FILE" \
               --prerelease="$PRERELEASE" \
