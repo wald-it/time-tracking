@@ -134,7 +134,7 @@ describe('smoke userData isolation', () => {
     expect(() => assertSmokeUserDataIsolated(createSmokeUserDataDir(root), [])).toThrow(/unknown/)
   })
 
-  it('only removes timetrack-smoke-* directories inside the temp root', () => {
+  it('only removes SMOKE_DIR_PREFIX directories inside the temp root', () => {
     const smoke = createSmokeUserDataDir(root)
     const other = join(root, 'time-tracking')
     mkdirSync(other)

@@ -45,7 +45,7 @@ export function isSameOrInside(
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
-/** True only for a `timetrack-smoke-*` directory strictly inside `tmpRoot`. */
+/** True only for a `SMOKE_DIR_PREFIX*` directory strictly inside `tmpRoot`. */
 export function isRemovableSmokeDir(dir: string, tmpRoot: string = tmpdir()): boolean {
   return (
     basename(resolve(dir)).startsWith(SMOKE_DIR_PREFIX) &&
@@ -136,6 +136,7 @@ const CLEANER_SCRIPT = `
 const { rmSync } = require('fs')
 const { basename } = require('path')
 const dir = process.env.TT_SMOKE_DIR
+const prefix = process.env.TT_SMOKE_PREFIX
 const pid = Number(process.env.TT_SMOKE_PID)
 const deadline = Date.now() + 60000
 const alive = () => { try { process.kill(pid, 0); return true } catch { return false } }
@@ -145,7 +146,7 @@ const tick = () => {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch { outcome = 'failed' }
   process.stdout.write(outcome + '\\n')
 }
-if (!dir || !basename(dir).startsWith('${SMOKE_DIR_PREFIX}')) process.stdout.write('skipped\\n')
+if (!dir || !prefix || !basename(dir).startsWith(prefix)) process.stdout.write('skipped\\n')
 else tick()
 `
 
@@ -165,7 +166,14 @@ export function buildCleanerCommand(execPath: string, dir: string, pid: number):
   return {
     command: execPath,
     args: ['-e', CLEANER_SCRIPT],
-    env: { ELECTRON_RUN_AS_NODE: '1', TT_SMOKE_DIR: dir, TT_SMOKE_PID: String(pid) }
+    env: {
+      ELECTRON_RUN_AS_NODE: '1',
+      TT_SMOKE_DIR: dir,
+      TT_SMOKE_PID: String(pid),
+      // Passed as data, not pasted into the script: no quoting to get wrong,
+      // and the cleaner checks exactly the prefix the app names its dirs with.
+      TT_SMOKE_PREFIX: SMOKE_DIR_PREFIX
+    }
   }
 }
 
