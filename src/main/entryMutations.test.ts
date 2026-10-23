@@ -561,13 +561,15 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
     expect(rows()).toEqual([{ id: newId, graph_event_id: null, created_at: CREATED }])
   })
 
-  // 20:00Z → 04:00Z crosses local midnight once in UTC (CI) and in Berlin.
-  const SPLIT: [string, string] = ['2026-06-10T20:00:00.000Z', '2026-06-11T04:00:00.000Z']
+  // Built from local parts: splitAtMidnight cuts at local midnight, so the
+  // pair has two halves in any zone the suite runs in.
+  const local = (d: number, h: number, m = 0): string => new Date(2026, 5, d, h, m).toISOString()
+  const SPLIT: [string, string] = [local(10, 20), local(11, 4)]
 
   it('a midnight-split pair keeps created_at on both halves, the anchor on the first', () => {
     const id = imported(...SPLIT)
     expect(rows()).toHaveLength(2)
-    edit(id, '2026-06-10T20:30:00.000Z', SPLIT[1])
+    edit(id, local(10, 20, 30), SPLIT[1])
     const after = rows()
     expect(after.map((r) => r.created_at)).toEqual([CREATED, CREATED])
     expect(after.map((r) => r.graph_event_id)).toEqual(['EVT-1', null])
@@ -576,7 +578,7 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
   it('editing the second half of a pair keeps the anchor too', () => {
     imported(...SPLIT)
     const second = rows()[1].id
-    edit(second, SPLIT[0], '2026-06-11T03:00:00.000Z')
+    edit(second, SPLIT[0], local(11, 3))
     expect(rows().map((r) => r.graph_event_id)).toEqual(['EVT-1', null])
     expect([...importedEventIds(db)]).toEqual(['EVT-1'])
   })

@@ -136,6 +136,9 @@ export function validateProjectForClient(
  * `graph_event_id` (#130c) goes on the FIRST segment only: the column carries a
  * unique index, so a midnight-split pair cannot both hold it — and one segment
  * is enough for the dedupe, which only asks "does any live row carry this id".
+ *
+ * `created_at` is null for a new entry (the column default applies) and the
+ * entry's original value when an edit writes it anew (#299).
  */
 export function insertEntrySegments(
   db: Db,
@@ -146,13 +149,14 @@ export function insertEntrySegments(
   billable = 1,
   private_note = '',
   project_id: number | null = null,
-  graph_event_id: string | null = null
+  graph_event_id: string | null = null,
+  created_at: string | null = null
 ): Entry {
   const linkId = segments.length > 1 ? randomUUID() : null
   const description = input.description.trim()
   const insertStmt = db.prepare(
-    `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at, rounded_min, link_id, project_id, tags, reference, billable, private_note, graph_event_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at, rounded_min, link_id, project_id, tags, reference, billable, private_note, graph_event_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`
   )
   const tx = db.transaction((): Entry => {
     let firstId = 0
@@ -172,7 +176,8 @@ export function insertEntrySegments(
         reference,
         billable,
         private_note,
-        firstId === 0 ? graph_event_id : null
+        firstId === 0 ? graph_event_id : null,
+        created_at
       )
       if (firstId === 0) firstId = Number(info.lastInsertRowid)
     }
@@ -215,19 +220,16 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
     // calendar import anchor (otherwise the next preview offers the meeting
     // again) and the time the entry was first written. Of a midnight-split
     // pair, the anchor sits on one half and the earliest created_at counts.
+    // One predicate for what is read and what is deleted.
+    const [where, key] = existingLinkId ? ['link_id = ?', existingLinkId] : ['id = ?', input.id]
     const carried = db
       .prepare(
         `SELECT MAX(graph_event_id) AS graph_event_id, MIN(created_at) AS created_at
-           FROM entries
-          WHERE ${existingLinkId ? 'link_id = ?' : 'id = ?'}`
+           FROM entries WHERE ${where}`
       )
-      .get(existingLinkId ?? input.id) as { graph_event_id: string | null; created_at: string }
-    if (existingLinkId) {
-      db.prepare(`DELETE FROM entries WHERE link_id = ?`).run(existingLinkId)
-    } else {
-      db.prepare(`DELETE FROM entries WHERE id = ?`).run(input.id)
-    }
-    const row = insertEntrySegments(
+      .get(key) as { graph_event_id: string | null; created_at: string | null }
+    db.prepare(`DELETE FROM entries WHERE ${where}`).run(key)
+    return insertEntrySegments(
       db,
       input,
       segments,
@@ -236,13 +238,9 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
       input.billable ?? 1,
       input.private_note ?? '',
       input.project_id ?? null,
-      carried.graph_event_id
+      carried.graph_event_id,
+      carried.created_at
     )
-    db.prepare(
-      `UPDATE entries SET created_at = ?
-        WHERE id = ? OR (link_id IS NOT NULL AND link_id = ?)`
-    ).run(carried.created_at, row.id, row.link_id)
-    return db.prepare(`SELECT * FROM entries WHERE id = ?`).get(row.id) as Entry
   })
   return ok(tx())
 }
