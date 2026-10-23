@@ -21,6 +21,7 @@ import {
   hasScope
 } from '../shared/graphAuth'
 import type { AccountInfo, StoredTokens } from '../shared/graphAuth'
+import { resolve as resolvePath } from 'node:path'
 import { refreshTokens } from './graphAuth'
 import type { GraphAuthConfig, GraphAuthDeps } from './graphAuth'
 import { connectAccount } from './graphConnect'
@@ -120,13 +121,19 @@ export async function connect(
     ...deps.auth
   }
   const tokens = await connectAccount(configOf(deps), connectDeps, signal)
+  // Store, then bump, in one synchronous step with nothing awaited between:
+  // a refresh finishing in a gap would otherwise write the old account back.
+  // Bumped only after a successful save — if the save throws, the old
+  // connection is still the one stored and its refresh must still land.
   saveTokens(tokens, deps.store)
+  connectionChanged(deps)
   deps.log?.('graph account: connected')
   return getStatus(deps)
 }
 
 /** Forget the connection. Does not revoke anything server-side — that is the user's own account page. */
 export function disconnect(deps: GraphAccountDeps): AccountStatus {
+  connectionChanged(deps)
   clearTokens(deps.store)
   deps.log?.('graph account: disconnected')
   return getStatus(deps)
@@ -139,6 +146,8 @@ export function disconnect(deps: GraphAccountDeps): AccountStatus {
  * On `invalid_grant` the stored connection is dropped: the grant is gone for
  * good (revoked, password changed, unused too long), and keeping a dead blob
  * around would make the settings page claim a connection that cannot work.
+ * Only if the store still holds the refused refresh token, though (#341): a
+ * different one is used instead, an empty or unreadable store is kept.
  * With a feature scope in the request, that holds for the calendar-only
  * retry (#308): a refused feature scope can arrive as `invalid_grant` too.
  */
@@ -149,16 +158,99 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   const now = deps.auth?.now?.() ?? Date.now()
   if (!needsRefresh(tokens, now)) return tokens.accessToken
 
+  // #341: one refresh per token store at a time. The presence pokes and the
+  // calendar import can ask at the same moment; a second refresh with the
+  // same refresh token is sent with a spent token once Entra has rotated it.
+  const key = storeKey(deps)
+  const running = inFlight.get(key)
+  if (running) return running
+  const refresh: Promise<string | null> = refreshAndStore(
+    deps,
+    tokens,
+    currentGeneration(key)
+  ).finally(() => {
+    // Only its own entry: connect or disconnect may have released it and a
+    // refresh for the new connection taken its place (#348).
+    if (inFlight.get(key) === refresh) inFlight.delete(key)
+  })
+  inFlight.set(key, refresh)
+  return refresh
+}
+
+/**
+ * #348: bumped by connect and disconnect. A refresh notes it when it starts and
+ * neither stores nor deletes anything if it changed meanwhile — otherwise a
+ * refresh still running would bring back a dropped connection, or replace a
+ * newly connected account with the old one's renewed tokens. In memory on
+ * purpose: re-reading the token file instead could mistake a briefly
+ * unreadable file for a disconnect and throw away a rotated token (#341).
+ */
+const generations = new Map<string, number>()
+
+function connectionChanged(deps: GraphAccountDeps): void {
+  const key = storeKey(deps)
+  generations.set(key, currentGeneration(key) + 1)
+  // A refresh of the old connection is no longer anyone's to join.
+  inFlight.delete(key)
+}
+
+function currentGeneration(key: string): number {
+  return generations.get(key) ?? 0
+}
+
+/** Whether connect or disconnect ran since generation was noted. */
+function connectionMoved(deps: GraphAccountDeps, generation: number): boolean {
+  return currentGeneration(storeKey(deps)) !== generation
+}
+
+/** Refreshes in progress, per token-store directory (#341). */
+const inFlight = new Map<string, Promise<string | null>>()
+
+/** One key per directory, however the path was spelled. */
+function storeKey(deps: GraphAccountDeps): string {
+  const dir = resolvePath(deps.store.dir)
+  return process.platform === 'win32' ? dir.toLowerCase() : dir
+}
+
+async function refreshAndStore(
+  deps: GraphAccountDeps,
+  tokens: StoredTokens,
+  /** The connection generation when the refresh started (#348). */
+  generation: number,
+  /** One more refresh from a grant someone else stored meanwhile, not more. */
+  mayFollow = true
+): Promise<string | null> {
   let refreshed: StoredTokens
   try {
     refreshed = await refreshWithFallback(configOf(deps), tokens, deps)
   } catch (err) {
+    // #348: the connection changed meanwhile — whatever went wrong with the old
+    // one is not the current connection's error; ask for that one instead.
+    if (connectionMoved(deps, generation)) return getAccessToken(deps)
     if (err instanceof GraphAuthError && err.code === 'invalid_grant') {
+      // #341: the connection is gone only if the store still holds the very
+      // refresh token that was refused. A different one means someone else
+      // refreshed or reconnected meanwhile; an empty or unreadable store is
+      // nothing to delete.
+      const current = loadTokens(deps.store)
+      if (!current) return null
+      if (current.refreshToken !== tokens.refreshToken) {
+        deps.log?.('graph account: refresh token already replaced, using the stored one')
+        const now = deps.auth?.now?.() ?? Date.now()
+        return needsRefresh(current, now) && mayFollow
+          ? refreshAndStore(deps, current, generation, false)
+          : current.accessToken
+      }
       deps.log?.('graph account: grant no longer valid, connection dropped')
       clearTokens(deps.store)
       return null
     }
     throw err
+  }
+  if (connectionMoved(deps, generation)) {
+    // Ask again for what is connected now: it may need a refresh of its own.
+    deps.log?.('graph account: connection changed during the refresh, result discarded')
+    return getAccessToken(deps)
   }
   // Must be persisted even when only the access token changed — the refresh
   // token may have rotated, and the old one stops working once it has.

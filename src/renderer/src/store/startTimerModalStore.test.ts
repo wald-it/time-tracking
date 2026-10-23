@@ -41,6 +41,16 @@ function mockSummary(recent: Entry[]): void {
   ;(window as unknown as { api: unknown }).api = {
     dashboard: {
       summary: vi.fn(async () => ({ ok: true as const, data: { recentEntries: recent } }))
+    },
+    // #297: the prefill checks the last project is still active; here every
+    // project of the given entries is.
+    projects: {
+      getAll: vi.fn(async ({ clientId }: { clientId?: number }) => ({
+        ok: true as const,
+        data: recent
+          .filter((e) => e.project_id != null && e.client_id === clientId)
+          .map((e) => ({ id: e.project_id, client_id: e.client_id, active: 1 }))
+      }))
     }
   }
 }

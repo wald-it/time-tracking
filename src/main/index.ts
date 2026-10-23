@@ -23,6 +23,7 @@ import {
   localeFromSystem,
   migrationErrorDialog,
   appLocale,
+  sensitiveSettingDialog,
   trayLabels,
   trayTooltip
 } from './mainI18n'
@@ -53,6 +54,7 @@ import {
   clearWriteToken,
   generateControllerToken,
   clearControllerToken,
+  forgetMcpApproval,
   type BridgeDeps
 } from './mcpBridge'
 import { initAutoUpdater } from './updater'
@@ -69,6 +71,7 @@ import { reconcilePresence, type PresenceDeps } from './graphPresence'
 import { graphAccountDepsFor } from './graphHandlers'
 import { effectiveClientId, getAccessToken, getStatus } from './graphAccount'
 import { applyMiniEnabled, destroyMini, pushMiniState, toggleMini } from './miniWindow'
+import { decideStartRequest } from './startRequest'
 import {
   generateFeedToken,
   restartFeedServer,
@@ -167,9 +170,7 @@ if (isSecondInstance) {
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
+      bringWindowForward(mainWindow)
     } else {
       // Startup race: second launch arrived before createWindow ran.
       log.info('second-instance signal received before main window exists — ignored')
@@ -180,9 +181,8 @@ if (isSecondInstance) {
 // ── Hotkey registration state ────────────────────────────────────
 // Tracked per-slot so `registerHotkey` and `registerMiniHotkey` can update
 // independently without clobbering each other (no more `unregisterAll`).
-const toggleSlot: HotkeySlot = hotkeySlot(() => {
-  mainWindow?.webContents.send('timer:hotkey-toggle')
-})
+// The start hotkey takes the same handler as the mini play key (#297).
+const toggleSlot: HotkeySlot = hotkeySlot(onStartKey)
 const miniSlot: HotkeySlot = hotkeySlot(() => toggleMini())
 
 // ── State for tray quick-start ──────────────────────────────────
@@ -285,6 +285,29 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   const locale = appLanguage()
   tray.setToolTip(trayTooltip(locale, running, label, fmtHHMM(todaySeconds)))
   tray.setContextMenu(buildTrayMenu(locale))
+}
+
+/**
+ * The global start hotkey and the mini widget's play key (#297). The only
+ * place that sends `timer:open-start` and brings the window forward for it:
+ * an explicit press, never a background event (startRequest.test.ts pins
+ * that). Everything else goes the old way, `timer:hotkey-toggle`.
+ */
+function onStartKey(): void {
+  if (!mainWindow) return
+  if (decideStartRequest(getDb()) === 'open-start') {
+    bringWindowForward(mainWindow)
+    mainWindow.webContents.send('timer:open-start')
+    return
+  }
+  mainWindow.webContents.send('timer:hotkey-toggle')
+}
+
+/** Restore, show and focus the main window: a second launch, or a start key press. */
+function bringWindowForward(win: BrowserWindow): void {
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
 }
 
 /** Log a refused change; the slot itself is left as `changeHotkey` says. */
@@ -505,6 +528,15 @@ function pokePresence(): void {
       },
       getAccessToken: () => getAccessToken(account),
       getClientId: () => effectiveClientId(account),
+      // Over the same handle as the presence settings above (#347). If that
+      // handle is closed, getSetting fails before the language is asked for;
+      // appLocale's own fallbacks are not what keeps one reconcile on one
+      // database.
+      getLocale: () =>
+        appLocale(
+          () => db,
+          () => app.getPreferredSystemLanguages()
+        ),
       log: (m) => log.info(m)
     }
     void reconcilePresence(deps, readRunning(db))
@@ -567,10 +599,10 @@ app.whenReady().then(async () => {
   // Smoke-test mode (CI release pipeline). When invoked with
   // `--smoke-test=<path>`, open a fresh DB in the temp userData set up
   // at module load (never the user's live DB), which runs migrations against
-  // the Electron-ABI better-sqlite3 binary), write a JSON status to
+  // the packaged better-sqlite3 binary), write a JSON status to
   // <path>, and exit. No window, no tray, no IPC handlers.
   // This is the v1.2 packaged-binary smoke check (E11) that catches
-  // ABI / native-module regressions before we publish a release.
+  // native-module and packaging regressions — on every PR since #269.
   if (smokeTestArg !== undefined) {
     const outPath = parseSmokeOutPath(smokeTestArg)
     let smokeDb: ReturnType<typeof getDb> | undefined
@@ -713,6 +745,9 @@ app.whenReady().then(async () => {
         startMcpBridge(mcpBridgeDeps())
       } else {
         clearWriteToken()
+        // #301: switching write access off ends any approval, also while the
+        // controller keeps the bridge running.
+        forgetMcpApproval()
         // The bridge socket stays up while the controller scope needs it.
         if (mcpBridgeDeps().getSetting('controller_enabled') !== '1') stopMcpBridge()
       }
@@ -739,6 +774,14 @@ app.whenReady().then(async () => {
       if (icalFeedDeps().getSetting('ical_feed_enabled') === '1') {
         restartFeedServer(icalFeedDeps())
       }
+    },
+    forgetMcpApproval,
+    // #272 (A3): the native confirmation for a setting that widens access.
+    confirmSensitiveSetting: async (change) => {
+      const opts = sensitiveSettingDialog(appLanguage(), change)
+      const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+      const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+      return res.response === 1
     }
   })
   createWindow()
@@ -839,11 +882,9 @@ app.whenReady().then(async () => {
   ipcMain.on('mini:request-stop', () => {
     mainWindow?.webContents.send('timer:tray-stop')
   })
-  ipcMain.on('mini:request-start', () => {
-    // hotkey-toggle starts when no timer is running and falls back to the
-    // first active client — exactly what we want for the play button.
-    mainWindow?.webContents.send('timer:hotkey-toggle')
-  })
+  // The play button does what the start hotkey does (#297): start the last
+  // pair, or open the START dialog when there is none.
+  ipcMain.on('mini:request-start', onStartKey)
 
   // Settings view → main: pause/resume registered global shortcuts during
   // hotkey capture so the user can rebind a key (e.g. Alt+Shift+S) without

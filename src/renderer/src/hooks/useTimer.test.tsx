@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { act, cleanup, waitFor, renderHook, type RenderHookResult } from '@testing-library/react'
-import type { Client, Entry } from '../../../shared/types'
+import type { Client, Entry, Project } from '../../../shared/types'
 import type { UseTimerResult } from './useTimer'
 
 // `globals` is off in vitest.config.ts, so Testing Library's auto-cleanup
@@ -97,6 +97,19 @@ interface MockOpts {
   running?: Entry | null
   /** entries:switch answers { ok: false } — the main transaction rolled back. */
   switchFails?: boolean
+  /**
+   * dashboard:summary's recentEntries, newest first — the START dialog's and
+   * the selection-less start's "last pair" (#297). Defaults to one entry of
+   * client 1 without a project: the pair the old first-active-client
+   * fallback also picked in every test that does not set this.
+   */
+  recent?: Entry[]
+  /** projects:getAll — for the last pair's project (#297). Default: none. */
+  projects?: Project[]
+  /** projects:getAll answers { ok: false } (#297 review). */
+  projectsFail?: boolean
+  /** dashboard:summary waits for this before it answers (#297 review). */
+  summaryGate?: Promise<void>
 }
 
 function mockApi(opts: MockOpts = {}): ApiMock {
@@ -159,7 +172,32 @@ function mockApi(opts: MockOpts = {}): ApiMock {
       heartbeat
     },
     dashboard: {
-      todayTotal: async () => ({ ok: true as const, data: 0 })
+      todayTotal: async () => ({ ok: true as const, data: 0 }),
+      summary: async () => {
+        if (opts.summaryGate) await opts.summaryGate
+        return {
+          ok: true as const,
+          data: {
+            todaySeconds: 0,
+            weekSeconds: 0,
+            weekDaySeconds: [0, 0, 0, 0, 0, 0, 0],
+            recentEntries: opts.recent ?? [makeEntry({ id: 1, client_id: 1, project_id: null })],
+            todayEntries: [],
+            topClients30d: []
+          }
+        }
+      }
+    },
+    projects: {
+      getAll: async ({ clientId }: { clientId?: number }) =>
+        opts.projectsFail
+          ? { ok: false as const, error: 'db busy' }
+          : {
+              ok: true as const,
+              data: (opts.projects ?? []).filter(
+                (p) => clientId == null || p.client_id === clientId
+              )
+            }
     },
     tray: { update: trayUpdate },
     idle: { dismiss: idleDismiss },
@@ -262,17 +300,339 @@ describe('useTimer — start/stop', () => {
     )
   })
 
-  it('start() without a selection falls back to the first ACTIVE client', async () => {
+  // #297 replaces the first-active-client fallback: the hotkey and the mini
+  // widget's play key start what the START dialog offers, the last pair.
+  // Client 1 sorts first and is active, so the old rule would pick it.
+  it('start() without a selection starts the last entry’s client and project', async () => {
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({
+      clients,
+      recent: [makeEntry({ id: 9, client_id: 2, project_id: 20 })],
+      projects: [
+        {
+          id: 20,
+          client_id: 2,
+          name: 'Audit',
+          color: '',
+          rate_cent: null,
+          active: 1,
+          created_at: ''
+        }
+      ]
+    })
+
+    await startTimer(hook)
+
+    expect(api.start).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 2, project_id: 20 })
+    )
+    expect(hook.result.current.selectedClientId).toBe(2)
+    expect(hook.result.current.selectedProjectId).toBe(20)
+  })
+
+  it('start() without a selection opens the START dialog when the last client is archived', async () => {
     const clients = [
       makeClient({ id: 1, name: 'Archived', active: 0 }),
       makeClient({ id: 2, name: 'Beta' })
     ]
-    const { api, hook } = await setup({ clients })
+    const { api, hook } = await setup({
+      clients,
+      recent: [makeEntry({ id: 9, client_id: 1 })]
+    })
+    // The module registry is fresh per setup(); take the store from it.
+    const { useStartTimerModalStore } = await import('../store/startTimerModalStore')
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    expect(hook.result.current.runningEntry).toBeNull()
+    await waitFor(() => expect(useStartTimerModalStore.getState().open).toBe(true))
+  })
+
+  it('start() without a selection opens the START dialog when there is no entry yet', async () => {
+    const { api, hook } = await setup({ recent: [] })
+    const { useStartTimerModalStore } = await import('../store/startTimerModalStore')
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    await waitFor(() => expect(useStartTimerModalStore.getState().open).toBe(true))
+  })
+
+  // #297 review: a selection left over from a client that is archived since
+  // is not a choice the user can see (the selector lists active clients
+  // only), so it must not be booked on.
+  it('start() treats a selected archived client as no selection', async () => {
+    const clients = [
+      makeClient({ id: 1, name: 'Archived', active: 0 }),
+      makeClient({ id: 2, name: 'Beta' })
+    ]
+    const { api, hook } = await setup({
+      clients,
+      recent: [makeEntry({ id: 9, client_id: 2 })]
+    })
+    act(() => hook.result.current.setSelectedClientId(1))
 
     await startTimer(hook)
 
+    expect(api.start).toHaveBeenCalledTimes(1)
     expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 2 }))
-    expect(hook.result.current.selectedClientId).toBe(2)
+  })
+
+  // #297 review: the selection-less start awaits the last pair before it
+  // knows a timer runs; a second press meanwhile must not switch away from
+  // the entry the first one starts (that would leave a zero-length entry).
+  it('a second start() while the first is still resolving does nothing', async () => {
+    const { api, hook } = await setup()
+
+    await act(async () => {
+      await Promise.all([hook.result.current.start(), hook.result.current.start()])
+    })
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(api.switch).not.toHaveBeenCalled()
+  })
+
+  // #297 review 2: while the selection-less start resolves its pair, the
+  // timer is busy — the dialog's start key and the switch path must wait,
+  // or a choice confirmed meanwhile would be dropped or switch the new entry.
+  it('is busy while the last pair resolves: a switch meanwhile is ignored', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const { api, hook } = await setup({ summaryGate })
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    await waitFor(() => expect(hook.result.current.isLoading).toBe(true))
+    let switched: string | null = 'unset'
+    await act(async () => {
+      switched = await hook.result.current.switchTo(2, null)
+    })
+    expect(switched).toBeNull()
+    expect(api.switch).not.toHaveBeenCalled()
+
+    await act(async () => {
+      release()
+      await pending
+    })
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+
+  // #297 review 3 / Codex: a quick-start key clicked while the hotkey's start
+  // still resolves its pair wins; the fallback must not switch away from it.
+  it('a quick start during the pair lookup is not switched away', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients, summaryGate })
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    await act(async () => {
+      await hook.result.current.startWithClient(2, null)
+    })
+    await act(async () => {
+      release()
+      await pending
+    })
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(api.switch).not.toHaveBeenCalled()
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+  })
+
+  // #297 Codex follow-up: the quick start's reply may not be back when the
+  // lookup finishes (runningEntry still empty); the fallback must yield as
+  // soon as a newer start began, or main's switch replaces the user's choice.
+  it('a quick start still in flight when the lookup finishes is not replaced', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients, summaryGate })
+    let answerQuick: () => void = () => {}
+    api.start.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          answerQuick = () => r({ ok: true as const, data: makeEntry({ id: 50, client_id: 2 }) })
+        })
+    )
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    let quick: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    act(() => {
+      quick = hook.result.current.startWithClient(2, null)
+    })
+    await act(async () => {
+      release()
+      await pending
+    })
+    await act(async () => {
+      answerQuick()
+      await quick
+    })
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+  })
+
+  // #297 Codex follow-up 2 (a): MCP or the Stream Deck started a timer during
+  // the lookup. The renderer hears it as data:changed, but the resync's
+  // getRunning reply is not back yet — the fallback must yield anyway, or
+  // main's switch ends the externally started timer.
+  it('yields to an external start announced during the lookup', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const { api, hook } = await setup({ summaryGate })
+    const entriesApi = (
+      window as unknown as { api: { entries: { getRunning: () => Promise<unknown> } } }
+    ).api.entries
+    let answerRunning: () => void = () => {}
+    entriesApi.getRunning = () =>
+      new Promise((r) => {
+        answerRunning = () => r({ ok: true as const, data: makeEntry({ id: 70, client_id: 2 }) })
+      })
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    act(() => api.listeners.dataChanged?.())
+    await act(async () => {
+      release()
+      await pending
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    await act(async () => {
+      answerRunning()
+    })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(70))
+  })
+
+  // #297 Codex follow-up 2 (b): the lookup ending must not clear the busy
+  // flag of a quick start whose reply is still out.
+  it('leaves the busy flag to a quick start still in flight', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients, summaryGate })
+    let answerQuick: () => void = () => {}
+    api.start.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          answerQuick = () => r({ ok: true as const, data: makeEntry({ id: 50, client_id: 2 }) })
+        })
+    )
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    let quick: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    act(() => {
+      quick = hook.result.current.startWithClient(2, null)
+    })
+    await act(async () => {
+      release()
+      await pending
+    })
+
+    expect(hook.result.current.isLoading).toBe(true)
+    await act(async () => {
+      answerQuick()
+      await quick
+    })
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+
+  // #297 review 3: a running entry whose client was archived since leaves an
+  // archived selection behind; a start without a valid selection must not
+  // switch away from the running timer or clear its selection.
+  it('does nothing without a valid selection while a timer runs', async () => {
+    const clients = [
+      makeClient({ id: 1, name: 'Archived', active: 0 }),
+      makeClient({ id: 2, name: 'Beta' })
+    ]
+    const running = makeEntry({ id: 5, client_id: 1 })
+    const { api, hook } = await setup({ clients, running })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(5))
+    act(() => hook.result.current.setSelectedClientId(1))
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.switch).not.toHaveBeenCalled()
+    expect(api.start).not.toHaveBeenCalled()
+    expect(hook.result.current.selectedClientId).toBe(1)
+  })
+
+  // #297 review 3: with the client list not loaded yet, the last pair is
+  // read from the database's client list, not from the empty store.
+  it('starts the last pair while the store has no client list yet', async () => {
+    const { api, hook } = await setup()
+    const { useTimerStore } = await import('../store/timerStore')
+    act(() => useTimerStore.setState({ clients: [] }))
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 1 }))
+  })
+
+  // #297 review 2: an archived selection without a pair to fall back to is
+  // cleared, so the dialog does not show the hidden client's projects.
+  it('clears a selected archived client when it opens the dialog', async () => {
+    const clients = [makeClient({ id: 1, name: 'Archived', active: 0 })]
+    const { api, hook } = await setup({ clients, recent: [] })
+    act(() => hook.result.current.setSelectedClientId(1))
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    expect(hook.result.current.selectedClientId).toBeNull()
+    expect(hook.result.current.selectedProjectId).toBeNull()
+  })
+
+  // #297 review 2: with no client list (not loaded yet, or the load failed)
+  // nothing says the selection is archived; it starts as it always did.
+  it('starts the selection when the client list is unknown', async () => {
+    const { api, hook } = await setup({ clients: [] })
+    act(() => hook.result.current.setSelectedClientId(5))
+
+    await startTimer(hook)
+
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 5 }))
+  })
+
+  // #297 review 2: a failed project lookup is not "archived" — the last
+  // entry's project is kept rather than silently dropped.
+  it('keeps the last project when the project list cannot be read', async () => {
+    const { api, hook } = await setup({
+      recent: [makeEntry({ id: 9, client_id: 1, project_id: 10 })],
+      projectsFail: true
+    })
+
+    await startTimer(hook)
+
+    expect(api.start).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 1, project_id: 10 })
+    )
   })
 
   it('start() with no active client at all is a silent no-op', async () => {
@@ -865,6 +1225,96 @@ describe('useTimer — idle transitions', () => {
 
     expect(hook.result.current.idleEvent).toBeNull()
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
+  })
+})
+
+// #297: main sends timer:open-start when the start hotkey or mini play key
+// finds nothing to start in the database, and brings the window forward.
+// Main does not know the renderer's selection, so the renderer answers with
+// the same start path: a valid selection starts, else the last pair, else
+// the START dialog opens — now in a visible window.
+describe('useTimer — handleOpenStart (#297)', () => {
+  // Main sent this because the last entry's client (1) is archived; the
+  // user's selection (2) is valid and starts, as it did before #297. Hotkey
+  // and mini play both reach main's onStartKey and send this same event.
+  it('starts a valid selection instead of opening the dialog', async () => {
+    const clients = [
+      makeClient({ id: 1, name: 'Archived', active: 0 }),
+      makeClient({ id: 2, name: 'Beta' })
+    ]
+    const { api, hook } = await setup({ clients, recent: [makeEntry({ id: 9, client_id: 1 })] })
+    const { handleOpenStart } = await import('./useTimer')
+    const { useStartTimerModalStore } = await import('../store/startTimerModalStore')
+    act(() => hook.result.current.setSelectedClientId(2))
+
+    await act(async () => {
+      await handleOpenStart()
+    })
+
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 2 }))
+    expect(useStartTimerModalStore.getState().open).toBe(false)
+  })
+
+  it('opens the START dialog when there is neither a selection nor a pair', async () => {
+    const { api } = await setup({ recent: [] })
+    const { handleOpenStart } = await import('./useTimer')
+    const { useStartTimerModalStore } = await import('../store/startTimerModalStore')
+
+    await act(async () => {
+      await handleOpenStart()
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    await waitFor(() => expect(useStartTimerModalStore.getState().open).toBe(true))
+  })
+
+  // #297 review 2: the caller (App) shows the error, as the dialog does.
+  it('returns the error of a refused start', async () => {
+    const clients = [makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients, recent: [] })
+    const { handleOpenStart } = await import('./useTimer')
+    act(() => hook.result.current.setSelectedClientId(2))
+    api.start.mockResolvedValueOnce({ ok: false, error: 'refused' })
+
+    let error: string | null = null
+    await act(async () => {
+      error = await handleOpenStart()
+    })
+
+    expect(error).toBe('refused')
+  })
+
+  // #297 review 3: an IPC call that rejects (instead of answering ok:false)
+  // comes back as an error to show, not as an unhandled rejection.
+  it('returns the message when reading the last pair fails', async () => {
+    const { hook } = await setup({ recent: [] })
+    const { handleOpenStart } = await import('./useTimer')
+    ;(
+      window as unknown as { api: { dashboard: { summary: () => Promise<never> } } }
+    ).api.dashboard.summary = async () => {
+      throw new Error('ipc gone')
+    }
+
+    let error: string | null = null
+    await act(async () => {
+      error = await handleOpenStart()
+    })
+
+    expect(error).toBe('ipc gone')
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+
+  it('does nothing while a timer runs (no switch from a window-forward event)', async () => {
+    const { api, hook } = await setup()
+    await startTimer(hook)
+    const { handleOpenStart } = await import('./useTimer')
+
+    await act(async () => {
+      await handleOpenStart()
+    })
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(api.switch).not.toHaveBeenCalled()
   })
 })
 
