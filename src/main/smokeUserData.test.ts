@@ -11,7 +11,8 @@ import {
   isSameOrInside,
   parseSmokeOutPath,
   removeSmokeUserDataDir,
-  setupSmokeUserData
+  setupSmokeUserData,
+  SMOKE_DIR_PREFIX
 } from './smokeUserData'
 
 let root: string
@@ -133,14 +134,14 @@ describe('smoke userData isolation', () => {
     expect(() => assertSmokeUserDataIsolated(createSmokeUserDataDir(root), [])).toThrow(/unknown/)
   })
 
-  it('only removes timetrack-smoke-* directories inside the temp root', () => {
+  it('only removes SMOKE_DIR_PREFIX directories inside the temp root', () => {
     const smoke = createSmokeUserDataDir(root)
     const other = join(root, 'time-tracking')
     mkdirSync(other)
     expect(isRemovableSmokeDir(smoke, root)).toBe(true)
     expect(isRemovableSmokeDir(other, root)).toBe(false)
     expect(isRemovableSmokeDir(root, root)).toBe(false)
-    const outside = mkdtempSync(join(tmpdir(), 'timetrack-smoke-'))
+    const outside = mkdtempSync(join(tmpdir(), SMOKE_DIR_PREFIX))
     try {
       expect(isRemovableSmokeDir(outside, join(root, 'elsewhere'))).toBe(false)
     } finally {
@@ -160,6 +161,23 @@ describe('smoke userData isolation', () => {
     })
     expect(await cleanerOutcome(cleaner)).toBe('skipped')
     expect(existsSync(victim)).toBe(true)
+  }, 15_000)
+
+  it('cleaner script removes a directory named by SMOKE_DIR_PREFIX (#289)', async () => {
+    // The app names its smoke dirs with SMOKE_DIR_PREFIX; a cleaner whose own
+    // prefix check differs would answer 'skipped' here and leave them behind.
+    const dir = join(root, `${SMOKE_DIR_PREFIX}drift`)
+    mkdirSync(dir)
+    // A PID no OS hands out in practice, so the liveness check sees it gone at
+    // once (999999 can be a live process on Linux, and Windows masks PIDs).
+    const neverAPid = 2_147_483_647
+    const { command, args, env } = buildCleanerCommand(process.execPath, dir, neverAPid)
+    const cleaner = spawn(command, args, {
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    expect(await cleanerOutcome(cleaner)).toBe('removed')
+    expect(existsSync(dir)).toBe(false)
   }, 15_000)
 
   it('setup moves userData to a fresh temp dir and remembers both defaults', () => {
