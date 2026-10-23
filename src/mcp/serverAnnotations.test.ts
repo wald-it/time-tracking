@@ -10,12 +10,13 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { buildServer } from './server'
 
 const READ = { readOnlyHint: true, openWorldHint: false }
-const WRITE = {
+// Writes can fire the user's outbound webhooks: openWorldHint true.
+const write = (destructiveHint: boolean, idempotentHint: boolean): Record<string, boolean> => ({
   readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: false,
-  openWorldHint: false
-}
+  destructiveHint,
+  idempotentHint,
+  openWorldHint: true
+})
 
 const EXPECTED: Record<string, Record<string, boolean>> = {
   list_clients: READ,
@@ -24,10 +25,14 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
   get_running_timer: READ,
   get_dashboard: READ,
   get_analytics: READ,
-  create_manual_entry: WRITE,
-  update_entry_fields: WRITE,
-  start_timer: WRITE,
-  stop_running_timer: WRITE
+  // Adds an entry; a repeat adds another.
+  create_manual_entry: write(false, false),
+  // Deletes the row and inserts it again under a new id.
+  update_entry_fields: write(true, false),
+  // Ends a running entry at the new start, possibly in the past.
+  start_timer: write(true, false),
+  // A repeat finds nothing running and does nothing.
+  stop_running_timer: write(false, true)
 }
 
 describe('MCP tool annotations (#300)', () => {

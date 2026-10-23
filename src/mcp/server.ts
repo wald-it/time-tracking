@@ -77,17 +77,45 @@ function errorResult(e: unknown): {
 /**
  * MCP tool annotations (#300), so a client can tell read tools from write
  * tools without parsing descriptions. Hints only: the app's write guards
- * (opt-in, token, confirmation) stay the enforcement. Nothing here reaches
- * outside the local machine, hence openWorldHint false throughout. Writes are
- * not destructive (they add or change entries; nothing is deleted) and not
- * idempotent (a repeated create adds a second entry).
+ * (opt-in, token, confirmation) stay the enforcement, so each hint states the
+ * tool's real effect rather than a reassuring default.
+ *
+ * Reads only open the local database: openWorldHint false. Every write can
+ * fire the user's outbound webhooks to URLs of their choosing, so writes are
+ * openWorldHint true.
  */
 const READ_TOOL_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const
 const WRITE_TOOL_ANNOTATIONS = {
-  readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: false,
-  openWorldHint: false
+  /** Adds a new entry; a repeated call adds a second one. */
+  create_manual_entry: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true
+  },
+  /** Replaces the entry's fields: the app deletes the row (and its linked
+   * midnight segments) and inserts it again under a new id. */
+  update_entry_fields: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true
+  },
+  /** Ends a running entry at the new start, which may lie in the past. */
+  start_timer: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true
+  },
+  /** Sets the running entry's end; with nothing running it does nothing, so
+   * repeating it has no further effect. */
+  stop_running_timer: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true
+  }
 } as const
 
 export function buildServer(): McpServer {
@@ -366,7 +394,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'create_manual_entry',
     {
-      annotations: WRITE_TOOL_ANNOTATIONS,
+      annotations: WRITE_TOOL_ANNOTATIONS.create_manual_entry,
       title: 'Eintrag nachtragen',
       description: `Legt einen abgeschlossenen Zeiteintrag an (Start + Ende). ${WRITE_HINT}`,
       inputSchema: {
@@ -409,7 +437,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'update_entry_fields',
     {
-      annotations: WRITE_TOOL_ANNOTATIONS,
+      annotations: WRITE_TOOL_ANNOTATIONS.update_entry_fields,
       title: 'Eintrag bearbeiten',
       description: `Ändert Felder eines bestehenden Eintrags (nur angegebene Felder). Laufende Timer sind ausgenommen. ${WRITE_HINT}`,
       inputSchema: {
@@ -454,7 +482,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'start_timer',
     {
-      annotations: WRITE_TOOL_ANNOTATIONS,
+      annotations: WRITE_TOOL_ANNOTATIONS.start_timer,
       title: 'Timer starten',
       description: `Startet einen laufenden Timer für einen Kunden. Ein laufender Timer endet zur Startzeit des neuen; die Startzeit darf nicht vor seinem Beginn und höchstens eine Minute in der Zukunft liegen. ${WRITE_HINT}`,
       inputSchema: {
@@ -484,7 +512,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'stop_running_timer',
     {
-      annotations: WRITE_TOOL_ANNOTATIONS,
+      annotations: WRITE_TOOL_ANNOTATIONS.stop_running_timer,
       title: 'Laufenden Timer stoppen',
       description: `Stoppt den aktuell laufenden Timer (falls einer läuft). ${WRITE_HINT}`,
       inputSchema: {
