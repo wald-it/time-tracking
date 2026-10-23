@@ -126,10 +126,11 @@ describe('timer:open-start is sent only from the start hotkey and mini play', ()
 
   it('onStartKey is used only by the start hotkey and mini:request-start', () => {
     const uses = [...source.matchAll(/^.*\bonStartKey\b.*$/gm)].map((m) => m[0].trim())
+    // The start hotkey's slot (registered, re-registered after a capture,
+    // all through the slot's one handler) and the mini widget's play key.
     expect(uses).toEqual([
+      'const toggleSlot: HotkeySlot = hotkeySlot(onStartKey)',
       'function onStartKey(): void {',
-      'const ok = globalShortcut.register(accelerator, onStartKey)',
-      'globalShortcut.register(currentToggleHotkey, onStartKey)',
       "ipcMain.on('mini:request-start', onStartKey)"
     ])
   })
