@@ -32,15 +32,6 @@ export function dialogT(locale: Locale): DialogT {
   return (key, vars) => translate(LOCALE_STRINGS[locale], key, vars)
 }
 
-/**
- * `readLanguage` for a dialog that must still show when the handle is
- * closed (a restore attempt closes it): the system language then, as at start.
- */
-export function readLanguageOr(db: Database.Database, fallback: () => Locale): Locale {
-  // Only the closed handle falls back; any other database error still throws.
-  return db.open ? readLanguage(db) : fallback()
-}
-
 /** The last language read from the setting, for the moments it cannot be read. */
 let lastSettingLocale: Locale | null = null
 

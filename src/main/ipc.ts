@@ -132,8 +132,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
   // Native dialogs, file names and cancel texts follow the app language
   // (#270, #296). Never throws (mainI18n.appLocale): with the handle closed
-  // after a restore attempt, the system language, as at start. The restore
-  // reads it once, before it can close the handle.
+  // after a restore attempt, the language last read in this run, the same
+  // answer the tray gets. The restore reads it once, before it can close the
+  // handle.
   const dialogLocale = (): Locale =>
     appLocale(
       () => db,

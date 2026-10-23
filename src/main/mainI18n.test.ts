@@ -29,8 +29,7 @@ import {
   localeFromSystem,
   mcpConfirmDialog,
   migrationErrorDialog,
-  readLanguage,
-  readLanguageOr
+  readLanguage
 } from './mainI18n'
 
 let DatabaseImpl: DatabaseCtor
@@ -47,17 +46,9 @@ describe('the language of a main-process dialog', () => {
     db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
     expect(readLanguage(db)).toBe('en')
     expect(dialogT(readLanguage(db))('mainDialog.pdf.saveTitle')).toBe('Save timesheet')
-    expect(readLanguageOr(db, () => 'de')).toBe('en')
     db.close()
-  })
-
-  it('with the handle closed (after a restore attempt): the fallback', () => {
-    const db = new DatabaseImpl(':memory:')
-    applyMigrations(db)
-    db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
-    db.close()
+    // A closed handle throws here; appLocale (below) is the rule that copes.
     expect(() => readLanguage(db)).toThrow()
-    expect(readLanguageOr(db, () => 'de')).toBe('de')
   })
 
   it('appLocale never throws: setting, last setting read, system language, German', () => {
@@ -292,10 +283,12 @@ describe('#296 — a closed dialog is a code, not a text', () => {
     for (const f of readdirSync(root, { recursive: true }) as string[]) {
       if (!/\.tsx?$/.test(f) || /\.test\.tsx?$/.test(f)) continue
       const src = readFileSync(join(root, f), 'utf8')
-      // `.error === / !==` either way round, and a text test on `.error`.
+      // `error` (bare or `.error`) compared with == / === / != / !== either
+      // way round, switched on, or text-tested; and any cancel wording.
       const compares =
-        /\.error\s*[!=]==|[!=]==\s*[\w.?]*\.error\b|\.error\??\.(includes|startsWith|endsWith|match)\(/
-      if (compares.test(src) || /abgebrochen/.test(src)) hits.push(f)
+        /\berror\s*[!=]==?\s*['"`]|['"`]\s*[!=]==?\s*[\w.?]*\berror\b|switch\s*\(\s*[\w.?]*\berror\s*\)|\berror\??\.(includes|startsWith|endsWith|match)\(/
+      const cancelWords = /abgebrochen|(export|selection|saving) cancelled/i
+      if (compares.test(src) || cancelWords.test(src)) hits.push(f)
     }
     expect(hits).toEqual([])
   })

@@ -33,29 +33,29 @@ export function I18nProvider({ children }: { children: React.ReactNode }): React
   // settings write (v1.13.2 PR 2).
   const language = useSettingsStore((s) => s.settings?.language)
   const [locale, setLocaleState] = useState<Locale>('de')
-  // Set once the user picks a language. The store is filled by load() and
-  // never told about setLocale (raw settings.set, no push), so a load that
-  // resolves after the pick carries the old value and must not undo it.
+  // Set once the user picks a language. load() may still be running when the
+  // user picks (onboarding on first run); it then writes the snapshot from
+  // before the pick into the store, and that must not undo the pick.
   const pickedRef = useRef(false)
 
   // Sync locale with the stored value (shared rule, #296) until the user
   // picks one. Before the settings load (`undefined`) the default stays.
+  // Local state on purpose (#142): settings:set sends no push update.
   useEffect(() => {
-    // Local state on purpose (#142): setLocale calls raw window.api.settings.set,
-    // and settings:set sends no push update, so this state is the only place
-    // that learns of the change (like ThemeContext).
     if (language !== undefined && !pickedRef.current) setLocaleState(localeFromSetting(language))
   }, [language])
 
   const setLocale = useCallback(async (l: Locale) => {
     pickedRef.current = true
     setLocaleState(l)
-    // Keep the store's copy current for anyone else reading settings.language
-    // (a load still running may overwrite it; pickedRef covers this provider).
-    useSettingsStore.setState((s) =>
-      s.settings ? { settings: { ...s.settings, language: l } } : s
-    )
-    await window.api.settings.set('language', l)
+    const res = await window.api.settings.set('language', l)
+    // Only a saved pick goes into the store's copy, for anyone else reading
+    // settings.language; a failed save leaves the store at what the DB holds.
+    if (res.ok) {
+      useSettingsStore.setState((s) =>
+        s.settings ? { settings: { ...s.settings, language: l } } : s
+      )
+    }
   }, [])
 
   const t = useCallback<TFunction>((key, vars) => translate(localeMap[locale], key, vars), [locale])
