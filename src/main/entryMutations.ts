@@ -204,13 +204,116 @@ export function createManualEntry(db: Db, input: CreateManualEntryInput): IpcRes
   return ok(row)
 }
 
-/** Update an entry (delete-and-reinsert with cross-midnight bookkeeping). Mirrors `entries:update`. */
-export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<Entry> {
-  const existing = db.prepare(`SELECT link_id FROM entries WHERE id = ?`).get(input.id) as
-    | { link_id: string | null }
+/**
+ * Message when an edit of one half of a split entry moves the time at the
+ * midnight cut — that edge belongs to the entry, not to the half (#311).
+ */
+export const SPLIT_EDGE_ERROR =
+  'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. ' +
+  'Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten.'
+
+/** An MCP edit whose entry changed while the owner was being asked (#311). */
+export const STALE_EDIT_ERROR =
+  'Der Eintrag hat sich während der Rückfrage geändert. Bitte die Änderung erneut anfragen.'
+
+/** Editing an entry whose middle part is in the trash (#311). */
+export const SPLIT_GAP_ERROR =
+  'Ein mittlerer Teil dieses Eintrags wurde gelöscht. Die übrigen Teile lassen sich deshalb nicht gemeinsam bearbeiten.'
+
+type Range = { started_at: string; stopped_at: string }
+
+/**
+ * #311: callers hand over the range of the half they were called on — MCP
+ * `update_entry_fields` fills unchanged times from that row, the calendar
+ * drawer sends the times of the half it opened. The edit replaces the whole
+ * entry, so that range is mapped onto the entry first, and only where the
+ * meaning is plain:
+ * - times unchanged: the entry keeps its range (a field edit);
+ * - only the half's outer edge changed (the entry's start on the first half,
+ *   its end on the last): that edge of the entry moves.
+ * Anything else — moving an edge at a midnight cut, a new range across
+ * midnight, both edges at once — is refused (null), because each of those
+ * would have to guess what happens to the other half. A group of one row (a
+ * sibling removed for good) has no other half, so its edges are both outer. Before this, the other
+ * half was simply deleted.
+ *
+ * `group` is every row of the entry, also halves in the trash: their cuts are
+ * still the entry's cuts. `live` are the rows the edit replaces, so the range
+ * it returns never reaches into a trashed half.
+ *
+ * An unusable range (invalid, or not ending after it starts) is passed on
+ * unchanged, so validateManualEntry reports it in its own words.
+ */
+function rangeOfEntry(half: Range, group: Range[], live: Range[], input: Range): Range | null {
+  const start = Date.parse(input.started_at)
+  const stop = Date.parse(input.stopped_at)
+  if (!Number.isFinite(start) || !Number.isFinite(stop) || stop <= start) return input
+  const same = (a: string, b: string): boolean => Date.parse(a) === Date.parse(b)
+  const atStart = same(half.started_at, group[0].started_at)
+  const atStop = same(half.stopped_at, group[group.length - 1].stopped_at)
+  if (!atStart && !same(input.started_at, half.started_at)) return null
+  if (!atStop && !same(input.stopped_at, half.stopped_at)) return null
+  return {
+    started_at: atStart ? input.started_at : live[0].started_at,
+    stopped_at: atStop ? input.stopped_at : live[live.length - 1].stopped_at
+  }
+}
+
+/**
+ * What an edit of entry row `given.id` really changes (#311): the input
+ * mapped onto the whole entry, and the entry's range before the edit. For a
+ * plain entry both are the row's own. MCP calls this before its preview, so
+ * the owner confirms the change that is applied.
+ */
+export function resolveEditRange(
+  db: Db,
+  given: UpdateEntryInput
+):
+  | { input: UpdateEntryInput; before: Range; linkId?: string; keepsTrashed?: boolean }
+  | { error: string } {
+  const existing = db
+    .prepare(`SELECT link_id, started_at, stopped_at, deleted_at FROM entries WHERE id = ?`)
+    .get(given.id) as
+    | {
+        link_id: string | null
+        started_at: string
+        stopped_at: string | null
+        deleted_at: string | null
+      }
     | undefined
-  if (!existing) return fail('Eintrag existiert nicht')
-  const existingLinkId = existing.link_id ?? undefined
+  if (!existing) return { error: 'Eintrag existiert nicht' }
+  const linkId = existing.link_id ?? undefined
+  const own = { started_at: existing.started_at, stopped_at: existing.stopped_at ?? '' }
+  if (!linkId || existing.stopped_at === null) return { input: given, before: own, linkId }
+  // A half in the trash is not edited: the edit would replace its live
+  // sibling with the trashed half's range.
+  if (existing.deleted_at !== null) return { error: 'Eintrag existiert nicht' }
+  const rows = db
+    .prepare(
+      `SELECT started_at, stopped_at, deleted_at FROM entries WHERE link_id = ? ORDER BY started_at`
+    )
+    .all(linkId) as Array<Range & { deleted_at: string | null }>
+  const live = rows.filter((r) => r.deleted_at === null)
+  // A trashed part between live ones: one range for the live parts would
+  // bring the trashed time back.
+  for (let i = 1; i < live.length; i++) {
+    if (Date.parse(live[i - 1].stopped_at) !== Date.parse(live[i].started_at)) {
+      return { error: SPLIT_GAP_ERROR }
+    }
+  }
+  const range = rangeOfEntry(own, rows, live, given)
+  if (!range) return { error: SPLIT_EDGE_ERROR }
+  const before = { started_at: live[0].started_at, stopped_at: live[live.length - 1].stopped_at }
+  const keepsTrashed = live.length < rows.length
+  return { input: { ...given, ...range }, before, linkId, keepsTrashed }
+}
+
+/** Update an entry (delete-and-reinsert with cross-midnight bookkeeping). Mirrors `entries:update`. */
+export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<Entry> {
+  const resolved = resolveEditRange(db, given)
+  if ('error' in resolved) return fail(resolved.error)
+  const { input, linkId: existingLinkId } = resolved
+  const keepsTrashed = 'keepsTrashed' in resolved && resolved.keepsTrashed === true
   const err = validateManualEntry(db, input, input.id, existingLinkId)
   if (err) return fail(err)
   const segments = splitAtMidnight(new Date(input.started_at), new Date(input.stopped_at))
@@ -220,10 +323,11 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
     // calendar import anchor (otherwise the next preview offers the meeting
     // again) and the time the entry was first written. Of a midnight-split
     // pair, the anchor sits on one half and the earliest created_at counts.
-    // One predicate for what is read and what is deleted. A trashed half is
-    // read too: the reinsert below writes the whole range back as live rows,
-    // so its time — and with it its meeting — is live again (#311).
-    const [where, key] = existingLinkId ? ['link_id = ?', existingLinkId] : ['id = ?', input.id]
+    // One predicate for what is read and what is deleted, live rows only: a
+    // half in the trash stays there and can still be restored (#311).
+    const [where, key] = existingLinkId
+      ? ['link_id = ? AND deleted_at IS NULL', existingLinkId]
+      : ['id = ?', input.id]
     const carried = db
       .prepare(
         `SELECT MAX(graph_event_id) AS graph_event_id, MIN(created_at) AS created_at
@@ -231,7 +335,7 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
       )
       .get(key) as { graph_event_id: string | null; created_at: string | null }
     db.prepare(`DELETE FROM entries WHERE ${where}`).run(key)
-    return insertEntrySegments(
+    const row = insertEntrySegments(
       db,
       input,
       segments,
@@ -243,6 +347,30 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
       carried.graph_event_id,
       carried.created_at
     )
+    if (!keepsTrashed || !existingLinkId) return row
+    // A trashed part stays behind: the new rows keep the entry's link, so its
+    // cuts still protect later edits and a restore joins the parts again.
+    db.prepare(
+      `UPDATE entries SET link_id = ? WHERE id = ? OR (link_id IS NOT NULL AND link_id = ?)`
+    ).run(existingLinkId, row.id, row.link_id)
+    // And it takes the entry's new fields (not its own time), so a restored
+    // part is the same entry, not a half with other client or billing.
+    db.prepare(
+      `UPDATE entries
+          SET client_id = ?, project_id = ?, description = ?, tags = ?, reference = ?,
+              billable = ?, private_note = ?
+        WHERE link_id = ? AND deleted_at IS NOT NULL`
+    ).run(
+      row.client_id,
+      row.project_id,
+      row.description,
+      row.tags,
+      row.reference,
+      row.billable,
+      row.private_note,
+      existingLinkId
+    )
+    return db.prepare(`SELECT * FROM entries WHERE id = ?`).get(row.id) as Entry
   })
   return ok(tx())
 }
