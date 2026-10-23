@@ -9,6 +9,7 @@
  * Not `toStoredInstant` (mcp/queries): that one deliberately reads a value
  * without a zone as UTC, for the read-only range filter.
  */
+import type { Locale } from './i18n'
 
 export type ZonedTimestampResult =
   | {
@@ -97,9 +98,20 @@ export function zonedTimestampError(
 }
 
 // ── local time for the owner's confirmation and the client's reply ──────────
+// The confirmation follows the app language (#270), so these take a locale.
+// Of them only the offset note also reaches the MCP client (`zeit_hinweise`),
+// and the bridge asks for that one in German. English writes the date as ISO
+// (`Tue 2026-10-27`): no reader has to guess between 10/27 and 27/10.
 
 const pad = (n: number): string => String(n).padStart(2, '0')
-const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
+const WEEKDAYS: Record<Locale, readonly string[]> = {
+  de: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+}
+
+function isoDay(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
 
 /** `+01:00` for 60, `-03:30` for -210. */
 export function formatOffset(offsetMin: number): string {
@@ -120,8 +132,10 @@ export function toLocalIso(iso: string): string {
   return `${date}T${time}${formatOffset(localOffsetAt(iso))}`
 }
 
-function localDay(d: Date): string {
-  return `${WEEKDAYS[d.getDay()]} ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
+function localDay(d: Date, locale: Locale): string {
+  const date =
+    locale === 'en' ? isoDay(d) : `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
+  return `${WEEKDAYS[locale][d.getDay()]} ${date}`
 }
 
 function localTime(d: Date): string {
@@ -154,18 +168,18 @@ export function formatLocalClock(iso: string): string {
 }
 
 /** `Di 27.10.2026 09:00`; `So 26.10.2025 02:15 (+02:00)` on a clock-change day. */
-export function formatLocalMoment(iso: string): string {
+export function formatLocalMoment(iso: string, locale: Locale): string {
   const d = new Date(iso)
-  return `${localDay(d)} ${clock(d)}`
+  return `${localDay(d, locale)} ${clock(d)}`
 }
 
 /** `Di 27.10.2026 09:00–12:00`, or both days when the span crosses midnight. */
-export function formatLocalSpan(startIso: string, stopIso: string): string {
+export function formatLocalSpan(startIso: string, stopIso: string, locale: Locale): string {
   const a = new Date(startIso)
   const b = new Date(stopIso)
-  return localDay(a) === localDay(b)
-    ? `${localDay(a)} ${clock(a)}–${clock(b)}`
-    : `${formatLocalMoment(startIso)} – ${formatLocalMoment(stopIso)}`
+  return localDay(a, locale) === localDay(b, locale)
+    ? `${localDay(a, locale)} ${clock(a)}–${clock(b)}`
+    : `${formatLocalMoment(startIso, locale)} – ${formatLocalMoment(stopIso, locale)}`
 }
 
 /**
@@ -174,19 +188,37 @@ export function formatLocalSpan(startIso: string, stopIso: string): string {
  * after the clocks went back. Not a refusal: the instant is unambiguous, it
  * just may not be the wall-clock time the caller meant. `Z` gets no note.
  *
- * `Hinweis: +02:00 weicht von der Ortszeit am 27.10. ab (+01:00) — wird als
- * 08:00 Ortszeit gespeichert.`
+ * Returns the values for the note, which then reads e.g. `Hinweis: +02:00
+ * weicht von der Ortszeit am 27.10. ab (+01:00) — wird als 08:00 Ortszeit
+ * gespeichert.` The day is `27.10.` in German and `2026-10-27` in English.
  */
-export function offsetHint(iso: string, offsetMin: number | null): string | null {
+export function offsetHintParts(
+  iso: string,
+  offsetMin: number | null,
+  locale: Locale
+): OffsetHintParts | null {
   if (offsetMin === null) return null
   const local = localOffsetAt(iso)
   if (local === offsetMin) return null
   const d = new Date(iso)
-  return (
-    `Hinweis: ${formatOffset(offsetMin)} weicht von der Ortszeit am ` +
-    `${pad(d.getDate())}.${pad(d.getMonth() + 1)}. ab (${formatOffset(local)}) — ` +
-    `wird als ${localTime(d)} Ortszeit gespeichert.`
-  )
+  return {
+    offset: formatOffset(offsetMin),
+    day: locale === 'en' ? isoDay(d) : `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.`,
+    local: formatOffset(local),
+    time: localTime(d)
+  }
+}
+
+/**
+ * The values of the note; the wording is `mainDialog.mcp.offsetHint` in the
+ * locale files, filled in by the bridge (mcpBridgeCore), so this module stays
+ * free of UI text.
+ */
+export interface OffsetHintParts {
+  offset: string
+  day: string
+  local: string
+  time: string
 }
 
 /** For the tool descriptions: the zone the machine runs in, e.g. `Europe/Berlin`. */

@@ -29,13 +29,15 @@ import {
   formatLocalClock,
   formatLocalMoment,
   formatLocalSpan,
-  offsetHint,
+  offsetHintParts,
   parseZonedTimestamp,
   toLocalIso,
   zonedTimestampError
 } from '../shared/zonedTimestamp'
 import { roundDuration } from '../shared/duration'
 import { deserializeTags } from '../shared/tags'
+import type { Locale } from '../shared/i18n'
+import { dialogT, readLanguage, type DialogT } from './mainI18n'
 
 type Db = Database.Database
 
@@ -91,8 +93,11 @@ export interface BridgeCtx {
   controllerToken?: string | null
   /** Re-checked per request from the settings table. Absent ⇒ disabled. */
   isControllerEnabled?: () => boolean
-  /** Ask the user; encapsulates per-write/session/silent. Resolves to approval. */
-  confirm: (summary: string) => Promise<boolean>
+  /**
+   * Ask the user; encapsulates per-write/session/silent. Resolves to approval.
+   * `locale` is the language `summary` was written in; the dialog uses it too.
+   */
+  confirm: (summary: string, locale: Locale) => Promise<boolean>
   /** Make the one-per-session pre-write backup (idempotent). */
   ensureBackup: () => Promise<void>
   audit: (entry: McpAuditEntry) => void
@@ -133,10 +138,10 @@ function asProjectId(v: unknown, fallback: number | null): number | null {
 function zonedField(
   field: string,
   value: unknown
-): { iso: string; hint: string | null } | { error: string } {
+): { iso: string; offsetMin: number | null } | { error: string } {
   const r = parseZonedTimestamp(value)
   return r.ok
-    ? { iso: r.iso, hint: offsetHint(r.iso, r.offsetMin) }
+    ? { iso: r.iso, offsetMin: r.offsetMin }
     : { error: zonedTimestampError(field, value, r.reason) }
 }
 
@@ -146,14 +151,29 @@ function zonedField(
  * accepted but called out, usually summer time copied past the change.
  */
 type OffsetHints = Partial<Record<'started_at' | 'stopped_at', string>>
+type TimeField = keyof OffsetHints
 
-const FIELD_LABEL = { started_at: 'Start', stopped_at: 'Ende' } as const
+/** What the caller wrote for each time field, so the note can be worded twice. */
+type WrittenOffsets = Partial<Record<TimeField, { iso: string; offsetMin: number | null }>>
+
+/**
+ * The notes in one language: the reply to the MCP client always takes German
+ * (client API, #270), the dialog the app language.
+ */
+function offsetHints(written: WrittenOffsets, locale: Locale): OffsetHints {
+  const hints: OffsetHints = {}
+  for (const f of Object.keys(written) as TimeField[]) {
+    const w = written[f]
+    const parts = w ? offsetHintParts(w.iso, w.offsetMin, locale) : null
+    if (parts) hints[f] = dialogT(locale)('mainDialog.mcp.offsetHint', { ...parts })
+  }
+  return hints
+}
 
 /** The confirmation text with one line per offset note. */
-function withHints(summary: string, hints: OffsetHints): string {
-  const lines = (Object.keys(hints) as Array<keyof OffsetHints>).map(
-    (f) => `${FIELD_LABEL[f]}: ${hints[f]}`
-  )
+function withHints(say: Say, summary: string, written: WrittenOffsets): string {
+  const hints = offsetHints(written, say.locale)
+  const lines = (Object.keys(hints) as TimeField[]).map((f) => line(say, f, hints[f] as string))
   return lines.length ? `${summary}\n${lines.join('\n')}` : summary
 }
 
@@ -218,22 +238,50 @@ export function dialogText(v: string): string {
   return chars.length > DIALOG_TEXT_MAX ? chars.slice(0, DIALOG_TEXT_MAX - 1).join('') + '…' : flat
 }
 
-function showProject(name: string | null): string {
-  return name === null ? 'Kein Projekt' : dialogText(name)
+/** The dialog's language: its locale (for dates) and its text function. */
+interface Say {
+  locale: Locale
+  t: DialogT
 }
 
-function showTags(serialized: string): string {
+function sayFor(db: Db): Say {
+  const locale = readLanguage(db)
+  return { locale, t: dialogT(locale) }
+}
+
+function showProject(say: Say, name: string | null): string {
+  return name === null ? say.t('mainDialog.mcp.noProject') : dialogText(name)
+}
+
+function showTags(say: Say, serialized: string): string {
   const tags = deserializeTags(serialized)
-  return tags.length ? dialogText(tags.join(', ')) : '(leer)'
+  return tags.length ? dialogText(tags.join(', ')) : say.t('mainDialog.mcp.empty')
 }
 
-function showText(v: string): string {
-  return v === '' ? '(leer)' : `"${dialogText(v)}"`
+function showText(say: Say, v: string): string {
+  return v === '' ? say.t('mainDialog.mcp.empty') : `"${dialogText(v)}"`
 }
 
-function yesNo(billable: number): string {
-  return billable ? 'ja' : 'nein'
+function yesNo(say: Say, billable: number): string {
+  return say.t(billable ? 'mainDialog.mcp.yes' : 'mainDialog.mcp.no')
 }
+
+/** `Label: value`, the label in the dialog's language. */
+function line(say: Say, field: keyof typeof FIELD_KEY, value: string): string {
+  return `${say.t(FIELD_KEY[field])}: ${value}`
+}
+
+const FIELD_KEY = {
+  started_at: 'mainDialog.mcp.field.start',
+  stopped_at: 'mainDialog.mcp.field.end',
+  client: 'mainDialog.mcp.field.client',
+  project: 'mainDialog.mcp.field.project',
+  billable: 'mainDialog.mcp.field.billable',
+  description: 'mainDialog.mcp.field.description',
+  tags: 'mainDialog.mcp.field.tags',
+  reference: 'mainDialog.mcp.field.reference',
+  privateNote: 'mainDialog.mcp.field.privateNote'
+} as const
 
 /**
  * The stored "expose private notes" setting (Einstellungen → Integrationen),
@@ -282,16 +330,20 @@ interface Plan {
 }
 
 /** Build an executable plan for an op, or return an error string. */
-function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { error: string } {
+function planOp(
+  db: Db,
+  op: WriteOp,
+  args: Record<string, unknown>,
+  say: Say
+): Plan | { error: string } {
   switch (op) {
     case 'create_manual_entry': {
       const start = zonedField('started_at', args.started_at)
       if ('error' in start) return start
       const stop = zonedField('stopped_at', args.stopped_at)
       if ('error' in stop) return stop
-      const hints: OffsetHints = {}
-      if (start.hint) hints.started_at = start.hint
-      if (stop.hint) hints.stopped_at = stop.hint
+      const written: WrittenOffsets = { started_at: start, stopped_at: stop }
+      const hints = offsetHints(written, 'de')
       const input: CreateManualEntryInput = {
         client_id: Number(args.client_id),
         description: asString(args.description),
@@ -311,20 +363,27 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       const hasNote = (input.private_note ?? '') !== ''
       // Only what departs from an empty entry gets a line.
       const fieldLines: string[] = []
-      if (project !== null) fieldLines.push(`Projekt: ${showProject(project)}`)
-      if (!billable) fieldLines.push('abrechenbar: nein')
-      const textLines: string[] = [`Beschreibung: ${showText(input.description)}`]
-      if (input.tags) textLines.push(`Tags: ${showTags(input.tags)}`)
-      if (input.reference) textLines.push(`Referenz: ${showText(input.reference)}`)
-      if (hasNote) textLines.push(`interne Notiz: ${showText(input.private_note ?? '')}`)
+      if (project !== null) fieldLines.push(line(say, 'project', showProject(say, project)))
+      if (!billable) fieldLines.push(line(say, 'billable', yesNo(say, 0)))
+      const textLines: string[] = [line(say, 'description', showText(say, input.description))]
+      if (input.tags) textLines.push(line(say, 'tags', showTags(say, input.tags)))
+      if (input.reference) textLines.push(line(say, 'reference', showText(say, input.reference)))
+      if (hasNote) {
+        textLines.push(line(say, 'privateNote', showText(say, input.private_note ?? '')))
+      }
       return {
         summary: withHints(
+          say,
           dialogSummary(
-            `Eintrag nachtragen — Kunde ${dialogText(client)}, ${formatLocalSpan(input.started_at, input.stopped_at)} (${durationMin(input.started_at, input.stopped_at)} min)`,
+            say.t('mainDialog.mcp.create', {
+              client: dialogText(client),
+              span: formatLocalSpan(input.started_at, input.stopped_at, say.locale),
+              minutes: durationMin(input.started_at, input.stopped_at)
+            }),
             fieldLines,
             textLines
           ),
-          hints
+          written
         ),
         preview: {
           action: 'create_manual_entry',
@@ -372,21 +431,22 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
       // Only the time fields the caller actually passed are checked; an update
       // without them keeps the stored values and is not affected by the rule.
-      const hints: OffsetHints = {}
+      const written: WrittenOffsets = {}
       let startedAt = existing.started_at
       if (args.started_at !== undefined) {
         const r = zonedField('started_at', args.started_at)
         if ('error' in r) return r
         startedAt = r.iso
-        if (r.hint) hints.started_at = r.hint
+        written.started_at = r
       }
       let stoppedAt = existing.stopped_at ?? ''
       if (args.stopped_at !== undefined) {
         const r = zonedField('stopped_at', args.stopped_at)
         if ('error' in r) return r
         stoppedAt = r.iso
-        if (r.hint) hints.stopped_at = r.hint
+        written.stopped_at = r
       }
+      const hints = offsetHints(written, 'de')
       const input: UpdateEntryInput = {
         id,
         client_id: args.client_id === undefined ? existing.client_id : Number(args.client_id),
@@ -424,7 +484,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       if (input.client_id !== existing.client_id) {
         const before = clientName(db, existing.client_id)
         const after = clientName(db, input.client_id)
-        fieldLines.push(`Kunde: ${dialogText(before)} → ${dialogText(after)}`)
+        fieldLines.push(line(say, 'client', `${dialogText(before)} → ${dialogText(after)}`))
         changes.client_id = {
           before: { id: existing.client_id, name: before },
           after: { id: input.client_id, name: after }
@@ -435,7 +495,9 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       if (projectAfter !== projectBefore) {
         const before = projectName(db, projectBefore)
         const after = projectName(db, projectAfter)
-        fieldLines.push(`Projekt: ${showProject(before)} → ${showProject(after)}`)
+        fieldLines.push(
+          line(say, 'project', `${showProject(say, before)} → ${showProject(say, after)}`)
+        )
         changes.project_id = {
           before: projectBefore === null ? null : { id: projectBefore, name: before },
           after: projectAfter === null ? null : { id: projectAfter, name: after }
@@ -443,26 +505,40 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
       const billableAfter = input.billable ?? 1
       if (billableAfter !== existing.billable) {
-        fieldLines.push(`abrechenbar: ${yesNo(existing.billable)} → ${yesNo(billableAfter)}`)
+        fieldLines.push(
+          line(say, 'billable', `${yesNo(say, existing.billable)} → ${yesNo(say, billableAfter)}`)
+        )
         changes.billable = { before: existing.billable === 1, after: billableAfter === 1 }
       }
       if (input.description !== existing.description) {
         textLines.push(
-          `Beschreibung: ${showText(existing.description)} → ${showText(input.description)}`
+          line(
+            say,
+            'description',
+            `${showText(say, existing.description)} → ${showText(say, input.description)}`
+          )
         )
         changes.description = { before: existing.description, after: input.description }
       } else {
         // Unchanged, but it names the entry the owner is asked about.
-        textLines.push(`Beschreibung: ${showText(input.description)}`)
+        textLines.push(line(say, 'description', showText(say, input.description)))
       }
       const tagsAfter = input.tags ?? ''
       if (tagsAfter !== existing.tags) {
-        textLines.push(`Tags: ${showTags(existing.tags)} → ${showTags(tagsAfter)}`)
+        textLines.push(
+          line(say, 'tags', `${showTags(say, existing.tags)} → ${showTags(say, tagsAfter)}`)
+        )
         changes.tags = { before: existing.tags, after: tagsAfter }
       }
       const referenceAfter = input.reference ?? ''
       if (referenceAfter !== existing.reference) {
-        textLines.push(`Referenz: ${showText(existing.reference)} → ${showText(referenceAfter)}`)
+        textLines.push(
+          line(
+            say,
+            'reference',
+            `${showText(say, existing.reference)} → ${showText(say, referenceAfter)}`
+          )
+        )
         changes.reference = { before: existing.reference, after: referenceAfter }
       }
       const noteBefore = existing.private_note ?? ''
@@ -470,20 +546,26 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       if (noteAfter !== noteBefore) {
         // The dialog is local to the owner and shows the text. The preview
         // goes to the MCP client and follows the read-side privacy setting.
-        textLines.push(`interne Notiz: ${showText(noteBefore)} → ${showText(noteAfter)}`)
+        textLines.push(
+          line(say, 'privateNote', `${showText(say, noteBefore)} → ${showText(say, noteAfter)}`)
+        )
         changes.private_note = exposePrivateNotes(db)
           ? { before: noteBefore, after: noteAfter }
           : { changed: true as const }
       }
       return {
         summary: withHints(
+          say,
           dialogSummary(
-            `Eintrag #${id} ändern — vorher ${formatLocalSpan(existing.started_at, existing.stopped_at)}, ` +
-              `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}`,
+            say.t('mainDialog.mcp.update', {
+              id,
+              before: formatLocalSpan(existing.started_at, existing.stopped_at, say.locale),
+              after: formatLocalSpan(input.started_at, input.stopped_at, say.locale)
+            }),
             fieldLines,
             textLines
           ),
-          hints
+          written
         ),
         preview: {
           action: 'update_entry_fields',
@@ -529,14 +611,15 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       // Absent (or empty) means "now", as before; a given start must be zoned.
       let startedAt = new Date().toISOString()
       let given = false
-      const hints: OffsetHints = {}
+      const written: WrittenOffsets = {}
       if (args.started_at !== undefined && args.started_at !== '') {
         const r = zonedField('started_at', args.started_at)
         if ('error' in r) return r
         startedAt = r.iso
         given = true
-        if (r.hint) hints.started_at = r.hint
+        written.started_at = r
       }
+      const hints = offsetHints(written, 'de')
       const input: CreateEntryInput = {
         client_id: Number(args.client_id),
         description: asString(args.description),
@@ -575,19 +658,32 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
         running &&
         new Date(running.started_at).toDateString() === new Date(input.started_at).toDateString()
       const ends = running
-        ? `; beendet #${running.id} (${dialogText(running.client_name)}) um ${
-            sameDay ? formatLocalClock(input.started_at) : formatLocalMoment(input.started_at)
-          }`
+        ? say.t('mainDialog.mcp.startEnds', {
+            id: running.id,
+            client: dialogText(running.client_name),
+            time: sameDay
+              ? formatLocalClock(input.started_at)
+              : formatLocalMoment(input.started_at, say.locale)
+          })
         : ''
       let stopped: Entry | null = null
       return {
         summary: withHints(
+          say,
           dialogSummary(
-            `Timer starten — Kunde ${dialogText(clientName(db, input.client_id))}, ${given ? `ab ${formatLocalMoment(input.started_at)}` : 'ab jetzt'}${ends}`,
+            say.t('mainDialog.mcp.start', {
+              client: dialogText(clientName(db, input.client_id)),
+              from: given
+                ? say.t('mainDialog.mcp.startFrom', {
+                    moment: formatLocalMoment(input.started_at, say.locale)
+                  })
+                : say.t('mainDialog.mcp.startNow'),
+              ends
+            }),
             [],
-            [`Beschreibung: ${showText(input.description)}`]
+            [line(say, 'description', showText(say, input.description))]
           ),
-          hints
+          written
         ),
         preview: {
           action: 'start_timer',
@@ -653,8 +749,8 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
         .get() as { id: number; client_id: number } | undefined
       return {
         summary: running
-          ? `Laufenden Timer stoppen (Eintrag #${running.id})`
-          : 'Laufenden Timer stoppen (keiner aktiv)',
+          ? say.t('mainDialog.mcp.stop', { id: running.id })
+          : say.t('mainDialog.mcp.stopNone'),
         preview: { action: 'stop_running_timer', running: running ?? null },
         run: () => stopRunningTimer(db),
         audit: (r) => ({ op, id: r?.id ?? null, client_id: r?.client_id ?? null })
@@ -863,14 +959,17 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
     return err('not_allowed', `Operation nicht erlaubt: ${req.op}`)
   }
 
-  const plan = planOp(ctx.db, req.op as WriteOp, req.args ?? {})
+  // One language for the whole request: the summary and the dialog around it
+  // (title, buttons) must not disagree (#270).
+  const say = sayFor(ctx.db)
+  const plan = planOp(ctx.db, req.op as WriteOp, req.args ?? {}, say)
   if ('error' in plan) return err('invalid', plan.error)
 
   if (req.preview) {
     return { ok: true, data: { preview: true, ...plan.preview } }
   }
 
-  const approved = await ctx.confirm(plan.summary)
+  const approved = await ctx.confirm(plan.summary, say.locale)
   if (!approved) return err('confirm_declined', 'Änderung wurde in TimeTrack abgelehnt')
 
   await ctx.ensureBackup()
