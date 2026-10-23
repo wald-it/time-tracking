@@ -215,6 +215,8 @@ describe('smoke userData isolation', () => {
   })
 
   it('cleaner waits for the given process to exit, then removes the directory', async () => {
+    // Named by SMOKE_DIR_PREFIX, as in the app: should the cleaner's own
+    // prefix check ever differ from it, it answers 'skipped' and this fails (#289).
     const dir = createSmokeUserDataDir(root)
     writeFileSync(join(dir, 'timetrack.sqlite'), 'x')
     // Stand-in for the smoke process: lives ~1.5 s and leaves a marker (outside

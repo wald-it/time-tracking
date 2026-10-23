@@ -145,7 +145,7 @@ const tick = () => {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch { outcome = 'failed' }
   process.stdout.write(outcome + '\\n')
 }
-if (!dir || !basename(dir).startsWith('timetrack-smoke-')) process.stdout.write('skipped\\n')
+if (!dir || !basename(dir).startsWith(${JSON.stringify(SMOKE_DIR_PREFIX)})) process.stdout.write('skipped\\n')
 else tick()
 `
 
