@@ -117,38 +117,37 @@ describe('buildJsonExportPayload', () => {
       expect(settingValue(payload, 'ical_feed_enabled')).toBeDefined()
     })
 
-    it('keeps webhook targets but drops each secret', () => {
-      const targets = [
-        {
-          id: 'a',
-          url: 'https://example.com/hook',
-          secret: 'hmac-secret-one',
-          events: ['timer.started'],
-          enabled: true
-        },
-        { id: 'b', url: 'https://example.org/x', secret: '', events: [], enabled: false }
-      ]
-      setSetting('webhook_targets', JSON.stringify(targets))
-      const payload = buildJsonExportPayload(db, '1.3.0')
-      const exported = JSON.parse(settingValue(payload, 'webhook_targets')!) as Array<
-        Record<string, unknown>
-      >
-      expect(exported).toHaveLength(2)
-      expect(exported[0]).toEqual({
-        id: 'a',
-        url: 'https://example.com/hook',
-        events: ['timer.started'],
-        enabled: true
-      })
-      expect(exported.every((t) => !('secret' in t))).toBe(true)
-      expect(JSON.stringify(payload)).not.toContain('hmac-secret-one')
-    })
-
-    it('leaves out a webhook blob that is not valid JSON', () => {
-      setSetting('webhook_targets', '[{"secret":"hmac-secret-two", broken')
+    // Owner review #254: the URL of a chat webhook carries its token.
+    it('leaves out the webhook targets as a whole, URL included', () => {
+      const slack = 'https://hooks.slack.com/services/T000/B000/XXXXSECRETXXXX'
+      setSetting(
+        'webhook_targets',
+        JSON.stringify([
+          {
+            id: 'a',
+            url: slack,
+            secret: 'hmac-secret-one',
+            events: ['timer.started'],
+            enabled: true
+          }
+        ])
+      )
       const payload = buildJsonExportPayload(db, '1.3.0')
       expect(settingValue(payload, 'webhook_targets')).toBeUndefined()
-      expect(JSON.stringify(payload)).not.toContain('hmac-secret-two')
+      const json = JSON.stringify(payload)
+      expect(json).not.toContain('hooks.slack.com')
+      expect(json).not.toContain('XXXXSECRETXXXX')
+      expect(json).not.toContain('hmac-secret-one')
+    })
+
+    it('leaves out any key that names a token, secret or password', () => {
+      setSetting('future_api_token', 'tok-1')
+      setSetting('smtp_Password', 'pw-2')
+      setSetting('graph_client_secret', 'sec-3')
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      const json = JSON.stringify(payload)
+      for (const v of ['tok-1', 'pw-2', 'sec-3']) expect(json).not.toContain(v)
+      expect(payload.settings.some((s) => /token|secret|password/i.test(s.key))).toBe(false)
     })
 
     it('keeps the other settings unchanged', () => {
