@@ -85,7 +85,8 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
     const db = new DatabaseImpl(':memory:')
     seed(db)
     // Local noon today: no entry crosses midnight, which updateManualEntry
-    // would split into two rows. The clock is pinned to it after setup.
+    // (the stopped work entry) and createManualEntry (the pause) would each
+    // split into two rows. The clock is pinned to it after setup.
     const today = new Date()
     const NOW = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0)
     const startedAt = new Date(NOW.getTime() - 2 * 60 * 60_000).toISOString()
