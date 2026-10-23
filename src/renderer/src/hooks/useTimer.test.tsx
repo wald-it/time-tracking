@@ -790,12 +790,19 @@ describe('useTimer — idle transitions', () => {
       await hook.result.current.idleStopAtIdle()
     })
 
+    // The whole entry travels along: entries:update re-inserts the row and
+    // defaults every field it is not given (#313).
     expect(api.update).toHaveBeenCalledWith({
       id: entry.id,
       client_id: entry.client_id,
+      project_id: entry.project_id ?? null,
       description: entry.description,
       started_at: entry.started_at,
-      stopped_at: IDLE.idleSince
+      stopped_at: IDLE.idleSince,
+      billable: entry.billable,
+      tags: entry.tags,
+      reference: entry.reference,
+      private_note: entry.private_note
     })
     expect(hook.result.current.runningEntry).toBeNull()
     expect(hook.result.current.idleEvent).toBeNull()

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import type { Client, Entry, IpcResult } from '../../../shared/types'
+import type { Client, Entry, IpcResult, UpdateEntryInput } from '../../../shared/types'
 import { useTimerStore } from '../store/timerStore'
 import { useClientsStore } from '../store/clientsStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
@@ -66,6 +66,30 @@ async function withLoading<T>(call: () => Promise<IpcResult<T>>): Promise<IpcRes
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   } finally {
     useTimerStore.getState().setIsLoading(false)
+  }
+}
+
+/**
+ * The entries:update input that stops `entry` at `stoppedAt` and changes
+ * nothing else. entries:update re-inserts the row and defaults every field it
+ * is not given, so all of them travel along: without them the idle prompt
+ * dropped the project, made a non-billable entry billable and cleared tags,
+ * reference and note (#313; the same rule as QuickNoteModal). The store's
+ * running entry is current: a running entry cannot be edited (MCP
+ * update_entry_fields refuses it, the app edits stopped entries only).
+ */
+function stopAtInput(entry: Entry, stoppedAt: string): UpdateEntryInput {
+  return {
+    id: entry.id,
+    client_id: entry.client_id,
+    project_id: entry.project_id ?? null,
+    description: entry.description,
+    started_at: entry.started_at,
+    stopped_at: stoppedAt,
+    billable: entry.billable,
+    tags: entry.tags,
+    reference: entry.reference,
+    private_note: entry.private_note
   }
 }
 
@@ -376,13 +400,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     setIsLoading(true)
     let res: IpcResult<Entry>
     try {
-      res = await window.api.entries.update({
-        id: entry.id,
-        client_id: entry.client_id,
-        description: entry.description,
-        started_at: entry.started_at,
-        stopped_at: ev.idleSince
-      })
+      res = await window.api.entries.update(stopAtInput(entry, ev.idleSince))
     } finally {
       setIsLoading(false)
     }
@@ -406,13 +424,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     // rejection still reaches the caller, but never leaves it set.
     try {
       // 1. Stop the running entry at idleSince
-      const stopRes = await window.api.entries.update({
-        id: entry.id,
-        client_id: entry.client_id,
-        description: entry.description,
-        started_at: entry.started_at,
-        stopped_at: ev.idleSince
-      })
+      const stopRes = await window.api.entries.update(stopAtInput(entry, ev.idleSince))
       if (stopRes.ok) {
         // 2. Book the pause from idleSince to now in one step, closed and not
         // billable: it is time not worked and must stay off the client's
