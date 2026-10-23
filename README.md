@@ -86,14 +86,14 @@ pnpm build:win
 > **Why `pnpm test` and not `vitest`:** the tests run in the runtime the app
 > ships. `pnpm test` starts Vitest via `scripts/run-vitest.mjs` on the Electron
 > binary in Node mode (`ELECTRON_RUN_AS_NODE=1`), so the suite runs on
-> Electron's own Node, not on whichever Node is installed — the same launch
-> path as the MCP server, see below.
+> Electron's own Node, not on whichever Node is installed. The MCP server uses
+> the same launch path (see below).
 >
 > Calling `pnpm exec vitest run` **directly** fails on purpose, with a hint
 > pointing to `pnpm test` (`vitest.config.ts` refuses to load outside Electron).
 > `better-sqlite3` is an N-API module with prebuilt binaries since
 > [#269](https://github.com/wald-it/time-tracking/issues/269), so there is no
-> native rebuild step anywhere — neither on install nor before the tests.
+> native rebuild step, neither on install nor before the tests.
 
 ## MCP Integration
 

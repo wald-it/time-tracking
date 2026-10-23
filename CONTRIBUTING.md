@@ -56,7 +56,7 @@ up or delete them during development.
 
 `pnpm test` starts Vitest via `scripts/run-vitest.mjs` on the Electron binary
 in Node mode (`ELECTRON_RUN_AS_NODE=1`), so the suite runs on the Node version
-the app ships — the same launch path as the MCP server
+the app ships. The MCP server uses the same launch path
 (`src/main/mcpLaunch.ts`). Calling Vitest directly (`pnpm exec vitest`, an IDE
 runner on the system Node) fails on purpose: `vitest.config.ts` refuses to load
 outside Electron, with a hint to use `pnpm test`.
@@ -67,7 +67,7 @@ prebuilt binaries under `node_modules/better-sqlite3/prebuilds/` that load
 under Node and Electron alike, so **nothing is compiled**: there is no
 `postinstall` rebuild, no `electron-rebuild` step in CI, and pnpm is told not
 to build the package (`pnpm.ignoredBuiltDependencies` in `package.json`). Please
-do not add a rebuild back — none is needed, and on a machine without Visual
+do not add a rebuild back: none is needed, and on a machine without Visual
 Studio (Windows) or Xcode (macOS) it makes `pnpm install` fail.
 
 A green run is **0 skipped** across all Vitest projects. If you see a
