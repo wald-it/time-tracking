@@ -23,6 +23,7 @@ import type Database from 'better-sqlite3'
 import { formatIcal } from '../shared/ical'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
+import { dialogT, readLanguage } from './mainI18n'
 
 export interface IcalRequest {
   clientId: number
@@ -85,7 +86,7 @@ export async function handleIcalExport(
     }
 
     const result = await dialog.showSaveDialog({
-      title: 'iCal speichern',
+      title: dialogT(readLanguage(db))('mainDialog.ical.title'),
       defaultPath: `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.ics`,
       filters: [{ name: 'iCalendar', extensions: ['ics'] }]
     })

@@ -234,6 +234,23 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     expect(ended).toEqual({ stopped_at: '2025-10-28T09:00:00.000Z' })
   })
 
+  it('stop_running_timer: the dialog names the entry, or that none runs', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer', args: {} })
+    await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer', args: {} })
+    expect(asked.slice(1)).toEqual([
+      `Laufenden Timer stoppen (Eintrag #${id})`,
+      'Laufenden Timer stoppen (keiner aktiv)'
+    ])
+  })
+
   it('start_timer more than a minute ahead is refused before any dialog', async () => {
     const { ctx, asked } = recording()
     await handleRequest(ctx, {
@@ -514,6 +531,110 @@ Beschreibung: "Workshop"
         'Eintrag nachtragen — Kunde Acme, Di 28.10.2025 09:00–12:00 (180 min)\n' +
           `Projekt: Rollout\nabrechenbar: nein\nBeschreibung: "Workshop"\nTags: bug\nReferenz: "PO-9"\ninterne Notiz: "${NOTE}"`
       )
+    })
+  })
+
+  // #270: the dialog follows the app language. Same lines, same order, same
+  // cleaning; only the words and the date change. The reply to the MCP client
+  // (preview, zeit_hinweise, errors) stays German: it is client API.
+  describe('with the app set to English', () => {
+    beforeEach(() => {
+      db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+    })
+
+    it('create: header, field lines and offset note in English; the reply keeps the German note', async () => {
+      const { ctx, asked } = recording()
+      const res = await handleRequest(ctx, {
+        ...create('2025-10-28T09:00:00+02:00', '2025-10-28T12:00:00+01:00'),
+        args: {
+          client_id: 1,
+          project_id: 10,
+          billable: false,
+          tags: ',bug,',
+          reference: 'PO-9',
+          private_note: 'n',
+          description: '',
+          started_at: '2025-10-28T09:00:00+02:00',
+          stopped_at: '2025-10-28T12:00:00+01:00'
+        }
+      })
+      expect(asked[0]).toBe(
+        'Add entry — client Acme, Tue 2025-10-28 08:00–12:00 (240 min)\n' +
+          'Project: Rollout\nbillable: no\nDescription: (empty)\nTags: bug\nReference: "PO-9"\n' +
+          'private note: "n"\n' +
+          'Start: Note: +02:00 is not the local offset on 2025-10-28 (+01:00). Saved as 08:00 local time.'
+      )
+      expect(res.ok).toBe(true)
+      if (res.ok) expect(res.data).toMatchObject({ zeit_hinweise: { started_at: HINT } })
+    })
+
+    it('update: before → after lines in English', async () => {
+      const { ctx, asked } = recording()
+      await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
+      const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+      await handleRequest(ctx, {
+        v: 1,
+        token: 'secret',
+        op: 'update_entry_fields',
+        args: { id, client_id: 2, project_id: 20, billable: false, description: 'Review' }
+      })
+      expect(asked[1]).toBe(
+        `Change entry #${id} — before Tue 2025-10-28 09:00–12:00, after Tue 2025-10-28 09:00–12:00\n` +
+          'Client: Acme → Beta\nProject: No project → Audit\nbillable: yes → no\n' +
+          'Description: "Workshop" → "Review"'
+      )
+    })
+
+    it('start_timer and stop_running_timer in English', async () => {
+      const { ctx, asked } = recording()
+      await handleRequest(ctx, {
+        v: 1,
+        token: 'secret',
+        op: 'start_timer',
+        args: { client_id: 1, description: 'Call', started_at: '2025-10-27T17:00:00+01:00' }
+      })
+      await handleRequest(ctx, {
+        v: 1,
+        token: 'secret',
+        op: 'start_timer',
+        args: { client_id: 2, started_at: '2025-10-28T09:00:00+01:00' }
+      })
+      await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer', args: {} })
+      await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer', args: {} })
+      const second = db.prepare(`SELECT MIN(id) AS id FROM entries`).get() as { id: number }
+      expect(asked[0]).toBe(
+        'Start timer — client Acme, from Mon 2025-10-27 17:00\nDescription: "Call"'
+      )
+      expect(asked[1]).toBe(
+        `Start timer — client Beta, from Tue 2025-10-28 09:00; ends #${second.id} (Acme) at Tue 2025-10-28 09:00\n` +
+          'Description: (empty)'
+      )
+      expect(asked[2]).toMatch(/^Stop the running timer \(entry #\d+\)$/)
+      expect(asked[3]).toBe('Stop the running timer (none running)')
+    })
+
+    it('the dialog gets the language its summary was written in', async () => {
+      const { ctx } = makeCtx(db)
+      const locales: string[] = []
+      ctx.confirm = async (_summary, locale) => {
+        locales.push(locale)
+        return false
+      }
+      await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
+      db.prepare(`UPDATE settings SET value = 'de' WHERE key = 'language'`).run()
+      await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
+      expect(locales).toEqual(['en', 'de'])
+    })
+
+    it('errors to the MCP client stay German', async () => {
+      const { ctx } = recording()
+      const res = await handleRequest(ctx, {
+        v: 1,
+        token: 'secret',
+        op: 'update_entry_fields',
+        args: { id: 999 }
+      })
+      expect(res).toMatchObject({ ok: false, error: 'Eintrag existiert nicht' })
     })
   })
 
