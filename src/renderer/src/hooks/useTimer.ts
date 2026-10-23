@@ -189,7 +189,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     async (
       clientId: number,
       projectId: number | null,
-      description: string,
+      newDescription: string,
       onSwitched?: () => void
     ) => {
       // A double click would switch twice: the second call still sees the old
@@ -199,7 +199,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       const res = await window.api.entries.switch({
         client_id: clientId,
         project_id: projectId,
-        description,
+        description: newDescription,
         started_at: new Date().toISOString()
       })
       setIsLoading(false)
