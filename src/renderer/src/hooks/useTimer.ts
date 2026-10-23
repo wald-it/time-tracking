@@ -53,7 +53,8 @@ async function pushTrayUpdate(running: boolean, label: string): Promise<void> {
 /**
  * Run one timer IPC call with `isLoading` set, and clear it whatever happens.
  * A call that rejects (no answer from main) comes back as a failed result,
- * so callers report it like a refusal. Before, a rejection left `isLoading`
+ * so callers report it like a refusal — used where the caller shows the
+ * error (start, switch); the others clear the flag with try/finally. Before, a rejection left `isLoading`
  * set for good: the start dialog's start key stayed disabled and the switch
  * path ignored every later call until the window was reloaded.
  */
@@ -285,7 +286,15 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   const stop = useCallback(async () => {
     if (!runningEntry) return
     const wasEmpty = runningEntry.description.trim() === ''
-    const res = await withLoading(() => window.api.entries.stop(runningEntry.id))
+    // Not withLoading: nothing reports a failed stop yet, so a rejection
+    // still reaches the caller as before; only the flag must not stick.
+    setIsLoading(true)
+    let res: IpcResult<Entry>
+    try {
+      res = await window.api.entries.stop(runningEntry.id)
+    } finally {
+      setIsLoading(false)
+    }
     if (res.ok) {
       setRunningEntry(null)
       setDescription('')
@@ -362,15 +371,21 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       dismissIdle()
       return
     }
-    const res = await withLoading(() =>
-      window.api.entries.update({
+    // Not withLoading: a rejection must keep the idle prompt open (it reaches
+    // the caller before dismissIdle below), as it always did.
+    setIsLoading(true)
+    let res: IpcResult<Entry>
+    try {
+      res = await window.api.entries.update({
         id: entry.id,
         client_id: entry.client_id,
         description: entry.description,
         started_at: entry.started_at,
         stopped_at: ev.idleSince
       })
-    )
+    } finally {
+      setIsLoading(false)
+    }
     if (res.ok) {
       setRunningEntry(null)
       setDescription('')
