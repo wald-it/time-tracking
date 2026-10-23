@@ -55,11 +55,11 @@ beforeEach(async () => {
   registerIpcHandlers({
     refreshTrayClients: noop,
     refreshTrayLanguage: noop,
-    setHotkey: () => true,
+    setHotkey: () => ({ ok: true }),
     setAutoStart: noop,
     setIdleThreshold: noop,
     setMiniEnabled: noop,
-    setMiniHotkey: () => true,
+    setMiniHotkey: () => ({ ok: true }),
     setMcpWriteEnabled: noop,
     setControllerEnabled: noop,
     pokePresence: noop,
