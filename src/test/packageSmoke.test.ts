@@ -28,9 +28,10 @@ const tools = process.env.FAKE_TOOLS.split(',')
 process.stderr.write('[fake] up\\n')
 if (mode === 'orphan') {
   // Dies at start but leaves a descendant holding its stdout and stderr, the
-  // way a helper process of a packaged app can. It outlives the probe's own
-  // deadline, so only a probe that lets go of the pipes ends in time.
-  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 45000)'], {
+  // way a helper process of a packaged app can. It outlives the test's limit
+  // for the whole probe run (PROBE_LIMIT_MS), so only a probe that lets go of
+  // the pipes ends before that limit kills it.
+  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 150000)'], {
     stdio: ['ignore', 'inherit', 'inherit']
   })
   process.exit(1)
@@ -159,10 +160,10 @@ describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => 
   // (measured 2026-10-23: 18 ms with the descendant alive), so this test is
   // green there with or without the pipe release; it guards on the macOS job.
   it('ends when the server is gone even if a descendant keeps its pipes open', () => {
-    const started = Date.now()
     const r = probe('orphan', TOOLS)
-    // 45 s is how long the descendant lives; the probe must not wait for it.
-    expect(Date.now() - started).toBeLessThan(40_000)
+    // A probe that waited for the descendant (150 s) would be killed by the
+    // PROBE_LIMIT_MS timeout: status null and none of its own output. No
+    // stopwatch here — under load a correct run can take many seconds.
     expect(r.status).toBe(1)
     expect(r.output).toContain('before answering initialize')
   })
