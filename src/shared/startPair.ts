@@ -1,7 +1,8 @@
 /**
  * The client + project a start without a selection uses (#297) — the global
  * hotkey and the mini widget's play key — and the START dialog's prefill (B6).
- * One rule for both, so the three ways to start a timer agree.
+ * One rule for those three, so they agree. The quick-start keys on Heute are
+ * per client and pick a project their own way (readTopClients30d).
  *
  * Main feeds it from the database, the renderer from the dashboard summary
  * and its project list; only the data sources differ.

@@ -105,7 +105,28 @@ const globalQuickStartRef: { current: (clientId: number, projectId?: number | nu
 }
 const globalStopRef: { current: () => void } = { current: () => {} }
 const globalResyncRef: { current: () => void } = { current: () => {} }
+const globalStartRef: { current: () => Promise<string | null> } = {
+  current: async () => null
+}
 let listenersInstalled = false
+// One start() at a time: the selection-less start awaits the last pair before
+// it knows whether a timer runs, and a second press meanwhile would take the
+// switch path and leave the first entry with zero length (#297).
+let startPending = false
+
+/**
+ * #297: main sends `timer:open-start` when the start hotkey or the mini
+ * widget's play key finds nothing to start in the database, after bringing
+ * the window forward. Main does not know the renderer's selection, so the
+ * answer is the same start path: a valid selection starts, else the last
+ * pair, else the START dialog opens — in a window that is visible now.
+ * Nothing happens if a timer runs by then: a window-forward event must not
+ * switch away from it.
+ */
+export async function handleOpenStart(): Promise<void> {
+  if (useTimerStore.getState().runningEntry) return
+  await globalStartRef.current()
+}
 
 function installGlobalListenersOnce(
   setIdleEvent: (e: { idleSince: string; idleSeconds: number } | null) => void
@@ -274,47 +295,58 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   )
 
   const start = useCallback(async (): Promise<string | null> => {
-    // Resolve which client to start. If the user hasn't picked one (the
-    // hotkey or the mini widget's play key, from anywhere), start what the
-    // START dialog offers: the last entry's client and project (#297; it used
-    // to be the first active client, a client the user may not work for).
-    // Client and project are set together, so no stale project of another
-    // client travels along. Without such a pair the dialog opens instead.
-    let clientId = selectedClientId
-    if (!clientId) {
-      const pair = await readLastStartPair()
-      if (!pair) {
-        void useStartTimerModalStore.getState().openStart()
-        return null
+    if (startPending) return null
+    startPending = true
+    try {
+      // Resolve which client to start. If the user hasn't picked one (the
+      // hotkey or the mini widget's play key, from anywhere), start what the
+      // START dialog offers: the last entry's client and project (#297; it
+      // used to be the first active client, a client the user may not work
+      // for). Client and project are set together, so no stale project of
+      // another client travels along. Without such a pair the dialog opens.
+      // A selection of a client archived since counts as none: the selector
+      // lists active clients only, so the user cannot see it.
+      let clientId = clients.some((c) => c.id === selectedClientId && c.active === 1)
+        ? selectedClientId
+        : null
+      if (!clientId) {
+        const pair = await readLastStartPair()
+        if (!pair) {
+          void useStartTimerModalStore.getState().openStart()
+          return null
+        }
+        clientId = pair.clientId
+        setSelectedClientId(clientId)
+        useTimerStore.getState().setSelectedProjectId(pair.projectId)
       }
-      clientId = pair.clientId
-      setSelectedClientId(clientId)
-      useTimerStore.getState().setSelectedProjectId(pair.projectId)
+      const projectId = useTimerStore.getState().selectedProjectId
+      // A timer already runs (the start dialog was open while one started
+      // elsewhere): take the same switch path as a quick-start key (owner
+      // decision for 1.22) — one instant in the main process, the quick-note
+      // prompt for the stopped entry if it had no description, and an open
+      // prompt is NOT dismissed.
+      if (useTimerStore.getState().runningEntry) {
+        return await switchToEntry(clientId, projectId ?? null, description)
+      }
+      const startClientId = clientId
+      const res = await withLoading(() =>
+        window.api.entries.start({
+          client_id: startClientId,
+          project_id: projectId ?? undefined,
+          description,
+          started_at: new Date().toISOString()
+        })
+      )
+      if (!res.ok) return res.error
+      setRunningEntry(res.data)
+      // Dismiss quicknote modal if user starts a new timer before answering
+      if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
+      const clientName = clients.find((c) => c.id === startClientId)?.name ?? ''
+      await pushTrayUpdate(true, clientName)
+      return null
+    } finally {
+      startPending = false
     }
-    const projectId = useTimerStore.getState().selectedProjectId
-    // A timer already runs (the start dialog was open while one started
-    // elsewhere): take the same switch path as a quick-start key (owner
-    // decision for 1.22) — one instant in the main process, the quick-note
-    // prompt for the stopped entry if it had no description, and an open
-    // prompt is NOT dismissed.
-    if (useTimerStore.getState().runningEntry) {
-      return switchToEntry(clientId, projectId ?? null, description)
-    }
-    const res = await withLoading(() =>
-      window.api.entries.start({
-        client_id: clientId,
-        project_id: projectId ?? undefined,
-        description,
-        started_at: new Date().toISOString()
-      })
-    )
-    if (!res.ok) return res.error
-    setRunningEntry(res.data)
-    // Dismiss quicknote modal if user starts a new timer before answering
-    if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
-    const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
-    await pushTrayUpdate(true, clientName)
-    return null
   }, [selectedClientId, description, clients, switchToEntry])
 
   const stop = useCallback(async () => {
@@ -491,6 +523,8 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   // Keep refs current so listeners always call the latest fn
   // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)
   globalToggleRef.current = runningEntry ? stop : start
+  // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)
+  globalStartRef.current = start
   // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)
   globalQuickStartRef.current = startWithClient
   // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)

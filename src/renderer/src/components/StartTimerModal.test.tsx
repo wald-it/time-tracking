@@ -313,6 +313,30 @@ describe('StartTimerModal — a refused start or switch', () => {
   })
 })
 
+// #297 review: a selection left from a client archived since is not in the
+// client list, so it must not be startable with Enter.
+describe('StartTimerModal — a selected archived client (#297)', () => {
+  it('cannot be started', async () => {
+    setup()
+    const archived: Client = {
+      id: 9,
+      name: 'Alt',
+      color: '#999999',
+      active: 0,
+      rate_cent: 0,
+      created_at: ''
+    }
+    useTimerStore.setState({ clients: [...CLIENTS, archived], selectedClientId: 9 })
+    render(
+      <I18nProvider>
+        <StartTimerModal open onClose={() => {}} />
+      </I18nProvider>
+    )
+    const startKey = await screen.findByRole('button', { name: 'Timer starten' })
+    expect((startKey as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
 // #297: the dialog's prefill comes from the shared "last pair" rule. When the
 // last entry's project is archived, the rule leaves it out — and the dialog
 // must then behave as if the user had just picked the client: its single

@@ -8,7 +8,7 @@ type Db = Database.Database
  * lastStartPair fed from the database: the newest entry (the same query as
  * `dashboard:summary`'s recentEntries), all clients and that client's
  * projects. The renderer feeds the same rule from the summary
- * (startTimerModalStore.readLastStartPair); startPairAgreement.test.tsx
+ * (startTimerModalStore.readLastStartPair); startPairAgreement.test.ts
  * checks that both feeds give the same pair.
  */
 export function readStartPair(db: Db): StartPair | null {

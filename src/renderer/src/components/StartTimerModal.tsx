@@ -103,7 +103,9 @@ export function StartTimerModal({
   const activeClients = clients.filter((c) => c.active)
   const selectedClient = clients.find((c) => c.id === selectedClientId)
   const selectedProject = projects.find((p) => p.id === selectedProjectId)
-  const canStart = selectedClientId !== null && !isLoading
+  // Only an active client: a selection left from a client archived since is
+  // not in the list above, so Enter must not book on it (#297).
+  const canStart = selectedClient?.active === 1 && !isLoading
 
   function effectiveRateEuro(): number | null {
     if (selectedProject?.rate_cent != null) return selectedProject.rate_cent / 100

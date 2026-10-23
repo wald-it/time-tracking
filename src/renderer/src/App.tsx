@@ -12,7 +12,7 @@ import { useStartTimerModalStore } from './store/startTimerModalStore'
 import { ToastTray } from './components/Toast'
 import { UpdateBanner } from './components/UpdateBanner'
 import { OnboardingWizard } from './components/OnboardingWizard'
-import { useTimer } from './hooks/useTimer'
+import { handleOpenStart, useTimer } from './hooks/useTimer'
 import { useSettingsStore } from './store/settingsStore'
 import { useUiPrefsStore } from './store/uiPrefsStore'
 import { NowProvider } from './contexts/NowContext'
@@ -42,11 +42,9 @@ function App(): React.JSX.Element {
   }, [onboardingCompleted])
 
   // #297: the start hotkey or the mini widget's play key found nothing to
-  // start; main has brought the window forward, the START dialog opens here.
-  useEffect(
-    () => window.api.onOpenStart(() => void useStartTimerModalStore.getState().openStart()),
-    []
-  )
+  // start in the database; main has brought the window forward. The answer
+  // is the timer's own start path (a valid selection, else the START dialog).
+  useEffect(() => window.api.onOpenStart(() => void handleOpenStart()), [])
 
   async function finishOnboarding(): Promise<void> {
     setShowOnboarding(false)

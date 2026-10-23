@@ -157,9 +157,7 @@ if (isSecondInstance) {
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
+      bringWindowForward(mainWindow)
     } else {
       // Startup race: second launch arrived before createWindow ran.
       log.info('second-instance signal received before main window exists — ignored')
@@ -277,13 +275,18 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
 function onStartKey(): void {
   if (!mainWindow) return
   if (decideStartRequest(getDb()) === 'open-start') {
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.show()
-    mainWindow.focus()
+    bringWindowForward(mainWindow)
     mainWindow.webContents.send('timer:open-start')
     return
   }
   mainWindow.webContents.send('timer:hotkey-toggle')
+}
+
+/** Restore, show and focus the main window: a second launch, or a start key press. */
+function bringWindowForward(win: BrowserWindow): void {
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
 }
 
 function registerHotkey(accelerator: string): boolean {

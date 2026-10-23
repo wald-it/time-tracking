@@ -351,6 +351,40 @@ describe('useTimer — start/stop', () => {
     await waitFor(() => expect(useStartTimerModalStore.getState().open).toBe(true))
   })
 
+  // #297 review: a selection left over from a client that is archived since
+  // is not a choice the user can see (the selector lists active clients
+  // only), so it must not be booked on.
+  it('start() treats a selected archived client as no selection', async () => {
+    const clients = [
+      makeClient({ id: 1, name: 'Archived', active: 0 }),
+      makeClient({ id: 2, name: 'Beta' })
+    ]
+    const { api, hook } = await setup({
+      clients,
+      recent: [makeEntry({ id: 9, client_id: 2 })]
+    })
+    act(() => hook.result.current.setSelectedClientId(1))
+
+    await startTimer(hook)
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 2 }))
+  })
+
+  // #297 review: the selection-less start awaits the last pair before it
+  // knows a timer runs; a second press meanwhile must not switch away from
+  // the entry the first one starts (that would leave a zero-length entry).
+  it('a second start() while the first is still resolving does nothing', async () => {
+    const { api, hook } = await setup()
+
+    await act(async () => {
+      await Promise.all([hook.result.current.start(), hook.result.current.start()])
+    })
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(api.switch).not.toHaveBeenCalled()
+  })
+
   it('start() with no active client at all is a silent no-op', async () => {
     const clients = [makeClient({ id: 1, active: 0 })]
     const { api, hook } = await setup({ clients })
@@ -941,6 +975,60 @@ describe('useTimer — idle transitions', () => {
 
     expect(hook.result.current.idleEvent).toBeNull()
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
+  })
+})
+
+// #297: main sends timer:open-start when the start hotkey or mini play key
+// finds nothing to start in the database, and brings the window forward.
+// Main does not know the renderer's selection, so the renderer answers with
+// the same start path: a valid selection starts, else the last pair, else
+// the START dialog opens — now in a visible window.
+describe('useTimer — handleOpenStart (#297)', () => {
+  // Main sent this because the last entry's client (1) is archived; the
+  // user's selection (2) is valid and starts, as it did before #297. Hotkey
+  // and mini play both reach main's onStartKey and send this same event.
+  it('starts a valid selection instead of opening the dialog', async () => {
+    const clients = [
+      makeClient({ id: 1, name: 'Archived', active: 0 }),
+      makeClient({ id: 2, name: 'Beta' })
+    ]
+    const { api, hook } = await setup({ clients, recent: [makeEntry({ id: 9, client_id: 1 })] })
+    const { handleOpenStart } = await import('./useTimer')
+    const { useStartTimerModalStore } = await import('../store/startTimerModalStore')
+    act(() => hook.result.current.setSelectedClientId(2))
+
+    await act(async () => {
+      await handleOpenStart()
+    })
+
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 2 }))
+    expect(useStartTimerModalStore.getState().open).toBe(false)
+  })
+
+  it('opens the START dialog when there is neither a selection nor a pair', async () => {
+    const { api } = await setup({ recent: [] })
+    const { handleOpenStart } = await import('./useTimer')
+    const { useStartTimerModalStore } = await import('../store/startTimerModalStore')
+
+    await act(async () => {
+      await handleOpenStart()
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    await waitFor(() => expect(useStartTimerModalStore.getState().open).toBe(true))
+  })
+
+  it('does nothing while a timer runs (no switch from a window-forward event)', async () => {
+    const { api, hook } = await setup()
+    await startTimer(hook)
+    const { handleOpenStart } = await import('./useTimer')
+
+    await act(async () => {
+      await handleOpenStart()
+    })
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(api.switch).not.toHaveBeenCalled()
   })
 })
 
