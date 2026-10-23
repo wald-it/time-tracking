@@ -20,12 +20,20 @@ export async function readLastStartPair(): Promise<StartPair | null> {
   const res = await window.api.dashboard.summary()
   const last = res.ok ? res.data.recentEntries[0] : undefined
   if (!last) return null
-  if (last.project_id == null) return lastStartPair(last, useTimerStore.getState().clients, [])
+  // The store's list may not be loaded yet (right after launch); then the
+  // database's list decides, as it does in main.
+  let clients = useTimerStore.getState().clients
+  if (clients.length === 0) {
+    const res = await window.api.clients.getAll()
+    clients = res.ok ? res.data : []
+  }
+  if (last.project_id == null) return lastStartPair(last, clients, [])
   const projects = await window.api.projects.getAll({ clientId: last.client_id })
-  // A failed lookup is not "archived": keep the entry's project as it was,
-  // rather than silently booking without it.
+  // A failed lookup is not "archived": the entry's project is kept as it
+  // was (whatever its state now) rather than silently dropped — the one
+  // case where this feed may name a project main's would leave out.
   const known = projects.ok ? projects.data : [{ id: last.project_id, active: 1 }]
-  return lastStartPair(last, useTimerStore.getState().clients, known)
+  return lastStartPair(last, clients, known)
 }
 
 interface StartTimerModalState {

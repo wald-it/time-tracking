@@ -425,6 +425,67 @@ describe('useTimer — start/stop', () => {
     expect(hook.result.current.isLoading).toBe(false)
   })
 
+  // #297 review 3 / Codex: a quick-start key clicked while the hotkey's start
+  // still resolves its pair wins; the fallback must not switch away from it.
+  it('a quick start during the pair lookup is not switched away', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients, summaryGate })
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    await act(async () => {
+      await hook.result.current.startWithClient(2, null)
+    })
+    await act(async () => {
+      release()
+      await pending
+    })
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(api.switch).not.toHaveBeenCalled()
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+  })
+
+  // #297 review 3: a running entry whose client was archived since leaves an
+  // archived selection behind; a start without a valid selection must not
+  // switch away from the running timer or clear its selection.
+  it('does nothing without a valid selection while a timer runs', async () => {
+    const clients = [
+      makeClient({ id: 1, name: 'Archived', active: 0 }),
+      makeClient({ id: 2, name: 'Beta' })
+    ]
+    const running = makeEntry({ id: 5, client_id: 1 })
+    const { api, hook } = await setup({ clients, running })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(5))
+    act(() => hook.result.current.setSelectedClientId(1))
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.switch).not.toHaveBeenCalled()
+    expect(api.start).not.toHaveBeenCalled()
+    expect(hook.result.current.selectedClientId).toBe(1)
+  })
+
+  // #297 review 3: with the client list not loaded yet, the last pair is
+  // read from the database's client list, not from the empty store.
+  it('starts the last pair while the store has no client list yet', async () => {
+    const { api, hook } = await setup()
+    const { useTimerStore } = await import('../store/timerStore')
+    act(() => useTimerStore.setState({ clients: [] }))
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 1 }))
+  })
+
   // #297 review 2: an archived selection without a pair to fall back to is
   // cleared, so the dialog does not show the hidden client's projects.
   it('clears a selected archived client when it opens the dialog', async () => {
@@ -1114,6 +1175,26 @@ describe('useTimer — handleOpenStart (#297)', () => {
     })
 
     expect(error).toBe('refused')
+  })
+
+  // #297 review 3: an IPC call that rejects (instead of answering ok:false)
+  // comes back as an error to show, not as an unhandled rejection.
+  it('returns the message when reading the last pair fails', async () => {
+    const { hook } = await setup({ recent: [] })
+    const { handleOpenStart } = await import('./useTimer')
+    ;(
+      window as unknown as { api: { dashboard: { summary: () => Promise<never> } } }
+    ).api.dashboard.summary = async () => {
+      throw new Error('ipc gone')
+    }
+
+    let error: string | null = null
+    await act(async () => {
+      error = await handleOpenStart()
+    })
+
+    expect(error).toBe('ipc gone')
+    expect(hook.result.current.isLoading).toBe(false)
   })
 
   it('does nothing while a timer runs (no switch from a window-forward event)', async () => {

@@ -22,8 +22,10 @@ export interface StartPair {
 /**
  * The most recent entry's client and project. `null` when there is no entry
  * yet or that client is archived: then nothing is started, and the START
- * dialog opens instead. An archived (or unknown) project falls back to "no
- * project", so a direct start never books on it.
+ * dialog opens instead. An archived (or unknown) project is left out
+ * (`projectId` undefined, see StartPair), so a direct start books without it.
+ * The rule judges the projects it is given; a feed that cannot read them
+ * decides what to pass (startTimerModalStore.readLastStartPair).
  */
 export function lastStartPair(
   last: { client_id: number; project_id?: number | null } | null | undefined,

@@ -126,7 +126,12 @@ let startPending = false
  */
 export async function handleOpenStart(): Promise<string | null> {
   if (useTimerStore.getState().runningEntry) return null
-  return globalStartRef.current()
+  try {
+    return await globalStartRef.current()
+  } catch (e) {
+    // An IPC call that rejects (instead of answering ok:false) is shown too.
+    return e instanceof Error ? e.message : String(e)
+  }
 }
 
 function installGlobalListenersOnce(
@@ -314,13 +319,18 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
         (clients.length === 0 || clients.some((c) => c.id === selectedClientId && c.active === 1))
       let clientId = selectionValid ? selectedClientId : null
       if (!clientId) {
+        // The fallback only ever starts; it never switches a running timer
+        // (e.g. one whose client was archived since, which leaves exactly
+        // such a selection behind). Nothing to do then.
+        if (useTimerStore.getState().runningEntry) return null
         // The stale selection goes, so the dialog does not show its projects.
         if (selectedClientId !== null) {
           setSelectedClientId(null)
           useTimerStore.getState().setSelectedProjectId(null)
         }
-        // Busy while the pair resolves: the dialog's start key and the switch
-        // path wait, so nothing confirmed meanwhile is dropped or switched.
+        // Busy while the pair resolves: the dialog's start key and switchTo
+        // wait. A quick-start key does not check the flag, so a timer that
+        // started meanwhile wins below.
         setIsLoading(true)
         let pair: Awaited<ReturnType<typeof readLastStartPair>>
         try {
@@ -328,6 +338,9 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
         } finally {
           setIsLoading(false)
         }
+        // Someone else started a timer while the pair resolved (a quick-start
+        // key, MCP): theirs stands, the fallback does not switch it away.
+        if (useTimerStore.getState().runningEntry) return null
         if (!pair) {
           void useStartTimerModalStore.getState().openStart()
           return null
