@@ -32,9 +32,11 @@
  * src/test/packageSmoke.test.ts against a fake server.
  */
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+class ProbeError extends Error {}
 
 function parseArgs(argv) {
   const [command, ...rest] = argv
@@ -42,16 +44,11 @@ function parseArgs(argv) {
   for (let i = 0; i < rest.length; i += 2) {
     const key = rest[i]
     if (!key?.startsWith('--') || rest[i + 1] === undefined) {
-      throw new Error(`bad argument near "${key ?? ''}"`)
+      throw new ProbeError(`bad argument near "${key ?? ''}"`)
     }
     opts[key.slice(2)] = rest[i + 1]
   }
   return { command, opts }
-}
-
-function fail(message) {
-  console.error(`ERROR: ${message}`)
-  process.exit(1)
 }
 
 /** Tool names registered in the server source, in source order. */
@@ -59,48 +56,93 @@ function expectedToolNames(source) {
   return [...source.matchAll(/registerTool\(\s*'([a-z_]+)'/g)].map((m) => m[1])
 }
 
-async function runSmoke(exe, timeoutMs) {
+/**
+ * Print a stream line by line with a prefix. Chunks do not end on line
+ * boundaries, so the remainder is carried over and flushed when the stream
+ * ends: a fatal message without a final newline is exactly the line that
+ * explains a red run.
+ */
+function relayLines(stream, prefix, onLine = () => {}) {
+  let rest = ''
+  const emit = (raw) => {
+    const line = raw.replace(/\r$/, '')
+    if (!line.trim()) return
+    console.log(
+      `${prefix} ${line.length > 300 ? `${line.slice(0, 300)}… (${line.length} chars)` : line}`
+    )
+    onLine(line)
+  }
+  stream.setEncoding('utf8')
+  stream.on('data', (chunk) => {
+    rest += chunk
+    let nl
+    while ((nl = rest.indexOf('\n')) >= 0) {
+      emit(rest.slice(0, nl))
+      rest = rest.slice(nl + 1)
+    }
+  })
+  stream.on('end', () => {
+    emit(rest)
+    rest = ''
+  })
+}
+
+/** Spawn, turning a missing or non-executable binary into a ProbeError. */
+function start(exe, args, options) {
+  if (!existsSync(exe)) throw new ProbeError(`binary not found at ${exe}`)
+  const child = spawn(exe, args, options)
+  // Resolves with the spawn error, if any; 'close' still follows it.
+  child.spawnError = new Promise((resolve) => child.once('error', resolve))
+  return child
+}
+
+async function runSmoke(dir, exe, timeoutMs) {
   // Starting the GUI app outside CI could collide with a running TimeTrack
   // (single-instance lock, MCP pipe) — the runner is the only place for it.
-  if (process.env.CI !== 'true') fail('the smoke subcommand only runs in CI (CI=true)')
-  const dir = mkdtempSync(join(tmpdir(), 'tt-package-smoke-'))
+  if (process.env.CI !== 'true')
+    throw new ProbeError('the smoke subcommand only runs in CI (CI=true)')
   const out = join(dir, 'smoke.json')
   console.log(`Running smoke test: ${exe} --smoke-test=${out}`)
-  const child = spawn(exe, [`--smoke-test=${out}`], { stdio: 'inherit' })
+  const child = start(exe, [`--smoke-test=${out}`], { stdio: 'inherit' })
+  let spawnError = null
+  child.spawnError.then((e) => (spawnError = e))
   const code = await new Promise((resolve) => {
     const timer = setTimeout(() => {
       child.kill('SIGKILL')
       resolve('timeout')
     }, timeoutMs)
-    child.on('exit', (c, signal) => {
+    child.on('close', (c, signal) => {
       clearTimeout(timer)
       resolve(signal ? 1 : (c ?? 1))
     })
   })
-  if (code === 'timeout') fail(`smoke test timed out after ${timeoutMs} ms`)
+  if (spawnError) throw new ProbeError(`could not start ${exe}: ${spawnError.message}`)
+  if (code === 'timeout') throw new ProbeError(`smoke test timed out after ${timeoutMs} ms`)
   let report
   try {
     report = JSON.parse(readFileSync(out, 'utf8'))
   } catch {
-    fail(`smoke test exited with ${code} and wrote no readable report at ${out}`)
+    throw new ProbeError(`smoke test exited with ${code} and wrote no readable report at ${out}`)
   }
   console.log(`Smoke result: ${JSON.stringify(report)}`)
-  if (code !== 0) fail(`smoke test exited with code ${code}`)
-  if (!report.ok) fail(`smoke test reported ok=false: ${report.error}`)
-  if (!(report.schemaVersion >= 3)) fail(`expected schemaVersion >= 3, got ${report.schemaVersion}`)
-  if (!(report.pdfBytes >= 1000)) fail(`expected pdfBytes >= 1000, got ${report.pdfBytes}`)
+  if (code !== 0) throw new ProbeError(`smoke test exited with code ${code}`)
+  if (!report.ok) throw new ProbeError(`smoke test reported ok=false: ${report.error}`)
+  if (!(report.schemaVersion >= 3)) {
+    throw new ProbeError(`expected schemaVersion >= 3, got ${report.schemaVersion}`)
+  }
+  if (!(report.pdfBytes >= 1000)) {
+    throw new ProbeError(`expected pdfBytes >= 1000, got ${report.pdfBytes}`)
+  }
   console.log(
     `Smoke test passed (schema v${report.schemaVersion}, Electron ${report.electronVersion ?? '?'}, PDF ${report.pdfBytes} bytes)`
   )
-  rmSync(dir, { recursive: true, force: true })
 }
 
-async function runMcp(exe, entry, expected, timeoutMs) {
-  const dir = mkdtempSync(join(tmpdir(), 'tt-package-mcp-'))
+async function runMcp(dir, exe, entry, expected, timeoutMs) {
   const dbPath = join(dir, 'empty.sqlite')
   // A zero-byte file is a valid, empty SQLite database.
   writeFileSync(dbPath, '')
-  const child = spawn(exe, [entry], {
+  const child = start(exe, [entry], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
@@ -113,57 +155,62 @@ async function runMcp(exe, entry, expected, timeoutMs) {
 
   const responses = new Map()
   const waiters = new Map()
-  let stdoutRest = ''
-  let exited = null
-  child.stdout.setEncoding('utf8')
-  child.stdout.on('data', (chunk) => {
-    stdoutRest += chunk
-    let nl
-    while ((nl = stdoutRest.indexOf('\n')) >= 0) {
-      const line = stdoutRest.slice(0, nl).trim()
-      stdoutRest = stdoutRest.slice(nl + 1)
-      if (!line) continue
-      console.log(
-        `[stdout] ${line.length > 300 ? `${line.slice(0, 300)}… (${line.length} chars)` : line}`
-      )
-      let msg
-      try {
-        msg = JSON.parse(line)
-      } catch {
-        continue
-      }
-      if (msg.id !== undefined) {
-        responses.set(msg.id, msg)
-        waiters.get(msg.id)?.()
-      }
+  // Set on 'close', which fires only after stdout and stderr are drained, so
+  // an answer written just before the exit is never mistaken for a missing one.
+  let closed = null
+  let spawnError = null
+  relayLines(child.stdout, '[stdout]', (line) => {
+    let msg
+    try {
+      msg = JSON.parse(line)
+    } catch {
+      return
+    }
+    if (msg.id !== undefined) {
+      responses.set(msg.id, msg)
+      waiters.get(msg.id)?.()
     }
   })
-  child.stderr.setEncoding('utf8')
-  child.stderr.on('data', (chunk) => {
-    for (const line of chunk.split(/\r?\n/)) if (line.trim()) console.log(`[stderr] ${line}`)
-  })
-  child.on('exit', (code, signal) => {
-    exited = { code, signal }
-    for (const w of waiters.values()) w()
-  })
+  relayLines(child.stderr, '[stderr]')
+  // A server that is gone makes writes fail with EPIPE; that is reported
+  // through 'close' below, not as an uncaught exception.
+  child.stdin.on('error', () => {})
+  child.spawnError.then((e) => (spawnError = e))
+  const closedPromise = new Promise((resolve) =>
+    child.on('close', (code, signal) => {
+      closed = { code, signal }
+      for (const w of [...waiters.values()]) w()
+      resolve()
+    })
+  )
 
   const deadline = Date.now() + timeoutMs
-  const send = (msg) => child.stdin.write(`${JSON.stringify(msg)}\n`)
+  const send = (msg) => {
+    if (!closed) child.stdin.write(`${JSON.stringify(msg)}\n`)
+  }
   const request = (id, method, params) => {
     send({ jsonrpc: '2.0', id, method, params })
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
-        () => reject(new Error(`no response to ${method} within ${timeoutMs} ms`)),
+        () =>
+          reject(
+            new ProbeError(`no response to ${method} before the ${timeoutMs} ms probe deadline`)
+          ),
         Math.max(0, deadline - Date.now())
       )
       waiters.set(id, () => {
         clearTimeout(timer)
         waiters.delete(id)
         if (responses.has(id)) resolve(responses.get(id))
-        else
-          reject(new Error(`server exited (${JSON.stringify(exited)}) before answering ${method}`))
+        else if (spawnError) {
+          reject(new ProbeError(`could not start ${exe}: ${spawnError.message}`))
+        } else {
+          reject(
+            new ProbeError(`server exited (${JSON.stringify(closed)}) before answering ${method}`)
+          )
+        }
       })
-      if (exited) waiters.get(id)()
+      if (closed) waiters.get(id)()
     })
   }
 
@@ -175,7 +222,7 @@ async function runMcp(exe, entry, expected, timeoutMs) {
       clientInfo: { name: 'package-smoke', version: '1' }
     })
     if (init.result?.serverInfo?.name !== 'timetrack') {
-      throw new Error(`initialize: unexpected answer ${JSON.stringify(init)}`)
+      throw new ProbeError(`initialize: unexpected answer ${JSON.stringify(init)}`)
     }
     send({ jsonrpc: '2.0', method: 'notifications/initialized' })
 
@@ -183,8 +230,8 @@ async function runMcp(exe, entry, expected, timeoutMs) {
     const names = (list.result?.tools ?? []).map((t) => t.name)
     const missing = expected.filter((n) => !names.includes(n))
     const extra = names.filter((n) => !expected.includes(n))
-    if (missing.length || extra.length || names.length === 0) {
-      throw new Error(
+    if (missing.length || extra.length) {
+      throw new ProbeError(
         `tools/list: ${names.length} tools; missing [${missing.join(', ')}], unexpected [${extra.join(', ')}]`
       )
     }
@@ -193,51 +240,55 @@ async function runMcp(exe, entry, expected, timeoutMs) {
     const call = await request(3, 'tools/call', { name: 'list_clients', arguments: {} })
     const text = call.result?.content?.map((c) => c.text).join(' ') ?? JSON.stringify(call)
     if (!/no such table/i.test(text)) {
-      throw new Error(`tools/call list_clients did not reach SQLite: ${text}`)
+      throw new ProbeError(`tools/call list_clients did not reach SQLite: ${text}`)
     }
     console.log('tools/call list_clients: SQLite answered "no such table" (driver loaded)')
   } catch (e) {
-    problem = e instanceof Error ? e.message : String(e)
+    problem = e
   }
 
-  child.stdin.end()
-  if (!exited) {
-    await new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL')
-        resolve()
-      }, 5000)
-      child.on('exit', () => {
-        clearTimeout(timer)
-        resolve()
-      })
-    })
-  }
-  console.log(`MCP server exit: ${JSON.stringify(exited)}`)
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-  if (problem) fail(problem)
+  if (!closed) child.stdin.end()
+  const killTimer = setTimeout(() => child.kill('SIGKILL'), 5000)
+  await closedPromise
+  clearTimeout(killTimer)
+  console.log(`MCP server exit: ${JSON.stringify(closed)}`)
+  if (problem) throw problem
   console.log('MCP probe passed')
 }
 
-let parsed
-try {
-  parsed = parseArgs(process.argv.slice(2))
-} catch (e) {
-  fail(`${e.message}\nusage: package-smoke.mjs smoke|mcp --exe <binary> [...]`)
+async function main() {
+  const { command, opts } = parseArgs(process.argv.slice(2))
+  if (!opts.exe) throw new ProbeError('--exe is required')
+  const timeoutMs = Number(opts['timeout-ms'] ?? (command === 'smoke' ? 60000 : 30000))
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new ProbeError(`--timeout-ms must be a positive number of milliseconds`)
+  }
+  let run
+  if (command === 'smoke') {
+    run = (dir) => runSmoke(dir, opts.exe, timeoutMs)
+  } else if (command === 'mcp') {
+    if (!opts.entry) throw new ProbeError('--entry is required for mcp')
+    const expected = expectedToolNames(
+      readFileSync(opts['server-source'] ?? 'src/mcp/server.ts', 'utf8')
+    )
+    if (expected.length === 0) {
+      throw new ProbeError('found no registerTool() calls in the server source')
+    }
+    run = (dir) => runMcp(dir, opts.exe, opts.entry, expected, timeoutMs)
+  } else {
+    throw new ProbeError(`unknown subcommand "${command ?? ''}" (expected smoke or mcp)`)
+  }
+  const dir = mkdtempSync(join(tmpdir(), `tt-package-${command}-`))
+  try {
+    await run(dir)
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  }
 }
-const { command, opts } = parsed
-if (!opts.exe) fail('--exe is required')
-const timeoutMs = Number(opts['timeout-ms'] ?? (command === 'smoke' ? 60000 : 30000))
 
-if (command === 'smoke') {
-  await runSmoke(opts.exe, timeoutMs)
-} else if (command === 'mcp') {
-  if (!opts.entry) fail('--entry is required for mcp')
-  const expected = expectedToolNames(
-    readFileSync(opts['server-source'] ?? 'src/mcp/server.ts', 'utf8')
-  )
-  if (expected.length === 0) fail('found no registerTool() calls in the server source')
-  await runMcp(opts.exe, opts.entry, expected, timeoutMs)
-} else {
-  fail(`unknown subcommand "${command ?? ''}" (expected smoke or mcp)`)
+try {
+  await main()
+} catch (e) {
+  console.error(`ERROR: ${e instanceof ProbeError ? e.message : (e?.stack ?? String(e))}`)
+  process.exitCode = 1
 }

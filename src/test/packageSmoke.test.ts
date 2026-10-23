@@ -14,7 +14,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -58,47 +58,46 @@ rl.on('line', (line) => {
 rl.on('close', () => process.exit(0))
 `
 
-function fixture(toolNames: string[]): { server: string; source: string } {
-  const dir = mkdtempSync(join(tmpdir(), 'package-smoke-test-'))
-  const server = join(dir, 'server.js')
-  const source = join(dir, 'server.ts')
-  writeFileSync(server, FAKE_SERVER)
-  writeFileSync(
-    source,
-    toolNames.map((n) => `server.registerTool(\n  '${n}',\n  {},\n  async () => ({})\n)\n`).join('')
-  )
-  return { server, source }
-}
-
 function probe(
   mode: string,
   tools: string[],
-  source?: string
+  opts: { source?: string; exe?: string } = {}
 ): { status: number | null; output: string } {
-  const f = fixture(tools)
-  // The suite runs on the Electron binary in Node mode, so process.execPath
-  // stands in for the packaged app binary; the probe sets Node mode itself.
-  const proc = spawnSync(
-    process.execPath,
-    [
-      SCRIPT,
-      'mcp',
-      '--exe',
+  const dir = mkdtempSync(join(tmpdir(), 'package-smoke-test-'))
+  try {
+    const server = join(dir, 'server.js')
+    const source = join(dir, 'server.ts')
+    writeFileSync(server, FAKE_SERVER)
+    writeFileSync(
+      source,
+      tools.map((n) => `server.registerTool(\n  '${n}',\n  {},\n  async () => ({})\n)\n`).join('')
+    )
+    // The suite runs on the Electron binary in Node mode, so process.execPath
+    // stands in for the packaged app binary; the probe sets Node mode itself.
+    const proc = spawnSync(
       process.execPath,
-      '--entry',
-      f.server,
-      '--server-source',
-      source ?? f.source,
-      '--timeout-ms',
-      '3000'
-    ],
-    {
-      env: { ...process.env, FAKE_MODE: mode, FAKE_TOOLS: tools.join(',') },
-      encoding: 'utf8',
-      timeout: 30_000
-    }
-  )
-  return { status: proc.status, output: `${proc.stdout}\n${proc.stderr}` }
+      [
+        SCRIPT,
+        'mcp',
+        '--exe',
+        opts.exe ?? process.execPath,
+        '--entry',
+        server,
+        '--server-source',
+        opts.source ?? source,
+        '--timeout-ms',
+        '3000'
+      ],
+      {
+        env: { ...process.env, FAKE_MODE: mode, FAKE_TOOLS: tools.join(',') },
+        encoding: 'utf8',
+        timeout: 30_000
+      }
+    )
+    return { status: proc.status, output: `${proc.stdout}\n${proc.stderr}` }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 }
 
 const TOOLS = ['list_clients', 'get_dashboard']
@@ -137,6 +136,12 @@ describe('package-smoke mcp probe', () => {
     expect(r.output).toContain('before answering initialize')
   })
 
+  it('fails with a plain message when the binary is not where the job expects it', () => {
+    const r = probe('ok', TOOLS, { exe: join(tmpdir(), 'no-such-dir', 'TimeTrack.exe') })
+    expect(r.status).toBe(1)
+    expect(r.output).toContain('ERROR: binary not found at')
+  })
+
   it('reads every tool the real server source registers', () => {
     // A looser pattern than the probe's: if the probe's extraction ever misses
     // a registration (other quotes, a new call shape), the counts disagree or
@@ -146,7 +151,7 @@ describe('package-smoke mcp probe', () => {
     const names = [...source.matchAll(/registerTool\(\s*['"`]([^'"`]+)/g)].map((m) => m[1])
     expect(names.length).toBe(calls)
     expect(names.length).toBeGreaterThan(0)
-    const r = probe('ok', names, join(REPO_ROOT, 'src', 'mcp', 'server.ts'))
+    const r = probe('ok', names, { source: join(REPO_ROOT, 'src', 'mcp', 'server.ts') })
     expect(r.output).toContain(`tools/list: ${names.length} tools`)
     expect(r.status).toBe(0)
   })
