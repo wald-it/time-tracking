@@ -67,10 +67,10 @@ finds a new version, the app downloads it in the background as above.
   domains are used locally to suggest the client; the domain-to-client mappings
   you confirm are stored in the database. With **Mirror Teams status** on,
   TimeTrack also reads your account ID once per run and your Teams presence:
-  after each change it makes, to check what Teams stored; before it clears the
-  status message, to see whether it is still TimeTrack's; and once per run,
-  at the first status update while no timer runs, to find a status message a
-  previous run left behind.
+  after it sets the status, to check what Teams stored; before it clears the
+  status message, to see whether it is still TimeTrack's; and at the start of a
+  run, before it has set a status, to find a status message a previous run left
+  behind.
 - **What is sent to Microsoft:** a calendar import only reads; its request
   names the date range you chose. With **Mirror Teams status** on (work or
   school accounts only), TimeTrack sets your Teams presence to Busy, with the
@@ -91,10 +91,13 @@ finds a new version, the app downloads it in the background as above.
   timer ran stays. If the presence cannot be read, TimeTrack still ends the
   Busy status and leaves the message until it can check it. If clearing fails
   (offline, for example), what is left stays until TimeTrack tries again at its
-  next status update, which comes when you start or stop a timer or change a
-  Teams setting in TimeTrack. If the app quits or crashes while a timer runs,
-  TimeTrack withdraws its own message at the next start, at the first status
-  update while no timer runs, and ends the Busy status if Teams shows it. It
+  next status update. Those come with timer changes from any source (the app,
+  the tray, the mini widget, hotkeys, MCP, the Stream Deck) and with changes to
+  the Teams settings in TimeTrack, not on a schedule while no timer runs. If the
+  app quits or crashes while a timer runs, TimeTrack withdraws its own message
+  at the next start: at the first status update while no timer runs and before
+  it has set a status again, it clears the message and ends the Busy status if
+  Teams shows it. If it sets a new status first, that replaces the leftover. It
   recognises its message by its form ("🔴 Fokus" or "🔴 Focus", alone or
   followed by a colon and a client), so a message you typed in exactly that
   form yourself is cleared then too. If it cannot reach Teams at that start, it

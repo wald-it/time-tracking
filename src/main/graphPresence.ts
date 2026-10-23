@@ -77,6 +77,7 @@ export function resetPresenceStateForTests(): void {
   state.userId = null
   state.swept = false
   queue = Promise.resolve()
+  latest = 0
 }
 
 /**
@@ -123,6 +124,14 @@ function fromHtml(content: string): string {
 function isMessage(content: string, own: string): boolean {
   const target = flat(own)
   return flat(content) === target || fromHtml(content) === target
+}
+
+/**
+ * No message: nothing but whitespace, `&nbsp;` and the usual HTML wrappers.
+ * A text such as "<OOO>" the user typed is a message, not an empty tag.
+ */
+function isEmptyMessage(content: string): boolean {
+  return /^(?:\s|&nbsp;|<\/?(?:p|div|span|br)\b[^>]*>)*$/i.test(content)
 }
 
 /** Whether Graph's content has the shape of a message we set (#317). */
@@ -180,9 +189,12 @@ async function resolveUserId(
  * Pokes are fire-and-forget (index.ts), and one reconcile awaits several
  * requests. Without a queue a start-up sweep still reading could clear the
  * message a parallel poke had just set; so every reconcile waits for the one
- * before it.
+ * before it. Only the newest poke's snapshot is worth applying: a queued one
+ * that has been overtaken returns at once, so a slow network neither builds
+ * up a backlog nor replays stale timer states.
  */
 let queue: Promise<void> = Promise.resolve()
+let latest = 0
 
 /**
  * Bring the Teams status message in line with the current timer state.
@@ -192,7 +204,8 @@ export function reconcilePresence(
   deps: PresenceDeps,
   running: RunningStatus | null
 ): Promise<void> {
-  const run = queue.then(() => reconcileOnce(deps, running))
+  const ticket = ++latest
+  const run = queue.then(() => (ticket === latest ? reconcileOnce(deps, running) : undefined))
   queue = run.catch(() => undefined)
   return run
 }
@@ -228,7 +241,15 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   if (unchanged && (message === '' || fresh)) return
 
   const fetchFn = deps.fetchFn ?? fetch
-  const token = await deps.getAccessToken()
+  // The caller fires and forgets (index.ts): a refresh that throws (offline)
+  // must end here as a log line, not as an unhandled rejection.
+  let token: string | null
+  try {
+    token = await deps.getAccessToken()
+  } catch (err) {
+    log(`presence: no access token (${err instanceof Error ? err.name : 'error'})`)
+    return
+  }
   if (!token) return
   const userId = await resolveUserId(fetchFn, token, log)
   if (!userId) return
@@ -289,8 +310,12 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
     const current = await readPresence(fetchFn, token, userId, log)
     if (!current) {
       // The message waits for a successful read (erring toward keeping the
-      // user's text) and is retried at the next poke; Busy ends now.
-      await post('clearPresence', { sessionId })
+      // user's text) and is retried at the next poke; Busy ends now. The
+      // session is gone, so the next set must not count as a fresh repeat.
+      if (await post('clearPresence', { sessionId })) {
+        state.at = 0
+        log('presence: ended the session; the status message waits for a read')
+      }
       return
     }
     const ours =
@@ -361,7 +386,7 @@ async function readPresence(
     const content = body.statusMessage?.message?.content
     return {
       availability: typeof body.availability === 'string' ? body.availability : null,
-      content: typeof content === 'string' && fromHtml(content) !== '' ? content : null
+      content: typeof content === 'string' && !isEmptyMessage(content) ? content : null
     }
   } catch (err) {
     log(`presence: read failed (${err instanceof Error ? err.name : 'error'})`)

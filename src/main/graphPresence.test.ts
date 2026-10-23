@@ -386,6 +386,62 @@ describe('reconcilePresence', () => {
     expect(teams.availability).toBe('Available')
   })
 
+  it('after a stop whose read failed, restarting the same entry sets Busy again', async () => {
+    const { deps, calls } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    const inner = deps.fetchFn!
+    let readFails = true
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (readFails && String(url).endsWith('/presence') && (init?.method ?? 'GET') === 'GET') {
+        await inner(url, init)
+        return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null) // Busy ended, message kept
+    readFails = false
+    await reconcilePresence(deps, RUNNING) // same entry again, within 25 minutes
+    expect(teams.availability).toBe('Busy')
+    expect(sessionCalls(calls).map((c) => c.url.split('/presence/')[1])).toEqual([
+      'setPresence',
+      'clearPresence',
+      'setPresence'
+    ])
+  })
+
+  it('a throwing token refresh is logged, not rejected', async () => {
+    const { deps, logs } = makeDeps()
+    deps.getAccessToken = async () => {
+      throw new Error('ENOTFOUND')
+    }
+    await expect(reconcilePresence(deps, RUNNING)).resolves.toBeUndefined()
+    expect(logs.some((l) => l.includes('no access token'))).toBe(true)
+  })
+
+  it('a message the user wrote in angle brackets counts as a message', async () => {
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    teams.content = '<OOO>'
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('<OOO>')
+  })
+
+  it('only the newest of several queued pokes is applied', async () => {
+    const { deps, calls } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    // Two pokes queued before either runs: the switch is overtaken by the stop.
+    const b = reconcilePresence(deps, { ...RUNNING, client_name: 'Other' })
+    const c = reconcilePresence(deps, null)
+    await Promise.all([b, c])
+    expect(
+      statusCalls(calls).map(
+        (s) =>
+          (s.body as { statusMessage: { message: { content: string } } }).statusMessage.message
+            .content
+      )
+    ).toEqual(['🔴 Fokus: Acme — Rollout', ''])
+  })
+
   it('overlapping pokes are serialised: a sweep still reading cannot clear a fresh message', async () => {
     teams.content = '🔴 Fokus' // leftover from a previous run
     const { deps } = makeDeps({ showClient: true })
