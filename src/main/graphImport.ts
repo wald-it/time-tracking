@@ -17,6 +17,7 @@ import { getAccessToken, getStatus, type GraphAccountDeps } from './graphAccount
 import { fetchCalendarView, GraphCalendarError, type CalendarRange } from './graphCalendar'
 import { domainMapping } from './clientDomains'
 import { insertEntrySegments, validateManualEntry } from './entryMutations'
+import { appLocale, entryErrorText } from './mainI18n'
 import { splitAtMidnight } from '../shared/midnightSplit'
 import { domainOf, mapEvents, type FilterOptions, type MappedEvents } from '../shared/graphCalendar'
 
@@ -120,6 +121,13 @@ export function importCalendarEntries(
 ): ImportResult {
   let created = 0
   const failed: ImportResult['failed'] = []
+  // A refused row is worded in the app language (#296 part B). The import
+  // writes to `db`, so it is open; the empty system-language list only
+  // stands in for a fallback this module has no Electron access for.
+  const locale = appLocale(
+    () => db,
+    () => []
+  )
 
   for (const item of items) {
     const graphEventId = item.graphEventId?.trim()
@@ -145,7 +153,7 @@ export function importCalendarEntries(
         stopped_at: item.stoppedAt
       }
       const err = validateManualEntry(db, input)
-      if (err) throw new Error(err)
+      if (err) throw new Error(entryErrorText(err, locale))
 
       const projectId = item.projectId ?? null
       if (projectId !== null) {

@@ -24,6 +24,7 @@ import {
   deleteEntry,
   undeleteEntry
 } from './entryMutations'
+import { toIpcResult, type EntryResult } from './entryErrors'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
@@ -39,7 +40,14 @@ import {
   realFsDeps,
   saveDialogIn
 } from './pdfMergeHandlers'
-import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
+import {
+  cancelledResult,
+  dialogT,
+  entryErrorText,
+  exportFileName,
+  appLocale,
+  type DialogT
+} from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
@@ -143,6 +151,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       () => app.getPreferredSystemLanguages()
     )
   const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
+  // A refused entry write is a code (entryErrors.ts); the renderer gets it
+  // worded in the app language (#296 part B).
+  const toIpc = <T>(res: EntryResult<T>): IpcResult<T> =>
+    toIpcResult(res, (e) => entryErrorText(e, dialogLocale()))
 
   /**
    * The app's own locations, without touching the file system (no mkdir of a
@@ -291,8 +303,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    * tray/mini/hotkey too, since they all funnel through here.
    */
   function startOrSwitch(input: CreateEntryInput): IpcResult<SwitchTimerResult> {
-    return switchTimerAndNotify(db, input, (event, entry) =>
-      emitWebhooks(db, event, entry, { log: logWebhookDelivery })
+    return toIpc(
+      switchTimerAndNotify(db, input, (event, entry) =>
+        emitWebhooks(db, event, entry, { log: logWebhookDelivery })
+      )
     )
   }
 
@@ -300,7 +314,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const res = stopEntry(db, id)
       if (res.ok) emitWebhooks(db, 'timer.stopped', res.data, { log: logWebhookDelivery })
-      return res
+      return toIpc(res)
     } catch (e) {
       return fail(e)
     }
@@ -358,7 +372,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const res = createManualEntry(db, input)
       if (res.ok) emitWebhooks(db, 'entry.created', res.data, { log: logWebhookDelivery })
-      return res
+      return toIpc(res)
     } catch (e) {
       return fail(e)
     }
@@ -368,7 +382,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const res = updateManualEntry(db, input)
       if (res.ok) emitWebhooks(db, 'entry.updated', res.data, { log: logWebhookDelivery })
-      return res
+      return toIpc(res)
     } catch (e) {
       return fail(e)
     }
@@ -382,7 +396,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    */
   ipcMain.handle('entries:delete', (_e, id: number): IpcResult<void> => {
     try {
-      return deleteEntry(db, id)
+      return toIpc(deleteEntry(db, id))
     } catch (e) {
       return fail(e)
     }
@@ -390,7 +404,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('entries:undelete', (_e, id: number): IpcResult<Entry> => {
     try {
-      return undeleteEntry(db, id)
+      return toIpc(undeleteEntry(db, id))
     } catch (e) {
       return fail(e)
     }

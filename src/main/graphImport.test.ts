@@ -315,6 +315,13 @@ describe('graphImport', () => {
       expect(result.failed[0].error).toContain('Kunde existiert nicht')
     })
 
+    // #296 part B: the import words a refused row in the app language.
+    it('words them in English when the app is set to English', () => {
+      db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+      const result = importCalendarEntries(db, [item({ clientId: 999 })])
+      expect(result.failed[0].error).toBe('The client does not exist')
+    })
+
     it('writes the chosen project onto the entry (#176)', () => {
       db.prepare(`INSERT INTO projects (id, client_id, name) VALUES (7, 1, 'Endkunde A')`).run()
       const result = importCalendarEntries(db, [item({ projectId: 7 })])

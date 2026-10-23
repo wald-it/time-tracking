@@ -11,6 +11,9 @@
  * Behaviour is identical to the previous inline handlers: validate the full
  * un-split range first, then split at local midnight into linked halves
  * (shared `link_id`), insert in one transaction, and return the first row.
+ *
+ * A refusal is a code (entryErrors.ts), never a text: each caller words it in
+ * its own language (#296: the app's for IPC and the import, German for MCP).
  */
 import type Database from 'better-sqlite3'
 import { randomUUID } from 'crypto'
@@ -20,9 +23,9 @@ import type {
   CreateEntryInput,
   CreateManualEntryInput,
   UpdateEntryInput,
-  IpcResult,
   SwitchTimerResult
 } from '../shared/types'
+import { entryError, type EntryError, type EntryResult } from './entryErrors'
 
 // Server-side limits (were module-private constants in ipc.ts).
 export const MAX_DESCRIPTION_LEN = 500
@@ -32,17 +35,18 @@ export const MAX_DURATION_SECONDS = 24 * 3600
 
 type Db = Database.Database
 
-function ok<T>(data: T): IpcResult<T> {
+function ok<T>(data: T): EntryResult<T> {
   return { ok: true, data }
 }
-function fail(error: string): IpcResult<never> {
+function fail(error: EntryError): EntryResult<never> {
   return { ok: false, error }
 }
 
 /**
- * Validate a manual entry's full (un-split) range. Returns a German error
- * message string, or null when valid. `excludeId` / `excludeLinkId` let the
- * update path skip the row(s) it's about to replace in the overlap check.
+ * Validate a manual entry's full (un-split) range. Returns why it is refused
+ * (a code, worded by the caller: #296), or null when valid. `excludeId` /
+ * `excludeLinkId` let the update path skip the row(s) it's about to replace
+ * in the overlap check.
  */
 export function validateManualEntry(
   db: Db,
@@ -57,29 +61,29 @@ export function validateManualEntry(
   },
   excludeId?: number,
   excludeLinkId?: string
-): string | null {
+): EntryError | null {
   const start = new Date(input.started_at)
   const stop = new Date(input.stopped_at)
-  if (Number.isNaN(start.getTime())) return 'Startzeit ist ungültig'
-  if (Number.isNaN(stop.getTime())) return 'Endzeit ist ungültig'
+  if (Number.isNaN(start.getTime())) return entryError('entry.startInvalid')
+  if (Number.isNaN(stop.getTime())) return entryError('entry.endInvalid')
   const now = Date.now()
-  if (start.getTime() > now) return 'Startzeit darf nicht in der Zukunft liegen'
-  if (stop.getTime() <= start.getTime()) return 'Endzeit muss nach der Startzeit liegen'
+  if (start.getTime() > now) return entryError('entry.startInFuture')
+  if (stop.getTime() <= start.getTime()) return entryError('entry.endBeforeStart')
   const durationSec = (stop.getTime() - start.getTime()) / 1000
-  if (durationSec > MAX_DURATION_SECONDS) return 'Dauer überschreitet 24 Stunden'
+  if (durationSec > MAX_DURATION_SECONDS) return entryError('entry.tooLong')
   if ((input.description ?? '').length > MAX_DESCRIPTION_LEN) {
-    return `Beschreibung überschreitet ${MAX_DESCRIPTION_LEN} Zeichen`
+    return entryError('entry.descriptionTooLong', { max: MAX_DESCRIPTION_LEN })
   }
   if ((input.reference ?? '').length > MAX_REFERENCE_LEN) {
-    return `Referenz überschreitet ${MAX_REFERENCE_LEN} Zeichen`
+    return entryError('entry.referenceTooLong', { max: MAX_REFERENCE_LEN })
   }
   if ((input.private_note ?? '').length > MAX_NOTE_LEN) {
-    return `Notiz überschreitet ${MAX_NOTE_LEN} Zeichen`
+    return entryError('entry.noteTooLong', { max: MAX_NOTE_LEN })
   }
   const clientRow = db.prepare(`SELECT id FROM clients WHERE id = ?`).get(input.client_id) as
     | { id: number }
     | undefined
-  if (!clientRow) return 'Kunde existiert nicht'
+  if (!clientRow) return entryError('entry.clientMissing')
   if (input.project_id != null) {
     const pErr = validateProjectForClient(db, input.project_id, input.client_id)
     if (pErr) return pErr
@@ -106,25 +110,25 @@ export function validateManualEntry(
     params.push(excludeLinkId)
   }
   const overlap = db.prepare(overlapSql).get(...params) as { id: number } | undefined
-  if (overlap) return 'Eintrag überlappt mit einem bestehenden Eintrag desselben Kunden'
+  if (overlap) return entryError('entry.overlap')
   return null
 }
 
 /**
  * A project may only be attached to an entry of the client it belongs to
  * (#133; same rule as clientDomains.learnDomain). Orphaned projects
- * (client_id NULL) fail this on purpose. Returns a German error message
- * string, or null when valid.
+ * (client_id NULL) fail this on purpose. Returns the refusal as a code, or
+ * null when valid.
  */
 export function validateProjectForClient(
   db: Db,
   project_id: number,
   client_id: number
-): string | null {
+): EntryError | null {
   const row = db
     .prepare(`SELECT id FROM projects WHERE id = ? AND client_id = ?`)
     .get(project_id, client_id) as { id: number } | undefined
-  return row ? null : 'Projekt gehört nicht zu diesem Kunden'
+  return row ? null : entryError('entry.projectNotOfClient')
 }
 
 /**
@@ -187,7 +191,7 @@ export function insertEntrySegments(
 }
 
 /** Create a manual (already-stopped) entry. Mirrors the `entries:create` handler. */
-export function createManualEntry(db: Db, input: CreateManualEntryInput): IpcResult<Entry> {
+export function createManualEntry(db: Db, input: CreateManualEntryInput): EntryResult<Entry> {
   const err = validateManualEntry(db, input)
   if (err) return fail(err)
   const segments = splitAtMidnight(new Date(input.started_at), new Date(input.stopped_at))
@@ -204,21 +208,12 @@ export function createManualEntry(db: Db, input: CreateManualEntryInput): IpcRes
   return ok(row)
 }
 
-/**
- * Message when an edit of one half of a split entry moves the time at the
- * midnight cut — that edge belongs to the entry, not to the half (#311).
- */
-export const SPLIT_EDGE_ERROR =
-  'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. ' +
-  'Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten.'
-
-/** An MCP edit whose entry changed while the owner was being asked (#311). */
-export const STALE_EDIT_ERROR =
-  'Der Eintrag hat sich während der Rückfrage geändert. Bitte die Änderung erneut anfragen.'
-
-/** Editing an entry whose middle part is in the trash (#311). */
-export const SPLIT_GAP_ERROR =
-  'Ein mittlerer Teil dieses Eintrags wurde gelöscht. Die übrigen Teile lassen sich deshalb nicht gemeinsam bearbeiten.'
+// #311's three refusals of a split entry are codes now (#296):
+// - `entry.splitEdge`: an edit of one half moves the time at the midnight
+//   cut, and that edge belongs to the entry, not to the half;
+// - `entry.staleEdit`: an MCP edit whose entry changed while the owner was
+//   being asked;
+// - `entry.splitGap`: editing an entry whose middle part is in the trash.
 
 type Range = { started_at: string; stopped_at: string }
 
@@ -270,7 +265,7 @@ export function resolveEditRange(
   given: UpdateEntryInput
 ):
   | { input: UpdateEntryInput; before: Range; linkId?: string; keepsTrashed?: boolean }
-  | { error: string } {
+  | { error: EntryError } {
   const existing = db
     .prepare(`SELECT link_id, started_at, stopped_at, deleted_at FROM entries WHERE id = ?`)
     .get(given.id) as
@@ -281,13 +276,13 @@ export function resolveEditRange(
         deleted_at: string | null
       }
     | undefined
-  if (!existing) return { error: 'Eintrag existiert nicht' }
+  if (!existing) return { error: entryError('entry.missing') }
   const linkId = existing.link_id ?? undefined
   const own = { started_at: existing.started_at, stopped_at: existing.stopped_at ?? '' }
   if (!linkId || existing.stopped_at === null) return { input: given, before: own, linkId }
   // A half in the trash is not edited: the edit would replace its live
   // sibling with the trashed half's range.
-  if (existing.deleted_at !== null) return { error: 'Eintrag existiert nicht' }
+  if (existing.deleted_at !== null) return { error: entryError('entry.missing') }
   const rows = db
     .prepare(
       `SELECT started_at, stopped_at, deleted_at FROM entries WHERE link_id = ? ORDER BY started_at`
@@ -298,18 +293,18 @@ export function resolveEditRange(
   // bring the trashed time back.
   for (let i = 1; i < live.length; i++) {
     if (Date.parse(live[i - 1].stopped_at) !== Date.parse(live[i].started_at)) {
-      return { error: SPLIT_GAP_ERROR }
+      return { error: entryError('entry.splitGap') }
     }
   }
   const range = rangeOfEntry(own, rows, live, given)
-  if (!range) return { error: SPLIT_EDGE_ERROR }
+  if (!range) return { error: entryError('entry.splitEdge') }
   const before = { started_at: live[0].started_at, stopped_at: live[live.length - 1].stopped_at }
   const keepsTrashed = live.length < rows.length
   return { input: { ...given, ...range }, before, linkId, keepsTrashed }
 }
 
 /** Update an entry (delete-and-reinsert with cross-midnight bookkeeping). Mirrors `entries:update`. */
-export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<Entry> {
+export function updateManualEntry(db: Db, given: UpdateEntryInput): EntryResult<Entry> {
   const resolved = resolveEditRange(db, given)
   if ('error' in resolved) return fail(resolved.error)
   const { input, linkId: existingLinkId } = resolved
@@ -392,11 +387,11 @@ export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<En
  */
 export const FUTURE_START_TOLERANCE_MS = 60_000
 
-export function switchTimer(db: Db, input: CreateEntryInput): IpcResult<SwitchTimerResult> {
+export function switchTimer(db: Db, input: CreateEntryInput): EntryResult<SwitchTimerResult> {
   const clientRow = db.prepare(`SELECT id FROM clients WHERE id = ?`).get(input.client_id) as
     | { id: number }
     | undefined
-  if (!clientRow) return fail('Kunde existiert nicht')
+  if (!clientRow) return fail(entryError('entry.clientMissing'))
   // Same rule as manual entries: a project must belong to the client.
   if (input.project_id != null) {
     const pErr = validateProjectForClient(db, input.project_id, input.client_id)
@@ -407,9 +402,9 @@ export function switchTimer(db: Db, input: CreateEntryInput): IpcResult<SwitchTi
   // kept as sent (`…T00:30:00+02:00` from an MCP client) would sort into the
   // wrong day or month.
   const start = new Date(input.started_at)
-  if (Number.isNaN(start.getTime())) return fail('Startzeit ist ungültig')
+  if (Number.isNaN(start.getTime())) return fail(entryError('entry.startInvalid'))
   if (start.getTime() > Date.now() + FUTURE_START_TOLERANCE_MS) {
-    return fail('Startzeit liegt in der Zukunft')
+    return fail(entryError('entry.timerStartInFuture'))
   }
   const startedAt = start.toISOString()
   const running = db
@@ -418,7 +413,7 @@ export function switchTimer(db: Db, input: CreateEntryInput): IpcResult<SwitchTi
   // Only live entries: a soft-deleted row left running is invisible to the
   // user and must not block a start.
   if (running.some((r) => r.deleted_at === null && Date.parse(r.started_at) > start.getTime())) {
-    return fail('Startzeit liegt vor dem Beginn des laufenden Eintrags')
+    return fail(entryError('entry.startBeforeRunning'))
   }
   const tx = db.transaction((): SwitchTimerResult => {
     // Never before a row's own start: a soft-deleted row left running may have
@@ -463,7 +458,7 @@ export function switchTimerAndNotify(
   db: Db,
   input: CreateEntryInput,
   emit: (event: 'timer.stopped' | 'timer.started', entry: Entry) => void
-): IpcResult<SwitchTimerResult> {
+): EntryResult<SwitchTimerResult> {
   const res = switchTimer(db, input)
   if (res.ok) {
     if (res.data.stopped) emit('timer.stopped', res.data.stopped)
@@ -473,22 +468,22 @@ export function switchTimerAndNotify(
 }
 
 /** Start a running timer (stops any running entry at the same instant). Mirrors `entries:start`. */
-export function startTimer(db: Db, input: CreateEntryInput): IpcResult<Entry> {
+export function startTimer(db: Db, input: CreateEntryInput): EntryResult<Entry> {
   const res = switchTimer(db, input)
   return res.ok ? ok(res.data.entry) : res
 }
 
 /** Stop a specific entry by id (stamps now). Mirrors `entries:stop`. */
-export function stopEntry(db: Db, id: number): IpcResult<Entry> {
+export function stopEntry(db: Db, id: number): EntryResult<Entry> {
   const now = new Date().toISOString()
   db.prepare(`UPDATE entries SET stopped_at = ?, heartbeat_at = ? WHERE id = ?`).run(now, now, id)
   const row = db.prepare(`SELECT * FROM entries WHERE id = ?`).get(id) as Entry | undefined
-  if (!row) return fail('Eintrag existiert nicht')
+  if (!row) return fail(entryError('entry.missing'))
   return ok(row)
 }
 
 /** Stop the currently running timer, if any. Returns null when nothing runs. */
-export function stopRunningTimer(db: Db): IpcResult<Entry | null> {
+export function stopRunningTimer(db: Db): EntryResult<Entry | null> {
   const running = db
     .prepare(
       `SELECT id FROM entries WHERE stopped_at IS NULL AND deleted_at IS NULL
@@ -508,7 +503,7 @@ export function stopRunningTimer(db: Db): IpcResult<Entry | null> {
  * keeps its own `deleted_at`, so `undeleteEntry` can tell the rows this
  * delete removed from ones removed earlier.
  */
-export function deleteEntry(db: Db, id: number): IpcResult<void> {
+export function deleteEntry(db: Db, id: number): EntryResult<void> {
   const row = db.prepare(`SELECT link_id, deleted_at FROM entries WHERE id = ?`).get(id) as
     | { link_id: string | null; deleted_at: string | null }
     | undefined
@@ -516,7 +511,7 @@ export function deleteEntry(db: Db, id: number): IpcResult<void> {
   // again: its sibling would get a new time and undo would restore the wrong
   // rows. The answer is the same as MCP `update_entry_fields` gives for a
   // trashed entry.
-  if (!row || row.deleted_at !== null) return fail('Eintrag existiert nicht')
+  if (!row || row.deleted_at !== null) return fail(entryError('entry.missing'))
   const now = new Date().toISOString()
   if (row.link_id) {
     db.prepare(`UPDATE entries SET deleted_at = ? WHERE link_id = ? AND deleted_at IS NULL`).run(
@@ -536,11 +531,11 @@ export function deleteEntry(db: Db, id: number): IpcResult<void> {
  * removed, i.e. those with the same `deleted_at` (#323). A half deleted at
  * another time stays in the trash.
  */
-export function undeleteEntry(db: Db, id: number): IpcResult<Entry> {
+export function undeleteEntry(db: Db, id: number): EntryResult<Entry> {
   const row = db.prepare(`SELECT link_id, deleted_at FROM entries WHERE id = ?`).get(id) as
     | { link_id: string | null; deleted_at: string | null }
     | undefined
-  if (!row) return fail('Eintrag existiert nicht')
+  if (!row) return fail(entryError('entry.missing'))
   if (row.link_id && row.deleted_at) {
     db.prepare(`UPDATE entries SET deleted_at = NULL WHERE link_id = ? AND deleted_at = ?`).run(
       row.link_id,

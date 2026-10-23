@@ -14,6 +14,7 @@ import type { MessageBoxOptions } from 'electron'
 import { localeFromSetting, translate, type Locale } from '../shared/i18n'
 import type { TranslationKey } from '../shared/locales/de'
 import { LOCALE_STRINGS } from '../shared/locales'
+import type { EntryError } from './entryErrors'
 
 export type DialogT = (key: TranslationKey, vars?: Record<string, string | number>) => string
 
@@ -28,6 +29,15 @@ export function readLanguage(db: Database.Database): Locale {
 /** The text function for one locale. Values are filled in literally (one pass). */
 export function dialogT(locale: Locale): DialogT {
   return (key, vars) => translate(LOCALE_STRINGS[locale], key, vars)
+}
+
+/**
+ * The wording of a refused entry write (#296 part B): `mainError.<code>` in
+ * the given language. The IPC handlers and the calendar import pass the app
+ * language, the MCP bridge passes 'de' (client API).
+ */
+export function entryErrorText(e: EntryError, locale: Locale): string {
+  return dialogT(locale)(`mainError.${e.code}`, e.vars)
 }
 
 /** The last language read from the setting, for the moments it cannot be read. */

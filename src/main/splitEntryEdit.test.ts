@@ -15,12 +15,7 @@ import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { makeCtx, seed } from '../test/bridgeKit'
 import { handleRequest } from './mcpBridgeCore'
-import {
-  createManualEntry,
-  SPLIT_EDGE_ERROR,
-  SPLIT_GAP_ERROR,
-  updateManualEntry
-} from './entryMutations'
+import { createManualEntry, updateManualEntry } from './entryMutations'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -52,7 +47,7 @@ describe('editing one half of a split entry (#311)', () => {
       started_at: local(10, 20),
       stopped_at: local(11, 4)
     })
-    if (!made.ok) throw new Error(made.error)
+    if (!made.ok) throw new Error(made.error.code)
   })
 
   const rows = (): Row[] =>
@@ -145,7 +140,7 @@ describe('editing one half of a split entry (#311)', () => {
         started_at: local(10, 23),
         stopped_at: local(11, 4)
       })
-    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    ).toEqual({ ok: false, error: { code: 'entry.splitEdge' } })
     expect(rows()).toEqual(before)
   })
 
@@ -160,7 +155,7 @@ describe('editing one half of a split entry (#311)', () => {
         started_at: local(11, 0, 30),
         stopped_at: second.stopped_at
       })
-    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    ).toEqual({ ok: false, error: { code: 'entry.splitEdge' } })
     const { ctx } = makeCtx(db)
     const res = await handleRequest(ctx, {
       v: 1,
@@ -203,7 +198,7 @@ describe('editing one half of a split entry (#311)', () => {
         started_at: local(11, 0, 30),
         stopped_at: local(11, 5)
       })
-    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    ).toEqual({ ok: false, error: { code: 'entry.splitEdge' } })
     expect(rows()).toEqual(before)
   })
 
@@ -217,7 +212,7 @@ describe('editing one half of a split entry (#311)', () => {
         started_at: local(11, 3),
         stopped_at: local(11, 2)
       })
-    ).toEqual({ ok: false, error: 'Endzeit muss nach der Startzeit liegen' })
+    ).toEqual({ ok: false, error: { code: 'entry.endBeforeStart' } })
   })
 
   it('the MCP preview shows the change to the whole entry', async () => {
@@ -263,7 +258,7 @@ describe('editing one half of a split entry (#311)', () => {
         started_at: local(11, 0, 30),
         stopped_at: second.stopped_at
       })
-    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    ).toEqual({ ok: false, error: { code: 'entry.splitEdge' } })
     // Its outer edge may, and the trashed half's time does not come back.
     const res = updateManualEntry(db, {
       id: second.id,
@@ -304,7 +299,7 @@ describe('editing one half of a split entry (#311)', () => {
       started_at: second.started_at,
       stopped_at: local(11, 5)
     })
-    if (!edited.ok) throw new Error(edited.error)
+    if (!edited.ok) throw new Error(edited.error.code)
     // A second edit still may not move the 0:00 edge into the trashed time.
     expect(
       updateManualEntry(db, {
@@ -314,7 +309,7 @@ describe('editing one half of a split entry (#311)', () => {
         started_at: local(10, 22),
         stopped_at: local(11, 5)
       })
-    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    ).toEqual({ ok: false, error: { code: 'entry.splitEdge' } })
     // Restored, both parts are one entry again, with no overlap.
     db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(first.id)
     const after = rows()
@@ -351,7 +346,7 @@ describe('editing one half of a split entry (#311)', () => {
         started_at: parts[0][0],
         stopped_at: parts[0][1]
       })
-    ).toEqual({ ok: false, error: SPLIT_GAP_ERROR })
+    ).toEqual({ ok: false, error: { code: 'entry.splitGap' } })
     expect(rows()).toEqual(before)
   })
   it('a restored half carries the fields the entry got while it was in the trash', () => {
@@ -366,7 +361,7 @@ describe('editing one half of a split entry (#311)', () => {
       billable: 0,
       tags: ',x,'
     })
-    if (!edited.ok) throw new Error(edited.error)
+    if (!edited.ok) throw new Error(edited.error.code)
     db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(first.id)
     const fields = db
       .prepare(

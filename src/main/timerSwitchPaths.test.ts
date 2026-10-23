@@ -19,7 +19,8 @@ import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { countEntries, makeCtx, seed } from '../test/bridgeKit'
 import { handleRequest, type BridgeRequest } from './mcpBridgeCore'
 import { switchTimerAndNotify } from './entryMutations'
-import type { IpcResult, SwitchTimerResult } from '../shared/types'
+import type { SwitchTimerResult } from '../shared/types'
+import type { EntryResult } from './entryErrors'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -91,7 +92,7 @@ describe('timer switch paths (main process)', () => {
       clientId: number,
       startedAt: string,
       events: string[] = []
-    ): IpcResult<SwitchTimerResult> =>
+    ): EntryResult<SwitchTimerResult> =>
       switchTimerAndNotify(
         db,
         { client_id: clientId, description: '', started_at: startedAt },
@@ -118,10 +119,8 @@ describe('timer switch paths (main process)', () => {
       const before = all()
       const events: string[] = []
       const r = switchVia(2, iso(t - 20 * MIN), events)
-      expect(r).toEqual({
-        ok: false,
-        error: 'Startzeit liegt vor dem Beginn des laufenden Eintrags'
-      })
+      // The domain refuses with a code; the IPC handler words it (#296).
+      expect(r).toEqual({ ok: false, error: { code: 'entry.startBeforeRunning' } })
       expect(all()).toEqual(before)
       expect(events).toEqual([])
     })

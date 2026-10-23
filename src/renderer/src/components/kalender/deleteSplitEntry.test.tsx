@@ -61,7 +61,7 @@ describe('day panel: delete and undo an entry across midnight (#323)', () => {
       started_at: new Date(2026, 5, 10, 23, 0, 0).toISOString(),
       stopped_at: new Date(2026, 5, 11, 1, 0, 0).toISOString()
     })
-    if (!created.ok) throw new Error(created.error)
+    if (!created.ok) throw new Error(created.error.code)
     const linkId = created.data.link_id!
     const secondHalf = db
       .prepare(`SELECT * FROM entries WHERE link_id = ? ORDER BY started_at DESC LIMIT 1`)

@@ -65,8 +65,8 @@ describe('entryMutations', () => {
 
   it('validateProjectForClient rejects foreign and unknown projects', () => {
     expect(validateProjectForClient(db, 10, 1)).toBeNull()
-    expect(validateProjectForClient(db, 10, 2)).toBe('Projekt gehört nicht zu diesem Kunden')
-    expect(validateProjectForClient(db, 999, 1)).toBe('Projekt gehört nicht zu diesem Kunden')
+    expect(validateProjectForClient(db, 10, 2)).toEqual({ code: 'entry.projectNotOfClient' })
+    expect(validateProjectForClient(db, 999, 1)).toEqual({ code: 'entry.projectNotOfClient' })
   })
 
   it('createManualEntry rejects a project of another client (#133)', () => {
@@ -78,7 +78,7 @@ describe('entryMutations', () => {
       project_id: 10
     })
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.error).toBe('Projekt gehört nicht zu diesem Kunden')
+    if (!r.ok) expect(r.error).toEqual({ code: 'entry.projectNotOfClient' })
   })
 
   it('createManualEntry accepts a project of the same client', () => {
@@ -227,7 +227,7 @@ describe('entryMutations', () => {
 
   it('startTimer rejects a start time it cannot read', () => {
     const r = startTimer(db, { client_id: 1, description: 'x', started_at: 'gestern früh' })
-    expect(r).toEqual({ ok: false, error: 'Startzeit ist ungültig' })
+    expect(r).toEqual({ ok: false, error: { code: 'entry.startInvalid' } })
     const n = db.prepare(`SELECT COUNT(*) AS n FROM entries`).get() as { n: number }
     expect(n.n).toBe(0)
   })
@@ -428,7 +428,7 @@ describe('switchTimer (B1)', () => {
       description: '',
       started_at: new Date(Date.now() + 10 * 60_000).toISOString()
     })
-    expect(far).toEqual({ ok: false, error: 'Startzeit liegt in der Zukunft' })
+    expect(far).toEqual({ ok: false, error: { code: 'entry.timerStartInFuture' } })
     const running = db.prepare(`SELECT client_id FROM entries WHERE stopped_at IS NULL`).all()
     expect(running).toEqual([{ client_id: 1 }])
     const near = switchTimer(db, {
@@ -471,12 +471,15 @@ describe('overlap with a running entry', () => {
   it('a backfill inside the running entry of the same client is refused', () => {
     expect(backfill(1, -2 * H, -1 * H)).toEqual({
       ok: false,
-      error: 'Eintrag überlappt mit einem bestehenden Eintrag desselben Kunden'
+      error: { code: 'entry.overlap' }
     })
   })
 
   it('a backfill that reaches past now is refused too — the running entry will end later', () => {
-    expect(backfill(1, -1 * H, 1 * H)).toMatchObject({ ok: false, error: /überlappt/ })
+    expect(backfill(1, -1 * H, 1 * H)).toMatchObject({
+      ok: false,
+      error: { code: 'entry.overlap' }
+    })
   })
 
   it('before the running start is fine, and so is another client', () => {
@@ -494,7 +497,7 @@ describe('overlap with a running entry', () => {
       started_at: at(-2 * H),
       stopped_at: at(-1 * H)
     })
-    expect(res).toMatchObject({ ok: false, error: /überlappt/ })
+    expect(res).toMatchObject({ ok: false, error: { code: 'entry.overlap' } })
   })
 })
 
@@ -533,7 +536,7 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
       started_at: startedAt,
       stopped_at: stoppedAt
     })
-    if (!res.ok) throw new Error(res.error)
+    if (!res.ok) throw new Error(res.error.code)
     return res.data.id
   }
 
@@ -558,7 +561,7 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
       started_at: local(10, 9),
       stopped_at: local(10, 10)
     })
-    if (!made.ok) throw new Error(made.error)
+    if (!made.ok) throw new Error(made.error.code)
     db.prepare(`UPDATE entries SET created_at = ?`).run(CREATED)
     const newId = edit(made.data.id, local(10, 9), local(10, 11))
     expect(rows()).toEqual([{ id: newId, graph_event_id: null, created_at: CREATED }])
@@ -651,7 +654,7 @@ describe('an edit keeps every column of the entry (guard)', () => {
       billable: 0,
       private_note: 'intern'
     })
-    if (!made.ok) throw new Error(made.error)
+    if (!made.ok) throw new Error(made.error.code)
     db.prepare(
       `UPDATE entries SET graph_event_id = 'EVT-G', created_at = '2026-01-02 08:00:00'`
     ).run()
@@ -668,7 +671,7 @@ describe('an edit keeps every column of the entry (guard)', () => {
       billable: before.billable as number,
       private_note: before.private_note as string
     })
-    if (!res.ok) throw new Error(res.error)
+    if (!res.ok) throw new Error(res.error.code)
     const after = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
     const owned = Object.keys(COLUMNS).filter((c) => COLUMNS[c] !== 'rebuilt')
     expect(Object.fromEntries(owned.map((c) => [c, after[c]]))).toEqual(

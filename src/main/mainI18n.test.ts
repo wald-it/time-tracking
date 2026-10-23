@@ -15,7 +15,11 @@ import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { de } from '../shared/locales/de'
+import { en } from '../shared/locales/en'
+import { ENTRY_ERROR_CODES, entryError } from './entryErrors'
 import {
+  entryErrorText,
   appLocale,
   forgetLastAppLocale,
   cancelledResult,
@@ -260,6 +264,29 @@ describe('#296 — tray', () => {
     })
     expect(trayTooltip('en', true, 'Acme', '01:30')).toBe('● Acme · Today 01:30')
     expect(trayTooltip('en', false, '', '00:00')).toBe('TimeTrack — Today 00:00')
+  })
+})
+
+describe('#296 part B — refused entry writes', () => {
+  it('every EntryErrorCode has a de and an en text, and every text a code', () => {
+    const codes = [...ENTRY_ERROR_CODES].sort()
+    const keysOf = (strings: Record<string, string>): string[] =>
+      Object.keys(strings)
+        .filter((k) => k.startsWith('mainError.entry.'))
+        .map((k) => k.slice('mainError.'.length))
+        .sort()
+    expect(keysOf(de)).toEqual(codes)
+    expect(keysOf(en)).toEqual(codes)
+  })
+
+  it('words a code with its values; German as the app always wrote it', () => {
+    const e = entryError('entry.descriptionTooLong', { max: 500 })
+    expect(entryErrorText(e, 'de')).toBe('Beschreibung überschreitet 500 Zeichen')
+    expect(entryErrorText(e, 'en')).toBe('The description is longer than 500 characters')
+    expect(entryErrorText(entryError('entry.splitEdge'), 'de')).toBe(
+      'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. ' +
+        'Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten.'
+    )
   })
 })
 

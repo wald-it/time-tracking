@@ -928,5 +928,27 @@ export const en: Record<TranslationKey, string> = {
   'mainFile.fallbackClient': 'Client',
   'mainError.exportCancelled': 'Export cancelled',
   'mainError.selectionCancelled': 'Selection cancelled',
-  'mainError.saveCancelled': 'Saving cancelled'
+  'mainError.saveCancelled': 'Saving cancelled',
+
+  // ── Main process: refused entry writes (#296 part B) ─────────────────────
+  'mainError.entry.startInvalid': 'The start time is not valid',
+  'mainError.entry.endInvalid': 'The end time is not valid',
+  'mainError.entry.startInFuture': 'The start time cannot be in the future',
+  'mainError.entry.endBeforeStart': 'The end time must be after the start time',
+  'mainError.entry.tooLong': 'The duration is longer than 24 hours',
+  'mainError.entry.descriptionTooLong': 'The description is longer than {max} characters',
+  'mainError.entry.referenceTooLong': 'The reference is longer than {max} characters',
+  'mainError.entry.noteTooLong': 'The note is longer than {max} characters',
+  'mainError.entry.clientMissing': 'The client does not exist',
+  'mainError.entry.projectNotOfClient': 'The project does not belong to this client',
+  'mainError.entry.overlap': 'The entry overlaps an existing entry of the same client',
+  'mainError.entry.missing': 'The entry does not exist',
+  'mainError.entry.splitEdge':
+    'This entry is split at midnight, and the 0:00 boundary cannot be moved on one half. Change the start on the first half and the end on the second.',
+  'mainError.entry.splitGap':
+    'A middle part of this entry was deleted, so the remaining parts cannot be edited together.',
+  'mainError.entry.staleEdit':
+    'The entry changed while you were being asked. Please request the change again.',
+  'mainError.entry.timerStartInFuture': 'The start time is in the future',
+  'mainError.entry.startBeforeRunning': 'The start time is before the start of the running entry'
 } as const satisfies Record<TranslationKey, string>

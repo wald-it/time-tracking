@@ -946,7 +946,31 @@ export const de = {
   'mainFile.fallbackClient': 'Kunde',
   'mainError.exportCancelled': 'Export abgebrochen',
   'mainError.selectionCancelled': 'Auswahl abgebrochen',
-  'mainError.saveCancelled': 'Speichern abgebrochen'
+  'mainError.saveCancelled': 'Speichern abgebrochen',
+
+  // ── Main process: refused entry writes (#296 part B) ─────────────────────
+  // One key per EntryErrorCode (main/entryErrors.ts). German word for word as
+  // before: the MCP bridge sends these to its clients (client API).
+  'mainError.entry.startInvalid': 'Startzeit ist ungültig',
+  'mainError.entry.endInvalid': 'Endzeit ist ungültig',
+  'mainError.entry.startInFuture': 'Startzeit darf nicht in der Zukunft liegen',
+  'mainError.entry.endBeforeStart': 'Endzeit muss nach der Startzeit liegen',
+  'mainError.entry.tooLong': 'Dauer überschreitet 24 Stunden',
+  'mainError.entry.descriptionTooLong': 'Beschreibung überschreitet {max} Zeichen',
+  'mainError.entry.referenceTooLong': 'Referenz überschreitet {max} Zeichen',
+  'mainError.entry.noteTooLong': 'Notiz überschreitet {max} Zeichen',
+  'mainError.entry.clientMissing': 'Kunde existiert nicht',
+  'mainError.entry.projectNotOfClient': 'Projekt gehört nicht zu diesem Kunden',
+  'mainError.entry.overlap': 'Eintrag überlappt mit einem bestehenden Eintrag desselben Kunden',
+  'mainError.entry.missing': 'Eintrag existiert nicht',
+  'mainError.entry.splitEdge':
+    'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten.',
+  'mainError.entry.splitGap':
+    'Ein mittlerer Teil dieses Eintrags wurde gelöscht. Die übrigen Teile lassen sich deshalb nicht gemeinsam bearbeiten.',
+  'mainError.entry.staleEdit':
+    'Der Eintrag hat sich während der Rückfrage geändert. Bitte die Änderung erneut anfragen.',
+  'mainError.entry.timerStartInFuture': 'Startzeit liegt in der Zukunft',
+  'mainError.entry.startBeforeRunning': 'Startzeit liegt vor dem Beginn des laufenden Eintrags'
 } as const
 
 export type TranslationKey = keyof typeof de
