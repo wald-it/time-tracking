@@ -234,6 +234,23 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     expect(ended).toEqual({ stopped_at: '2025-10-28T09:00:00.000Z' })
   })
 
+  it('stop_running_timer: the dialog names the entry, or that none runs', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer', args: {} })
+    await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer', args: {} })
+    expect(asked.slice(1)).toEqual([
+      `Laufenden Timer stoppen (Eintrag #${id})`,
+      'Laufenden Timer stoppen (keiner aktiv)'
+    ])
+  })
+
   it('start_timer more than a minute ahead is refused before any dialog', async () => {
     const { ctx, asked } = recording()
     await handleRequest(ctx, {

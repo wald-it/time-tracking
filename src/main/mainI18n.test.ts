@@ -3,8 +3,9 @@
  *
  * The German texts are pinned word for word: they are the wording the app
  * shipped with, and moving them into the locale files must not change them.
- * The last block guards the call sites: no dialog in src/main may carry a
- * text literal again.
+ * The last block guards the call sites in the files directly under src/main
+ * (where every dialog lives today): no title, message, detail, checkbox,
+ * button or filter name written as a literal.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readdirSync, readFileSync } from 'fs'
@@ -153,6 +154,17 @@ describe('no dialog text is written into a call site', () => {
       .map((f) => [f, readFileSync(join(__dirname, f), 'utf8')])
   }
 
+  it('no dialog lives in a subfolder of src/main, where the guard does not look', () => {
+    const subdirs = readdirSync(__dirname, { withFileTypes: true }).filter((d) => d.isDirectory())
+    for (const d of subdirs) {
+      for (const f of readdirSync(join(__dirname, d.name), { recursive: true }) as string[]) {
+        if (!f.endsWith('.ts')) continue
+        const src = readFileSync(join(__dirname, d.name, f), 'utf8')
+        expect(/dialog\.show\w+\(/.test(src), `${d.name}/${f}`).toBe(false)
+      }
+    }
+  })
+
   it('finds the dialog call sites it guards', () => {
     const withDialogs = sources().filter(([, src]) => /dialog\.show\w+\(/.test(src))
     expect(withDialogs.map(([f]) => f).sort()).toEqual(
@@ -173,8 +185,8 @@ describe('no dialog text is written into a call site', () => {
     for (const [file, src] of sources()) {
       if (!/dialog\.show\w+\(|showSaveDialog/.test(src)) continue
       expect(literal.exec(src)?.[0], file).toBeUndefined()
-      for (const m of src.matchAll(/filters:\s*\[\s*\{\s*name:\s*'([^']*)'/g)) {
-        expect(FORMAT_NAMES.has(m[1]), `${file}: filter name ${m[1]}`).toBe(true)
+      for (const m of src.matchAll(/\{\s*name:\s*(['"`])([^'"`]*)\1,\s*extensions:/g)) {
+        expect(FORMAT_NAMES.has(m[2]), `${file}: filter name ${m[2]}`).toBe(true)
       }
     }
   })

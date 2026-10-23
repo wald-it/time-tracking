@@ -859,8 +859,10 @@ export const de = {
 
   // ── Native dialogs of the main process (#270) ─────────────────────────────
   // Filled with translateLiteral. The MCP texts are the owner's guard against
-  // writes from MCP clients: the German wording is pinned byte for byte in
-  // mcpBridgeLocalTime.test.ts.
+  // writes from MCP clients: the German wording is pinned byte for byte, the
+  // summary lines in mcpBridgeLocalTime.test.ts, the dialog frame in
+  // mainI18n.test.ts. `mainDialog.mcp.offsetHint` in German is also the text
+  // of `zeit_hinweise` in the reply to MCP clients (client API).
   'mainDialog.mcp.title': 'TimeTrack — MCP-Schreibzugriff',
   'mainDialog.mcp.message': 'Claude möchte eine Änderung in TimeTrack vornehmen:',
   'mainDialog.mcp.deny': 'Ablehnen',

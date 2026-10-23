@@ -98,9 +98,10 @@ export function zonedTimestampError(
 }
 
 // ── local time for the owner's confirmation and the client's reply ──────────
-// The confirmation follows the app language (#270); the reply to the MCP
-// client stays German, so its callers pass 'de'. English writes the date as
-// ISO (`Tue 2026-10-27`): no reader has to guess between 10/27 and 27/10.
+// The confirmation follows the app language (#270), so these take a locale.
+// Of them only the offset note also reaches the MCP client (`zeit_hinweise`),
+// and the bridge asks for that one in German. English writes the date as ISO
+// (`Tue 2026-10-27`): no reader has to guess between 10/27 and 27/10.
 
 const pad = (n: number): string => String(n).padStart(2, '0')
 const WEEKDAYS: Record<Locale, readonly string[]> = {
