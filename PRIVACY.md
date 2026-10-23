@@ -24,7 +24,8 @@ include the iCal feed token and the webhook targets with their secrets. The JSON
 export leaves those secrets out.
 
 **Logs:** `main.log` (app events and errors, including messages from the user
-interface), `webhooks.log` (per delivery only the target host and, on failure,
+interface; with **Mirror Teams status** on, also the Teams status message as
+Teams stored it, which names the client and project when you show them), `webhooks.log` (per delivery only the target host and, on failure,
 the kind of error — never the payload or a secret) and `mcp-writes.log` (one line
 per write through MCP: operation, entry and client id, times — never the content
 of an internal note and never the token).
@@ -74,18 +75,20 @@ finds a new version, the app downloads it in the background as above.
   status message you wrote yourself. If you also switch on **Show client name
   in the status**, the message names the client of the running entry and its
   project, if it has one ("🔴 Fokus: client — project"). Your colleagues see the
-  message and the Busy status in Teams. TimeTrack updates both when you start,
-  stop or switch a timer and renews them about every 25 minutes while one runs,
-  so they also show when you work. An availability you set yourself in Teams
+  message and the Busy status in Teams. TimeTrack updates both when you start
+  or stop a timer and when the message text changes (for example another client
+  or project, or another app language), and renews them about every 25 minutes
+  while a timer runs, so they also show when you work. An availability you set yourself in Teams
   takes precedence over the Busy status.
   Descriptions, notes, tags and rates are never sent.
 - **When it is removed:** when the timer stops, or when you switch **Mirror
   Teams status** off, TimeTrack clears the status message (including one you
-  wrote yourself while the timer ran) and the Busy status. It tries this once.
-  If that fails (offline, for example), or the app quits or crashes, or you
-  disconnect the account while a timer runs, the message and the Busy status
-  stay, also after a restart, until TimeTrack sets your status again or they
-  expire: the Busy status after at most an hour, the message after 12 hours.
+  wrote yourself while the timer ran) and the Busy status. If clearing fails
+  (offline, for example), the message, the Busy status or both stay until
+  TimeTrack tries again at its next status update. If the app quits or crashes,
+  or you disconnect the account while a timer runs, nothing clears them, also
+  not after a restart, until TimeTrack sets your status again or they expire:
+  the Busy status after at most an hour, the message after 12 hours.
 - **Tokens:** stored in a separate file in the data folder, encrypted by the
   operating system (DPAPI / Keychain), not part of backups or exports.
   **Disconnect** deletes that file; revoking the app's access in your Microsoft
