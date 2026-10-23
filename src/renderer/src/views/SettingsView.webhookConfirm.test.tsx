@@ -117,4 +117,72 @@ describe('webhook address (#272 A3)', () => {
     // The unsaved address does not stay in the field looking saved.
     expect(input.value).toBe(URL_OLD)
   })
+
+  // Codex follow-up: a save queued behind a declined one was built on the
+  // declined list and may be confirmed itself; the editor must end up showing
+  // what is stored, not the read-back from the moment of the decline.
+  it('after a decline, a queued save that is confirmed is what the editor shows', async () => {
+    let stored = existing
+    let releaseFirst: (r: SetResult) => void = () => {}
+    let call = 0
+    const set = vi.fn<(key: string, value: string) => Promise<SetResult>>(async (_k, v) => {
+      call++
+      if (call === 1) return new Promise<SetResult>((r) => (releaseFirst = r))
+      stored = v
+      return { ok: true, data: undefined }
+    })
+    ;(window as unknown as { api: unknown }).api = {
+      settings: { getAll: async () => ({ ok: true, data: { webhook_targets: stored } }), set }
+    }
+    const input = await renderSection()
+    input.focus()
+    fireEvent.change(input, { target: { value: URL_A } })
+    await act(async () => {
+      input.blur()
+    })
+    const secret = screen.getByLabelText(/^Secret/) as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(secret, { target: { value: 'new-secret' } })
+    })
+    await act(async () => {
+      releaseFirst({ ok: false, error: 'declined', code: 'cancelled' })
+    })
+    await act(async () => {})
+    expect(set).toHaveBeenCalledTimes(2)
+    const kept = JSON.parse(stored)[0]
+    expect(kept.url).toBe(URL_A)
+    expect(kept.secret).toBe('new-secret')
+    expect(input.value).toBe(URL_A)
+    expect(secret.value).toBe('new-secret')
+  })
+
+  it('an accepted save followed by a declined one ends on the stored list', async () => {
+    let stored = existing
+    let call = 0
+    const set = vi.fn<(key: string, value: string) => Promise<SetResult>>(async (_k, v) => {
+      call++
+      if (call === 2) return { ok: false, error: 'declined', code: 'cancelled' }
+      stored = v
+      return { ok: true, data: undefined }
+    })
+    ;(window as unknown as { api: unknown }).api = {
+      settings: { getAll: async () => ({ ok: true, data: { webhook_targets: stored } }), set }
+    }
+    const URL_B = 'https://hooks.example.com/b'
+    const input = await renderSection()
+    input.focus()
+    fireEvent.change(input, { target: { value: URL_A } })
+    await act(async () => {
+      input.blur()
+    })
+    input.focus()
+    fireEvent.change(input, { target: { value: URL_B } })
+    await act(async () => {
+      input.blur()
+    })
+    await act(async () => {})
+    expect(set).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(stored)[0].url).toBe(URL_A)
+    expect(input.value).toBe(URL_A)
+  })
 })

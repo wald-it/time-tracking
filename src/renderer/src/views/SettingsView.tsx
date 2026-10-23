@@ -1059,26 +1059,36 @@ export function WebhooksSection({
 
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // Saves run one after another, so a read-back after a declined save cannot
-  // overtake a later save that is still waiting.
+  // Saves run one after another. A new address asks natively first (#272),
+  // so a save can be declined while later edits wait behind it; those were
+  // built on the declined list and may themselves be confirmed. Once the
+  // queue has drained after any declined or failed save, the list is read
+  // back from what is stored, so the editor never shows something else.
   const saving = useRef<Promise<void>>(Promise.resolve())
+  const pendingSaves = useRef(0)
+  const saveFailed = useRef(false)
 
   function persist(next: WebhookTarget[]): Promise<void> {
     const before = targets
     setTargets(next)
     setSaveError(null)
-    const run = saving.current.then(async () => {
-      const res = await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
-      // A new address asks natively first (#272); declined or failed, the
-      // list shows what is stored (read back, since another save may have
-      // landed first), or the list from before if that read fails. Only a
-      // failure needs a message.
-      if (!res.ok) {
-        if (res.code !== 'cancelled') setSaveError(t('common.error', { error: res.error }))
+    pendingSaves.current++
+    const run = saving.current
+      .then(async () => {
+        const res = await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
+        if (!res.ok) {
+          saveFailed.current = true
+          // Only a failure needs a message, not a declined confirmation.
+          if (res.code !== 'cancelled') setSaveError(t('common.error', { error: res.error }))
+        }
+      })
+      .finally(async () => {
+        pendingSaves.current--
+        if (pendingSaves.current > 0 || !saveFailed.current) return
+        saveFailed.current = false
         const stored = await window.api.settings.getAll()
         setTargets(stored.ok ? parseWebhookTargets(stored.data.webhook_targets) : before)
-      }
-    })
+      })
     saving.current = run.catch(() => undefined)
     return run
   }
