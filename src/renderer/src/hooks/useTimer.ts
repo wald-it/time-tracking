@@ -402,8 +402,8 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       return
     }
     setIsLoading(true)
-    // Three calls in a row, so not withLoading: the flag spans all of them,
-    // and a rejection still reaches the caller, but never leaves it set.
+    // Two calls in a row, so not withLoading: the flag spans both, and a
+    // rejection still reaches the caller, but never leaves it set.
     try {
       // 1. Stop the running entry at idleSince
       const stopRes = await window.api.entries.update({
@@ -414,27 +414,17 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
         stopped_at: ev.idleSince
       })
       if (stopRes.ok) {
-        // 2. Insert pause entry from idleSince to now
-        const pauseStart = ev.idleSince
-        const pauseEnd = new Date().toISOString()
-        const pauseStartRes = await window.api.entries.start({
+        // 2. Book the pause from idleSince to now in one step, closed and not
+        // billable: it is time not worked and must stay off the client's
+        // timesheet (#298). Starting it as a timer and closing it afterwards
+        // left a running, billable "Pause" whenever the second call failed.
+        await window.api.entries.create({
           client_id: entry.client_id,
           description: 'Pause',
-          started_at: pauseStart
+          started_at: ev.idleSince,
+          stopped_at: new Date().toISOString(),
+          billable: 0
         })
-        if (pauseStartRes.ok) {
-          // entries:start takes no billable flag, so the pause is closed here
-          // as not billable: it is time not worked and must stay off the
-          // client's timesheet (#298).
-          await window.api.entries.update({
-            id: pauseStartRes.data.id,
-            client_id: entry.client_id,
-            description: 'Pause',
-            started_at: pauseStart,
-            stopped_at: pauseEnd,
-            billable: 0
-          })
-        }
         setRunningEntry(null)
         setDescription('')
         await pushTrayUpdate(false, '')

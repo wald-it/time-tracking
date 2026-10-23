@@ -1,9 +1,8 @@
 /**
  * "Als Pause markieren" end to end, renderer and main process together (#298):
  * `useTimer().idleMarkPause` → `entries:update` stops the running entry at
- * idleSince (the real `updateManualEntry`), `entries:start` + `entries:update`
- * book the pause from idleSince to now (the real `switchTimer` and
- * `updateManualEntry`) — all on a real database.
+ * idleSince (the real `updateManualEntry`), `entries:create` books the pause
+ * from idleSince to now (the real `createManualEntry`) — on a real database.
  *
  * The pause is time the user did not work. It must not be billable, or it
  * lands on the client's timesheet (the PDF attachment takes billable entries
@@ -14,9 +13,15 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../../../test/sqlite'
 import { seed } from '../../../test/bridgeKit'
-import { switchTimer, updateManualEntry } from '../../../main/entryMutations'
+import { createManualEntry, switchTimer, updateManualEntry } from '../../../main/entryMutations'
 import { buildPdfPayload } from '../../../main/pdf'
-import type { Client, CreateEntryInput, Entry, UpdateEntryInput } from '../../../shared/types'
+import type {
+  Client,
+  CreateEntryInput,
+  CreateManualEntryInput,
+  Entry,
+  UpdateEntryInput
+} from '../../../shared/types'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -61,6 +66,7 @@ function installApi(db: Database.Database): {
         const res = switchTimer(db, input)
         return res.ok ? { ok: true as const, data: res.data.entry } : res
       },
+      create: async (input: CreateManualEntryInput) => createManualEntry(db, input),
       update: async (input: UpdateEntryInput) => updateManualEntry(db, input),
       heartbeat: async () => ({ ok: true as const, data: undefined })
     },
