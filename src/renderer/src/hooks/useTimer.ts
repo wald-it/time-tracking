@@ -72,10 +72,12 @@ async function withLoading<T>(call: () => Promise<IpcResult<T>>): Promise<IpcRes
 /**
  * The entries:update input that stops `entry` at `stoppedAt` and changes
  * nothing else. entries:update re-inserts the row and defaults every field it
- * is not given, so all of them travel along: without them the idle prompt
- * dropped the project, made a non-billable entry billable and cleared tags,
- * reference and note (#313; the same rule as QuickNoteModal). The store's
- * running entry is current: a running entry cannot be edited (MCP
+ * is not given, so all of them travel along (the same rule as QuickNoteModal).
+ * Without them the idle prompt dropped the project (#313). Today a running
+ * entry only ever differs from the defaults in its project — switchTimer, the
+ * one writer of running rows, sets nothing else — but the rest travels along
+ * too, so a later way to set them on a running entry is not reset here.
+ * The store's running entry is current: a running entry cannot be edited (MCP
  * update_entry_fields refuses it, the app edits stopped entries only).
  */
 function stopAtInput(entry: Entry, stoppedAt: string): UpdateEntryInput {

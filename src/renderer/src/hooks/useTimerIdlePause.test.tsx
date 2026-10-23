@@ -148,8 +148,10 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
 
 // #313: stopping the running entry at idleSince goes through entries:update,
 // which re-inserts the row and defaults every field it is not given. Both idle
-// actions must keep the stopped entry's project, billable flag, tags,
-// reference and internal note (the 1.22 quick-note fix, for the idle prompt).
+// actions must keep the stopped entry as it was. A running entry differs from
+// the defaults only in its project (switchTimer sets nothing else), so the
+// seed is a running entry with a project; the other fields are checked to
+// stay at what the entry had.
 describe('idle prompt keeps the stopped entry as it was (#313)', () => {
   async function runIdle(action: 'idleStopAtIdle' | 'idleMarkPause'): Promise<{
     db: Database.Database
@@ -162,10 +164,10 @@ describe('idle prompt keeps the stopped entry as it was (#313)', () => {
     const NOW = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0)
     const startedAt = new Date(NOW.getTime() - 2 * 60 * 60_000).toISOString()
     const idleSince = new Date(NOW.getTime() - 30 * 60_000).toISOString()
+    // The row switchTimer writes for a timer started on project 10.
     db.prepare(
-      `INSERT INTO entries (id, client_id, project_id, description, started_at, heartbeat_at,
-                            billable, reference, private_note, tags)
-       VALUES (1, 1, 10, 'Konzept', ?, ?, 0, 'JIRA-7', 'intern', ',ops,')`
+      `INSERT INTO entries (id, client_id, project_id, description, started_at, heartbeat_at)
+       VALUES (1, 1, 10, 'Konzept', ?, ?)`
     ).run(startedAt, startedAt)
     const { trayUpdate, idle } = installApi(db)
 
@@ -204,10 +206,10 @@ describe('idle prompt keeps the stopped entry as it was (#313)', () => {
         project_id: 10,
         description: 'Konzept',
         stopped_at: idleSince,
-        billable: 0,
-        reference: 'JIRA-7',
-        private_note: 'intern',
-        tags: ',ops,'
+        billable: 1,
+        reference: '',
+        private_note: '',
+        tags: ''
       }
     ])
     db.close()
@@ -221,10 +223,10 @@ describe('idle prompt keeps the stopped entry as it was (#313)', () => {
         project_id: 10,
         description: 'Konzept',
         stopped_at: idleSince,
-        billable: 0,
-        reference: 'JIRA-7',
-        private_note: 'intern',
-        tags: ',ops,'
+        billable: 1,
+        reference: '',
+        private_note: '',
+        tags: ''
       }
     ])
     db.close()
