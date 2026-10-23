@@ -17,6 +17,7 @@ import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../../../test/sqlite'
 import { seed } from '../../../test/bridgeKit'
 import { switchTimer, updateManualEntry } from '../../../main/entryMutations'
+import { readDescriptionSuggestions } from '../../../main/descriptionSuggestions'
 import type { Client, CreateEntryInput, Entry, UpdateEntryInput } from '../../../shared/types'
 import type { UseTimerResult } from './useTimer'
 
@@ -53,6 +54,11 @@ function installApi(db: Database.Database): { trayUpdate: ReturnType<typeof vi.f
       }),
       switch: async (input: CreateEntryInput) => switchTimer(db, input),
       update: async (input: UpdateEntryInput) => updateManualEntry(db, input),
+      // Q8: the prompt's suggestions, from the same database.
+      recentDescriptions: async (pair: { clientId: number; projectId: number | null }) => ({
+        ok: true as const,
+        data: readDescriptionSuggestions(db, pair.clientId, pair.projectId)
+      }),
       heartbeat: async () => ({ ok: true as const, data: undefined })
     },
     dashboard: { todayTotal: async () => ({ ok: true as const, data: 0 }) },
