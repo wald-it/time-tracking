@@ -53,3 +53,17 @@ Die Architektur-/Owner-Karte dieses Repos lebt zentral im Brain-Vault:
 Die Technik-Doku bleibt im Repo (README.md, DESIGN.md, CONTRIBUTING.md); die
 Karte ist die Owner-Sicht darüber, kein Ersatz.
 
+## Roadmap (Zeiger)
+
+Die Roadmap (1.23.0 → 2.0.0 → 2.x, Stand je Posten) ist eine private Seite des Owners:
+https://claude.ai/artifact/3vtyNj65S422pxXcSyLcsm. Erzeugt wird sie im Brain-Vault mit
+`tools/timetrack-roadmap.py`; welches Issue zu welchem Meilenstein gehört, steht in
+`projects/timetrack/roadmap/roadmap.toml`.
+
+**Aktualisierungspflicht:** Wer in einer Session PRs mergt, Issues anlegt oder schließt oder den
+Stand eines Meilensteins ändert, aktualisiert die Seite am Ende der Session:
+`python tools/timetrack-roadmap.py --check` (Exit 1 heißt: neue offene Issues erst in der TOML
+zuordnen), dann ohne `--check` erzeugen, die Ausgabe `cockpit/timetrack-roadmap.html` lesen und
+unter derselben URL neu veröffentlichen. Eine Session ohne Vault-Zugriff oder ohne
+Artifact-Werkzeug meldet ihre Änderungen an die Session, die die Roadmap pflegt.
+
