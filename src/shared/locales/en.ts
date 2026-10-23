@@ -86,7 +86,7 @@ export const en: Record<TranslationKey, string> = {
   // Step 4 — Restore backup
   'onboarding.restore.title': 'Restore data?',
   'onboarding.restore.body':
-    'A backup was found. Would you like to restore your previous data now?',
+    'A backup was found. Would you like to restore your previous data now? Quit programs that use TimeTrack through MCP (e.g. Claude Desktop) first.',
   'onboarding.restore.latestLabel': 'Latest backup:',
   'onboarding.restore.restoreBtn': 'Restore',
   'onboarding.restore.skip': 'Start without restoring',
@@ -545,7 +545,7 @@ export const en: Record<TranslationKey, string> = {
   'settings.data.restoreBtn': 'Restore…',
   'settings.data.restoreConfirmTitle': 'Restore backup?',
   'settings.data.restoreConfirmBody':
-    'All current data will be replaced with the selected backup. A safety copy of the current state will be created first.',
+    'All current data will be replaced with the selected backup. A safety copy of the current state will be created first. Quit programs that use TimeTrack through MCP (e.g. Claude Desktop) first — otherwise the restore cannot be done.',
   'settings.data.restoreConfirmOk': 'Restore now',
   'settings.data.restoring': 'Restoring…',
   'settings.data.noBackupToRestore': 'No backups available',

@@ -13,6 +13,22 @@ beforeAll(async () => {
 // Mock electron's `app.getPath('userData')` so backup.ts works in node tests.
 let userDataDir: string
 
+// A side file (`-wal` / `-shm`) that cannot be removed — on Windows the case
+// when another process (the MCP server) still holds the database open.
+let lockedSuffix: string | null = null
+vi.mock('fs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('fs')>()
+  return {
+    ...real,
+    unlinkSync: (path: import('fs').PathLike) => {
+      if (lockedSuffix && String(path).endsWith(lockedSuffix)) {
+        throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' })
+      }
+      return real.unlinkSync(path)
+    }
+  }
+})
+
 vi.mock('electron', () => ({
   app: {
     getPath: (key: string) => {
@@ -24,6 +40,7 @@ vi.mock('electron', () => ({
 
 beforeEach(() => {
   userDataDir = mkdtempSync(join(tmpdir(), 'tt-backup-'))
+  lockedSuffix = null
 })
 
 afterEach(() => {
@@ -190,6 +207,51 @@ describe('restoreBackup', () => {
     expect(readValues(currentDb)).toEqual(['BACKUP'])
     // pre-restore safety copies are diagnostic, not listed for the user.
     expect(listBackups().some((b) => b.filename.startsWith('backup-pre-restore-'))).toBe(false)
+  })
+
+  // Owner review #253: with the database still open elsewhere the restore
+  // must not happen, must leave the file untouched, and must say so.
+  it('a side file that cannot be removed leaves the database file untouched and reports it', async () => {
+    const { restoreBackupOrReport, DbInUseError, replaceDbFile, RESTORE_IN_USE_MESSAGE } =
+      await loadBackup()
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const backupSrc = walDb(join(userDataDir, 'backup.sqlite'), 'BACKUP')
+    backupSrc.close()
+    const backup = join(userDataDir, 'backup.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    // A second connection that has read keeps -wal/-shm alive after our close,
+    // like a running MCP server.
+    const other = new DatabaseImpl(currentDb)
+    other.prepare('SELECT COUNT(*) FROM t').get()
+    lockedSuffix = '-wal'
+
+    expect(() => replaceDbFile(backup, currentDb)).toThrow(DbInUseError)
+
+    const reports: Array<[string, string]> = []
+    const res = restoreBackupOrReport(db, backup, currentDb, (title, message) =>
+      reports.push([title, message])
+    )
+    expect(res).toEqual({ ok: false, error: RESTORE_IN_USE_MESSAGE })
+    expect(reports).toHaveLength(1)
+    expect(reports[0][1]).toMatch(/anderen Programm geöffnet/)
+    other.close()
+    lockedSuffix = null
+    expect(readValues(currentDb)).toEqual(['CURRENT'])
+  })
+
+  it('a successful restore reports nothing', async () => {
+    const { restoreBackupOrReport } = await loadBackup()
+    const backupSrc = walDb(join(userDataDir, 'backup.sqlite'), 'BACKUP')
+    backupSrc.close()
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreBackupOrReport(db, join(userDataDir, 'backup.sqlite'), currentDb, (t) =>
+      reports.push(t)
+    )
+    expect(res.ok).toBe(true)
+    expect(reports).toEqual([])
+    expect(readValues(currentDb)).toEqual(['BACKUP'])
   })
 })
 

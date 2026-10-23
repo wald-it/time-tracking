@@ -31,7 +31,7 @@ vi.mock('./index', () => ({
     {
       version: 1,
       name: 'add-m1',
-      up: `INSERT INTO t (v) VALUES ('m1')`
+      up: `CREATE TABLE IF NOT EXISTS t (v TEXT); INSERT INTO t (v) VALUES ('m1')`
     },
     {
       version: 2,
@@ -100,6 +100,19 @@ describe('runMigrations', () => {
     expect(readdirSync(backupsDir())).toHaveLength(1)
     db.close()
     expect(values(path)).toEqual(['before', 'm1', 'm2'])
+  })
+
+  it('a brand-new database gets no snapshot', async () => {
+    const { runMigrations } = await import('./runner')
+    const path = join(userDataDir, 'timetrack.sqlite')
+    const db = new DatabaseImpl(path)
+    db.pragma('journal_mode = WAL')
+    db.exec('CREATE TABLE t (v TEXT)')
+    db.exec('DROP TABLE t')
+    const res = runMigrations(db, path)
+    db.close()
+    expect(res.backupPath).toBeNull()
+    expect(existsSync(backupsDir())).toBe(false)
   })
 
   it('a failed migration closes the DB and restores the backup without an old WAL', async () => {

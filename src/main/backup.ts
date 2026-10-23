@@ -117,17 +117,35 @@ export function createBackupSync(
   return targetPath
 }
 
+/** The database file cannot be replaced: another process still has it open. */
+export class DbInUseError extends Error {
+  constructor(cause: unknown) {
+    super('Database is still open in another process', { cause })
+    this.name = 'DbInUseError'
+  }
+}
+
 /**
  * Put `sourcePath` in place of the database file. The database must be
  * CLOSED. Its `-wal` / `-shm` files go first: SQLite would otherwise replay a
  * leftover WAL over the restored file on the next open. If one of them cannot
- * be removed (another process still has the database open, e.g. the MCP
- * server), this throws before the database file is touched.
+ * be removed — on Windows another process (e.g. the MCP server) still holds
+ * the database open — this throws `DbInUseError` before the database file is
+ * touched. (macOS/Linux let the files go even under an open reader; that
+ * reader then sees an inconsistent state until it restarts, which is why the
+ * restore confirmation asks to quit MCP clients first.)
  */
 export function replaceDbFile(sourcePath: string, dbPath: string): void {
   for (const suffix of ['-wal', '-shm']) {
     const side = dbPath + suffix
-    if (existsSync(side)) unlinkSync(side)
+    if (!existsSync(side)) continue
+    try {
+      unlinkSync(side)
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'EBUSY' || code === 'EPERM' || code === 'EACCES') throw new DbInUseError(err)
+      throw err
+    }
   }
   copyFileSync(sourcePath, dbPath)
 }
@@ -238,4 +256,35 @@ export function restoreBackup(
   replaceDbFile(backupPath, currentDbPath)
   console.log(`[backup] Restored ${backupPath} -> ${currentDbPath}`)
   return { safetyBackupPath }
+}
+
+/** What the user is told when a restore did not happen. */
+export const RESTORE_FAILED_TITLE = 'TimeTrack — Wiederherstellung nicht durchgeführt'
+export const RESTORE_IN_USE_MESSAGE =
+  'Wiederherstellung nicht durchgeführt — die Datenbank ist noch in einem anderen Programm ' +
+  'geöffnet (z. B. ein MCP-Client wie Claude Desktop). Programm beenden und erneut versuchen.'
+
+/**
+ * `restoreBackup` for the IPC handler: a failure is reported through
+ * `report` (a native dialog in the app) before the result goes back. The
+ * renderer relaunches the app after every restore attempt, so a message shown
+ * only in the renderer would vanish with the window and the user would take
+ * the relaunch for a successful restore.
+ */
+export function restoreBackupOrReport(
+  db: Database.Database,
+  backupPath: string,
+  currentDbPath: string,
+  report: (title: string, message: string) => void
+): { ok: true; data: { safetyBackupPath: string } } | { ok: false; error: string } {
+  try {
+    return { ok: true, data: restoreBackup(db, backupPath, currentDbPath) }
+  } catch (err) {
+    const message =
+      err instanceof DbInUseError
+        ? RESTORE_IN_USE_MESSAGE
+        : `Wiederherstellung nicht durchgeführt: ${(err as Error).message}`
+    report(RESTORE_FAILED_TITLE, message)
+    return { ok: false, error: message }
+  }
 }

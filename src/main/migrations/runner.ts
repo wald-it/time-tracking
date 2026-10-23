@@ -39,7 +39,12 @@ export function runMigrations(db: Database.Database, dbPath: string): MigrationR
     return { applied: [], backupPath: null }
   }
 
-  const backupPath = createBackupSync(db, 'pre-migration', currentVersion)
+  // A brand-new database has nothing to protect: no snapshot of an empty file
+  // on every fresh install. Only `schema_version` (created above) counts as
+  // empty — a legacy database without it but with data is still backed up.
+  const backupPath = hasUserTables(db)
+    ? createBackupSync(db, 'pre-migration', currentVersion)
+    : null
   const applied: number[] = []
 
   for (const migration of pending) {
@@ -50,11 +55,21 @@ export function runMigrations(db: Database.Database, dbPath: string): MigrationR
     } catch (err) {
       console.error(`[migrations] FAILED #${migration.version} (${migration.name}):`, err)
       restoreAfterFailedMigration(db, backupPath, dbPath)
-      throw new MigrationError(migration, err as Error, backupPath)
+      throw new MigrationError(migration, err as Error, backupPath ?? '')
     }
   }
 
   return { applied, backupPath }
+}
+
+function hasUserTables(db: Database.Database): boolean {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_version'`
+    )
+    .get() as { n: number }
+  return row.n > 0
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -117,13 +132,13 @@ function assertNoNegativeRoundedMin(db: Database.Database): void {
 
 function restoreAfterFailedMigration(
   db: Database.Database,
-  backupPath: string,
+  backupPath: string | null,
   dbPath: string
 ): void {
   // Earlier migrations of this run are committed; only the backup brings the
   // pre-run state back. The file is replaced only with the connection closed.
   db.close()
-  if (!existsSync(backupPath)) {
+  if (!backupPath || !existsSync(backupPath)) {
     console.warn('[migrations] No backup to restore.')
     return
   }
