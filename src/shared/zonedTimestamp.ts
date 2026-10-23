@@ -9,8 +9,7 @@
  * Not `toStoredInstant` (mcp/queries): that one deliberately reads a value
  * without a zone as UTC, for the read-only range filter.
  */
-import { translateLiteral, type Locale } from './i18n'
-import { LOCALE_STRINGS } from './locales'
+import type { Locale } from './i18n'
 
 export type ZonedTimestampResult =
   | {
@@ -188,20 +187,37 @@ export function formatLocalSpan(startIso: string, stopIso: string, locale: Local
  * after the clocks went back. Not a refusal: the instant is unambiguous, it
  * just may not be the wall-clock time the caller meant. `Z` gets no note.
  *
- * `Hinweis: +02:00 weicht von der Ortszeit am 27.10. ab (+01:00) — wird als
- * 08:00 Ortszeit gespeichert.`
+ * Returns the values for the note, which then reads e.g. `Hinweis: +02:00
+ * weicht von der Ortszeit am 27.10. ab (+01:00) — wird als 08:00 Ortszeit
+ * gespeichert.` The day is `27.10.` in German and `2026-10-27` in English.
  */
-export function offsetHint(iso: string, offsetMin: number | null, locale: Locale): string | null {
+export function offsetHintParts(
+  iso: string,
+  offsetMin: number | null,
+  locale: Locale
+): OffsetHintParts | null {
   if (offsetMin === null) return null
   const local = localOffsetAt(iso)
   if (local === offsetMin) return null
   const d = new Date(iso)
-  return translateLiteral(LOCALE_STRINGS[locale], 'mainDialog.mcp.offsetHint', {
+  return {
     offset: formatOffset(offsetMin),
     day: locale === 'en' ? isoDay(d) : `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.`,
     local: formatOffset(local),
     time: localTime(d)
-  })
+  }
+}
+
+/**
+ * The values of the note; the wording is `mainDialog.mcp.offsetHint` in the
+ * locale files, filled in by the bridge (mcpBridgeCore), so this module stays
+ * free of UI text.
+ */
+export interface OffsetHintParts {
+  offset: string
+  day: string
+  local: string
+  time: string
 }
 
 /** For the tool descriptions: the zone the machine runs in, e.g. `Europe/Berlin`. */

@@ -37,11 +37,8 @@ export function dialogT(locale: Locale): DialogT {
  * closed (a restore attempt closes it): the system language then, as at start.
  */
 export function readLanguageOr(db: Database.Database, fallback: () => Locale): Locale {
-  try {
-    return readLanguage(db)
-  } catch {
-    return fallback()
-  }
+  // Only the closed handle falls back; any other database error still throws.
+  return db.open ? readLanguage(db) : fallback()
 }
 
 /**

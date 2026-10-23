@@ -29,7 +29,7 @@ import {
   formatLocalClock,
   formatLocalMoment,
   formatLocalSpan,
-  offsetHint,
+  offsetHintParts,
   parseZonedTimestamp,
   toLocalIso,
   zonedTimestampError
@@ -164,23 +164,16 @@ function offsetHints(written: WrittenOffsets, locale: Locale): OffsetHints {
   const hints: OffsetHints = {}
   for (const f of Object.keys(written) as TimeField[]) {
     const w = written[f]
-    const hint = w ? offsetHint(w.iso, w.offsetMin, locale) : null
-    if (hint) hints[f] = hint
+    const parts = w ? offsetHintParts(w.iso, w.offsetMin, locale) : null
+    if (parts) hints[f] = dialogT(locale)('mainDialog.mcp.offsetHint', { ...parts })
   }
   return hints
 }
 
-const FIELD_LABEL = {
-  started_at: 'mainDialog.mcp.field.start',
-  stopped_at: 'mainDialog.mcp.field.end'
-} as const
-
 /** The confirmation text with one line per offset note. */
 function withHints(say: Say, summary: string, written: WrittenOffsets): string {
   const hints = offsetHints(written, say.locale)
-  const lines = (Object.keys(hints) as TimeField[]).map(
-    (f) => `${say.t(FIELD_LABEL[f])}: ${hints[f]}`
-  )
+  const lines = (Object.keys(hints) as TimeField[]).map((f) => line(say, f, hints[f] as string))
   return lines.length ? `${summary}\n${lines.join('\n')}` : summary
 }
 
@@ -279,6 +272,8 @@ function line(say: Say, field: keyof typeof FIELD_KEY, value: string): string {
 }
 
 const FIELD_KEY = {
+  started_at: 'mainDialog.mcp.field.start',
+  stopped_at: 'mainDialog.mcp.field.end',
   client: 'mainDialog.mcp.field.client',
   project: 'mainDialog.mcp.field.project',
   billable: 'mainDialog.mcp.field.billable',

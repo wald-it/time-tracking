@@ -3,7 +3,7 @@ import {
   formatLocalMoment,
   formatLocalSpan,
   formatOffset,
-  offsetHint,
+  offsetHintParts,
   parseZonedTimestamp,
   toLocalIso,
   zonedTimestampError,
@@ -160,9 +160,12 @@ describe('local time for confirmation and preview (Europe/Berlin)', () => {
     zone()
     const p = parseZonedTimestamp('2026-10-27T09:00:00+02:00')
     if (!p.ok) throw new Error('should parse')
-    expect(offsetHint(p.iso, p.offsetMin, 'de')).toBe(
-      'Hinweis: +02:00 weicht von der Ortszeit am 27.10. ab (+01:00) — wird als 08:00 Ortszeit gespeichert.'
-    )
+    expect(offsetHintParts(p.iso, p.offsetMin, 'de')).toEqual({
+      offset: '+02:00',
+      day: '27.10.',
+      local: '+01:00',
+      time: '08:00'
+    })
   })
 
   // #270: the confirmation follows the app language; English writes an ISO date.
@@ -177,9 +180,7 @@ describe('local time for confirmation and preview (Europe/Berlin)', () => {
     )
     const p = parseZonedTimestamp('2026-10-27T09:00:00+02:00')
     if (!p.ok) throw new Error('should parse')
-    expect(offsetHint(p.iso, p.offsetMin, 'en')).toBe(
-      'Note: +02:00 is not the local offset on 2026-10-27 (+01:00). Saved as 08:00 local time.'
-    )
+    expect(offsetHintParts(p.iso, p.offsetMin, 'en')).toMatchObject({ day: '2026-10-27' })
   })
 
   it('has no note for the matching offset or for Z', () => {
@@ -187,7 +188,7 @@ describe('local time for confirmation and preview (Europe/Berlin)', () => {
     for (const v of ['2026-10-27T09:00:00+01:00', '2026-10-27T09:00:00Z']) {
       const p = parseZonedTimestamp(v)
       if (!p.ok) throw new Error('should parse')
-      expect(offsetHint(p.iso, p.offsetMin, 'de'), v).toBeNull()
+      expect(offsetHintParts(p.iso, p.offsetMin, 'de'), v).toBeNull()
     }
   })
 })

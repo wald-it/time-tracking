@@ -29,7 +29,7 @@ import {
   realFsDeps,
   saveDialogIn
 } from './pdfMergeHandlers'
-import { dialogT, localeFromSystem, readLanguageOr } from './mainI18n'
+import { dialogT, localeFromSystem, readLanguageOr, type DialogT } from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
@@ -122,6 +122,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // (after a restore attempt) the system language, as at start.
   const dialogLocale = (): Locale =>
     readLanguageOr(db, () => localeFromSystem(app.getPreferredSystemLanguages()))
+  const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
 
   // ── Clients ──────────────────────────────────────────────────
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
@@ -750,7 +751,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openDirectory', 'createDirectory'],
-        title: dialogT(dialogLocale())('mainDialog.backupPath.title')
+        title: tDialog('mainDialog.backupPath.title')
       })
       if (canceled || filePaths.length === 0) return ok('')
       const dir = filePaths[0]
@@ -879,7 +880,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const today = new Date().toISOString().slice(0, 10)
       const result = await dialog.showSaveDialog({
-        title: dialogT(dialogLocale())('mainDialog.exportJson.title'),
+        title: tDialog('mainDialog.exportJson.title'),
         defaultPath: `timetrack-export-${today}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
@@ -926,7 +927,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           }
         }
         const result = await dialog.showSaveDialog({
-          title: dialogT(dialogLocale())('mainDialog.pdf.saveTitle'),
+          title: tDialog('mainDialog.pdf.saveTitle'),
           defaultPath: `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
@@ -981,7 +982,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     async (): Promise<IpcResult<{ filePath: string } | null>> => {
       try {
         const result = await dialog.showOpenDialog({
-          title: dialogT(dialogLocale())('mainDialog.pdf.openTitle'),
+          title: tDialog('mainDialog.pdf.openTitle'),
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
           properties: ['openFile']
         })
