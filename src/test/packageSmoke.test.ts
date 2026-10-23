@@ -143,6 +143,7 @@ async function probeTimed(
 ): Promise<{
   status: number | null
   output: string
+  timedOut: boolean
   verdictMs: number | null
   exitMs: number | null
 }> {
@@ -155,6 +156,13 @@ async function probeTimed(
       let upAt: number | null = null
       let verdictAt: number | null = null
       let exitAt: number | null = null
+      let timedOut = false
+      const take = (line: string): void => {
+        const text = line.replace(/\r$/, '')
+        output += text + '\n'
+        if (upAt === null && text.includes('[stderr] [fake] up')) upAt = Date.now()
+        if (verdictAt === null && text.startsWith('ERROR:')) verdictAt = Date.now()
+      }
       // One line buffer per stream: the relayed server lines arrive on stdout,
       // the verdict on stderr, and a line cut at a chunk end must not be glued
       // to the other stream.
@@ -162,35 +170,46 @@ async function probeTimed(
         let partial = ''
         stream.setEncoding('utf8')
         stream.on('data', (chunk: string) => {
-          const lines = (partial + chunk).split(/\r?\n/)
+          const lines = (partial + chunk).split('\n')
           partial = lines.pop() ?? ''
-          for (const line of lines) {
-            output += line + '\n'
-            if (upAt === null && line.includes('[stderr] [fake] up')) upAt = Date.now()
-            if (verdictAt === null && line.startsWith('ERROR:')) verdictAt = Date.now()
-          }
+          lines.forEach(take)
         })
         stream.on('end', () => {
-          if (partial) output += partial + '\n'
+          if (partial) take(partial)
         })
       }
       reader(child.stdout)
       reader(child.stderr)
-      // A probe that hangs is killed like spawnSync's timeout does, so the
-      // test fails with the probe's output instead of a bare test timeout.
-      const killer = setTimeout(() => child.kill('SIGKILL'), PROBE_LIMIT_MS)
+      // A probe that hangs is killed (SIGKILL), so the test fails on
+      // `timedOut` with the probe's output instead of a bare test timeout.
+      // Cleared at 'exit': a probe that has ended is not killed while the OS
+      // still tears it down.
+      const killer = setTimeout(() => {
+        timedOut = true
+        child.kill('SIGKILL')
+      }, PROBE_LIMIT_MS)
+      // An error before the process got a pid is a spawn failure. Later ones
+      // (a failed kill) are not the run's result, as in the probe itself.
       child.on('error', (e) => {
+        if (child.pid !== undefined) return
         clearTimeout(killer)
         reject(e)
       })
       child.on('exit', () => {
         exitAt = Date.now()
+        clearTimeout(killer)
       })
       child.on('close', (status) => {
         clearTimeout(killer)
         const since = (at: number | null): number | null =>
           upAt !== null && at !== null ? at - upAt : null
-        resolve({ status, output, verdictMs: since(verdictAt), exitMs: since(exitAt) })
+        resolve({
+          status,
+          output,
+          timedOut,
+          verdictMs: since(verdictAt),
+          exitMs: since(exitAt)
+        })
       })
     })
   } finally {
@@ -244,6 +263,7 @@ describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => 
   // green there with or without the pipe release; it guards on the macOS job.
   it('ends when the server is gone even if a descendant keeps its pipes open', async () => {
     const r = await probeTimed('orphan', TOOLS)
+    expect(r.timedOut, r.output).toBe(false)
     expect(r.status).toBe(1)
     expect(r.output).toContain('before answering initialize')
     // 45 s is how long the descendant lives; the probe must neither wait for
