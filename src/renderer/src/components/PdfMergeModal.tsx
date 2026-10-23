@@ -293,7 +293,7 @@ export function PdfMergeModal({ open, onClose }: Props): React.JSX.Element {
     if (res.ok) {
       setStatusKind('success')
       setStatusMsg(res.data.path)
-    } else if (res.error === 'Speichern abgebrochen') {
+    } else if (res.code === 'cancelled') {
       setStatusKind('info')
       setStatusMsg(null)
     } else {

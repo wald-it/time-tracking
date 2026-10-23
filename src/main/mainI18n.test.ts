@@ -13,18 +13,23 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { translateLiteral } from '../shared/i18n'
+import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
+  appLocale,
+  forgetLastAppLocale,
+  cancelledResult,
   dbErrorDialog,
   dialogT,
+  exportFileName,
   hotkeyConflictDialog,
-  localeFromSetting,
+  mergedFileName,
+  trayLabels,
+  trayTooltip,
   localeFromSystem,
   mcpConfirmDialog,
   migrationErrorDialog,
   readLanguage,
-  readLanguageOr,
   sensitiveSettingDialog,
   updateDownloadedNotification
 } from './mainI18n'
@@ -35,13 +40,7 @@ beforeAll(async () => {
 })
 
 describe('the language of a main-process dialog', () => {
-  it('follows the renderer rule: en is English, anything else German', () => {
-    expect(localeFromSetting('en')).toBe('en')
-    expect(localeFromSetting('de')).toBe('de')
-    expect(localeFromSetting(undefined)).toBe('de')
-    expect(localeFromSetting('fr')).toBe('de')
-  })
-
+  // The rule itself (localeFromSetting) is tested in shared/i18n.test.ts.
   it('is read from the settings table and switches with it', () => {
     const db = new DatabaseImpl(':memory:')
     applyMigrations(db)
@@ -49,17 +48,42 @@ describe('the language of a main-process dialog', () => {
     db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
     expect(readLanguage(db)).toBe('en')
     expect(dialogT(readLanguage(db))('mainDialog.pdf.saveTitle')).toBe('Save timesheet')
-    expect(readLanguageOr(db, () => 'de')).toBe('en')
     db.close()
+    // A closed handle throws here; appLocale (below) is the rule that copes.
+    expect(() => readLanguage(db)).toThrow()
   })
 
-  it('with the handle closed (after a restore attempt): the fallback', () => {
+  it('appLocale never throws: setting, last setting read, system language, German', () => {
+    const fail = (): never => {
+      throw new Error('unavailable')
+    }
+    /** appLocale over a fixed database and fixed system languages. */
+    const loc = (db: Database.Database, langs: string[]): string =>
+      appLocale(
+        () => db,
+        () => langs
+      )
+    const broken = new DatabaseImpl(':memory:') // open, but no settings table
+
+    // Nothing read yet in this run: the system language, then German.
+    forgetLastAppLocale()
+    expect(loc(broken, ['de-DE'])).toBe('de')
+    expect(loc(broken, ['en-US'])).toBe('en')
+    expect(loc(broken, [])).toBe('en') // none reported: English
+    expect(appLocale(fail, fail)).toBe('de')
+
+    // Once the setting was read, a closed handle or a failing read keeps it,
+    // whatever the system says: tray and dialogs stay in one language.
     const db = new DatabaseImpl(':memory:')
     applyMigrations(db)
     db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+    expect(loc(db, ['de-DE'])).toBe('en')
     db.close()
-    expect(() => readLanguage(db)).toThrow()
-    expect(readLanguageOr(db, () => 'de')).toBe('de')
+    expect(loc(db, ['de-DE'])).toBe('en')
+    expect(loc(broken, ['de-DE'])).toBe('en')
+    expect(appLocale(fail, fail)).toBe('en')
+    forgetLastAppLocale()
+    broken.close()
   })
 
   it('before the database is open: the first system language', () => {
@@ -71,14 +95,6 @@ describe('the language of a main-process dialog', () => {
     expect(localeFromSystem(['en-GB', 'de-DE'])).toBe('en')
     expect(localeFromSystem(['dev'])).toBe('en')
     expect(localeFromSystem([])).toBe('en')
-  })
-})
-
-describe('values are filled in literally', () => {
-  it('a value that looks like a slot stays as written', () => {
-    const strings = { k: '{a} and {b}' }
-    expect(translateLiteral(strings, 'k', { a: '{b}', b: 'B' })).toBe('{b} and B')
-    expect(translateLiteral(strings, 'k', { a: 'A' })).toBe('A and {b}')
   })
 })
 
@@ -186,6 +202,167 @@ describe('index.ts — the dialogs at start', () => {
       title: 'TimeTrack — Database error',
       message: 'The database could not be opened:\n\nlocked'
     })
+  })
+})
+
+describe('#296 — default file names follow the app language', () => {
+  const month = '2026-04'
+
+  it('German: the names the app always wrote, byte for byte', () => {
+    // The old templates, written out: `Stundennachweis-${safe}${suffix}-${month}.pdf`
+    expect(exportFileName('de', 'pdf', { client: 'Acme', month })).toBe(
+      'Stundennachweis-Acme-2026-04.pdf'
+    )
+    expect(exportFileName('de', 'pdf', { client: 'Acme', project: 'Rollout', month })).toBe(
+      'Stundennachweis-Acme-Rollout-2026-04.pdf'
+    )
+    expect(exportFileName('de', 'csv', { client: 'Acme', month })).toBe(
+      'Zeiterfassung-Acme-2026-04.csv'
+    )
+    expect(exportFileName('de', 'ical', { client: 'Acme', project: 'Rollout', month })).toBe(
+      'Zeiterfassung-Acme-Rollout-2026-04.ics'
+    )
+    expect(mergedFileName('de', 'Rechnung-17')).toBe('Rechnung-17_inkl_Stundennachweis.pdf')
+    expect(mergedFileName('de', 'Rechnung-17', '2026-04-30T10-00-00')).toBe(
+      'Rechnung-17_inkl_Stundennachweis_2026-04-30T10-00-00.pdf'
+    )
+  })
+
+  it('English: Timesheet / Time-entries / _incl_Timesheet', () => {
+    expect(exportFileName('en', 'pdf', { client: 'Acme', project: 'Rollout', month })).toBe(
+      'Timesheet-Acme-Rollout-2026-04.pdf'
+    )
+    expect(exportFileName('en', 'csv', { client: 'Acme', month })).toBe(
+      'Time-entries-Acme-2026-04.csv'
+    )
+    expect(exportFileName('en', 'ical', { client: 'Acme', month })).toBe(
+      'Time-entries-Acme-2026-04.ics'
+    )
+    expect(mergedFileName('en', 'Invoice-17')).toBe('Invoice-17_incl_Timesheet.pdf')
+    expect(mergedFileName('en', 'Invoice-17', 'x')).toBe('Invoice-17_incl_Timesheet_x.pdf')
+  })
+
+  it('cleans the name parts as before; an empty client name falls back', () => {
+    expect(exportFileName('de', 'pdf', { client: 'A/B:C*?', project: ' P|Q ', month })).toBe(
+      'Stundennachweis-A_B_C__-P_Q-2026-04.pdf'
+    )
+    expect(exportFileName('de', 'csv', { client: ' <> ', month })).toBe(
+      'Zeiterfassung-__-2026-04.csv'
+    )
+    expect(exportFileName('de', 'csv', { client: '  ', month })).toBe(
+      'Zeiterfassung-Kunde-2026-04.csv'
+    )
+    expect(exportFileName('en', 'csv', { client: '', month })).toBe(
+      'Time-entries-Client-2026-04.csv'
+    )
+  })
+
+  // Kept as the app always did it, and named here so nobody "fixes" one side
+  // silently: CSV and PDF add `-` for a project row whose name is empty,
+  // iCal (whose caller passes `name || null`) does not.
+  it('an empty project name: a given project adds the dash, none adds nothing', () => {
+    expect(exportFileName('de', 'csv', { client: 'Acme', project: '', month })).toBe(
+      'Zeiterfassung-Acme--2026-04.csv'
+    )
+    expect(exportFileName('de', 'ical', { client: 'Acme', project: null, month })).toBe(
+      'Zeiterfassung-Acme-2026-04.ics'
+    )
+  })
+
+  it('a client name that looks like a slot stays as written', () => {
+    expect(exportFileName('de', 'pdf', { client: '{month}', month })).toBe(
+      'Stundennachweis-{month}-2026-04.pdf'
+    )
+  })
+})
+
+describe('#296 — tray', () => {
+  it('German labels and tooltip as before', () => {
+    expect(trayLabels('de')).toEqual({
+      idle: 'Kein Timer aktiv',
+      stop: 'Stop',
+      quickStart: 'Quick-Start',
+      noClients: 'Keine aktiven Kunden',
+      showWindow: 'Fenster anzeigen',
+      quit: 'Beenden'
+    })
+    expect(trayTooltip('de', true, 'Acme', '01:30')).toBe('● Acme · Heute 01:30')
+    expect(trayTooltip('de', false, '', '00:00')).toBe('TimeTrack — Heute 00:00')
+  })
+
+  it('English labels and tooltip', () => {
+    expect(trayLabels('en')).toEqual({
+      idle: 'No timer running',
+      stop: 'Stop',
+      quickStart: 'Quick start',
+      noClients: 'No active clients',
+      showWindow: 'Show window',
+      quit: 'Quit'
+    })
+    expect(trayTooltip('en', true, 'Acme', '01:30')).toBe('● Acme · Today 01:30')
+    expect(trayTooltip('en', false, '', '00:00')).toBe('TimeTrack — Today 00:00')
+  })
+})
+
+describe('#296 — one way to the app language in the main process', () => {
+  // Tray, dialogs, file names and the update notification (#309) all go
+  // through appLocale, so they answer alike, also with the handle closed.
+  // Allowed exceptions:
+  // - mainI18n.ts: defines the rule.
+  // - graphPresence.ts: only the Teams status text (`🔴 Fokus|Focus …`, seen
+  //   by colleagues, not app UI). The module is Electron-free and gets its
+  //   settings through the injected PresenceDeps.getSetting, so it has no DB
+  //   handle for appLocale. To drop the exception, inject
+  //   `getLocale: () => Locale` as updater.ts does (index.ts passes
+  //   appLocale) and remove the file from `allowed`.
+  // - mcpBridgeCore.ts: Electron-free, reads the open database of the MCP
+  //   write request it is handling (the confirmation dialog's language).
+  // A text heuristic over the files directly under src/main: it sees these
+  // calls by name, not a hand-written `=== 'en'`, a raw SELECT or an alias.
+  // That index.ts wires appLocale into the updater is not tested (no harness
+  // for index.ts).
+  it('no other main-process source reads the language itself', () => {
+    const allowed = new Set(['mainI18n.ts', 'graphPresence.ts', 'mcpBridgeCore.ts'])
+    const hits = readdirSync(__dirname)
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !allowed.has(f))
+      .filter((f) =>
+        /\b(localeFromSetting|readLanguage)\(|getSetting\(\s*['"`]language/.test(
+          readFileSync(join(__dirname, f), 'utf8')
+        )
+      )
+    expect(hits).toEqual([])
+  })
+})
+
+describe('#296 — a closed dialog is a code, not a text', () => {
+  it('carries code cancelled and a text in the app language', () => {
+    expect(cancelledResult('de', 'mainError.exportCancelled')).toEqual({
+      ok: false,
+      error: 'Export abgebrochen',
+      code: 'cancelled'
+    })
+    expect(cancelledResult('en', 'mainError.saveCancelled')).toEqual({
+      ok: false,
+      error: 'Saving cancelled',
+      code: 'cancelled'
+    })
+  })
+
+  // The renderer used to compare these texts; none may come back.
+  it('no renderer source compares an error text with a cancel wording', () => {
+    const root = join(__dirname, '..', 'renderer', 'src')
+    const hits: string[] = []
+    for (const f of readdirSync(root, { recursive: true }) as string[]) {
+      if (!/\.tsx?$/.test(f) || /\.test\.tsx?$/.test(f)) continue
+      const src = readFileSync(join(root, f), 'utf8')
+      // `error` (bare or `.error`) compared with == / === / != / !== either
+      // way round, switched on, or text-tested; and any cancel wording.
+      const compares =
+        /\berror\s*[!=]==?\s*['"`]|['"`]\s*[!=]==?\s*[\w.?]*\berror\b|switch\s*\(\s*[\w.?]*\berror\s*\)|\berror\??\.(includes|startsWith|endsWith|match)\(/
+      const cancelWords = /abgebrochen|(export|selection|saving) cancelled/i
+      if (compares.test(src) || cancelWords.test(src)) hits.push(f)
+    }
+    expect(hits).toEqual([])
   })
 })
 

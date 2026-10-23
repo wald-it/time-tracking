@@ -76,6 +76,7 @@ vi.mock('electron-log/main', () => ({
 vi.mock('electron-updater', () => ({ default: { autoUpdater: updater } }))
 
 import { UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
+import { localeFromSetting } from '../shared/i18n'
 
 let initAutoUpdater: typeof import('./updater').initAutoUpdater
 
@@ -112,7 +113,13 @@ const settings = new Map<string, string>()
 
 async function start(updateCheck: string | undefined): Promise<void> {
   if (updateCheck !== undefined) settings.set(UPDATE_CHECK_SETTING_KEY, updateCheck)
-  initAutoUpdater({ isDev: false, getSetting: (key) => settings.get(key) })
+  initAutoUpdater({
+    isDev: false,
+    getSetting: (key) => settings.get(key),
+    // index.ts passes mainI18n.appLocale; here the same rule over the map,
+    // read at the moment the notification fires.
+    getLocale: () => localeFromSetting(settings.get('language'))
+  })
   await settle()
 }
 
@@ -186,6 +193,21 @@ describe('the "update downloaded" notification (#309)', () => {
     await start(undefined)
 
     expect(notifications).toEqual([ENGLISH])
+  })
+
+  it('still shows, in German, when reading the language throws', async () => {
+    updater.checkForUpdates.mockImplementation(findsUpdate('succeeds'))
+    initAutoUpdater({
+      isDev: false,
+      getSetting: (key) => settings.get(key),
+      getLocale: () => {
+        throw new Error('database is locked')
+      }
+    })
+    await settle()
+
+    expect(notifications).toEqual([GERMAN])
+    expect(unhandled).toEqual([])
   })
 
   it('in the language set when the download finishes, not at start', async () => {

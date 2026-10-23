@@ -329,9 +329,9 @@ export interface MonthQuery {
 }
 
 /**
- * 'cancelled': the user closed or declined a dialog. The renderer shows
- * nothing for it and checks the code, never the text; `error` stays a log
- * text. Extend this union here rather than defining a second one.
+ * Why a call did not succeed, where the renderer must act on the reason and
+ * not on the wording of `error` (#296). `cancelled`: the user closed a
+ * dialog or declined; show nothing. `error` still carries a text for logs.
  */
 export type IpcErrorCode = 'cancelled'
 

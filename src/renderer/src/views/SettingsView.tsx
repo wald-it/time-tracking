@@ -237,7 +237,7 @@ export default function SettingsView(): React.JSX.Element {
     if (res.ok) {
       const kb = (res.data.bytes / 1024).toFixed(1)
       setStatusMsg(t('settings.data.jsonExportSaved', { kb }))
-    } else if (res.error === 'Export abgebrochen') {
+    } else if (res.code === 'cancelled') {
       setStatusMsg(null)
     } else {
       setStatusMsg(t('settings.data.jsonExportFailed', { error: res.error }))
@@ -250,7 +250,7 @@ export default function SettingsView(): React.JSX.Element {
     if (res.ok) {
       setSettings((prev) => (prev ? { ...prev, pdf_logo_path: res.data.path } : prev))
       setStatusMsg(t('settings.pdf.logoSaved'))
-    } else if (res.error === 'Auswahl abgebrochen') {
+    } else if (res.code === 'cancelled') {
       setStatusMsg(null)
     } else {
       setStatusMsg(t('settings.pdf.logoError', { error: res.error }))

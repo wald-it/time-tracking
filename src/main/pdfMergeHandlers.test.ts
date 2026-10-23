@@ -230,6 +230,8 @@ describe('mergeOnlyHandler', () => {
     )
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/abgebrochen/)
+    // #296: the renderer acts on the code, not on the wording.
+    expect(res).toMatchObject({ ok: false, code: 'cancelled' })
   })
 })
 
@@ -581,11 +583,11 @@ describe('mergeExportHandler — successful merge', () => {
         }
       }
     }
-    // #270: the fallback dialog speaks the language it is given.
-    const titles: Array<string | undefined> = []
+    // #270/#296: the fallback dialog and the suggested name follow the language.
+    const asked: Array<[string | undefined, string | undefined]> = []
     const dialogDeps: DialogDeps = {
       showSaveDialog: async (o) => {
-        titles.push(o.title)
+        asked.push([o.title, o.defaultPath])
         return { canceled: false, filePath: fallbackPath }
       },
       locale: () => 'en'
@@ -599,7 +601,7 @@ describe('mergeExportHandler — successful merge', () => {
     )
     expect(res.ok).toBe(true)
     expect(unwrapData(res).path).toBe(fallbackPath)
-    expect(titles).toEqual(['Save merged PDF'])
+    expect(asked).toEqual([['Save merged PDF', 'rechnung_incl_Timesheet.pdf']])
   })
 
   it('returns error when dialog is canceled after EPERM', async () => {
@@ -621,5 +623,7 @@ describe('mergeExportHandler — successful merge', () => {
     )
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/abgebrochen/)
+    // #296: the renderer acts on the code, not on the wording.
+    expect(res).toMatchObject({ ok: false, code: 'cancelled' })
   })
 })
