@@ -38,7 +38,6 @@ export const en: Record<TranslationKey, string> = {
 
   // ── Settings → Updates ──────────────────────────────────────────────────
   'settings.update.title': 'Updates',
-  'settings.update.version': 'Current version: {version}',
   'settings.update.checkNow': 'Check for updates now',
   'settings.update.checking': 'Checking …',
   'settings.update.lastCheck': 'Last check',
@@ -745,7 +744,10 @@ export const en: Record<TranslationKey, string> = {
   'settings.update.idle': 'Ready',
   'settings.update.upToDate': 'You are using the latest version.',
   'settings.update.autoInfo':
-    'Updates are checked automatically at app start and downloaded in the background. You decide when to install.',
+    'When a check finds an update, TimeTrack downloads it in the background. You decide when to install.',
+  'settings.update.autoCheck': 'Check for updates automatically',
+  'settings.update.autoCheckHint':
+    'At every start, TimeTrack asks GitHub whether there is a new version. When the switch is off, it only asks when you click “Check for updates now”. A change applies from the next start.',
 
   // ── Timer — Project picker (v1.9 #75 PR 3) ───────────────────────────────
   'timer.project.label': 'Project',
