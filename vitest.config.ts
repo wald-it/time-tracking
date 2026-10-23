@@ -9,9 +9,15 @@ import { resolve } from 'path'
  * a machine whose zone is Berlin, or in the berlin-zone CI job
  * (TZ=Europe/Berlin) — and plain `pnpm test` elsewhere leaves it out instead
  * of failing.
+ *
+ * On Windows a TZ variable moves JS but not SQLite, which keeps the system
+ * zone; with TZ set there the two clocks may disagree, so the project stays
+ * out. The test file's first case checks that both clocks agree anyway.
  */
 export const BERLIN_TESTS = 'src/**/*.berlin.test.{ts,tsx}'
-export const RUNS_IN_BERLIN = Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Berlin'
+export const RUNS_IN_BERLIN =
+  Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Berlin' &&
+  !(process.platform === 'win32' && process.env.TZ)
 
 const berlinProject: TestProjectInlineConfiguration = {
   extends: true,

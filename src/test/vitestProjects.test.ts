@@ -88,15 +88,20 @@ export function globToRegExp(glob: string): RegExp {
 }
 
 interface ProjectShape {
-  test?: { name?: string; include?: string[] }
+  test?: { name?: string; include?: string[]; exclude?: string[] }
 }
 
 const projects = ((config as { test?: { projects?: ProjectShape[] } }).test?.projects ??
   []) as ProjectShape[]
 
+const toPattern = (g: string): { glob: string; re: RegExp } => ({ glob: g, re: globToRegExp(g) })
+
 const declared = projects.map((p) => ({
   name: p.test?.name ?? '(unnamed)',
-  patterns: (p.test?.include ?? []).map((g) => ({ glob: g, re: globToRegExp(g) }))
+  patterns: (p.test?.include ?? []).map(toPattern),
+  // An exclude takes a file out of the project again (#263 keeps the berlin
+  // files out of node and jsdom this way), so it counts against coverage.
+  excludes: (p.test?.exclude ?? []).map(toPattern)
 }))
 // Outside Europe/Berlin the `berlin` project is not registered (#263); its
 // files run in the berlin-zone CI job. They count as covered here, and the
@@ -104,8 +109,14 @@ const declared = projects.map((p) => ({
 if (!RUNS_IN_BERLIN) {
   declared.push({
     name: 'berlin (registered only in Europe/Berlin)',
-    patterns: [{ glob: BERLIN_TESTS, re: globToRegExp(BERLIN_TESTS) }]
+    patterns: [toPattern(BERLIN_TESTS)],
+    excludes: []
   })
+}
+
+/** Does the project run this file — included and not excluded again? */
+function runs(p: (typeof declared)[number], file: string): boolean {
+  return p.patterns.some((x) => x.re.test(file)) && !p.excludes.some((x) => x.re.test(file))
 }
 
 describe('vitest projects cover every test file', () => {
@@ -123,14 +134,14 @@ describe('vitest projects cover every test file', () => {
   })
 
   it('every test file is included by some project', () => {
-    const orphans = files.filter((f) => !declared.some((p) => p.patterns.some((x) => x.re.test(f))))
+    const orphans = files.filter((f) => !declared.some((p) => runs(p, f)))
     // A file listed here runs nowhere: green, zero skips, zero coverage.
     expect(orphans, `test files no Vitest project runs:\n  ${orphans.join('\n  ')}`).toEqual([])
   })
 
   it('every project still matches at least one file', () => {
     for (const p of declared) {
-      const matched = files.filter((f) => p.patterns.some((x) => x.re.test(f)))
+      const matched = files.filter((f) => runs(p, f))
       expect(
         matched.length,
         `project "${p.name}" matches nothing — patterns: ${p.patterns.map((x) => x.glob).join(', ')}`

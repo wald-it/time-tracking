@@ -211,5 +211,7 @@ jobs:
       - name: Test the berlin project (Europe/Berlin)
         run: pnpm test --project berlin
 
+      # Also after a red berlin step, so one run reports both.
       - name: Test everything else (Europe/Berlin)
+        if: ${{ !cancelled() }}
         run: pnpm test --project '!berlin'

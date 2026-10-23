@@ -18,7 +18,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
-import { readTodayEntries, readTotals, readWeekDaySeconds } from './dashboardTotals'
+import {
+  readRoundedTotals,
+  readTodayEntries,
+  readTotals,
+  readWeekDaySeconds
+} from './dashboardTotals'
 import { buildAnalyticsSummary } from './analyticsHandlers'
 
 let DatabaseImpl: DatabaseCtor
@@ -31,7 +36,13 @@ beforeAll(async () => {
 })
 afterAll(() => builtins.close())
 
-/** SQLite's 'now' on `db` becomes `nowUtc` ('YYYY-MM-DD HH:MM:SS', UTC). */
+/**
+ * A literal 'now' argument to date/datetime/julianday/strftime on `db` becomes
+ * `nowUtc` ('YYYY-MM-DD HH:MM:SS', UTC) — the only form the Heute queries use.
+ * Not covered: the zero-argument forms (`date()`), `unixepoch`, `timediff` and
+ * CURRENT_DATE/CURRENT_TIMESTAMP; a query that switches to one of them reads
+ * the real clock again.
+ */
 function pinSqliteNow(db: Database.Database, nowUtc: string): void {
   for (const name of ['date', 'datetime', 'julianday', 'strftime']) {
     const stmts = new Map<number, Database.Statement>()
@@ -128,6 +139,17 @@ describe('Heute and the weekday average across the clock change (Europe/Berlin)'
       const days = readWeekDaySeconds(db)
       expect(days).toEqual([HOUR, 0, 0, 0, 0, 10 * 60, DAY_SECONDS])
       expect(days.reduce((a, b) => a + b, 0)).toBe(readTotals(db).week_seconds)
+    })
+
+    it('the rounded sub-line ("gerundet … h") cuts the same day', () => {
+      // A 45-minute step, so every entry rounds: 60 → 90, 30 → 45, 10 → 45.
+      db.prepare(
+        `INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', '45')`
+      ).run()
+      expect(readRoundedTotals(db)).toEqual({
+        today_rounded_seconds: (3 * 90 + 45) * 60,
+        week_rounded_seconds: (3 * 90 + 45 + 90 + 45) * 60
+      })
     })
   })
 

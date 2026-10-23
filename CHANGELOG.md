@@ -13,7 +13,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Internal
 
-- **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job runs the whole test suite on Linux with `TZ=Europe/Berlin`, so JS and SQLite both run in Berlin. New tests there check, for 25 October 2026, that today's total, today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. They sit in their own Vitest project, `berlin`, which is only registered when the process runs in Europe/Berlin; elsewhere `pnpm test` leaves it out.
+- **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job runs the whole test suite on Linux with `TZ=Europe/Berlin`, so JS and SQLite both run in Berlin. New tests there check, for 25 October 2026, that today's total (also the rounded one), today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. They sit in their own Vitest project, `berlin`, which is only registered when the process runs in Europe/Berlin; elsewhere `pnpm test` leaves it out.
 
 ## [1.22.0] — 2026-10-23
 
