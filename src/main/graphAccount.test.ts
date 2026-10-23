@@ -600,4 +600,47 @@ describe('a refresh does not undo a disconnect or a reconnect made while it ran 
     await expect(getAccessToken(d)).resolves.toBe('access-A2')
     expect(loadTokens(d.store)?.refreshToken).toBe('refresh-A2')
   })
+  it('a refused refresh after a reconnect hands over to B, and B gets its own refresh', async () => {
+    const browser = browserThatSignsIn()
+    const holder: { d?: GraphAccountDeps } = {}
+    const sent: string[] = []
+    const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+      const body = new URLSearchParams(String(init?.body ?? ''))
+      const ok = (json: Record<string, unknown>): Response =>
+        ({ ok: true, status: 200, json: async () => json }) as unknown as Response
+      if (body.get('grant_type') === 'authorization_code') {
+        // B arrives with a token that already needs renewing (60 s < skew).
+        return ok({ access_token: 'access-B', refresh_token: 'refresh-B', expires_in: 60 })
+      }
+      const rt = body.get('refresh_token') ?? ''
+      sent.push(rt)
+      // Entra rotates: a refresh token works once.
+      if (sent.indexOf(rt) !== sent.length - 1) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant' })
+        } as unknown as Response
+      }
+      if (rt === 'refresh-1') {
+        await connect(holder.d!)
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant' })
+        } as unknown as Response
+      }
+      return ok({ access_token: 'access-B2', refresh_token: 'refresh-B2', expires_in: 3600 })
+    }) as unknown as typeof fetch
+    const d = deps({
+      openExternal: browser.openExternalForTest as (url: string) => void,
+      auth: { now: () => NOW, fetchFn, ...browser } as GraphAccountDeps['auth']
+    })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBe('access-B2')
+    expect(sent).toEqual(['refresh-1', 'refresh-B'])
+    // B's rotated refresh token is kept, not thrown away as "changed meanwhile".
+    expect(loadTokens(d.store)?.refreshToken).toBe('refresh-B2')
+  })
 })

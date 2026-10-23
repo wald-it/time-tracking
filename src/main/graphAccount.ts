@@ -121,16 +121,18 @@ export async function connect(
     ...deps.auth
   }
   const tokens = await connectAccount(configOf(deps), connectDeps, signal)
-  saveTokens(tokens, deps.store)
+  // Bump and store in one synchronous step, with nothing awaited between:
+  // a refresh finishing in a gap would otherwise write the old account back.
   connectionChanged(deps)
+  saveTokens(tokens, deps.store)
   deps.log?.('graph account: connected')
   return getStatus(deps)
 }
 
 /** Forget the connection. Does not revoke anything server-side — that is the user's own account page. */
 export function disconnect(deps: GraphAccountDeps): AccountStatus {
-  clearTokens(deps.store)
   connectionChanged(deps)
+  clearTokens(deps.store)
   deps.log?.('graph account: disconnected')
   return getStatus(deps)
 }
@@ -160,10 +162,15 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   const key = storeKey(deps)
   const running = inFlight.get(key)
   if (running) return running
-  const refresh = refreshAndStore(deps, tokens, generations.get(key) ?? 0).finally(() =>
-    inFlight.delete(key)
-  )
-
+  const refresh: Promise<string | null> = refreshAndStore(
+    deps,
+    tokens,
+    generations.get(key) ?? 0
+  ).finally(() => {
+    // Only its own entry: connect or disconnect may have released it and a
+    // refresh for the new connection taken its place (#348).
+    if (inFlight.get(key) === refresh) inFlight.delete(key)
+  })
   inFlight.set(key, refresh)
   return refresh
 }
@@ -181,6 +188,8 @@ const generations = new Map<string, number>()
 function connectionChanged(deps: GraphAccountDeps): void {
   const key = storeKey(deps)
   generations.set(key, (generations.get(key) ?? 0) + 1)
+  // A refresh of the old connection is no longer anyone's to join.
+  inFlight.delete(key)
 }
 
 /** Whether connect or disconnect ran since generation was noted. */
@@ -210,6 +219,8 @@ async function refreshAndStore(
     refreshed = await refreshWithFallback(configOf(deps), tokens, deps)
   } catch (err) {
     if (err instanceof GraphAuthError && err.code === 'invalid_grant') {
+      // #348: the connection changed meanwhile — decide nothing about it here.
+      if (connectionMoved(deps, generation)) return getAccessToken(deps)
       // #341: the connection is gone only if the store still holds the very
       // refresh token that was refused. A different one means someone else
       // refreshed or reconnected meanwhile; an empty or unreadable store is
@@ -223,7 +234,6 @@ async function refreshAndStore(
           ? refreshAndStore(deps, current, generation, false)
           : current.accessToken
       }
-      if (connectionMoved(deps, generation)) return current.accessToken
       deps.log?.('graph account: grant no longer valid, connection dropped')
       clearTokens(deps.store)
       return null
@@ -231,14 +241,16 @@ async function refreshAndStore(
     throw err
   }
   if (connectionMoved(deps, generation)) {
+    // Ask again for what is connected now: it may need a refresh of its own.
     deps.log?.('graph account: connection changed during the refresh, result discarded')
-    return loadTokens(deps.store)?.accessToken ?? null
+    return getAccessToken(deps)
   }
   // Must be persisted even when only the access token changed — the refresh
   // token may have rotated, and the old one stops working once it has.
   saveTokens(refreshed, deps.store)
   return refreshed.accessToken
 }
+
 /**
  * #308: Entra refreshes only scopes "equivalent to or a subset of" those
  * granted. With a feature switched on whose scope is not consented yet (Teams
