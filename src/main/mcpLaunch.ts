@@ -16,10 +16,11 @@
  * install — Electron's fs patch reads it transparently.
  *
  * Hardening caveat: this design depends on the Electron **RunAsNode** fuse
- * staying enabled. The project sets no fuses today, so it works. If fuses are
- * ever enabled (see the note in `electron-builder.yml`), `runAsNode` must stay
- * on — otherwise `ELECTRON_RUN_AS_NODE=1` is ignored and the MCP server fails
- * to launch with no visible error.
+ * staying enabled. The packaged binary carries fuses since #272
+ * (`electronFuses` in `electron-builder.yml`) with `runAsNode: true`; turned
+ * off, `ELECTRON_RUN_AS_NODE=1` is ignored and the MCP server fails to launch
+ * with no visible error. The package smoke (scripts/package-smoke.mjs) checks
+ * the fuse and starts the server this way on every PR.
  */
 import { existsSync } from 'fs'
 import { join } from 'path'

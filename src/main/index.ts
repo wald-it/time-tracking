@@ -39,6 +39,7 @@ import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
 import { guardWindowLinks } from './externalLinks'
+import { appWebPreferences } from './appWebPreferences'
 import { localDateKey } from '../shared/dateRanges'
 import {
   WINDOW_BOUNDS_KEY,
@@ -463,12 +464,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+    webPreferences: appWebPreferences()
   })
 
   // Windows can size a window created with x/y on a monitor whose scaling
@@ -679,6 +675,10 @@ app.whenReady().then(async () => {
         }
       }
 
+      // #272: the app windows' sandboxed preload, checked in the package.
+      const { probeSandboxedWindow } = await import('./smokeSandbox')
+      const sandbox = await probeSandboxedWindow()
+
       const result = {
         ok: true as const,
         schemaVersion: row.v ?? 0,
@@ -686,7 +686,8 @@ app.whenReady().then(async () => {
         sessionData: app.getPath('sessionData'),
         electronVersion: process.versions.electron,
         nodeVersion: process.versions.node,
-        pdfBytes
+        pdfBytes,
+        sandbox
       }
       writeSmokeResult(outPath, result, 'log')
       finishSmoke(0)
