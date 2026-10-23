@@ -210,7 +210,8 @@ const HIDDEN_CHARS =
  */
 export function dialogText(v: string): string {
   const flat = v
-    .replace(/\r\n|\r|\n/g, ' ⏎ ')
+    // U+2028/2029 (line/paragraph separator) break lines in some dialogs too.
+    .replace(/\r\n|\r|\n|\u2028|\u2029/g, ' ⏎ ')
     .replace(/\t/g, ' ')
     .replace(HIDDEN_CHARS, '')
   const chars = [...flat]

@@ -562,6 +562,23 @@ Beschreibung: "Workshop"
       expect(asked[0]).toContain('interne Notiz: "note"')
     })
 
+    it('line and paragraph separators count as line breaks', async () => {
+      const { ctx, asked } = recording()
+      await handleRequest(ctx, {
+        v: 1,
+        token: 'secret',
+        op: 'create_manual_entry',
+        args: {
+          client_id: 1,
+          description: 'a\u2028b\u2029c',
+          started_at: '2025-10-28T09:00:00+01:00',
+          stopped_at: '2025-10-28T10:00:00+01:00'
+        }
+      })
+      expect(asked[0]).not.toMatch(/[\u2028\u2029]/)
+      expect(asked[0]).toContain('Beschreibung: "a ⏎ b ⏎ c"')
+    })
+
     it('start_timer: description cleaned, client names in the head line cleaned', async () => {
       db.prepare(`UPDATE clients SET name = ? WHERE id = 1`).run('Ac\nme\u202E')
       const { ctx, asked } = recording()
