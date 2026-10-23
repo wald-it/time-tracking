@@ -59,7 +59,10 @@ rl.on('line', (line) => {
 rl.on('close', () => process.exit(0))
 `
 
-/** Upper bound for one probe run: its own deadline plus two process starts. */
+/**
+ * Upper bound for one probe run: its own deadline, two process starts, and the
+ * probe's 5 s kill fallback plus its 2 s drain grace at the end.
+ */
 const PROBE_LIMIT_MS = 90_000
 
 function probe(

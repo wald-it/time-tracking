@@ -3,7 +3,7 @@
  * Smoke checks against a packaged build (#269, PR order step (i)).
  *
  * Usage:
- *   node scripts/package-smoke.mjs smoke --exe <packaged binary>
+ *   node scripts/package-smoke.mjs smoke --exe <packaged binary> [--timeout-ms 60000]
  *   node scripts/package-smoke.mjs mcp --exe <packaged binary> --entry <server.js>
  *        [--server-source src/mcp/server.ts] [--timeout-ms 30000]
  *
@@ -46,7 +46,7 @@ function parseArgs(argv) {
     if (!key?.startsWith('--') || rest[i + 1] === undefined) {
       throw new ProbeError(
         `bad argument near "${key ?? ''}"\n` +
-          'usage: package-smoke.mjs smoke --exe <binary>\n' +
+          'usage: package-smoke.mjs smoke --exe <binary> [--timeout-ms <ms>]\n' +
           '       package-smoke.mjs mcp --exe <binary> --entry <server.js> [--server-source <file>] [--timeout-ms <ms>]'
       )
     }
@@ -95,7 +95,9 @@ function relayLines(stream, prefix, onLine = () => {}) {
 const DRAIN_GRACE_MS = 2000
 
 /**
- * Spawn, turning a missing binary into a ProbeError. `child.ended` resolves
+ * Spawn. A missing binary and a synchronous spawn failure are thrown as a
+ * ProbeError; an asynchronous one comes back as `ended.error`, which every
+ * caller checks. `child.ended` resolves
  * with `{ code, signal, error }` once the process is gone and its output is
  * drained — or, if a grandchild keeps the pipes open so that 'close' never
  * comes, DRAIN_GRACE_MS after 'exit'. It never waits on 'close' alone.
@@ -117,10 +119,11 @@ function start(exe, args, options) {
       clearTimeout(grace)
       resolve(result)
     }
-    // The first error is a spawn failure. The listener stays for the
-    // lifetime of the child, so a later one (from kill()) cannot go unhandled.
+    // An error before the process got a pid is a spawn failure. Errors after
+    // that (a failed kill()) are not the run's result; the listener stays for
+    // the lifetime of the child so that they cannot go unhandled either.
     child.on('error', (error) => {
-      if (result) return
+      if (result || child.pid !== undefined) return
       result = { code: null, signal: null, error }
       grace = setTimeout(finish, DRAIN_GRACE_MS)
     })
@@ -154,7 +157,8 @@ async function runSmoke(dir, exe, timeoutMs) {
     timedOut = true
     child.kill('SIGKILL')
   }, timeoutMs)
-  // Waits for the killed process too, so cleanup does not race a live app.
+  // Waits for the killed main process too. Electron's helper processes can
+  // outlive it and keep files in `dir` open; cleanup only warns about that.
   const ended = await child.ended
   clearTimeout(timer)
   if (ended.error) throw startFailure(exe, ended)
@@ -197,8 +201,9 @@ async function runMcp(dir, exe, entry, expected, timeoutMs) {
 
   const responses = new Map()
   const waiters = new Map()
-  // Set from `child.ended`, which waits for stdout to drain, so an answer
-  // written just before the exit is never mistaken for a missing one.
+  // Set from `child.ended`, which normally waits for stdout to drain, so an
+  // answer written just before the exit is not mistaken for a missing one. If
+  // a grandchild holds the pipe open, it gives up after DRAIN_GRACE_MS.
   let closed = null
   relayLines(child.stdout, '[stdout]', (line) => {
     let msg
