@@ -15,7 +15,12 @@ import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { makeCtx, seed } from '../test/bridgeKit'
 import { handleRequest } from './mcpBridgeCore'
-import { createManualEntry, SPLIT_EDGE_ERROR, updateManualEntry } from './entryMutations'
+import {
+  createManualEntry,
+  SPLIT_EDGE_ERROR,
+  SPLIT_GAP_ERROR,
+  updateManualEntry
+} from './entryMutations'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -288,5 +293,65 @@ describe('editing one half of a split entry (#311)', () => {
     expect(res).toMatchObject({ ok: false })
     // The live half is as it was; nothing the owner did not see was written.
     expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([[local(11, 0), local(11, 4)]])
+  })
+  it('after an edit next to a trashed half, the parts stay linked and a restore joins them', () => {
+    const [first, second] = rows()
+    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(local(12, 9), first.id)
+    const edited = updateManualEntry(db, {
+      id: second.id,
+      client_id: 1,
+      description: 'Nachtschicht',
+      started_at: second.started_at,
+      stopped_at: local(11, 5)
+    })
+    if (!edited.ok) throw new Error(edited.error)
+    // A second edit still may not move the 0:00 edge into the trashed time.
+    expect(
+      updateManualEntry(db, {
+        id: edited.data.id,
+        client_id: 1,
+        description: 'Nachtschicht',
+        started_at: local(10, 22),
+        stopped_at: local(11, 5)
+      })
+    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    // Restored, both parts are one entry again, with no overlap.
+    db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(first.id)
+    const after = rows()
+    expect(after.map((r) => [r.started_at, r.stopped_at])).toEqual([
+      [local(10, 20), local(11, 0)],
+      [local(11, 0), local(11, 5)]
+    ])
+    expect(new Set(after.map((r) => r.link_id)).size).toBe(1)
+  })
+
+  it('an entry whose middle part is in the trash is not edited, nothing comes back', () => {
+    // Three linked parts, as an entry over two midnights is stored.
+    db.prepare(`DELETE FROM entries`).run()
+    const ins = db.prepare(
+      `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at, link_id)
+       VALUES (1, 'Lang', ?, ?, ?, 'L3')`
+    )
+    const parts: Array<[string, string]> = [
+      [local(10, 23), local(11, 0)],
+      [local(11, 0), local(12, 0)],
+      [local(12, 0), local(12, 0, 30)]
+    ]
+    for (const [a, b] of parts) ins.run(a, b, b)
+    const ids = (
+      db.prepare(`SELECT id FROM entries ORDER BY started_at`).all() as Array<{ id: number }>
+    ).map((r) => r.id)
+    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(local(13, 9), ids[1])
+    const before = rows()
+    expect(
+      updateManualEntry(db, {
+        id: ids[0],
+        client_id: 1,
+        description: 'Lang (neu)',
+        started_at: parts[0][0],
+        stopped_at: parts[0][1]
+      })
+    ).toEqual({ ok: false, error: SPLIT_GAP_ERROR })
+    expect(rows()).toEqual(before)
   })
 })

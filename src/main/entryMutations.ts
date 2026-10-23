@@ -216,6 +216,10 @@ export const SPLIT_EDGE_ERROR =
 export const STALE_EDIT_ERROR =
   'Der Eintrag hat sich während der Rückfrage geändert. Bitte die Änderung erneut anfragen.'
 
+/** Editing an entry whose middle part is in the trash (#311). */
+export const SPLIT_GAP_ERROR =
+  'Ein mittlerer Teil dieses Eintrags wurde gelöscht. Die übrigen Teile lassen sich deshalb nicht gemeinsam bearbeiten.'
+
 type Range = { started_at: string; stopped_at: string }
 
 /**
@@ -264,7 +268,9 @@ function rangeOfEntry(half: Range, group: Range[], live: Range[], input: Range):
 export function resolveEditRange(
   db: Db,
   given: UpdateEntryInput
-): { input: UpdateEntryInput; before: Range; linkId?: string } | { error: string } {
+):
+  | { input: UpdateEntryInput; before: Range; linkId?: string; keepsTrashed?: boolean }
+  | { error: string } {
   const existing = db
     .prepare(`SELECT link_id, started_at, stopped_at, deleted_at FROM entries WHERE id = ?`)
     .get(given.id) as
@@ -288,16 +294,26 @@ export function resolveEditRange(
     )
     .all(linkId) as Array<Range & { deleted_at: string | null }>
   const live = rows.filter((r) => r.deleted_at === null)
+  // A trashed part between live ones: one range for the live parts would
+  // bring the trashed time back.
+  for (let i = 1; i < live.length; i++) {
+    if (Date.parse(live[i - 1].stopped_at) !== Date.parse(live[i].started_at)) {
+      return { error: SPLIT_GAP_ERROR }
+    }
+  }
   const range = rangeOfEntry(own, rows, live, given)
   if (!range) return { error: SPLIT_EDGE_ERROR }
   const before = { started_at: live[0].started_at, stopped_at: live[live.length - 1].stopped_at }
-  return { input: { ...given, ...range }, before, linkId }
+  const keepsTrashed = live.length < rows.length
+  return { input: { ...given, ...range }, before, linkId, keepsTrashed }
 }
+
 /** Update an entry (delete-and-reinsert with cross-midnight bookkeeping). Mirrors `entries:update`. */
 export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<Entry> {
   const resolved = resolveEditRange(db, given)
   if ('error' in resolved) return fail(resolved.error)
   const { input, linkId: existingLinkId } = resolved
+  const keepsTrashed = 'keepsTrashed' in resolved && resolved.keepsTrashed === true
   const err = validateManualEntry(db, input, input.id, existingLinkId)
   if (err) return fail(err)
   const segments = splitAtMidnight(new Date(input.started_at), new Date(input.stopped_at))
@@ -319,7 +335,7 @@ export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<En
       )
       .get(key) as { graph_event_id: string | null; created_at: string | null }
     db.prepare(`DELETE FROM entries WHERE ${where}`).run(key)
-    return insertEntrySegments(
+    const row = insertEntrySegments(
       db,
       input,
       segments,
@@ -331,6 +347,13 @@ export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<En
       carried.graph_event_id,
       carried.created_at
     )
+    if (!keepsTrashed || !existingLinkId) return row
+    // A trashed part stays behind: the new rows keep the entry's link, so its
+    // cuts still protect later edits and a restore joins the parts again.
+    db.prepare(
+      `UPDATE entries SET link_id = ? WHERE id = ? OR (link_id IS NOT NULL AND link_id = ?)`
+    ).run(existingLinkId, row.id, row.link_id)
+    return db.prepare(`SELECT * FROM entries WHERE id = ?`).get(row.id) as Entry
   })
   return ok(tx())
 }
