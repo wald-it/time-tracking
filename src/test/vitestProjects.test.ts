@@ -23,7 +23,7 @@
 import { describe, it, expect } from 'vitest'
 import { readdirSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
-import config from '../../vitest.config'
+import config, { BERLIN_TESTS, RUNS_IN_BERLIN } from '../../vitest.config'
 
 const REPO_ROOT = resolve(__dirname, '..', '..')
 
@@ -98,6 +98,15 @@ const declared = projects.map((p) => ({
   name: p.test?.name ?? '(unnamed)',
   patterns: (p.test?.include ?? []).map((g) => ({ glob: g, re: globToRegExp(g) }))
 }))
+// Outside Europe/Berlin the `berlin` project is not registered (#263); its
+// files run in the berlin-zone CI job. They count as covered here, and the
+// pattern must still match something.
+if (!RUNS_IN_BERLIN) {
+  declared.push({
+    name: 'berlin (registered only in Europe/Berlin)',
+    patterns: [{ glob: BERLIN_TESTS, re: globToRegExp(BERLIN_TESTS) }]
+  })
+}
 
 describe('vitest projects cover every test file', () => {
   const files = findTestFiles(REPO_ROOT)

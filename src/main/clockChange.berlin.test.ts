@@ -5,8 +5,9 @@
  *
  * Both cut days with SQLite's 'localtime', which reads the process zone and
  * ignores a `process.env.TZ` set at runtime. So this file pins nothing: it
- * runs in the `berlin` Vitest project, whose setup refuses any other zone,
- * and CI starts that project with TZ=Europe/Berlin on Linux.
+ * runs in the `berlin` Vitest project, which vitest.config.ts registers only
+ * when the process runs in Europe/Berlin (CI: the Linux job with
+ * TZ=Europe/Berlin). The first test checks that both clocks really do.
  *
  * The Heute queries also compare against SQLite's 'now', which no test can set
  * from outside. `pinSqliteNow` replaces date/datetime/julianday/strftime on the
@@ -14,21 +15,24 @@
  * every call to a second connection's built-in function — so the 'localtime'
  * arithmetic under test is still SQLite's own, only the clock is fixed.
  */
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { readTodayEntries, readTotals, readWeekDaySeconds } from './dashboardTotals'
 import { buildAnalyticsSummary } from './analyticsHandlers'
 
 let DatabaseImpl: DatabaseCtor
+/** A connection whose date functions stay SQLite's built-ins. */
+let builtins: Database.Database
 
 beforeAll(async () => {
   DatabaseImpl = await loadSqlite()
+  builtins = new DatabaseImpl(':memory:')
 })
+afterAll(() => builtins.close())
 
 /** SQLite's 'now' on `db` becomes `nowUtc` ('YYYY-MM-DD HH:MM:SS', UTC). */
 function pinSqliteNow(db: Database.Database, nowUtc: string): void {
-  const builtins = new DatabaseImpl(':memory:')
   for (const name of ['date', 'datetime', 'julianday', 'strftime']) {
     const stmts = new Map<number, Database.Statement>()
     db.function(name, { varargs: true }, (...args: unknown[]) => {
@@ -75,6 +79,7 @@ describe('Heute and the weekday average across the clock change (Europe/Berlin)'
     )
     for (const [start, stop, label] of ENTRIES) ins.run(label, start, stop, stop)
   })
+  afterEach(() => db.close())
 
   it('both clocks run in Berlin: a 25-hour day in JS and in SQLite', () => {
     expect((new Date(2026, 9, 26).getTime() - new Date(2026, 9, 25).getTime()) / HOUR / 1000).toBe(

@@ -103,11 +103,8 @@ jobs:
       # The old `pnpm rebuild better-sqlite3` step here was actively harmful: it
       # swapped in a Node-ABI binary and left the .forge-meta marker claiming
       # Electron, which is how the cached poison above came to exist.
-      #
-      # #263: the `berlin` project needs the process zone Europe/Berlin and
-      # these runners are UTC; it runs in the berlin-zone job below.
       - name: Test
-        run: pnpm test --project '!berlin'
+        run: pnpm test
 
       # #190: The Stream Deck plugin is its own package (own lockfile, own
       # toolchain) and is NOT part of the app build. Its pure modules already
@@ -175,11 +172,11 @@ jobs:
 
   # #263: the Heute totals and the weekday average cut days with SQLite's
   # 'localtime', which reads the zone the process starts in and ignores a
-  # process.env.TZ set later (on Windows it ignores TZ altogether). So they can
+  # process.env.TZ set later (on Windows it ignores TZ altogether). They can
   # only be tested in Europe/Berlin when the whole job runs there: Linux, with
-  # TZ on the job. This job runs the `berlin` Vitest project (whose setup fails
-  # in any other zone) and the files that pin a zone themselves, which here run
-  # with SQLite in Berlin too instead of UTC.
+  # TZ on the job. vitest.config.ts registers the `berlin` project only in that
+  # zone, which is why the UTC jobs above never see it. The rest of the suite
+  # runs here too, so every test also runs once with JS and SQLite in Berlin.
   #
   # No licences, lint or Stream Deck steps: those are platform-independent or
   # Windows-only by design (see the test job above), and Linux is not a release
@@ -208,22 +205,11 @@ jobs:
       - name: Ensure better-sqlite3 matches the Electron ABI (forced)
         run: pnpm exec electron-rebuild -f -w better-sqlite3
 
-      - name: Test (Europe/Berlin)
+      # Its own step, named: if the zone did not reach the config and the
+      # project is not registered, Vitest fails here ("no projects matched")
+      # instead of the job passing with the Berlin tests silently left out.
+      - name: Test the berlin project (Europe/Berlin)
         run: pnpm test --project berlin
 
-      # Every test file that sets process.env.TZ itself. The list is checked by
-      # src/test/berlinZoneJob.test.ts: a new zone-pinned file that is missing
-      # here turns that test red.
-      - name: Test zone-pinned files (Europe/Berlin)
-        run: >-
-          pnpm test --project node --project jsdom
-          src/shared/zonedTimestamp.test.ts
-          src/shared/dateRanges.local.test.ts
-          src/renderer/src/components/heute/dayScaleLayout.dst.test.ts
-          src/mcp/queries.test.ts
-          src/mcp/monthWindow.test.ts
-          src/main/migrations/migration027Integrity.test.ts
-          src/main/migrations/migration027.test.ts
-          src/main/mcpBridgeLocalTime.test.ts
-          src/main/entryRanges.test.ts
-          src/main/dstNightTotals.local.test.ts
+      - name: Test everything else (Europe/Berlin)
+        run: pnpm test --project '!berlin'

@@ -1,7 +1,28 @@
-import { configDefaults, defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig, type TestProjectInlineConfiguration } from 'vitest/config'
 import { resolve } from 'path'
 
-const BERLIN_TESTS = 'src/**/*.berlin.test.ts'
+/**
+ * #263: tests that need the whole process — JS and SQLite — in Europe/Berlin.
+ * SQLite's 'localtime' reads the zone the process starts in and ignores a
+ * `process.env.TZ` set later, so no test can pin it; the run has to start
+ * there. The `berlin` project is therefore registered only when it does — on
+ * a machine whose zone is Berlin, or in the berlin-zone CI job
+ * (TZ=Europe/Berlin) — and plain `pnpm test` elsewhere leaves it out instead
+ * of failing.
+ */
+export const BERLIN_TESTS = 'src/**/*.berlin.test.{ts,tsx}'
+export const RUNS_IN_BERLIN = Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Berlin'
+
+const berlinProject: TestProjectInlineConfiguration = {
+  extends: true,
+  test: {
+    name: 'berlin',
+    // Node environment, also for a .tsx file: these test main-process paths.
+    environment: 'node',
+    include: [BERLIN_TESTS],
+    setupFiles: ['./src/test/isolateLogs.ts']
+  }
+}
 
 export default defineConfig({
   resolve: {
@@ -34,19 +55,7 @@ export default defineConfig({
           setupFiles: ['./src/test/isolateLogs.ts']
         }
       },
-      {
-        // #263: tests that need the whole process — JS and SQLite — in
-        // Europe/Berlin, which only the environment can provide (see the setup
-        // file). CI runs them in the Linux job with TZ=Europe/Berlin; the UTC
-        // Windows/macOS jobs leave the project out.
-        extends: true,
-        test: {
-          name: 'berlin',
-          environment: 'node',
-          include: [BERLIN_TESTS],
-          setupFiles: ['./src/test/isolateLogs.ts', './src/test/requireBerlinZone.ts']
-        }
-      },
+      ...(RUNS_IN_BERLIN ? [berlinProject] : []),
       {
         // The Stream Deck plugin is its own package (own node_modules, own
         // tsconfig, not part of the app build), but its pure modules — dial
@@ -65,6 +74,7 @@ export default defineConfig({
           name: 'jsdom',
           environment: 'jsdom',
           include: ['src/renderer/**/*.test.{ts,tsx}'],
+          exclude: [...configDefaults.exclude, BERLIN_TESTS],
           setupFiles: ['./vitest.setup.ts']
         }
       }
