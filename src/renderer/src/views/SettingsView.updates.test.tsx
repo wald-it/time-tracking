@@ -11,6 +11,8 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 import { UpdatesSection } from './SettingsView'
 import { I18nProvider } from '../contexts/I18nContext'
+import { useUpdateStore } from '../store/updateStore'
+import { de } from '../../../shared/locales/de'
 
 // `globals` is off in vitest.config.ts, so Testing Library's auto-cleanup
 // afterEach is never registered — unmount explicitly.
@@ -43,10 +45,14 @@ describe('Settings → Updates section (#274)', () => {
     // Let init() resolve so the store holds the version before we look.
     await act(async () => {})
 
+    // Guards against a vacuous pass: the version is loaded and the section
+    // rendered, so its absence below is a finding, not an empty store.
+    expect(useUpdateStore.getState().appVersion).toBe(VERSION)
     const text = container.textContent ?? ''
-    // Guard against a vacuous pass: the section did render.
-    expect(text).toContain('Jetzt nach Updates suchen')
+    expect(text).toContain(de['settings.update.checkNow'])
     expect(text).not.toContain(VERSION)
+    // The removed row's label in both languages, in case it returns without a value.
     expect(text).not.toContain('Aktuelle Version')
+    expect(text).not.toContain('Current version')
   })
 })
