@@ -555,6 +555,7 @@ Beschreibung: "Workshop"
           stopped_at: '2025-10-28T10:00:00+01:00'
         }
       })
+      // eslint-disable-next-line no-control-regex -- the test looks for control characters
       expect(asked[0]).not.toMatch(/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u0007\t]/)
       expect(asked[0]).toContain('Beschreibung: "abcdefx"')
       expect(asked[0]).toContain('Referenz: "R1 2"')
