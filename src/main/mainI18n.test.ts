@@ -13,9 +13,11 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
+import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
   appLocale,
+  forgetLastAppLocale,
   cancelledResult,
   dbErrorDialog,
   dialogT,
@@ -58,40 +60,36 @@ describe('the language of a main-process dialog', () => {
     expect(readLanguageOr(db, () => 'de')).toBe('de')
   })
 
-  it('appLocale never throws: setting, then system language, then German', () => {
-    const db = new DatabaseImpl(':memory:')
-    applyMigrations(db)
-    db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
-    expect(
-      appLocale(
-        () => db,
-        () => ['de-DE']
-      )
-    ).toBe('en')
-    const broken = new DatabaseImpl(':memory:') // open, but no settings table
-    expect(
-      appLocale(
-        () => broken,
-        () => ['de-DE']
-      )
-    ).toBe('de')
-    expect(
-      appLocale(
-        () => broken,
-        () => ['en-US']
-      )
-    ).toBe('en')
-    db.close()
-    expect(
-      appLocale(
-        () => db,
-        () => ['en-US']
-      )
-    ).toBe('en')
+  it('appLocale never throws: setting, last setting read, system language, German', () => {
     const fail = (): never => {
       throw new Error('unavailable')
     }
+    /** appLocale over a fixed database and fixed system languages. */
+    const loc = (db: Database.Database, langs: string[]): string =>
+      appLocale(
+        () => db,
+        () => langs
+      )
+    const broken = new DatabaseImpl(':memory:') // open, but no settings table
+
+    // Nothing read yet in this run: the system language, then German.
+    forgetLastAppLocale()
+    expect(loc(broken, ['de-DE'])).toBe('de')
+    expect(loc(broken, ['en-US'])).toBe('en')
+    expect(loc(broken, [])).toBe('en') // none reported: English
     expect(appLocale(fail, fail)).toBe('de')
+
+    // Once the setting was read, a closed handle or a failing read keeps it,
+    // whatever the system says: tray and dialogs stay in one language.
+    const db = new DatabaseImpl(':memory:')
+    applyMigrations(db)
+    db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+    expect(loc(db, ['de-DE'])).toBe('en')
+    db.close()
+    expect(loc(db, ['de-DE'])).toBe('en')
+    expect(loc(broken, ['de-DE'])).toBe('en')
+    expect(appLocale(fail, fail)).toBe('en')
+    forgetLastAppLocale()
     broken.close()
   })
 
@@ -294,7 +292,10 @@ describe('#296 — a closed dialog is a code, not a text', () => {
     for (const f of readdirSync(root, { recursive: true }) as string[]) {
       if (!/\.tsx?$/.test(f) || /\.test\.tsx?$/.test(f)) continue
       const src = readFileSync(join(root, f), 'utf8')
-      if (/error\s*===\s*['"`]/.test(src)) hits.push(f)
+      // `.error === / !==` either way round, and a text test on `.error`.
+      const compares =
+        /\.error\s*[!=]==|[!=]==\s*[\w.?]*\.error\b|\.error\??\.(includes|startsWith|endsWith|match)\(/
+      if (compares.test(src) || /abgebrochen/.test(src)) hits.push(f)
     }
     expect(hits).toEqual([])
   })

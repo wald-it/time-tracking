@@ -97,11 +97,16 @@ export function writeSettingFromRenderer(
     } else if (key === 'controller_enabled') {
       hooks.setControllerEnabled(value === '1')
     } else if (key === 'presence_enabled' || key === 'presence_show_client' || key === 'language') {
+      // The setting is saved at this point: a failing side effect is logged,
+      // it must neither skip the next one nor report the change as failed.
       // Toggling mirroring off clears our own status message; the language
       // and privacy switches re-render it while a timer runs.
-      hooks.pokePresence()
-      // The tray speaks the app language too (#296). The setting is saved at
-      // this point, so a failed rebuild must not report the change as failed.
+      try {
+        hooks.pokePresence()
+      } catch (e) {
+        console.warn('[presence] re-render after a settings change failed:', e)
+      }
+      // The tray speaks the app language too (#296).
       if (key === 'language') {
         try {
           hooks.refreshTrayLanguage()

@@ -17,13 +17,13 @@
  * Anders als csvExport: nicht abrechenbare Einträge (billable = 0) bleiben
  * drin. Der Kalender ist eine Ist-Zeit-Ansicht, kein Rechnungsdokument.
  */
-import { dialog } from 'electron'
+import { app, dialog } from 'electron'
 import { writeFileSync } from 'fs'
 import type Database from 'better-sqlite3'
 import { formatIcal } from '../shared/ical'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
-import { cancelledResult, dialogT, exportFileName, readLanguage } from './mainI18n'
+import { appLocale, cancelledResult, dialogT, exportFileName } from './mainI18n'
 
 export interface IcalRequest {
   clientId: number
@@ -77,7 +77,10 @@ export async function handleIcalExport(
     // leerer Name hängt hier nichts an).
     const proj = req.projectId != null ? projectMap.get(req.projectId) : undefined
 
-    const locale = readLanguage(db)
+    const locale = appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
     const result = await dialog.showSaveDialog({
       title: dialogT(locale)('mainDialog.ical.title'),
       defaultPath: exportFileName(locale, 'ical', {

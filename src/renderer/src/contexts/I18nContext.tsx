@@ -50,6 +50,11 @@ export function I18nProvider({ children }: { children: React.ReactNode }): React
   const setLocale = useCallback(async (l: Locale) => {
     pickedRef.current = true
     setLocaleState(l)
+    // Keep the store's copy current for anyone else reading settings.language
+    // (a load still running may overwrite it; pickedRef covers this provider).
+    useSettingsStore.setState((s) =>
+      s.settings ? { settings: { ...s.settings, language: l } } : s
+    )
     await window.api.settings.set('language', l)
   }, [])
 

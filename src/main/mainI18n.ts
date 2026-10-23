@@ -41,25 +41,45 @@ export function readLanguageOr(db: Database.Database, fallback: () => Locale): L
   return db.open ? readLanguage(db) : fallback()
 }
 
+/** The last language read from the setting, for the moments it cannot be read. */
+let lastSettingLocale: Locale | null = null
+
 /**
- * The app language for any text of the main process, never throwing (#296):
- * the setting; with the handle closed or the read failing, the first system
- * language; if even that cannot be read, German, the app default. A dialog,
- * a tray label or a file name must not fail because a settings read did.
+ * The app language for any text of the main process, never throwing (#296).
+ * A dialog, a tray label or a file name must not fail because a settings
+ * read did. In order:
+ * 1. the setting;
+ * 2. if it cannot be read (handle closed after a restore attempt, or the
+ *    read fails): the last language read from it in this run, so tray and
+ *    dialogs keep speaking one language until the relaunch;
+ * 3. if there is none: the first system language (`localeFromSystem`:
+ *    English when the system reports none);
+ * 4. if even that throws: German, the app default.
  */
 export function appLocale(
   getDb: () => Database.Database,
   systemLanguages: () => readonly string[]
 ): Locale {
   try {
-    return readLanguageOr(getDb(), () => localeFromSystem(systemLanguages()))
-  } catch {
-    try {
-      return localeFromSystem(systemLanguages())
-    } catch {
-      return 'de'
+    const db = getDb()
+    if (db.open) {
+      lastSettingLocale = readLanguage(db)
+      return lastSettingLocale
     }
+  } catch {
+    // falls through to the fallbacks
   }
+  if (lastSettingLocale) return lastSettingLocale
+  try {
+    return localeFromSystem(systemLanguages())
+  } catch {
+    return 'de'
+  }
+}
+
+/** Test seam: forget the remembered language. */
+export function forgetLastAppLocale(): void {
+  lastSettingLocale = null
 }
 
 /**

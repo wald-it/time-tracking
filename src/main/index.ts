@@ -203,24 +203,13 @@ function refreshActiveClients(): void {
   }
 }
 
-/** The language the tray last spoke; kept while the handle is closed. */
-let trayLocaleSeen: Locale | null = null
-
 /**
- * The tray follows the app language (#296), read with the shared rule that
- * never throws. After a restore attempt the handle stays closed until the
- * relaunch; the tray then keeps its language instead of switching to the
- * system language for those moments.
+ * The tray follows the app language (#296), with the shared rule that never
+ * throws and keeps the last language while the handle is closed after a
+ * restore attempt (mainI18n.appLocale), the same answer the dialogs get.
  */
 function trayLocale(): Locale {
-  try {
-    if (trayLocaleSeen && !getDb().open) return trayLocaleSeen
-  } catch {
-    // getDb() failing falls through to appLocale, which does not throw.
-  }
-  const locale = appLocale(getDb, () => app.getPreferredSystemLanguages())
-  trayLocaleSeen = locale
-  return locale
+  return appLocale(getDb, () => app.getPreferredSystemLanguages())
 }
 
 function buildTrayMenu(locale: Locale = trayLocale()): Menu {

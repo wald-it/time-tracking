@@ -44,8 +44,9 @@ export interface DialogDeps {
   showSaveDialog: (opts: Electron.SaveDialogOptions) => Promise<Electron.SaveDialogReturnValue>
   /**
    * The language of the merged file's name (#296) and of the fallback
-   * dialog's title (#270). Asked inside the handler's try, so a failing
-   * settings read ends as an error result, never as a rejected call.
+   * dialog's title (#270). Asked on every merge, so it must not throw:
+   * ipc.ts passes mainI18n.appLocale, which falls back instead. (A throwing
+   * getter would end a merge that needs no dialog as an error result.)
    */
   locale: () => Locale
 }

@@ -9,13 +9,13 @@
  * Kept separate from ipc.ts to mirror the pattern used by pdf.ts /
  * jsonExport.ts — easier to unit-test in isolation.
  */
-import { dialog } from 'electron'
+import { app, dialog } from 'electron'
 import { writeFileSync } from 'fs'
 import type Database from 'better-sqlite3'
 import { formatCsv, type CsvOptions } from '../shared/csv'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
-import { cancelledResult, dialogT, exportFileName, readLanguage } from './mainI18n'
+import { appLocale, cancelledResult, dialogT, exportFileName } from './mainI18n'
 
 export interface CsvRequest {
   clientId: number
@@ -64,7 +64,10 @@ export async function handleCsvExport(
             | undefined)
         : undefined
 
-    const locale = readLanguage(db)
+    const locale = appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
     const result = await dialog.showSaveDialog({
       title: dialogT(locale)('mainDialog.csv.title'),
       defaultPath: exportFileName(locale, 'csv', {

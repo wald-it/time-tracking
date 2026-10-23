@@ -89,6 +89,16 @@ describe('settings:set allow-list', () => {
     expect(stored('language')).toBe('en')
   })
 
+  it('a failing presence re-render neither fails the change nor skips the tray', () => {
+    const h = hooks()
+    h.pokePresence = () => {
+      throw new Error('graph state not ready')
+    }
+    const res = writeSettingFromRenderer(db, h, 'language', 'en')
+    expect(res).toEqual({ ok: true, data: undefined })
+    expect(calls).toEqual(['refreshTrayLanguage()'])
+  })
+
   it('refuses an unknown key and writes nothing', () => {
     const res = writeSettingFromRenderer(db, hooks(), 'something_new', 'x')
     expect(res.ok).toBe(false)
