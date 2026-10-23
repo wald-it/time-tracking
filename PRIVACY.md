@@ -87,23 +87,28 @@ finds a new version, the app downloads it in the background as above.
   tags and rates are never sent.
 - **When it is removed:** when the timer stops, or when you switch **Mirror
   Teams status** off, TimeTrack ends the Busy status and clears the status
-  message if it is still TimeTrack's. A message you wrote in Teams while the
-  timer ran stays. If the presence cannot be read, TimeTrack still ends the
+  message if it is still TimeTrack's. A message you wrote in Teams after
+  TimeTrack last set its own stays; while the timer runs, TimeTrack replaces it
+  whenever it renews or changes its status (about every 25 minutes, and on
+  another client, project or app language). If the presence cannot be read, TimeTrack still ends the
   Busy status and leaves the message until it can check it. If clearing fails
   (offline, for example), what is left stays until TimeTrack tries again at its
   next status update. Those come with timer changes from any source (the app,
   the tray, the mini widget, hotkeys, MCP, the Stream Deck) and with changes to
   the Teams settings in TimeTrack, not on a schedule while no timer runs. If the
   app quits or crashes while a timer runs, TimeTrack withdraws its own message
-  at the next start: at the first status update while no timer runs and before
-  it has set a status again, it clears the message and ends the Busy status if
-  Teams shows it. If it sets a new status first, that replaces the leftover. It
+  at the next start, or later in that run when you first switch **Mirror Teams
+  status** on: at the first status update while the feature is on, no timer
+  runs and it has not set a status yet, it clears the message and ends the Busy
+  status if Teams shows it. If it sets a new status first, that replaces the
+  leftover. It
   recognises its message by its form ("🔴 Fokus" or "🔴 Focus", alone or
   followed by a colon and a client), so a message you typed in exactly that
   form yourself is cleared then too. If it cannot reach Teams at that start, it
   tries again at the next status update. If you disconnect the account while a
-  timer runs, nothing clears them until they expire: the Busy status after at
-  most an hour, the message after 12 hours.
+  timer runs, nothing clears them until you reconnect and the next status
+  update comes, TimeTrack sets your status again, or they expire: the Busy
+  status after at most an hour, the message after 12 hours.
 - **Tokens:** stored in a separate file in the data folder, encrypted by the
   operating system (DPAPI / Keychain), not part of backups or exports.
   **Disconnect** deletes that file; revoking the app's access in your Microsoft

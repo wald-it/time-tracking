@@ -409,6 +409,33 @@ describe('reconcilePresence', () => {
     ])
   })
 
+  it('a switch whose Busy update failed still counts its new message as ours at stop', async () => {
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING) // "🔴 Fokus: Acme — Rollout" applied
+    const inner = deps.fetchFn!
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/setPresence')) {
+        await inner(url, init)
+        return new Response('', { status: 504 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, { ...RUNNING, client_name: 'Beta' }) // message lands, Busy fails
+    expect(teams.content).toBe('🔴 Fokus: Beta — Rollout')
+    deps.fetchFn = inner
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('a dependency that throws is logged, not rejected', async () => {
+    const { deps, logs } = makeDeps()
+    deps.getAccountStatus = () => {
+      throw new Error('database closed')
+    }
+    await expect(reconcilePresence(deps, RUNNING)).resolves.toBeUndefined()
+    expect(logs.some((l) => l.includes('reconcile failed'))).toBe(true)
+  })
+
   it('a throwing token refresh is logged, not rejected', async () => {
     const { deps, logs } = makeDeps()
     deps.getAccessToken = async () => {

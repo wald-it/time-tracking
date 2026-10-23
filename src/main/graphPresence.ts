@@ -66,9 +66,15 @@ interface AppliedState {
    * nothing else would ever withdraw it.
    */
   swept: boolean
+  /**
+   * The last message Teams accepted from us, even when the Busy session in
+   * the same set then failed: it is in Teams and ours, but `message` still
+   * holds the previous text.
+   */
+  sent: string | null
 }
 
-const state: AppliedState = { message: null, at: 0, userId: null, swept: false }
+const state: AppliedState = { message: null, at: 0, userId: null, swept: false, sent: null }
 
 /** Test-only: forget everything this module has applied. */
 export function resetPresenceStateForTests(): void {
@@ -76,6 +82,7 @@ export function resetPresenceStateForTests(): void {
   state.at = 0
   state.userId = null
   state.swept = false
+  state.sent = null
   queue = Promise.resolve()
   latest = 0
 }
@@ -205,8 +212,14 @@ export function reconcilePresence(
   running: RunningStatus | null
 ): Promise<void> {
   const ticket = ++latest
-  const run = queue.then(() => (ticket === latest ? reconcileOnce(deps, running) : undefined))
-  queue = run.catch(() => undefined)
+  // The caller fires and forgets: whatever throws in here (a setting read
+  // while the DB closes at quit, say) ends as a log line.
+  const run = queue
+    .then(() => (ticket === latest ? reconcileOnce(deps, running) : undefined))
+    .catch((err: unknown) => {
+      deps.log?.(`presence: reconcile failed (${err instanceof Error ? err.name : 'error'})`)
+    })
+  queue = run
   return run
 }
 
@@ -320,8 +333,7 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
     }
     const ours =
       current.content !== null &&
-      state.message !== null &&
-      isMessage(current.content, state.message)
+      [state.message, state.sent].some((own) => !!own && isMessage(current.content!, own))
     if (current.content !== null && !ours) {
       log('presence: status message was changed in Teams — left as is')
     }
@@ -329,13 +341,15 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   } else {
     // Busy/InACall is the only plain-"red" combination setPresence accepts;
     // DoNotDisturb/Presenting would suppress the user's notifications.
+    const accepted = await post('setStatusMessage', {
+      statusMessage: {
+        message: { content: message, contentType: 'text' },
+        expiryDateTime: expiryAt(now)
+      }
+    })
+    if (accepted) state.sent = message
     ok =
-      (await post('setStatusMessage', {
-        statusMessage: {
-          message: { content: message, contentType: 'text' },
-          expiryDateTime: expiryAt(now)
-        }
-      })) &&
+      accepted &&
       (await post('setPresence', {
         sessionId,
         availability: 'Busy',
@@ -349,6 +363,7 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   // Only now: a set that failed must leave a crash leftover to the sweep.
   state.swept = true
   if (message === '') {
+    state.sent = null
     // The read before the clear already showed what Teams held.
     log('presence: cleared (session, message if ours)')
     return
