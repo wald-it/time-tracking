@@ -379,8 +379,15 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       if (running && Date.parse(running.started_at) > Date.parse(input.started_at)) {
         return { error: 'Startzeit liegt vor dem Beginn des laufenden Eintrags' }
       }
+      // With the date when the running entry began on another local day, so
+      // closing a multi-day entry does not read like an ordinary switch.
+      const sameDay =
+        running &&
+        new Date(running.started_at).toDateString() === new Date(input.started_at).toDateString()
       const ends = running
-        ? `; beendet #${running.id} (${running.client_name}) um ${formatLocalClock(input.started_at)}`
+        ? `; beendet #${running.id} (${running.client_name}) um ${
+            sameDay ? formatLocalClock(input.started_at) : formatLocalMoment(input.started_at)
+          }`
         : ''
       let stopped: Entry | null = null
       return {
@@ -406,6 +413,21 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
         },
         hints,
         run: () => {
+          // The owner confirmed ending exactly this entry (or none). If the
+          // timer changed while the dialog was open, nobody approved what
+          // switchTimer would now end.
+          const now = db
+            .prepare(
+              `SELECT id FROM entries WHERE stopped_at IS NULL AND deleted_at IS NULL
+                ORDER BY started_at DESC LIMIT 1`
+            )
+            .get() as { id: number } | undefined
+          if ((now?.id ?? null) !== (running?.id ?? null)) {
+            return {
+              ok: false as const,
+              error: 'Der laufende Timer hat sich seit der Vorschau geändert — bitte erneut senden'
+            }
+          }
           const r = switchTimer(db, input)
           if (!r.ok) return r
           stopped = r.data.stopped

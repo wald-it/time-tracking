@@ -187,7 +187,7 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     expect(asked[0]).toBe('Timer starten — Kunde 1, ab Di 28.10.2025 09:00: "Call"')
     // the second start ends the first one "now"
     expect(asked[1]).toMatch(
-      /^Timer starten — Kunde 1, ab jetzt: "Call"; beendet #\d+ \(Acme\) um \d\d:\d\d/
+      /^Timer starten — Kunde 1, ab jetzt: "Call"; beendet #\d+ \(Acme\) um (\S+ \d\d\.\d\d\.\d{4} )?\d\d:\d\d/
     )
   })
 
@@ -280,5 +280,50 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
       error: 'Startzeit liegt vor dem Beginn des laufenden Eintrags'
     })
     expect(asked).toHaveLength(1)
+  })
+
+  it('start_timer refuses when the running entry changed while the dialog was open', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    // The owner switches in the app while the MCP confirmation is open.
+    ctx.confirm = async () => {
+      db.prepare(`UPDATE entries SET stopped_at = started_at WHERE stopped_at IS NULL`).run()
+      db.prepare(
+        `INSERT INTO entries (client_id, description, started_at, heartbeat_at)
+         VALUES (2, '', '2025-10-28T08:30:00.000Z', '2025-10-28T08:30:00.000Z')`
+      ).run()
+      return true
+    }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-28T10:00:00+01:00' }
+    })
+    expect(res).toMatchObject({ ok: false, code: 'invalid' })
+    const running = db.prepare(`SELECT client_id FROM entries WHERE stopped_at IS NULL`).all()
+    expect(running).toEqual([{ client_id: 2 }])
+  })
+
+  it('start_timer ending an entry from another day names the date', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-27T17:00:00+01:00' }
+    })
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 2, started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    expect(asked[1]).toMatch(/; beendet #\d+ \(Acme\) um Di 28\.10\.2025 09:00$/)
   })
 })
