@@ -1,4 +1,3 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   Client,
   Entry,
@@ -29,7 +28,6 @@ import type { FilterOptions, MappedEvents } from '../shared/graphCalendar'
 
 declare global {
   interface Window {
-    electron: ElectronAPI
     api: {
       tray: {
         update(
@@ -89,7 +87,8 @@ declare global {
       backups: {
         list(): Promise<IpcResult<BackupInfo[]>>
         create(): Promise<IpcResult<string>>
-        restore(filePath: string): Promise<IpcResult<{ safetyBackupPath: string }>>
+        /** `filename` of an entry from `list()` — a path is refused (#272). */
+        restore(filename: string): Promise<IpcResult<{ safetyBackupPath: string }>>
         setPath(): Promise<IpcResult<string>>
         resetPath(): Promise<IpcResult<void>>
         getPathInfo(): Promise<IpcResult<{ dir: string; isCustom: boolean; isReachable: boolean }>>
@@ -225,7 +224,6 @@ declare global {
       update: {
         getStatus(): Promise<IpcResult<UpdateStatus>>
         getLastCheck(): Promise<IpcResult<string | null>>
-        getVersion(): Promise<IpcResult<string>>
         check(): Promise<IpcResult<void>>
         install(): Promise<IpcResult<void>>
         onStatus(callback: (status: UpdateStatus) => void): () => void
