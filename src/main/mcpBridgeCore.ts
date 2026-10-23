@@ -35,6 +35,7 @@ import {
   zonedTimestampError
 } from '../shared/zonedTimestamp'
 import { roundDuration } from '../shared/duration'
+import { deserializeTags } from '../shared/tags'
 
 type Db = Database.Database
 
@@ -165,6 +166,101 @@ function durationMin(started_at: string, stopped_at: string): number {
   return Math.round((Date.parse(stopped_at) - Date.parse(started_at)) / 60000)
 }
 
+// ── field display for the confirmation (owner decision 2026-10-23) ─────────
+// Everything a write commits is named in the dialog, so nothing changes
+// unseen. The dialog is shown only to the owner, so it shows the private note
+// too; the preview goes to the MCP client and shows the note's text only when
+// the owner exposes private notes to MCP.
+
+function clientName(db: Db, id: number): string {
+  const row = db.prepare(`SELECT name FROM clients WHERE id = ?`).get(id) as
+    | { name: string }
+    | undefined
+  return row?.name ?? `#${id}`
+}
+
+function projectName(db: Db, id: number | null): string | null {
+  if (id == null) return null
+  const row = db.prepare(`SELECT name FROM projects WHERE id = ?`).get(id) as
+    | { name: string }
+    | undefined
+  return row?.name ?? `#${id}`
+}
+
+/** Longest free text shown in the dialog, in characters. */
+const DIALOG_TEXT_MAX = 120
+
+/**
+ * C0/C1 controls (line breaks are handled before) and the bidi marks,
+ * embeddings, overrides and isolates (U+061C, U+200E/F, U+202A–202E,
+ * U+2066–2069) that can make text read in another order than it is stored.
+ */
+const HIDDEN_CHARS =
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
+
+/**
+ * Free text from the MCP client (or a name) as ONE line for the native
+ * confirmation dialog: line breaks become `⏎`, tabs a space, control and bidi
+ * characters go, and it is cut at DIALOG_TEXT_MAX with `…`. Otherwise a
+ * crafted text could forge lines, push the real change lines out of the
+ * visible area with blank lines, or reverse the reading order (owner review
+ * #255). Only the dialog text is cleaned; the preview carries the values as
+ * they are.
+ */
+export function dialogText(v: string): string {
+  const flat = v
+    // U+2028/2029 (line/paragraph separator) break lines in some dialogs too.
+    .replace(/\r\n|\r|\n|\u2028|\u2029/g, ' ⏎ ')
+    .replace(/\t/g, ' ')
+    .replace(HIDDEN_CHARS, '')
+  const chars = [...flat]
+  return chars.length > DIALOG_TEXT_MAX ? chars.slice(0, DIALOG_TEXT_MAX - 1).join('') + '…' : flat
+}
+
+function showProject(name: string | null): string {
+  return name === null ? 'Kein Projekt' : dialogText(name)
+}
+
+function showTags(serialized: string): string {
+  const tags = deserializeTags(serialized)
+  return tags.length ? dialogText(tags.join(', ')) : '(leer)'
+}
+
+function showText(v: string): string {
+  return v === '' ? '(leer)' : `"${dialogText(v)}"`
+}
+
+function yesNo(billable: number): string {
+  return billable ? 'ja' : 'nein'
+}
+
+/**
+ * The stored "expose private notes" setting (Einstellungen → Integrationen),
+ * the same switch that gates `private_note` on the read tools. The MCP
+ * server's environment override is not visible in this process.
+ */
+function exposePrivateNotes(db: Db): boolean {
+  const row = db
+    .prepare(`SELECT value FROM settings WHERE key = 'mcp_expose_private_notes'`)
+    .get() as { value: string } | undefined
+  return row?.value === '1'
+}
+
+function withLines(summary: string, lines: string[]): string {
+  return lines.length ? `${summary}\n${lines.join('\n')}` : summary
+}
+
+/**
+ * The dialog text: the header, then the field lines (client, project,
+ * billable — values the client cannot shape), then the free-text lines
+ * (description, tags, reference, note). The field lines always come first, so
+ * no free text can stand above them.
+ */
+function dialogSummary(header: string, fieldLines: string[], textLines: string[]): string {
+  return withLines(header, [...fieldLines, ...textLines])
+}
+
 // ── op planning ──────────────────────────────────────────────────────────
 
 interface Plan {
@@ -209,20 +305,43 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
       const vErr = validateManualEntry(db, input)
       if (vErr) return { error: vErr }
+      const client = clientName(db, input.client_id)
+      const project = projectName(db, input.project_id ?? null)
+      const billable = input.billable ?? 1
+      const hasNote = (input.private_note ?? '') !== ''
+      // Only what departs from an empty entry gets a line.
+      const fieldLines: string[] = []
+      if (project !== null) fieldLines.push(`Projekt: ${showProject(project)}`)
+      if (!billable) fieldLines.push('abrechenbar: nein')
+      const textLines: string[] = [`Beschreibung: ${showText(input.description)}`]
+      if (input.tags) textLines.push(`Tags: ${showTags(input.tags)}`)
+      if (input.reference) textLines.push(`Referenz: ${showText(input.reference)}`)
+      if (hasNote) textLines.push(`interne Notiz: ${showText(input.private_note ?? '')}`)
       return {
         summary: withHints(
-          `Eintrag nachtragen — Kunde ${input.client_id}, ${formatLocalSpan(input.started_at, input.stopped_at)} (${durationMin(input.started_at, input.stopped_at)} min): "${input.description}"`,
+          dialogSummary(
+            `Eintrag nachtragen — Kunde ${dialogText(client)}, ${formatLocalSpan(input.started_at, input.stopped_at)} (${durationMin(input.started_at, input.stopped_at)} min)`,
+            fieldLines,
+            textLines
+          ),
           hints
         ),
         preview: {
           action: 'create_manual_entry',
           client_id: input.client_id,
+          client_name: client,
           started_at: input.started_at,
           stopped_at: input.stopped_at,
           started_local: toLocalIso(input.started_at),
           stopped_local: toLocalIso(input.stopped_at),
           duration_min: durationMin(input.started_at, input.stopped_at),
           project_id: input.project_id,
+          project_name: project,
+          billable: billable === 1,
+          tags: input.tags,
+          reference: input.reference,
+          has_private_note: hasNote,
+          ...(hasNote && exposePrivateNotes(db) ? { private_note: input.private_note } : {}),
           ...hintPreview(hints)
         },
         hints,
@@ -290,10 +409,80 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
       const vErr = validateManualEntry(db, input, id, existing.link_id ?? undefined)
       if (vErr) return { error: vErr }
+      // Every field the commit actually changes, before → after: one line in
+      // the dialog each, and the same set under `changes` in the preview.
+      // Times stay in the first line as before (local, with offsets).
+      const fieldLines: string[] = []
+      const textLines: string[] = []
+      const changes: Record<string, { before: unknown; after: unknown } | { changed: true }> = {}
+      if (input.started_at !== existing.started_at) {
+        changes.started_at = { before: existing.started_at, after: input.started_at }
+      }
+      if (input.stopped_at !== existing.stopped_at) {
+        changes.stopped_at = { before: existing.stopped_at, after: input.stopped_at }
+      }
+      if (input.client_id !== existing.client_id) {
+        const before = clientName(db, existing.client_id)
+        const after = clientName(db, input.client_id)
+        fieldLines.push(`Kunde: ${dialogText(before)} → ${dialogText(after)}`)
+        changes.client_id = {
+          before: { id: existing.client_id, name: before },
+          after: { id: input.client_id, name: after }
+        }
+      }
+      const projectBefore = existing.project_id ?? null
+      const projectAfter = input.project_id ?? null
+      if (projectAfter !== projectBefore) {
+        const before = projectName(db, projectBefore)
+        const after = projectName(db, projectAfter)
+        fieldLines.push(`Projekt: ${showProject(before)} → ${showProject(after)}`)
+        changes.project_id = {
+          before: projectBefore === null ? null : { id: projectBefore, name: before },
+          after: projectAfter === null ? null : { id: projectAfter, name: after }
+        }
+      }
+      const billableAfter = input.billable ?? 1
+      if (billableAfter !== existing.billable) {
+        fieldLines.push(`abrechenbar: ${yesNo(existing.billable)} → ${yesNo(billableAfter)}`)
+        changes.billable = { before: existing.billable === 1, after: billableAfter === 1 }
+      }
+      if (input.description !== existing.description) {
+        textLines.push(
+          `Beschreibung: ${showText(existing.description)} → ${showText(input.description)}`
+        )
+        changes.description = { before: existing.description, after: input.description }
+      } else {
+        // Unchanged, but it names the entry the owner is asked about.
+        textLines.push(`Beschreibung: ${showText(input.description)}`)
+      }
+      const tagsAfter = input.tags ?? ''
+      if (tagsAfter !== existing.tags) {
+        textLines.push(`Tags: ${showTags(existing.tags)} → ${showTags(tagsAfter)}`)
+        changes.tags = { before: existing.tags, after: tagsAfter }
+      }
+      const referenceAfter = input.reference ?? ''
+      if (referenceAfter !== existing.reference) {
+        textLines.push(`Referenz: ${showText(existing.reference)} → ${showText(referenceAfter)}`)
+        changes.reference = { before: existing.reference, after: referenceAfter }
+      }
+      const noteBefore = existing.private_note ?? ''
+      const noteAfter = input.private_note ?? ''
+      if (noteAfter !== noteBefore) {
+        // The dialog is local to the owner and shows the text. The preview
+        // goes to the MCP client and follows the read-side privacy setting.
+        textLines.push(`interne Notiz: ${showText(noteBefore)} → ${showText(noteAfter)}`)
+        changes.private_note = exposePrivateNotes(db)
+          ? { before: noteBefore, after: noteAfter }
+          : { changed: true as const }
+      }
       return {
         summary: withHints(
-          `Eintrag #${id} ändern — vorher ${formatLocalSpan(existing.started_at, existing.stopped_at)}, ` +
-            `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}: "${input.description}"`,
+          dialogSummary(
+            `Eintrag #${id} ändern — vorher ${formatLocalSpan(existing.started_at, existing.stopped_at)}, ` +
+              `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}`,
+            fieldLines,
+            textLines
+          ),
           hints
         ),
         preview: {
@@ -321,6 +510,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
             billable: input.billable,
             project_id: input.project_id
           },
+          changes,
           ...hintPreview(hints)
         },
         hints,
@@ -385,14 +575,18 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
         running &&
         new Date(running.started_at).toDateString() === new Date(input.started_at).toDateString()
       const ends = running
-        ? `; beendet #${running.id} (${running.client_name}) um ${
+        ? `; beendet #${running.id} (${dialogText(running.client_name)}) um ${
             sameDay ? formatLocalClock(input.started_at) : formatLocalMoment(input.started_at)
           }`
         : ''
       let stopped: Entry | null = null
       return {
         summary: withHints(
-          `Timer starten — Kunde ${input.client_id}, ${given ? `ab ${formatLocalMoment(input.started_at)}` : 'ab jetzt'}: "${input.description}"${ends}`,
+          dialogSummary(
+            `Timer starten — Kunde ${dialogText(clientName(db, input.client_id))}, ${given ? `ab ${formatLocalMoment(input.started_at)}` : 'ab jetzt'}${ends}`,
+            [],
+            [`Beschreibung: ${showText(input.description)}`]
+          ),
           hints
         ),
         preview: {
