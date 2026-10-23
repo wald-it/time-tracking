@@ -47,7 +47,7 @@ Contrast was checked per theme (table in `design/messinstrument/tokens.css`).
 
 - **Section pattern:** a 2 px `--ink` rule on top, legend (and meta on the right), content. Used for every block instead of cards.
 - Content column `mi-column` (max. 1440 px, 24 px gutters below 840 px); the window is at least 760 × 600, so every screen must work at 760 px without horizontal page scroll. A flex column's basis is at least the minimum width of its content (HANDOFF §2.3).
-- Rows: label left, value or control right, 1 px `--line` hairline between rows. Hit targets of keys ≥ 44 px.
+- Rows: label left, value or control right, 1 px `--line` hairline between rows. Hit targets of keys ≥ 44 px. One deliberate exception: the × that removes a tag chip inside the tag input is 24 × 24 px (the WCAG 2.5.8 minimum) — it is a control inside an input field, and a 44 px target would cover the next chip and the text field in a wrapping row.
 - Keys: `--key` with `--key-edge` border, `--edge-key`, radius `--r-key`; pressed = `translate-y-px`. Icon keys 44 × 44 with an `aria-label`.
 - Dialogs: `--bg` panel, 1 px `--line` border, radius `--r-disp`, backdrop `rgb(0 0 0 / .35)`, title row with a 2 px `--ink` rule; one dialog shell (`Dialog.tsx`) with focus trap, Escape and focus return.
 
