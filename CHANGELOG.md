@@ -18,6 +18,14 @@ All notable changes to TimeTrack are documented here.
 - **Smoke cleaner tests no longer time out under load** — The two tests of the smoke userData cleaner waited for Node's `exit` event of the processes they spawn. Under load, Windows can take many seconds to finish tearing down an exited process, and the event waits for that, so the tests ran into their 15 s timeout (4 of 10 runs on a busy machine). The cleaner now prints its outcome (`skipped`, `removed` or `failed`), and the tests wait for that line instead. The app starts the cleaner with its output discarded, so nothing changes there ([#264](https://github.com/wald-it/time-tracking/issues/264)).
 - **PRIVACY.md now says what Teams presence sends.** It said nothing from your time entries goes to Microsoft. With **Show client name in the status** on, the Teams status message names the client and project of the running entry, and your colleagues see it. PRIVACY.md now describes the status message and the Busy status, what is never sent, when they are cleared and how long they can stay up when clearing fails or the app quits, and that `main.log` records the status message ([#287](https://github.com/wald-it/time-tracking/issues/287)).
 
+### Internal
+
+- **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job runs the whole test suite on Linux with `TZ=Europe/Berlin`, so JS and SQLite both run in Berlin. New tests there check, for 25 October 2026, that today's total (also the rounded one), today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. They sit in their own Vitest project, `berlin`, which is only registered when the process runs in Europe/Berlin; elsewhere `pnpm test` leaves it out.
+
+### Security
+
+- **Narrower IPC surface, part 1 (#272).** The app window now gets only TimeTrack's own API. The generic `window.electron` object (raw IPC access and `process.env`) is gone. The main process saves only the settings the app's own screens write. The backup folder, the PDF logo path, the window position and the iCal feed token can no longer be set from the window. The theme is now the only setting the window can read synchronously. A backup restore now takes the file name of a backup from the backup list instead of a path, and refuses a file that is not a SQLite database before the open database is touched. The unused `update:getVersion` channel is gone as well (#281).
+
 ## [1.22.0] — 2026-10-23
 
 ### Breaking for MCP clients and integrations

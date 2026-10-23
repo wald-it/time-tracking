@@ -114,7 +114,7 @@ export default function SettingsView(): React.JSX.Element {
     if (v.ok) setVersion(v.data)
     if (b.ok) {
       setBackups(b.data)
-      if (b.data.length > 0) setSelectedRestoreFile(b.data[0].fullPath)
+      if (b.data.length > 0) setSelectedRestoreFile(b.data[0].filename)
     }
     if (pi.ok) setBackupPathInfo(pi.data)
   }
@@ -182,7 +182,7 @@ export default function SettingsView(): React.JSX.Element {
       if (list.ok) {
         setBackups(list.data)
         if (list.data.length > 0 && !selectedRestoreFile) {
-          setSelectedRestoreFile(list.data[0].fullPath)
+          setSelectedRestoreFile(list.data[0].filename)
         }
       }
     } else {
@@ -222,8 +222,9 @@ export default function SettingsView(): React.JSX.Element {
     setStatusMsg(t('settings.data.restoring'))
     const res = await window.api.backups.restore(selectedRestoreFile)
     if (!res.ok) {
-      // db.close() already ran in the main process — subsequent IPC calls would
-      // hit a closed DB. Relaunch unconditionally so the app recovers cleanly.
+      // A failure after the snapshot leaves the DB closed in the main process,
+      // so relaunch unconditionally; the main process has already shown the
+      // reason as a native dialog.
       setStatusMsg(t('common.error', { error: res.error }))
     }
     await window.api.app.relaunch()
@@ -708,7 +709,7 @@ export default function SettingsView(): React.JSX.Element {
                       className={`${INPUT_FRAME} font-num min-w-0 flex-1 text-xs`}
                     >
                       {backups.map((b) => (
-                        <option key={b.fullPath} value={b.fullPath}>
+                        <option key={b.filename} value={b.filename}>
                           {new Date(b.createdAt).toLocaleString('de-DE')} · {b.reason} ·{' '}
                           {(b.sizeBytes / 1024).toFixed(0)} KB
                         </option>
