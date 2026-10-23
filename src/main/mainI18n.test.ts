@@ -25,7 +25,8 @@ import {
   migrationErrorDialog,
   readLanguage,
   readLanguageOr,
-  sensitiveSettingDialog
+  sensitiveSettingDialog,
+  updateDownloadedNotification
 } from './mainI18n'
 
 let DatabaseImpl: DatabaseCtor
@@ -188,6 +189,27 @@ describe('index.ts — the dialogs at start', () => {
   })
 })
 
+describe('updater.ts — the notification after a download (#309)', () => {
+  it('German and English, word for word', () => {
+    expect(updateDownloadedNotification('de', '1.23.0')).toEqual({
+      title: 'Ein neues Update kann installiert werden',
+      body: 'TimeTrack 1.23.0 wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf "Jetzt neu starten".'
+    })
+    expect(updateDownloadedNotification('en', '1.23.0')).toEqual({
+      title: 'A new update is ready to install',
+      body: 'TimeTrack 1.23.0 has been downloaded. To install it, click "Restart now" in the banner at the top of the TimeTrack window.'
+    })
+  })
+
+  it.each(['de', 'en'] as const)(
+    '%s: names exactly the label the update banner renders',
+    (locale) => {
+      const label = dialogT(locale)('update.ready.install')
+      expect(updateDownloadedNotification(locale, '1.23.0').body).toContain(`"${label}"`)
+    }
+  )
+})
+
 describe('no dialog text is written into a call site', () => {
   // Filter names that are format names, the same in every language.
   const FORMAT_NAMES = new Set(['CSV', 'iCalendar', 'JSON', 'PDF'])
@@ -234,6 +256,21 @@ describe('no dialog text is written into a call site', () => {
       for (const m of src.matchAll(/\{\s*name:\s*(['"`])([^'"`]*)\1,\s*extensions:/g)) {
         expect(FORMAT_NAMES.has(m[2]), `${file}: filter name ${m[2]}`).toBe(true)
       }
+    }
+  })
+
+  // #309: system notifications are main-process text too. Same heuristic,
+  // same limits: it sees a literal title or body, not text from elsewhere.
+  it('finds the notification call sites it guards', () => {
+    const withNotifications = sources().filter(([, src]) => /new Notification\(/.test(src))
+    expect(withNotifications.map(([f]) => f)).toEqual(['updater.ts'])
+  })
+
+  it('notification titles and bodies come from the locale files', () => {
+    const literal = /\b(title|body):\s*(['"`]|[A-Z][A-Z0-9_]+\b)/
+    for (const [file, src] of sources()) {
+      if (!/new Notification\(/.test(src)) continue
+      expect(literal.exec(src)?.[0], file).toBeUndefined()
     }
   })
 })

@@ -145,3 +145,90 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
     db.close()
   })
 })
+
+// #313: stopping the running entry at idleSince goes through entries:update,
+// which re-inserts the row and defaults every field it is not given. Both idle
+// actions must keep the stopped entry as it was. Of the optional fields, a
+// running entry only ever carries a project (switchTimer sets no other), so
+// the seed is a running entry with a project; the other fields are checked to
+// stay at what the entry had. useTimer.test.tsx pins that they are sent along.
+describe('idle prompt keeps the stopped entry as it was (#313)', () => {
+  async function runIdle(action: 'idleStopAtIdle' | 'idleMarkPause'): Promise<{
+    db: Database.Database
+    idleSince: string
+  }> {
+    const db = new DatabaseImpl(':memory:')
+    seed(db)
+    // Local noon, as above: nothing may cross midnight.
+    const today = new Date()
+    const NOW = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0)
+    const startedAt = new Date(NOW.getTime() - 2 * 60 * 60_000).toISOString()
+    const idleSince = new Date(NOW.getTime() - 30 * 60_000).toISOString()
+    // The row switchTimer writes for a timer started on project 10.
+    db.prepare(
+      `INSERT INTO entries (id, client_id, project_id, description, started_at, heartbeat_at)
+       VALUES (1, 1, 10, 'Konzept', ?, ?)`
+    ).run(startedAt, startedAt)
+    const { trayUpdate, idle } = installApi(db)
+
+    vi.resetModules()
+    const { useTimer } = await import('./useTimer')
+    const hook = renderHook(() => useTimer({ engine: true }))
+    await waitFor(() => expect(trayUpdate).toHaveBeenCalled())
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(1))
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+
+    act(() => idle.current?.({ idleSince, idleSeconds: 30 * 60 }))
+    await waitFor(() => expect(hook.result.current.idleEvent).not.toBeNull())
+    await act(async () => {
+      await hook.result.current[action]()
+    })
+    expect(hook.result.current.runningEntry).toBeNull()
+    return { db, idleSince }
+  }
+
+  function stoppedWork(db: Database.Database): unknown {
+    return db
+      .prepare(
+        `SELECT client_id, project_id, description, stopped_at, billable, reference,
+                private_note, tags
+           FROM entries WHERE description = 'Konzept' AND deleted_at IS NULL`
+      )
+      .all()
+  }
+
+  it('"Beim Leerlauf stoppen"', async () => {
+    const { db, idleSince } = await runIdle('idleStopAtIdle')
+    expect(stoppedWork(db)).toEqual([
+      {
+        client_id: 1,
+        project_id: 10,
+        description: 'Konzept',
+        stopped_at: idleSince,
+        billable: 1,
+        reference: '',
+        private_note: '',
+        tags: ''
+      }
+    ])
+    db.close()
+  })
+
+  it('"Als Pause markieren"', async () => {
+    const { db, idleSince } = await runIdle('idleMarkPause')
+    expect(stoppedWork(db)).toEqual([
+      {
+        client_id: 1,
+        project_id: 10,
+        description: 'Konzept',
+        stopped_at: idleSince,
+        billable: 1,
+        reference: '',
+        private_note: '',
+        tags: ''
+      }
+    ])
+    db.close()
+  })
+})

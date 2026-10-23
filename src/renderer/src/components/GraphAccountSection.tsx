@@ -3,9 +3,7 @@ import { useT } from '../contexts/I18nContext'
 import { Toggle } from './Toggle'
 import { FIELD_LABEL, FOCUS, INPUT_FRAME, KEY, KEY_INV } from './instrumentClasses'
 import type { AccountStatus } from '../../../main/graphAccount'
-
-/** Delegated scope required for presence mirroring (#132); must match shared/graphAuth. */
-const PRESENCE_SCOPE = 'Presence.ReadWrite'
+import { hasScope, PRESENCE_SCOPE } from '../../../shared/graphAuth'
 
 /**
  * "Connect a Microsoft account" (#130).
@@ -187,9 +185,7 @@ export function GraphAccountSection(): React.JSX.Element {
               </div>
               {presenceEnabled && (
                 <>
-                  {!status?.grantedScopes.some(
-                    (s) => s.toLowerCase() === PRESENCE_SCOPE.toLowerCase()
-                  ) && (
+                  {!hasScope(status?.grantedScopes ?? [], PRESENCE_SCOPE) && (
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-xs text-[var(--ink)]">
                         {t('settings.presence.reconnectHint')}

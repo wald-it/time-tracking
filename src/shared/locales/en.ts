@@ -27,6 +27,10 @@ export const en: Record<TranslationKey, string> = {
   'update.ready.text': 'Version {version} ready — restart now?',
   'update.ready.install': 'Restart now',
   'update.ready.dismiss': 'Not now',
+  // System notification after a download (main process, #309). {button} is 'update.ready.install'.
+  'mainNotification.update.title': 'A new update is ready to install',
+  'mainNotification.update.body':
+    'TimeTrack {version} has been downloaded. To install it, click "{button}" in the banner at the top of the TimeTrack window.',
   'update.error.text': 'Update error: {message}',
   'update.error.details': 'Details in Settings',
 
