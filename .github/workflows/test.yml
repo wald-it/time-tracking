@@ -172,10 +172,11 @@ jobs:
 
   # #263: the Heute totals and the weekday average cut days with SQLite's
   # 'localtime', which reads the zone the process starts in and ignores a
-  # process.env.TZ set later (on Windows it ignores TZ altogether). They can
-  # only be tested in Europe/Berlin when the whole job runs there: Linux, with
-  # TZ on the job. vitest.config.ts registers the `berlin` project only in that
-  # zone, which is why the UTC jobs above never see it. The rest of the suite
+  # process.env.TZ set later (on Windows it does not take an IANA zone from TZ
+  # the way JS does). They can only be tested in Europe/Berlin when the whole
+  # job runs there: Linux, with TZ on the job. vitest.config.ts registers the
+  # `berlin` project only in that zone, which is why the UTC jobs above never
+  # see it. The rest of the suite
   # runs here too, so every test also runs once with JS and SQLite in Berlin.
   #
   # No licences, lint or Stream Deck steps: those are platform-independent or
@@ -209,9 +210,11 @@ jobs:
       # project is not registered, Vitest fails here ("no projects matched")
       # instead of the job passing with the Berlin tests silently left out.
       - name: Test the berlin project (Europe/Berlin)
+        id: berlin
         run: pnpm test --project berlin
 
-      # Also after a red berlin step, so one run reports both.
+      # Also after a red berlin step, so one run reports both — but not after a
+      # failed install or rebuild, where every test would fail for that reason.
       - name: Test everything else (Europe/Berlin)
-        if: ${{ !cancelled() }}
+        if: ${{ success() || steps.berlin.outcome == 'failure' }}
         run: pnpm test --project '!berlin'

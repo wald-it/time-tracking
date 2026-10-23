@@ -14,13 +14,15 @@
  * registration been wrong, 32 tests would have quietly stopped existing.
  *
  * So the condition moves out of prose and into a check that can go red:
- *   - every `*.test.ts(x)` in the repo matches at least one project's include
- *   - every project's include still matches at least one file
+ *   - every `*.test.ts(x)` in the repo is run by at least one project: matched
+ *     by its include and not taken out again by its exclude
+ *   - every project still runs at least one file
  *
  * The config is imported, not parsed — the assertion is about the object
  * Vitest actually runs on, not about the text of the file.
  */
 import { describe, it, expect } from 'vitest'
+import { configDefaults } from 'vitest/config'
 import { readdirSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import config, { BERLIN_TESTS, RUNS_IN_BERLIN } from '../../vitest.config'
@@ -144,7 +146,7 @@ describe('vitest projects cover every test file', () => {
       const matched = files.filter((f) => runs(p, f))
       expect(
         matched.length,
-        `project "${p.name}" matches nothing — patterns: ${p.patterns.map((x) => x.glob).join(', ')}`
+        `project "${p.name}" runs nothing — include: ${p.patterns.map((x) => x.glob).join(', ')}; exclude: ${p.excludes.map((x) => x.glob).join(', ') || 'none'}`
       ).toBeGreaterThan(0)
     }
   })
@@ -165,5 +167,10 @@ describe('globToRegExp', () => {
     expect(globToRegExp('a/*/b.test.ts').test('a/x/y/b.test.ts')).toBe(false)
     // A dot is a literal, not "any character".
     expect(globToRegExp('src/a.test.ts').test('src/aXtest.ts')).toBe(false)
+    // The default excludes the projects inherit: dependencies, not sources.
+    for (const g of configDefaults.exclude) {
+      expect(globToRegExp(g).test('src/main/ipc.test.ts'), g).toBe(false)
+    }
+    expect(globToRegExp('**/node_modules/**').test('a/node_modules/b/c.test.ts')).toBe(true)
   })
 })

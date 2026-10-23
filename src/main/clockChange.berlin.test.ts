@@ -37,8 +37,11 @@ beforeAll(async () => {
 afterAll(() => builtins.close())
 
 /**
- * A literal 'now' argument to date/datetime/julianday/strftime on `db` becomes
- * `nowUtc` ('YYYY-MM-DD HH:MM:SS', UTC) — the only form the Heute queries use.
+ * Any 'now' argument to date/datetime/julianday/strftime on `db` (also a bound
+ * one) becomes `nowUtc` ('YYYY-MM-DD HH:MM:SS', UTC) — the form the Heute
+ * queries use for SQLite's clock. JS's clock is not pinned: readRoundedTotals
+ * measures a running entry with `Date.now()`, so a test with a running entry
+ * would need fake timers as well.
  * Not covered: the zero-argument forms (`date()`), `unixepoch`, `timediff` and
  * CURRENT_DATE/CURRENT_TIMESTAMP; a query that switches to one of them reads
  * the real clock again.

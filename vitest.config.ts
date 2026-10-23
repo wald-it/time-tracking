@@ -10,9 +10,10 @@ import { resolve } from 'path'
  * (TZ=Europe/Berlin) — and plain `pnpm test` elsewhere leaves it out instead
  * of failing.
  *
- * On Windows a TZ variable moves JS but not SQLite, which keeps the system
- * zone; with TZ set there the two clocks may disagree, so the project stays
- * out. The test file's first case checks that both clocks agree anyway.
+ * On Windows a TZ variable moves JS to the named zone, but SQLite's 'localtime'
+ * does not follow an IANA zone from TZ the way JS does; with TZ set there the
+ * two clocks may disagree, so the project stays out. The test file's first
+ * case checks that both clocks agree anyway.
  */
 export const BERLIN_TESTS = 'src/**/*.berlin.test.{ts,tsx}'
 export const RUNS_IN_BERLIN =
