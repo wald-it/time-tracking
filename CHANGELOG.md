@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).
+
 ## [1.22.0] — 2026-10-23
 
 ### Breaking for MCP clients and integrations
