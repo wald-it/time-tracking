@@ -450,6 +450,43 @@ describe('useTimer — start/stop', () => {
     expect(hook.result.current.runningEntry?.client_id).toBe(2)
   })
 
+  // #297 Codex follow-up: the quick start's reply may not be back when the
+  // lookup finishes (runningEntry still empty); the fallback must yield as
+  // soon as a newer start began, or main's switch replaces the user's choice.
+  it('a quick start still in flight when the lookup finishes is not replaced', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients, summaryGate })
+    let answerQuick: () => void = () => {}
+    api.start.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          answerQuick = () => r({ ok: true as const, data: makeEntry({ id: 50, client_id: 2 }) })
+        })
+    )
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    let quick: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    act(() => {
+      quick = hook.result.current.startWithClient(2, null)
+    })
+    await act(async () => {
+      release()
+      await pending
+    })
+    await act(async () => {
+      answerQuick()
+      await quick
+    })
+
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+  })
+
   // #297 review 3: a running entry whose client was archived since leaves an
   // archived selection behind; a start without a valid selection must not
   // switch away from the running timer or clear its selection.

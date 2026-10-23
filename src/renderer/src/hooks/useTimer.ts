@@ -52,6 +52,14 @@ async function pushTrayUpdate(running: boolean, label: string): Promise<void> {
 }
 
 /**
+ * Counts the timer starts and switches that went to main (each one passes
+ * withLoading). The selection-less start notes it before it looks up the
+ * last pair and yields if it changed meanwhile: a quick start that began
+ * during the lookup wins even before its reply is back (#297).
+ */
+let startEpoch = 0
+
+/**
  * Run one timer IPC call with `isLoading` set, and clear it whatever happens.
  * A call that rejects (no answer from main) comes back as a failed result,
  * so callers report it like a refusal — used where the caller shows the
@@ -60,6 +68,7 @@ async function pushTrayUpdate(running: boolean, label: string): Promise<void> {
  * path ignored every later call until the window was reloaded.
  */
 async function withLoading<T>(call: () => Promise<IpcResult<T>>): Promise<IpcResult<T>> {
+  startEpoch++
   useTimerStore.getState().setIsLoading(true)
   try {
     return await call()
@@ -332,6 +341,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
         // wait. A quick-start key does not check the flag, so a timer that
         // started meanwhile wins below.
         setIsLoading(true)
+        const epoch = startEpoch
         let pair: Awaited<ReturnType<typeof readLastStartPair>>
         try {
           pair = await readLastStartPair()
@@ -339,8 +349,9 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
           setIsLoading(false)
         }
         // Someone else started a timer while the pair resolved (a quick-start
-        // key, MCP): theirs stands, the fallback does not switch it away.
-        if (useTimerStore.getState().runningEntry) return null
+        // key, MCP), or began to and its reply is not back yet: theirs stands,
+        // the fallback does not switch it away.
+        if (startEpoch !== epoch || useTimerStore.getState().runningEntry) return null
         if (!pair) {
           void useStartTimerModalStore.getState().openStart()
           return null
