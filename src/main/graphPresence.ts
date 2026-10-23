@@ -25,6 +25,7 @@
  * Clearing via empty content is community-established but undocumented.
  */
 import type { RunningStatus } from './mcpBridgeCore'
+import { hasScope, PRESENCE_SCOPE } from '../shared/graphAuth'
 import { localeFromSetting } from '../shared/i18n'
 
 export interface PresenceAccountView {
@@ -151,7 +152,7 @@ function looksOurs(text: string): boolean {
 }
 
 function scopeGranted(view: PresenceAccountView): boolean {
-  return view.grantedScopes.some((s) => s.toLowerCase() === 'presence.readwrite')
+  return hasScope(view.grantedScopes, PRESENCE_SCOPE)
 }
 
 /** The status message the current state calls for; '' means "clear". */

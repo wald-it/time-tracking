@@ -20,7 +20,6 @@ import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
 import {
   dbErrorDialog,
   hotkeyConflictDialog,
-  localeFromSetting,
   localeFromSystem,
   migrationErrorDialog,
   appLocale,
@@ -384,7 +383,10 @@ function loadStartupSettings(): void {
       // toggling via Settings still works.
       dialog.showMessageBox({
         type: 'warning',
-        ...hotkeyConflictDialog(localeFromSetting(map.language), miniHotkey)
+        ...hotkeyConflictDialog(
+          appLocale(getDb, () => app.getPreferredSystemLanguages()),
+          miniHotkey
+        )
       })
     }
     if (map.mini_enabled === '1') applyMiniEnabled(true)
@@ -788,7 +790,9 @@ app.whenReady().then(async () => {
   initAutoUpdater({
     isDev: is.dev,
     getEndpointDir: () => dirname(getDbPath()),
-    getSetting: (key) => mcpBridgeDeps().getSetting(key)
+    getSetting: (key) => mcpBridgeDeps().getSetting(key),
+    // #296: the same never-throwing app language as tray and dialogs.
+    getLocale: () => appLocale(getDb, () => app.getPreferredSystemLanguages())
   })
 
   refreshActiveClients()

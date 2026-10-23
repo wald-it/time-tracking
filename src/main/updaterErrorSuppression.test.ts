@@ -22,8 +22,7 @@ const updater = vi.hoisted(() => ({
   autoDownload: false,
   autoInstallOnAppQuit: true,
   on: (event: string, fn: Handler) => updaterEvents.set(event, fn),
-  checkForUpdates: vi.fn(),
-  checkForUpdatesAndNotify: vi.fn()
+  checkForUpdates: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -38,7 +37,10 @@ vi.mock('electron', () => ({
       }
     ]
   },
-  ipcMain: { handle: (channel: string, fn: Handler) => ipcHandlers.set(channel, fn) }
+  ipcMain: { handle: (channel: string, fn: Handler) => ipcHandlers.set(channel, fn) },
+  Notification: class {
+    show = vi.fn()
+  }
 }))
 vi.mock('electron-log/main', () => ({
   default: { info: () => undefined, warn: () => undefined, error: () => undefined }
@@ -73,7 +75,8 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 async function start(stored: string | undefined): Promise<void> {
   initAutoUpdater({
     isDev: false,
-    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined)
+    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined),
+    getLocale: () => 'de'
   })
   await settle()
 }
@@ -85,9 +88,10 @@ beforeEach(async () => {
   updaterEvents.clear()
   sent.length = 0
   updater.checkForUpdates.mockReset()
-  updater.checkForUpdatesAndNotify.mockReset()
-  // A start-up check that reaches GitHub and finds nothing new.
-  updater.checkForUpdatesAndNotify.mockImplementation(async () => {
+  // A start-up check that reaches GitHub and finds nothing new. The start-up
+  // check and "Check now" both call checkForUpdates (#309): a test sets its own
+  // start-up check with mockImplementationOnce before start().
+  updater.checkForUpdates.mockImplementation(async () => {
     emit('update-not-available', { version: '0.0.0-test' })
     return null
   })
@@ -107,7 +111,7 @@ describe('start-up error suppression is scoped to the start-up check (#284)', ()
     await start(undefined)
     updater.checkForUpdates.mockImplementation(async () => {
       emit('update-available', { version: '9.9.9' })
-      return { downloadPromise: Promise.resolve([]) }
+      return { updateInfo: { version: '9.9.9' }, downloadPromise: Promise.resolve([]) }
     })
 
     const res = await ipcHandlers.get('update:check')!()
@@ -118,9 +122,9 @@ describe('start-up error suppression is scoped to the start-up check (#284)', ()
   })
 
   it('the start-up check finds an update and its background download fails: broadcast as an error', async () => {
-    updater.checkForUpdatesAndNotify.mockImplementation(async () => {
+    updater.checkForUpdates.mockImplementationOnce(async () => {
       emit('update-available', { version: '9.9.9' })
-      return { downloadPromise: Promise.resolve([]) }
+      return { updateInfo: { version: '9.9.9' }, downloadPromise: Promise.resolve([]) }
     })
     await start(undefined)
     expect(lastStatus()).toEqual({ status: 'available', version: '9.9.9' })
@@ -130,11 +134,11 @@ describe('start-up error suppression is scoped to the start-up check (#284)', ()
   })
 
   it('a download error raised before the start-up check has settled is broadcast, not swallowed', async () => {
-    updater.checkForUpdatesAndNotify.mockImplementation(async () => {
+    updater.checkForUpdates.mockImplementationOnce(async () => {
       emit('update-available', { version: '9.9.9' })
       // The download the check started fails at once, inside the check.
       emit('error', new Error('cache dir not writable'))
-      return { downloadPromise: Promise.resolve([]) }
+      return { updateInfo: { version: '9.9.9' }, downloadPromise: Promise.resolve([]) }
     })
     await start(undefined)
     expect(lastStatus()).toEqual({ status: 'error', message: 'cache dir not writable' })
@@ -142,7 +146,7 @@ describe('start-up error suppression is scoped to the start-up check (#284)', ()
 
   it('"Check now" while the start-up check is still running surfaces its error', async () => {
     let failStartup: (err: Error) => void = () => undefined
-    updater.checkForUpdatesAndNotify.mockImplementation(
+    updater.checkForUpdates.mockImplementationOnce(
       () =>
         new Promise((_, reject) => {
           failStartup = (err) => {
@@ -172,7 +176,7 @@ describe('start-up error suppression is scoped to the start-up check (#284)', ()
 
   it('switched off: no start-up check, so nothing is suppressed — a failing "Check now" is an error', async () => {
     await start('0')
-    expect(updater.checkForUpdatesAndNotify).not.toHaveBeenCalled()
+    expect(updater.checkForUpdates).not.toHaveBeenCalled()
     updater.checkForUpdates.mockImplementation(failingCheck('offline'))
 
     await ipcHandlers.get('update:check')!()
@@ -180,14 +184,14 @@ describe('start-up error suppression is scoped to the start-up check (#284)', ()
   })
 
   it('an offline start-up check stays quiet: idle, no error', async () => {
-    updater.checkForUpdatesAndNotify.mockImplementation(failingCheck('offline at start'))
+    updater.checkForUpdates.mockImplementationOnce(failingCheck('offline at start'))
     await start(undefined)
     expect(lastStatus()).toEqual({ status: 'idle' })
     expect(sent.some((s) => (s.payload as { status?: string }).status === 'error')).toBe(false)
   })
 
   it('after an offline start-up check, the next "Check now" error is broadcast', async () => {
-    updater.checkForUpdatesAndNotify.mockImplementation(failingCheck('offline at start'))
+    updater.checkForUpdates.mockImplementationOnce(failingCheck('offline at start'))
     await start(undefined)
     updater.checkForUpdates.mockImplementation(failingCheck('still offline'))
 

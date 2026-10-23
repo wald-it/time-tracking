@@ -72,6 +72,21 @@ export const CALENDAR_SCOPES = ['offline_access', 'openid', 'profile', 'Calendar
  */
 export const PRESENCE_SCOPE = 'Presence.ReadWrite'
 
+/**
+ * Whether `scope` is among the `granted` scopes of a token response. Compared
+ * without case and without the Graph resource prefix, so `Presence.ReadWrite`,
+ * `presence.readwrite` and `https://graph.microsoft.com/Presence.ReadWrite`
+ * are the same scope.
+ */
+export function hasScope(granted: readonly string[], scope: string): boolean {
+  const norm = (s: string): string =>
+    s
+      .trim()
+      .toLowerCase()
+      .replace(/^https:\/\/graph\.microsoft\.com\//, '')
+  return granted.some((g) => norm(g) === norm(scope))
+}
+
 export function authorityBase(tenant: GraphTenant): string {
   return `https://login.microsoftonline.com/${encodeURIComponent(tenant)}`
 }

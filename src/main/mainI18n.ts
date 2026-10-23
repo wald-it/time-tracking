@@ -123,6 +123,22 @@ export function migrationErrorDialog(
   }
 }
 
+/**
+ * The system notification once an update has downloaded (updater.ts, #309).
+ * It names the install key with the label the update banner renders, taken
+ * from the same locale key, so the two cannot drift apart.
+ */
+export function updateDownloadedNotification(
+  locale: Locale,
+  version: string
+): { title: string; body: string } {
+  const t = dialogT(locale)
+  return {
+    title: t('mainNotification.update.title'),
+    body: t('mainNotification.update.body', { version, button: t('update.ready.install') })
+  }
+}
+
 /** The database error at start (index.ts), as error box title and text. */
 export function dbErrorDialog(locale: Locale, cause: string): { title: string; message: string } {
   const t = dialogT(locale)

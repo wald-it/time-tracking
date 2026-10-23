@@ -11,13 +11,15 @@
  * offline app start. Errors triggered by an explicit user "check now"
  * are surfaced (so the Settings UI can show "no connection").
  */
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, Notification } from 'electron'
 import log from 'electron-log/main'
-import pkg from 'electron-updater'
+import pkg, { type UpdateCheckResult } from 'electron-updater'
 const { autoUpdater } = pkg
 import type { IpcResult, UpdateStatus } from '../shared/types'
 import { isUpdateCheckEnabled, UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
 import { clearShutdown, releaseHolders, type Holder, type ReleaseOutcome } from '../mcp/holders'
+import type { Locale } from '../shared/i18n'
+import { updateDownloadedNotification } from './mainI18n'
 
 export type { UpdateStatus }
 
@@ -37,6 +39,36 @@ interface StartupCheck {
   joined: boolean
 }
 let startupCheck: StartupCheck | null = null
+
+/**
+ * Show the "update downloaded" notification once `result`'s download is done:
+ * what `checkForUpdatesAndNotify` used to show (#309), in the app language at
+ * that moment. The text is our own (mainI18n.updateDownloadedNotification).
+ * electron-updater 6.8.11's private `AppUpdater.formatDownloadNotification`
+ * default, "{appName} version {version} has been downloaded and will be
+ * automatically installed on exit", was wrong twice for TimeTrack:
+ * `autoInstallOnAppQuit` is false (installing takes the "Restart now" key),
+ * and `{appName}` came from `app.getName()`, the package name `time-tracking`.
+ *
+ * A failed download is reported through the `error` event, so its rejection
+ * is only caught here, not reported twice.
+ */
+function notifyWhenDownloaded(result: UpdateCheckResult | null, getLocale: () => Locale): void {
+  if (!result?.downloadPromise) return
+  // Never throws: the start-up check is settled right after this call.
+  const version = result.updateInfo?.version ?? ''
+  result.downloadPromise
+    .then(
+      () => {
+        // Read when the download is done, so a language switch meanwhile counts.
+        // index.ts passes mainI18n.appLocale (#296), which never throws and
+        // gives the same answer as the tray and the dialogs.
+        new Notification(updateDownloadedNotification(getLocale(), version)).show()
+      },
+      () => undefined
+    )
+    .catch((err: unknown) => log.warn('[updater] could not show the download notification', err))
+}
 
 function broadcastError(err: Error): void {
   broadcast(reduceUpdateStatus(lastStatus, { type: 'error', message: err.message }))
@@ -218,14 +250,17 @@ function startupCheckEnabled(getSetting: (key: string) => string | undefined): b
  * In dev mode (no packaged app) this is a no-op except for IPC handler
  * registration — `autoUpdater.checkForUpdates()` would error otherwise.
  *
- * `getSetting` is read once, here: the switch under Settings → About →
- * Updates (#273) decides the check at start, so changing it takes effect at
- * the next start. A download already running when it is switched off finishes.
+ * The switch under Settings → About → Updates (#273) is read once, here: it
+ * decides the check at start, so changing it takes effect at the next start.
+ * A download already running when it is switched off finishes. The language
+ * of the download notification is read when it fires (#309).
  */
 export function initAutoUpdater(opts: {
   isDev: boolean
   getEndpointDir?: () => string
   getSetting: (key: string) => string | undefined
+  /** The app language of the download notification, read when it fires. */
+  getLocale: () => Locale
 }): void {
   // Wire up logger from PR A so updater events land in main.log.
   autoUpdater.logger = log
@@ -281,7 +316,10 @@ export function initAutoUpdater(opts: {
         startupCheck = null
       }
       lastCheckIso = new Date().toISOString()
-      await autoUpdater.checkForUpdates()
+      const result = await autoUpdater.checkForUpdates()
+      // A failed download reaches the UI as an `error` event; without a
+      // handler it would also land in main.log as an unhandled rejection (#309).
+      result?.downloadPromise?.catch(() => undefined)
       return ok(undefined)
     } catch (err) {
       return fail((err as Error).message)
@@ -314,9 +352,28 @@ export function initAutoUpdater(opts: {
     // electron-updater emits `error` and then rejects with the same object
     // (AppUpdater.checkForUpdates), which is how the offline case is told
     // apart from everything else that fails meanwhile.
-    autoUpdater.checkForUpdatesAndNotify().then(
-      () => settleStartupCheck(run, null),
-      (err: Error) => settleStartupCheck(run, err)
-    )
+    // Not checkForUpdatesAndNotify: it chains `void downloadPromise.then(notify)`
+    // (electron-updater 6.8.11, AppUpdater.js:294), and that new promise
+    // rejects unhandled when the download fails, whatever we attach to
+    // downloadPromise (#309). Same check, our own notification.
+    autoUpdater
+      .checkForUpdates()
+      .then(
+        (result) => {
+          // Both always run: the download's rejection must be handled even if
+          // settling throws (a broadcast to a window that is going away), and
+          // the check must be settled even if the notify step throws, or its
+          // held errors would stay held for the rest of the run (#284).
+          try {
+            notifyWhenDownloaded(result, opts.getLocale)
+          } finally {
+            settleStartupCheck(run, null)
+          }
+        },
+        (err: Error) => settleStartupCheck(run, err)
+      )
+      // Whatever settling throws is a defect: logged as an error, not left as
+      // an unhandled rejection (#309).
+      .catch((err: unknown) => log.error('[updater] settling the start-up check failed', err))
   }
 }
