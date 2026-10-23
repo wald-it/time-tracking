@@ -1,3 +1,4 @@
+import { isExternalUrlAllowed } from './externalLinks'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
 import { dialog } from 'electron'
@@ -807,7 +808,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   })
 
   ipcMain.handle('shell:openExternal', async (_e, url: string): Promise<IpcResult<void>> => {
-    if (!/^https?:\/\//i.test(url)) return fail('Nur https:// URLs erlaubt')
+    if (!isExternalUrlAllowed(url)) return fail('Nur http:// und https:// Links erlaubt')
     await shell.openExternal(url)
     return ok(undefined)
   })

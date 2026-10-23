@@ -22,6 +22,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import { guardWindowLinks } from './externalLinks'
 
 export interface RenderPdfOptions {
   /** Self-contained HTML string (from `buildPdfHtml`). */
@@ -56,6 +57,10 @@ export async function renderPdfBuffer(opts: RenderPdfOptions): Promise<Buffer> {
       webSecurity: true
     }
   })
+
+  // The document is our own HTML, but the window gets the same guards as the
+  // app windows: no new windows, no navigation away, only web links outside.
+  guardWindowLinks(win)
 
   try {
     const loaded = win.loadURL(fileUrl)
