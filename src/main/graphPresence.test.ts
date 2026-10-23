@@ -504,6 +504,13 @@ describe('reconcilePresence', () => {
     expect(teams.content).toBeNull()
   })
 
+  it('first poke of a run leaves a plain-text user message that only looks like ours once read as HTML', async () => {
+    teams.content = '🔴 Fokus <OOO>' // typed by the user; contentType text
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('🔴 Fokus <OOO>')
+  })
+
   it('first poke of a run leaves a message the user wrote, but ends our old Busy session', async () => {
     teams.content = 'Out until Monday'
     teams.availability = 'Busy' // our session from the crashed run

@@ -104,9 +104,11 @@ function codePoint(code: number, raw: string): string {
 }
 
 /**
- * Graph content read as HTML. How Graph returns a message set as contentType
- * "text" has not been observed against a real tenant: as set, or HTML-wrapped
- * (`<p>…</p>`, `&nbsp;`, entities). This is the second reading; `flat` the first.
+ * Graph content of contentType "html" as plain text. How Graph returns a
+ * message set as contentType "text" has not been observed against a real
+ * tenant: as set, or as HTML (`<p>…</p>`, `&nbsp;`, entities). Graph names the
+ * form in `contentType`, and only "html" is decoded: a user's plain "<OOO>"
+ * stays text.
  */
 function fromHtml(content: string): string {
   return flat(
@@ -123,27 +125,14 @@ function fromHtml(content: string): string {
   )
 }
 
-/**
- * Whether Graph's content is the plain-text message we set. Our own text is
- * never HTML, so it is only whitespace-normalised; Graph's is tried as-is and
- * read as HTML, so a client named "Foo <Bar>" matches in both forms.
- */
-function isMessage(content: string, own: string): boolean {
-  const target = flat(own)
-  return flat(content) === target || fromHtml(content) === target
+/** Whether the message Teams holds (as plain text) is one we set. */
+function isMessage(text: string, own: string): boolean {
+  return text === flat(own)
 }
 
-/**
- * No message: nothing but whitespace, `&nbsp;` and the usual HTML wrappers.
- * A text such as "<OOO>" the user typed is a message, not an empty tag.
- */
-function isEmptyMessage(content: string): boolean {
-  return /^(?:\s|&nbsp;|<\/?(?:p|div|span|br)\b[^>]*>)*$/i.test(content)
-}
-
-/** Whether Graph's content has the shape of a message we set (#317). */
-function looksOurs(content: string): boolean {
-  return OWN_MESSAGE.test(flat(content)) || OWN_MESSAGE.test(fromHtml(content))
+/** Whether the message Teams holds has the shape of one we set (#317). */
+function looksOurs(text: string): boolean {
+  return OWN_MESSAGE.test(text)
 }
 
 function scopeGranted(view: PresenceAccountView): boolean {
@@ -302,7 +291,7 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
     // half-way. (Ending our own session cannot touch anyone else's Busy.)
     const current = await readPresence(fetchFn, token, userId, log)
     if (!current) return // retried at the next poke
-    const leftover = current.content !== null && looksOurs(current.content)
+    const leftover = current.text !== null && looksOurs(current.text)
     if (leftover && !(await clearMessage())) return
     if (
       (leftover || current.availability === 'Busy') &&
@@ -332,9 +321,9 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
       return
     }
     const ours =
-      current.content !== null &&
-      [state.message, state.sent].some((own) => !!own && isMessage(current.content!, own))
-    if (current.content !== null && !ours) {
+      current.text !== null &&
+      [state.message, state.sent].some((own) => !!own && isMessage(current.text!, own))
+    if (current.text !== null && !ours) {
       log('presence: status message was changed in Teams — left as is')
     }
     ok = (!ours || (await clearMessage())) && (await post('clearPresence', { sessionId }))
@@ -374,8 +363,11 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
 
 interface PresenceView {
   availability: string | null
-  /** The status message as Graph returns it; null when there is none. */
-  content: string | null
+  /**
+   * The status message as plain, whitespace-normalised text (decoded only
+   * when Graph says it is HTML); null when there is none.
+   */
+  text: string | null
 }
 
 /** GET the signed-in user's presence; null when it could not be read. */
@@ -396,12 +388,16 @@ async function readPresence(
     }
     const body = (await res.json()) as {
       availability?: unknown
-      statusMessage?: { message?: { content?: unknown } } | null
+      statusMessage?: { message?: { content?: unknown; contentType?: unknown } } | null
     }
     const content = body.statusMessage?.message?.content
+    const html =
+      typeof body.statusMessage?.message?.contentType === 'string' &&
+      body.statusMessage.message.contentType.toLowerCase() === 'html'
+    const text = typeof content === 'string' ? (html ? fromHtml(content) : flat(content)) : ''
     return {
       availability: typeof body.availability === 'string' ? body.availability : null,
-      content: typeof content === 'string' && !isEmptyMessage(content) ? content : null
+      text: text === '' ? null : text
     }
   } catch (err) {
     log(`presence: read failed (${err instanceof Error ? err.name : 'error'})`)
@@ -426,6 +422,6 @@ async function readBack(
   const current = await readPresence(fetchFn, token, userId, log)
   if (!current) return
   const message =
-    current.content === null ? 'none' : isMessage(current.content, expected) ? 'matches' : 'differs'
+    current.text === null ? 'none' : isMessage(current.text, expected) ? 'matches' : 'differs'
   log(`presence: read-back availability=${String(current.availability)} statusMessage=${message}`)
 }
