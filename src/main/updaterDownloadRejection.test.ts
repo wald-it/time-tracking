@@ -195,6 +195,21 @@ describe('the "update downloaded" notification (#309)', () => {
     expect(notifications).toEqual([ENGLISH])
   })
 
+  it('still shows, in German, when reading the language throws', async () => {
+    updater.checkForUpdates.mockImplementation(findsUpdate('succeeds'))
+    initAutoUpdater({
+      isDev: false,
+      getSetting: (key) => settings.get(key),
+      getLocale: () => {
+        throw new Error('database is locked')
+      }
+    })
+    await settle()
+
+    expect(notifications).toEqual([GERMAN])
+    expect(unhandled).toEqual([])
+  })
+
   it('in the language set when the download finishes, not at start', async () => {
     let finish: (files: string[]) => void = () => undefined
     updater.checkForUpdates.mockImplementation(async () => ({

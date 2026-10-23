@@ -15,8 +15,6 @@ import { localeFromSetting, translate, type Locale } from '../shared/i18n'
 import type { TranslationKey } from '../shared/locales/de'
 import { LOCALE_STRINGS } from '../shared/locales'
 
-export { localeFromSetting }
-
 export type DialogT = (key: TranslationKey, vars?: Record<string, string | number>) => string
 
 /** The app language from an open database. Throws when the handle is closed. */

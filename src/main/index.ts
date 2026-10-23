@@ -203,15 +203,16 @@ function refreshActiveClients(): void {
 }
 
 /**
- * The tray follows the app language (#296), with the shared rule that never
- * throws and keeps the last language while the handle is closed after a
- * restore attempt (mainI18n.appLocale), the same answer the dialogs get.
+ * The app language for everything index.ts shows: tray, start-up dialogs, the
+ * update notification (#296). The shared rule that never throws and keeps the
+ * last language while the handle is closed after a restore attempt
+ * (mainI18n.appLocale), the same answer the IPC dialogs get.
  */
-function trayLocale(): Locale {
+function appLanguage(): Locale {
   return appLocale(getDb, () => app.getPreferredSystemLanguages())
 }
 
-function buildTrayMenu(locale: Locale = trayLocale()): Menu {
+function buildTrayMenu(locale: Locale = appLanguage()): Menu {
   const items: MenuItemConstructorOptions[] = []
   const text = trayLabels(locale)
 
@@ -271,7 +272,7 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   // Tooltip format (v1.2 #31), in the app language since #296:
   //   running: `● {client} · Heute {HH:MM}`
   //   idle:    `TimeTrack — Heute {HH:MM}`
-  const locale = trayLocale()
+  const locale = appLanguage()
   tray.setToolTip(trayTooltip(locale, running, label, fmtHHMM(todaySeconds)))
   tray.setContextMenu(buildTrayMenu(locale))
 }
@@ -383,10 +384,7 @@ function loadStartupSettings(): void {
       // toggling via Settings still works.
       dialog.showMessageBox({
         type: 'warning',
-        ...hotkeyConflictDialog(
-          appLocale(getDb, () => app.getPreferredSystemLanguages()),
-          miniHotkey
-        )
+        ...hotkeyConflictDialog(appLanguage(), miniHotkey)
       })
     }
     if (map.mini_enabled === '1') applyMiniEnabled(true)
@@ -792,7 +790,7 @@ app.whenReady().then(async () => {
     getEndpointDir: () => dirname(getDbPath()),
     getSetting: (key) => mcpBridgeDeps().getSetting(key),
     // #296: the same never-throwing app language as tray and dialogs.
-    getLocale: () => appLocale(getDb, () => app.getPreferredSystemLanguages())
+    getLocale: appLanguage
   })
 
   refreshActiveClients()

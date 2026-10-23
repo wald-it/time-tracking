@@ -62,8 +62,15 @@ function notifyWhenDownloaded(result: UpdateCheckResult | null, getLocale: () =>
       () => {
         // Read when the download is done, so a language switch meanwhile counts.
         // index.ts passes mainI18n.appLocale (#296), which never throws and
-        // gives the same answer as the tray and the dialogs.
-        new Notification(updateDownloadedNotification(getLocale(), version)).show()
+        // gives the same answer as the tray and the dialogs. Should a getter
+        // throw anyway, the notification still shows, in German (#309).
+        let locale: Locale = 'de'
+        try {
+          locale = getLocale()
+        } catch (err) {
+          log.warn('[updater] could not read the language for the notification', err)
+        }
+        new Notification(updateDownloadedNotification(locale, version)).show()
       },
       () => undefined
     )
