@@ -59,26 +59,33 @@ finds a new version, the app downloads it in the background as above.
 - **Permissions:** `Calendars.Read`, `offline_access`, `openid`, `profile`.
   `Presence.ReadWrite` is requested only if you switch on Teams presence
   mirroring.
-- **What is read** (`graph.microsoft.com`), only when you import: your calendar
+- **What is read** (`graph.microsoft.com`): when you import, your calendar
   events in the chosen date range — subject, start, end, all-day/cancelled flags,
   free/busy status, organizer, attendees and your response. Attendee e-mail
   domains are used locally to suggest the client; the domain-to-client mappings
-  you confirm are stored in the database.
+  you confirm are stored in the database. With **Mirror Teams status** on,
+  TimeTrack also reads your account ID once per run and your Teams presence
+  after each change it makes, to log what Teams stored.
 - **What is sent to Microsoft:** a calendar import only reads; its request
   names the date range you chose. With **Mirror Teams status** on (work or
   school accounts only), TimeTrack sets your Teams presence to Busy, with the
-  activity "In a call", while a timer runs, and adds a status message:
-  "🔴 Focus" ("🔴 Fokus" when the app is in German). If you also switch on
-  **Show client name in the status**, the message names the client of the
-  running entry and its project, if it has one
-  ("🔴 Focus: client — project"). Your colleagues see the message and the Busy
-  status in Teams. Both change when you start or stop a timer, so they also show
-  when you do. A presence you set yourself in Teams takes precedence.
+  activity "In a call", while a timer runs, and sets your Teams status message
+  to "🔴 Fokus" ("🔴 Focus" when the app language is English). This replaces a
+  status message you wrote yourself. If you also switch on **Show client name
+  in the status**, the message names the client of the running entry and its
+  project, if it has one ("🔴 Fokus: client — project"). Your colleagues see the
+  message and the Busy status in Teams. TimeTrack updates both when you start,
+  stop or switch a timer and renews them about every 25 minutes while one runs,
+  so they also show when you work. An availability you set yourself in Teams
+  takes precedence over the Busy status.
   Descriptions, notes, tags and rates are never sent.
-- **When it is removed:** when the timer stops, TimeTrack removes the message and
-  the Busy status. If the app quits or crashes, or you disconnect the account,
-  while a timer runs, they stay until Teams lets them expire: the Busy status
-  after at most an hour, the message after 12 hours.
+- **When it is removed:** when the timer stops, or when you switch **Mirror
+  Teams status** off, TimeTrack clears the status message (including one you
+  wrote yourself while the timer ran) and the Busy status. It tries this once.
+  If that fails (offline, for example), or the app quits or crashes, or you
+  disconnect the account while a timer runs, the message and the Busy status
+  stay, also after a restart, until TimeTrack sets your status again or they
+  expire: the Busy status after at most an hour, the message after 12 hours.
 - **Tokens:** stored in a separate file in the data folder, encrypted by the
   operating system (DPAPI / Keychain), not part of backups or exports.
   **Disconnect** deletes that file; revoking the app's access in your Microsoft
