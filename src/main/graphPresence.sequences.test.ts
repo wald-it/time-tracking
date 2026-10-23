@@ -262,6 +262,7 @@ function makeDeps(w: World): PresenceDeps {
       return w.hasToken ? 'tok' : null
     },
     getClientId: () => 'app-client-id',
+    getLocale: () => 'de',
     fetchFn,
     now: () => w.now,
     log: (m) => w.log.push(`    log: ${m}`)

@@ -131,6 +131,7 @@ function makeDeps(
     }),
     getAccessToken: async () => (o.token === undefined ? 'tok' : o.token),
     getClientId: () => 'app-client-id',
+    getLocale: () => (settings.language === 'en' ? 'en' : 'de'),
     fetchFn,
     now: () => o.now ?? 1_750_000_000_000,
     log: (m) => logs.push(m)

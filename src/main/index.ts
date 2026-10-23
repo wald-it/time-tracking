@@ -505,6 +505,7 @@ function pokePresence(): void {
       },
       getAccessToken: () => getAccessToken(account),
       getClientId: () => effectiveClientId(account),
+      getLocale: appLanguage,
       log: (m) => log.info(m)
     }
     void reconcilePresence(deps, readRunning(db))

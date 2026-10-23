@@ -36,7 +36,7 @@
  */
 import type { RunningStatus } from './mcpBridgeCore'
 import { hasScope, PRESENCE_SCOPE } from '../shared/graphAuth'
-import { localeFromSetting } from '../shared/i18n'
+import type { Locale } from '../shared/i18n'
 
 export interface PresenceAccountView {
   connected: boolean
@@ -50,6 +50,11 @@ export interface PresenceDeps {
   getAccessToken: () => Promise<string | null>
   /** The effective app client id — doubles as the presence session id. */
   getClientId: () => string
+  /**
+   * The app language for the Teams status text (#347): index.ts passes
+   * mainI18n.appLocale, the one way to the language in the main process.
+   */
+  getLocale: () => Locale
   fetchFn?: typeof fetch
   now?: () => number
   log?: (message: string) => void
@@ -259,10 +264,10 @@ function scopeGranted(view: PresenceAccountView): boolean {
 export function desiredMessage(
   running: Pick<RunningStatus, 'client_name' | 'project_name'> | null,
   showClient: boolean,
-  language: string | undefined
+  locale: Locale
 ): string {
   if (!running) return ''
-  const focus = localeFromSetting(language) === 'en' ? 'Focus' : 'Fokus'
+  const focus = locale === 'en' ? 'Focus' : 'Fokus'
   if (!showClient) return `🔴 ${focus}`
   const project = running.project_name ? ` — ${running.project_name}` : ''
   return `🔴 ${focus}: ${running.client_name}${project}`
@@ -343,11 +348,7 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   const owes = state.possiblyOurs.size > 0 || state.shapeOwed || state.sessionOwed
 
   const message = want
-    ? desiredMessage(
-        running,
-        deps.getSetting('presence_show_client') === '1',
-        deps.getSetting('language')
-      )
+    ? desiredMessage(running, deps.getSetting('presence_show_client') === '1', deps.getLocale())
     : ''
   if (!checkDue) {
     if (!want && !owes) return

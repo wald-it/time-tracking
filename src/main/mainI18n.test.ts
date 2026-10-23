@@ -266,14 +266,10 @@ describe('#296 — tray', () => {
 describe('#296 — one way to the app language in the main process', () => {
   // Tray, dialogs, file names and the update notification (#309) all go
   // through appLocale, so they answer alike, also with the handle closed.
+  // graphPresence.ts (the Teams status text) and updater.ts get the language
+  // injected as `getLocale` (index.ts passes appLocale), #347.
   // Allowed exceptions:
   // - mainI18n.ts: defines the rule.
-  // - graphPresence.ts: only the Teams status text (`🔴 Fokus|Focus …`, seen
-  //   by colleagues, not app UI). The module is Electron-free and gets its
-  //   settings through the injected PresenceDeps.getSetting, so it has no DB
-  //   handle for appLocale. To drop the exception, inject
-  //   `getLocale: () => Locale` as updater.ts does (index.ts passes
-  //   appLocale) and remove the file from `allowed`.
   // - mcpBridgeCore.ts: Electron-free, reads the open database of the MCP
   //   write request it is handling (the confirmation dialog's language).
   // A text heuristic over the files directly under src/main: it sees these
@@ -281,7 +277,7 @@ describe('#296 — one way to the app language in the main process', () => {
   // That index.ts wires appLocale into the updater is not tested (no harness
   // for index.ts).
   it('no other main-process source reads the language itself', () => {
-    const allowed = new Set(['mainI18n.ts', 'graphPresence.ts', 'mcpBridgeCore.ts'])
+    const allowed = new Set(['mainI18n.ts', 'mcpBridgeCore.ts'])
     const hits = readdirSync(__dirname)
       .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !allowed.has(f))
       .filter((f) =>
