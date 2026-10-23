@@ -11,7 +11,6 @@ import type Database from 'better-sqlite3'
 import {
   createManualEntry,
   resolveEditRange,
-  STALE_EDIT_ERROR,
   updateManualEntry,
   switchTimer,
   FUTURE_START_TOLERANCE_MS,
@@ -39,9 +38,23 @@ import {
 import { roundDuration } from '../shared/duration'
 import { deserializeTags } from '../shared/tags'
 import type { Locale } from '../shared/i18n'
-import { dialogT, dialogText, readLanguage, type DialogT } from './mainI18n'
+import { dialogT, dialogText, entryErrorText, readLanguage, type DialogT } from './mainI18n'
+import { entryError, toIpcResult, type EntryError, type EntryResult } from './entryErrors'
 
 type Db = Database.Database
+
+/**
+ * A refused entry write, worded for the MCP client: always German, whatever
+ * the app language (#296 part B). The replies are client API; only the
+ * confirmation dialog follows the app language.
+ */
+function inGerman(e: EntryError): string {
+  return entryErrorText(e, 'de')
+}
+
+function german<T>(res: EntryResult<T>): { ok: true; data: T } | { ok: false; error: string } {
+  return toIpcResult(res, inGerman)
+}
 
 export const WRITE_OPS = [
   'create_manual_entry',
@@ -341,7 +354,7 @@ function planOp(
         project_id: asProjectId(args.project_id, null)
       }
       const vErr = validateManualEntry(db, input)
-      if (vErr) return { error: vErr }
+      if (vErr) return { error: inGerman(vErr) }
       const client = clientName(db, input.client_id)
       const project = projectName(db, input.project_id ?? null)
       const billable = input.billable ?? 1
@@ -389,7 +402,7 @@ function planOp(
           ...hintPreview(hints)
         },
         hints,
-        run: () => createManualEntry(db, input),
+        run: () => german(createManualEntry(db, input)),
         audit: (r) => ({
           op,
           id: r?.id ?? null,
@@ -456,11 +469,11 @@ function planOp(
       // Mapped here, before the dialog and the preview, so the owner confirms
       // the change that is applied; times compare against the entry's range.
       const resolved = resolveEditRange(db, given)
-      if ('error' in resolved) return { error: resolved.error }
+      if ('error' in resolved) return { error: inGerman(resolved.error) }
       const input = resolved.input
       const was = resolved.before
       const vErr = validateManualEntry(db, input, id, existing.link_id ?? undefined)
-      if (vErr) return { error: vErr }
+      if (vErr) return { error: inGerman(vErr) }
       // Every field the commit actually changes, before → after: one line in
       // the dialog each, and the same set under `changes` in the preview.
       // Times stay in the first line as before (local, with offsets).
@@ -593,14 +606,14 @@ function planOp(
         // longer be the one in the dialog, so the edit is refused instead.
         run: () => {
           const now = resolveEditRange(db, given)
-          if ('error' in now) return { ok: false as const, error: now.error }
+          if ('error' in now) return { ok: false as const, error: inGerman(now.error) }
           if (
             now.input.started_at !== input.started_at ||
             now.input.stopped_at !== input.stopped_at
           ) {
-            return { ok: false as const, error: STALE_EDIT_ERROR }
+            return { ok: false as const, error: inGerman(entryError('entry.staleEdit')) }
           }
-          return updateManualEntry(db, given)
+          return german(updateManualEntry(db, given))
         },
         audit: (r) => ({
           op,
@@ -637,7 +650,7 @@ function planOp(
       if (!client) return { error: 'Kunde existiert nicht' }
       if (input.project_id != null) {
         const pErr = validateProjectForClient(db, input.project_id, input.client_id)
-        if (pErr) return { error: pErr }
+        if (pErr) return { error: inGerman(pErr) }
       }
       // switchTimer refuses both again at run time; checked here as well so
       // the preview says so and no confirmation is asked for a doomed write.
@@ -719,7 +732,7 @@ function planOp(
             }
           }
           const r = switchTimer(db, input)
-          if (!r.ok) return r
+          if (!r.ok) return { ok: false as const, error: inGerman(r.error) }
           stopped = r.data.stopped
           return { ok: true, data: r.data.entry }
         },
@@ -758,7 +771,7 @@ function planOp(
               error: 'Der laufende Timer hat sich seit der Vorschau geändert — bitte erneut senden'
             }
           }
-          return stopRunningTimer(db)
+          return german(stopRunningTimer(db))
         },
         audit: (r) => ({ op, id: r?.id ?? null, client_id: r?.client_id ?? null })
       }
@@ -877,7 +890,7 @@ async function handleControllerRequest(
   if (!client) return err('invalid', 'Kunde existiert nicht')
   if (project_id != null) {
     const pErr = validateProjectForClient(db, project_id, client_id)
-    if (pErr) return err('invalid', pErr)
+    if (pErr) return err('invalid', inGerman(pErr))
   }
 
   const running = readRunning(db)
@@ -903,7 +916,7 @@ async function handleControllerRequest(
 
   if (matches) {
     const r = stopRunningTimer(db)
-    if (!r.ok) return err('invalid', r.error)
+    if (!r.ok) return err('invalid', inGerman(r.error))
     ctx.onChange()
     ctx.audit({
       op: 'toggle_timer',
@@ -924,7 +937,7 @@ async function handleControllerRequest(
     started_at: new Date().toISOString(),
     project_id
   })
-  if (!r.ok) return err('invalid', r.error)
+  if (!r.ok) return err('invalid', inGerman(r.error))
   ctx.onChange()
   ctx.audit({
     op: 'toggle_timer',

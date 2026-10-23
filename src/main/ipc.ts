@@ -28,13 +28,14 @@ import {
   deleteEntry,
   undeleteEntry
 } from './entryMutations'
+import { toIpcResult, type EntryResult } from './entryErrors'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
 import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 import { buildPdfHtml, buildPdfPayload, type PdfRequest } from './pdf'
 import { renderPdfBuffer } from './pdfWindow'
-import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
+import { LogoError, readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
 import { handleCsvExport, type CsvRequest } from './csvExport'
 import { handleIcalExport, type IcalRequest } from './icalExport'
 import {
@@ -44,7 +45,14 @@ import {
   realFsDeps,
   saveDialogIn
 } from './pdfMergeHandlers'
-import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
+import {
+  cancelledResult,
+  dialogT,
+  entryErrorText,
+  exportFileName,
+  appLocale,
+  type DialogT
+} from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
@@ -113,7 +121,8 @@ function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  // The message, not `Error: <message>`: the renderer shows it (#296).
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
 /**
@@ -121,11 +130,11 @@ function fail(error: unknown): IpcResult<never> {
  * `undefined` (legacy callers) → 0; negative or NaN → throws so the IPC
  * surfaces the error instead of silently saving garbage.
  */
-function normaliseRateCent(value: unknown): number {
+function normaliseRateCent(t: DialogT, value: unknown): number {
   if (value === undefined || value === null) return 0
   const n = Number(value)
   if (!Number.isFinite(n) || n < 0) {
-    throw new Error('Stundensatz darf nicht negativ sein')
+    throw new Error(t('mainError.ipc.rateNegative'))
   }
   return Math.round(n)
 }
@@ -157,6 +166,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       () => app.getPreferredSystemLanguages()
     )
   const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
+  // A refused entry write is a code (entryErrors.ts); the renderer gets it
+  // worded in the app language (#296 part B).
+  const toIpc = <T>(res: EntryResult<T>): IpcResult<T> =>
+    toIpcResult(res, (e) => entryErrorText(e, dialogLocale()))
 
   /**
    * The app's own locations, without touching the file system (no mkdir of a
@@ -204,7 +217,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('clients:create', (_e, input: CreateClientInput): IpcResult<Client> => {
     try {
-      const rate = normaliseRateCent(input.rate_cent)
+      const rate = normaliseRateCent(tDialog, input.rate_cent)
       const info = db
         .prepare(
           `INSERT INTO clients (name, color, rate_cent,
@@ -237,7 +250,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('clients:update', (_e, input: UpdateClientInput): IpcResult<Client> => {
     try {
-      const rate = normaliseRateCent(input.rate_cent)
+      const rate = normaliseRateCent(tDialog, input.rate_cent)
       db.prepare(
         `UPDATE clients SET
            name = ?, color = ?, active = ?, rate_cent = ?,
@@ -305,8 +318,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    * tray/mini/hotkey too, since they all funnel through here.
    */
   function startOrSwitch(input: CreateEntryInput): IpcResult<SwitchTimerResult> {
-    return switchTimerAndNotify(db, input, (event, entry) =>
-      emitWebhooks(db, event, entry, { log: logWebhookDelivery })
+    return toIpc(
+      switchTimerAndNotify(db, input, (event, entry) =>
+        emitWebhooks(db, event, entry, { log: logWebhookDelivery })
+      )
     )
   }
 
@@ -314,7 +329,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const res = stopEntry(db, id)
       if (res.ok) emitWebhooks(db, 'timer.stopped', res.data, { log: logWebhookDelivery })
-      return res
+      return toIpc(res)
     } catch (e) {
       return fail(e)
     }
@@ -372,7 +387,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const res = createManualEntry(db, input)
       if (res.ok) emitWebhooks(db, 'entry.created', res.data, { log: logWebhookDelivery })
-      return res
+      return toIpc(res)
     } catch (e) {
       return fail(e)
     }
@@ -382,7 +397,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const res = updateManualEntry(db, input)
       if (res.ok) emitWebhooks(db, 'entry.updated', res.data, { log: logWebhookDelivery })
-      return res
+      return toIpc(res)
     } catch (e) {
       return fail(e)
     }
@@ -396,7 +411,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    */
   ipcMain.handle('entries:delete', (_e, id: number): IpcResult<void> => {
     try {
-      return deleteEntry(db, id)
+      return toIpc(deleteEntry(db, id))
     } catch (e) {
       return fail(e)
     }
@@ -404,7 +419,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('entries:undelete', (_e, id: number): IpcResult<Entry> => {
     try {
-      return undeleteEntry(db, id)
+      return toIpc(undeleteEntry(db, id))
     } catch (e) {
       return fail(e)
     }
@@ -482,7 +497,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('projects:create', (_e, input: CreateProjectInput): IpcResult<Project> => {
     try {
-      const err = validateProject(input, db)
+      const err = validateProject(tDialog, input, db)
       if (err) return fail(err)
       const budget = normaliseBudgetMinutes(input.budget_minutes)
       const result = db
@@ -513,20 +528,18 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('projects:update', (_e, input: UpdateProjectInput): IpcResult<Project> => {
     try {
-      const err = validateProject(input, db)
+      const err = validateProject(tDialog, input, db)
       if (err) return fail(err)
       const current = db.prepare('SELECT client_id FROM projects WHERE id = ?').get(input.id) as
         | { client_id: number | null }
         | undefined
-      if (!current) return fail('Projekt nicht gefunden')
+      if (!current) return fail(tDialog('mainError.ipc.projectMissing'))
       if (current.client_id !== input.client_id) {
         const countRow = db
           .prepare(`SELECT COUNT(*) AS n FROM entries WHERE project_id = ? AND deleted_at IS NULL`)
           .get(input.id) as { n: number }
         if (countRow.n > 0) {
-          return fail(
-            'Projekt hat Einträge und kann nicht zu einem anderen Kunden verschoben werden'
-          )
+          return fail(tDialog('mainError.ipc.projectMoveHasEntries'))
         }
       }
       const budget = normaliseBudgetMinutes(input.budget_minutes)
@@ -577,7 +590,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const countRow = db
           .prepare(`SELECT COUNT(*) AS n FROM entries WHERE project_id = ? AND deleted_at IS NULL`)
           .get(id) as { n: number }
-        if (countRow.n > 0) throw new Error('Projekt hat noch aktive Einträge')
+        if (countRow.n > 0) throw new Error(tDialog('mainError.ipc.projectHasActive'))
         db.prepare('DELETE FROM projects WHERE id = ?').run(id)
       })
       tx()
@@ -838,7 +851,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   })
 
   ipcMain.handle('shell:openExternal', async (_e, url: string): Promise<IpcResult<void>> => {
-    if (!isExternalUrlAllowed(url)) return fail('Nur http:// und https:// Links erlaubt')
+    if (!isExternalUrlAllowed(url)) return fail(tDialog('mainError.ipc.linkNotAllowed'))
     await shell.openExternal(url)
     return ok(undefined)
   })
@@ -922,12 +935,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     async (_e, req: PdfRequest): Promise<IpcResult<{ path: string }>> => {
       try {
         if (!req || typeof req.clientId !== 'number' || !req.fromIso || !req.toIso) {
-          return fail('Ungültige PDF-Anfrage')
+          return fail(tDialog('mainError.export.badPdfRequest'))
         }
         const client = db.prepare(`SELECT id, name FROM clients WHERE id = ?`).get(req.clientId) as
           | { id: number; name: string }
           | undefined
-        if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
+        if (!client) return fail(tDialog('mainError.export.clientNotFound', { id: req.clientId }))
 
         // v1.9 #75: the project name goes into the file name when filtered to one.
         const proj =
@@ -1008,7 +1021,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('pdf:pdf-info', async (_e, req) => {
     const refused = pdfRequestRefusal(req)
     if (refused) return fail(refused)
-    const res = await pdfInfoHandler(req)
+    const res = await pdfInfoHandler(req, realFsDeps, dialogLocale)
     const filePath = (req as { filePath?: unknown }).filePath
     if (res.ok && typeof filePath === 'string') {
       try {
@@ -1064,6 +1077,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       ).run(target)
       return ok({ path: target })
     } catch (e) {
+      // A logo that cannot be used says why, in the app language (#296).
+      if (e instanceof LogoError) return fail(tDialog(e.key, e.vars))
       return fail(e)
     }
   })
@@ -1129,24 +1144,25 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
  * Returns an error string if invalid, `null` if valid.
  */
 function validateProject(
+  t: DialogT,
   input: CreateProjectInput | UpdateProjectInput,
   db?: ReturnType<typeof getDb>
 ): string | null {
   const name = input.name?.trim() ?? ''
-  if (name.length === 0) return 'Name darf nicht leer sein'
-  if (name.length > 100) return 'Name darf höchstens 100 Zeichen lang sein'
+  if (name.length === 0) return t('mainError.ipc.nameEmpty')
+  if (name.length > 100) return t('mainError.ipc.nameTooLong')
   if (['allgemein', 'general'].includes(name.toLowerCase())) {
-    return `"${input.name}" ist ein reservierter Name`
+    return t('mainError.ipc.nameReserved', { name: input.name ?? '' })
   }
   if (input.rate_cent !== undefined && input.rate_cent !== null) {
     const rate = Number(input.rate_cent)
-    if (!Number.isFinite(rate) || rate < 0) return 'Stundensatz darf nicht negativ sein'
+    if (!Number.isFinite(rate) || rate < 0) return t('mainError.ipc.rateNegative')
   }
   if (db && input.client_id !== null && input.client_id !== undefined) {
     const clientRow = db.prepare('SELECT id FROM clients WHERE id = ?').get(input.client_id) as
       | { id: number }
       | undefined
-    if (!clientRow) return 'Kunde existiert nicht'
+    if (!clientRow) return t('mainError.entry.clientMissing')
   }
   return null
 }

@@ -952,5 +952,92 @@ export const en: Record<TranslationKey, string> = {
   'mainFile.fallbackClient': 'Client',
   'mainError.exportCancelled': 'Export cancelled',
   'mainError.selectionCancelled': 'Selection cancelled',
-  'mainError.saveCancelled': 'Saving cancelled'
+  'mainError.saveCancelled': 'Saving cancelled',
+
+  // ── Main process: refused entry writes (#296 part B) ─────────────────────
+  'mainError.entry.startInvalid': 'The start time is not valid',
+  'mainError.entry.endInvalid': 'The end time is not valid',
+  'mainError.entry.startInFuture': 'The start time cannot be in the future',
+  'mainError.entry.endBeforeStart': 'The end time must be after the start time',
+  'mainError.entry.tooLong': 'The duration is longer than 24 hours',
+  'mainError.entry.descriptionTooLong': 'The description is longer than {max} characters',
+  'mainError.entry.referenceTooLong': 'The reference is longer than {max} characters',
+  'mainError.entry.noteTooLong': 'The note is longer than {max} characters',
+  'mainError.entry.clientMissing': 'The client does not exist',
+  'mainError.entry.projectNotOfClient': 'The project does not belong to this client',
+  'mainError.entry.overlap': 'The entry overlaps an existing entry of the same client',
+  'mainError.entry.missing': 'The entry does not exist',
+  'mainError.entry.splitEdge':
+    'This entry is split at midnight, and the 0:00 boundary cannot be moved on one half. Change the start on the first half and the end on the second.',
+  'mainError.entry.splitGap':
+    'A middle part of this entry was deleted, so the remaining parts cannot be edited together.',
+  'mainError.entry.staleEdit':
+    'The entry changed while the confirmation was open. Please request the change again.',
+  'mainError.entry.timerStartInFuture': 'The start time is in the future',
+  'mainError.entry.startBeforeRunning': 'The start time is before the start of the running entry',
+
+  // ── Main process: tag management (#296 part B) ────────────────────────────
+  'mainError.tag.empty': 'The tag name cannot be empty',
+  'mainError.tag.tooLong': 'The tag name can have at most {max} characters',
+  'mainError.tag.whitespace': 'The tag name cannot contain spaces (use "_" or "-")',
+  'mainError.tag.chars': 'The tag name can only contain lowercase letters, digits and . _ -',
+  'mainError.tag.exists': "Tag '{tag}' already exists",
+  'mainError.tag.renameExists': "A tag named '{tag}' already exists",
+  'mainError.tag.mergeSame': 'Source and target tag cannot be the same',
+  'mainError.tag.inUse': "Tag '{tag}' is still used by {count} entry/entries and cannot be deleted",
+
+  // ── Main process: PDF merge (#296 part B) ─────────────────────────────────
+  'mainError.merge.noInvoicePath': 'No invoice path given',
+  'mainError.merge.noPath': 'No path given',
+  'mainError.merge.notPdf': 'The chosen file is not a PDF',
+  'mainError.merge.notFound': 'File not found',
+  'mainError.merge.badRequest': 'Invalid PDF request',
+  'mainError.merge.bothRequired': 'Both PDF paths are required',
+  'mainError.merge.timesheetRequired': 'At least one timesheet is required',
+  'mainError.merge.timesheetPathInvalid': 'Invalid timesheet path',
+  'mainError.merge.labelTimesheet': 'Timesheet',
+  'mainError.merge.labelTimesheetN': 'Timesheet {n}',
+  'mainError.merge.labelInvoice': 'Invoice',
+  'mainError.merge.labeled': '{label}: {error}',
+  'mainError.merge.timesheetTooBig': '{label} PDF is too large (max. 50 MB)',
+  'mainError.merge.invoiceTooBig': 'The invoice PDF is too large (max. 50 MB)',
+  'mainError.merge.pdfTooBig': 'The PDF is too large (max. 50 MB)',
+  'mainError.merge.locked': '{label} is locked by another program: {file}',
+  'mainError.merge.fileLocked': 'The file is locked by another program: {file}',
+  'mainError.merge.invalidPdf': 'Invalid or encrypted PDF file',
+
+  // ── Main process: clients, projects, export, logo, settings (#296 part B) ─
+  'mainError.ipc.rateNegative': 'The hourly rate cannot be negative',
+  'mainError.ipc.nameEmpty': 'The name cannot be empty',
+  'mainError.ipc.nameTooLong': 'The name can be at most 100 characters long',
+  'mainError.ipc.nameReserved': '"{name}" is a reserved name',
+  'mainError.ipc.projectMissing': 'Project not found',
+  'mainError.ipc.projectMoveHasEntries':
+    'The project has entries and cannot be moved to another client',
+  'mainError.ipc.projectHasActive': 'The project still has active entries',
+  'mainError.ipc.linkNotAllowed': 'Only http:// and https:// links are allowed',
+  'mainError.export.badPdfRequest': 'Invalid PDF request',
+  'mainError.export.badCsvRequest': 'Invalid CSV request',
+  'mainError.export.badIcalRequest': 'Invalid iCal request',
+  'mainError.export.clientNotFound': 'Client {id} not found',
+  'mainError.logo.format': 'Logo format not supported: {ext}',
+  'mainError.logo.formatNone': 'Logo format not supported: (unknown)',
+  'mainError.logo.tooBig': 'The logo is larger than 1 MB ({kb} KB)',
+  'mainError.settings.hotkeyRefused': 'The hotkey "{hotkey}" could not be registered.',
+  'mainError.settings.hotkeyLost': 'The previous hotkey is no longer active either.',
+  'mainError.settings.unknownKey': 'Unknown setting: {key}',
+  'mainError.settings.badValue': 'Invalid value for {key}',
+  'mainError.analytics.badMonth': 'Invalid month',
+
+  // ── Main process: update install, calendar-import domains (#296 part B) ──
+  'mainError.update.blockedOne':
+    'The update cannot be installed: {count} MCP server ({list}) still uses the TimeTrack program file and did not respond to the request to quit. These processes have no window; they belong to a running AI client (Settings → Integrations). Quit the AI client and try again.',
+  'mainError.update.blockedMany':
+    'The update cannot be installed: {count} MCP servers ({list}) still use the TimeTrack program file and did not respond to the request to quit. These processes have no window; they belong to a running AI client (Settings → Integrations). Quit the AI client and try again.',
+  'mainError.update.startedMidUpdate':
+    'At least one of these servers was only started during the update. While the AI client runs, it restarts servers that were quit.',
+  'mainError.update.devMode': 'The update check is turned off in development mode.',
+  'mainError.domain.invalid': "'{domain}' is not a valid domain.",
+  'mainError.domain.clientMissing': 'Client {id} does not exist.',
+  'mainError.domain.projectNotOfClient': 'Project {project} does not belong to client {client}.'
 } as const satisfies Record<TranslationKey, string>

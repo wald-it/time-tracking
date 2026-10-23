@@ -43,6 +43,7 @@ function deps(
     notify: vi.fn(),
     logWarn: vi.fn(),
     logInfo: vi.fn(),
+    locale: () => 'de',
     ...over
   }
 }
@@ -59,7 +60,7 @@ describe('performUpdateInstall', () => {
     expect(d.quitAndInstall).not.toHaveBeenCalled()
     expect(d.notify).toHaveBeenCalledWith({
       status: 'error',
-      message: blockedByHoldersMessage(survivors, 500)
+      message: blockedByHoldersMessage('de', survivors, 500)
     })
   })
 
@@ -107,7 +108,7 @@ describe('performUpdateInstall', () => {
 
 describe('blockedByHoldersMessage', () => {
   it('names every surviving pid, with plural grammar', () => {
-    const m = blockedByHoldersMessage([holder(11), holder(99)])
+    const m = blockedByHoldersMessage('de', [holder(11), holder(99)])
     expect(m).toContain('PID 11')
     expect(m).toContain('PID 99')
     expect(m).toContain('2 MCP-Server')
@@ -116,20 +117,38 @@ describe('blockedByHoldersMessage', () => {
   })
 
   it('uses singular grammar for a single survivor', () => {
-    const m = blockedByHoldersMessage([holder(7)])
+    const m = blockedByHoldersMessage('de', [holder(7)])
     expect(m).toContain('1 MCP-Server')
     expect(m).toContain('benutzt noch')
     expect(m).toContain('hat auf die')
   })
 
+  // #296 part B: from the locale files now; German word for word as the old
+  // concatenation built it, English the same meaning.
+  it('German exactly as before, English with the same parts', () => {
+    expect(blockedByHoldersMessage('de', [holder(7, 900)], 500)).toBe(
+      'Das Update kann nicht installiert werden: 1 MCP-Server (PID 7) benutzt noch die ' +
+        'TimeTrack-Programmdatei und hat auf die Aufforderung zum Beenden nicht reagiert. ' +
+        'Diese Prozesse haben kein Fenster — sie gehören zu einem laufenden AI-Client ' +
+        '(Einstellungen → Integrationen). Beende den AI-Client und versuche es erneut. ' +
+        'Mindestens einer dieser Server wurde erst während des Updates gestartet — solange ' +
+        'der AI-Client läuft, startet er beendete Server automatisch neu.'
+    )
+    const en = blockedByHoldersMessage('en', [holder(11), holder(99)])
+    expect(en).toMatch(
+      /^The update cannot be installed: 2 MCP servers \(PID 11, PID 99\) still use /
+    )
+    expect(en).not.toContain('started during the update')
+  })
+
   it('covers the started-mid-update case instead of blaming the newcomer (#201)', () => {
     // registered after the request went out — the AI client respawned it
     const late = holder(7, 900)
-    expect(blockedByHoldersMessage([late], 500)).toContain('während des Updates gestartet')
+    expect(blockedByHoldersMessage('de', [late], 500)).toContain('während des Updates gestartet')
     // all survivors predate the request — no mid-update sentence
     const early = holder(7, 100)
-    expect(blockedByHoldersMessage([early], 500)).not.toContain('während des Updates')
+    expect(blockedByHoldersMessage('de', [early], 500)).not.toContain('während des Updates')
     // without a request timestamp the message stays as before
-    expect(blockedByHoldersMessage([late])).not.toContain('während des Updates')
+    expect(blockedByHoldersMessage('de', [late])).not.toContain('während des Updates')
   })
 })

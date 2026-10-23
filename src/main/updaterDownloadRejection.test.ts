@@ -125,7 +125,7 @@ async function start(updateCheck: string | undefined): Promise<void> {
 
 const GERMAN = {
   title: 'Ein neues Update kann installiert werden',
-  body: 'TimeTrack 9.9.9 wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf "Jetzt neu starten".'
+  body: 'TimeTrack 9.9.9 wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf „Jetzt neu starten“.'
 }
 const ENGLISH = {
   title: 'A new update is ready to install',

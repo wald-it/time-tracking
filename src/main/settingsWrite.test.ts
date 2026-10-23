@@ -106,7 +106,7 @@ describe('settings:set allow-list', () => {
       )
       expect(res).toEqual({
         ok: false,
-        error: 'Hotkey "Ctrl+Alt+Del" konnte nicht registriert werden.'
+        error: 'Hotkey „Ctrl+Alt+Del“ konnte nicht registriert werden.'
       })
       expect(stored(key)).toBe('Alt+Shift+S')
     }
@@ -123,7 +123,7 @@ describe('settings:set allow-list', () => {
     expect(res).toEqual({
       ok: false,
       error:
-        'Hotkey "Ctrl+Alt+Del" konnte nicht registriert werden. Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
+        'Hotkey „Ctrl+Alt+Del“ konnte nicht registriert werden. Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
     })
     expect(stored('hotkey_toggle')).toBe('Alt+Shift+S')
   })
@@ -165,6 +165,19 @@ describe('settings:set allow-list', () => {
     const res = await writeSettingFromRenderer(db, h, 'language', 'en')
     expect(res).toEqual({ ok: true, data: undefined })
     expect(calls).toEqual(['refreshTrayLanguage()'])
+  })
+
+  // #296 part B: the refusal in the app language; German as before.
+  it('words a refused key in the app language', async () => {
+    expect(await writeSettingFromRenderer(db, hooks(), 'something_new', 'x')).toEqual({
+      ok: false,
+      error: 'Unbekannte Einstellung: something_new'
+    })
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('language', 'en')").run()
+    expect(await writeSettingFromRenderer(db, hooks(), 'something_new', 'x')).toEqual({
+      ok: false,
+      error: 'Unknown setting: something_new'
+    })
   })
 
   it('refuses an unknown key and writes nothing', async () => {

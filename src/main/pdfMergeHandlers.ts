@@ -16,7 +16,7 @@ import {
 } from './pdfMergeValidation'
 import type { IpcResult, Settings } from '../shared/types'
 import type { Locale } from '../shared/i18n'
-import { cancelledResult, dialogT, mergedFileName } from './mainI18n'
+import { cancelledResult, dialogT, mergedFileName, type DialogT } from './mainI18n'
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024 // 50 MB
 
@@ -58,6 +58,18 @@ export function saveDialogIn(locale: () => Locale): DialogDeps {
 
 export const realFsDeps: FsDeps = { existsSync, statSync, readFileSync, writeFileSync }
 
+/** A thrown error as the renderer shows it: the message, not `Error: …` (#296). */
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
+/** `Stundennachweis` or, with several, `Stundennachweis 2` (#296: worded). */
+function snLabel(t: DialogT, i: number, count: number): string {
+  return count === 1
+    ? t('mainError.merge.labelTimesheet')
+    : t('mainError.merge.labelTimesheetN', { n: i + 1 })
+}
+
 // ── pdf:merge-only handler ────────────────────────────────────────────────────
 
 export interface MergeOnlyRequest {
@@ -75,8 +87,10 @@ export async function mergeOnlyHandler(
 ): Promise<IpcResult<{ path: string }>> {
   try {
     // Shape check — invoice + at least one SN path must be present.
+    const locale = dialogDeps.locale()
+    const t = dialogT(locale)
     const shapeErr = validateMergeOnlyRequest(req)
-    if (shapeErr) return { ok: false, error: shapeErr }
+    if (shapeErr) return { ok: false, error: t(shapeErr) }
 
     const typed = req as MergeOnlyRequest
     // Normalize: prefer the new `stundennachweisPaths` array; fall back to the
@@ -91,13 +105,26 @@ export async function mergeOnlyHandler(
     for (let i = 0; i < snPaths.length; i++) {
       const err = validatePdfPath(snPaths[i], fsDeps.existsSync)
       if (err) {
-        const label = snPaths.length === 1 ? 'Stundennachweis' : `Stundennachweis ${i + 1}`
-        return { ok: false, error: `${label}: ${err}` }
+        return {
+          ok: false,
+          error: t('mainError.merge.labeled', {
+            label: snLabel(t, i, snPaths.length),
+            error: t(err)
+          })
+        }
       }
     }
 
     const invPathErr = validatePdfPath(invoicePath, fsDeps.existsSync)
-    if (invPathErr) return { ok: false, error: `Rechnung: ${invPathErr}` }
+    if (invPathErr) {
+      return {
+        ok: false,
+        error: t('mainError.merge.labeled', {
+          label: t('mainError.merge.labelInvoice'),
+          error: t(invPathErr)
+        })
+      }
+    }
 
     const resolvedSnPaths = snPaths.map((p) => resolve(p))
     const resolvedInv = resolve(invoicePath)
@@ -105,12 +132,14 @@ export async function mergeOnlyHandler(
     // Size guard — reject before reading large files.
     for (let i = 0; i < resolvedSnPaths.length; i++) {
       if (fsDeps.statSync(resolvedSnPaths[i]).size > MAX_PDF_BYTES) {
-        const label = snPaths.length === 1 ? 'Stundennachweis' : `Stundennachweis ${i + 1}`
-        return { ok: false, error: `${label}-PDF zu groß (max. 50 MB)` }
+        return {
+          ok: false,
+          error: t('mainError.merge.timesheetTooBig', { label: snLabel(t, i, snPaths.length) })
+        }
       }
     }
     if (fsDeps.statSync(resolvedInv).size > MAX_PDF_BYTES) {
-      return { ok: false, error: 'Rechnungs-PDF zu groß (max. 50 MB)' }
+      return { ok: false, error: t('mainError.merge.invoiceTooBig') }
     }
 
     // Read all SN files — guard against locked files (Lexware / Acrobat open).
@@ -120,13 +149,15 @@ export async function mergeOnlyHandler(
         snBuffers.push(fsDeps.readFileSync(resolvedSnPaths[i]))
       } catch (e) {
         if (isErrnoException(e) && (e.code === 'EBUSY' || e.code === 'EPERM')) {
-          const label = snPaths.length === 1 ? 'Stundennachweis' : `Stundennachweis ${i + 1}`
           return {
             ok: false,
-            error: `${label} ist durch ein anderes Programm gesperrt: ${parse(resolvedSnPaths[i]).base}`
+            error: t('mainError.merge.locked', {
+              label: snLabel(t, i, snPaths.length),
+              file: parse(resolvedSnPaths[i]).base
+            })
           }
         }
-        return { ok: false, error: String(e) }
+        return { ok: false, error: errorText(e) }
       }
     }
 
@@ -137,10 +168,13 @@ export async function mergeOnlyHandler(
       if (isErrnoException(e) && (e.code === 'EBUSY' || e.code === 'EPERM')) {
         return {
           ok: false,
-          error: `Rechnung ist durch ein anderes Programm gesperrt: ${parse(resolvedInv).base}`
+          error: t('mainError.merge.locked', {
+            label: t('mainError.merge.labelInvoice'),
+            file: parse(resolvedInv).base
+          })
         }
       }
-      return { ok: false, error: String(e) }
+      return { ok: false, error: errorText(e) }
     }
 
     // Merge: invoice first, then each Stundennachweis in order.
@@ -159,7 +193,6 @@ export async function mergeOnlyHandler(
 
     // Derive output path next to the invoice. Append timestamp if file already exists.
     const { dir, name } = parse(resolvedInv)
-    const locale = dialogDeps.locale()
     let outputPath = join(dir, mergedFileName(locale, name))
     if (fsDeps.existsSync(outputPath)) {
       const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
@@ -183,10 +216,10 @@ export async function mergeOnlyHandler(
         fsDeps.writeFileSync(fallback.filePath, merged)
         return { ok: true, data: { path: fallback.filePath } }
       }
-      return { ok: false, error: String(writeErr) }
+      return { ok: false, error: errorText(writeErr) }
     }
   } catch (e) {
-    return { ok: false, error: String(e) }
+    return { ok: false, error: errorText(e) }
   }
 }
 
@@ -194,19 +227,22 @@ export async function mergeOnlyHandler(
 
 export async function pdfInfoHandler(
   req: unknown,
-  fsDeps: FsDeps = realFsDeps
+  fsDeps: FsDeps,
+  /** The language of the refusal texts (#296); must not throw (appLocale). */
+  locale: () => Locale
 ): Promise<IpcResult<{ pageCount: number }>> {
   try {
+    const t = dialogT(locale())
     const r = req as Record<string, unknown> | null | undefined
-    if (!r || !r.filePath) return { ok: false, error: 'Kein Pfad angegeben' }
+    if (!r || !r.filePath) return { ok: false, error: t('mainError.merge.noPath') }
 
     const pathErr = validatePdfPath(r.filePath as string, fsDeps.existsSync)
-    if (pathErr) return { ok: false, error: pathErr }
+    if (pathErr) return { ok: false, error: t(pathErr) }
 
     const resolved = resolve(r.filePath as string)
 
     if (fsDeps.statSync(resolved).size > MAX_PDF_BYTES) {
-      return { ok: false, error: 'PDF zu groß (max. 50 MB)' }
+      return { ok: false, error: t('mainError.merge.pdfTooBig') }
     }
 
     let buf: Buffer
@@ -216,22 +252,22 @@ export async function pdfInfoHandler(
       if (isErrnoException(e) && (e.code === 'EBUSY' || e.code === 'EPERM')) {
         return {
           ok: false,
-          error: `Datei ist durch ein anderes Programm gesperrt: ${parse(resolved).base}`
+          error: t('mainError.merge.fileLocked', { file: parse(resolved).base })
         }
       }
-      return { ok: false, error: String(e) }
+      return { ok: false, error: errorText(e) }
     }
 
     let doc: PDFDocument
     try {
       doc = await PDFDocument.load(buf)
     } catch {
-      return { ok: false, error: 'Ungültige oder verschlüsselte PDF-Datei' }
+      return { ok: false, error: t('mainError.merge.invalidPdf') }
     }
 
     return { ok: true, data: { pageCount: doc.getPageCount() } }
   } catch (e) {
-    return { ok: false, error: String(e) }
+    return { ok: false, error: errorText(e) }
   }
 }
 
@@ -263,17 +299,19 @@ export async function mergeExportHandler(
   pdfDeps: MergeExportPdfDeps = realMergeExportPdfDeps
 ): Promise<IpcResult<{ path: string }>> {
   try {
+    const locale = dialogDeps.locale()
+    const t = dialogT(locale)
     const reqErr = validateMergeExportRequest(req)
-    if (reqErr) return { ok: false, error: reqErr }
+    if (reqErr) return { ok: false, error: t(reqErr) }
 
     const typedReq = req as PdfRequest & { invoicePath: string }
     const pathErr = validatePdfPath(typedReq.invoicePath, fsDeps.existsSync)
-    if (pathErr) return { ok: false, error: pathErr }
+    if (pathErr) return { ok: false, error: t(pathErr) }
 
     const resolvedInvoice = resolve(typedReq.invoicePath)
 
     if (fsDeps.statSync(resolvedInvoice).size > MAX_PDF_BYTES) {
-      return { ok: false, error: 'Rechnungs-PDF zu groß (max. 50 MB)' }
+      return { ok: false, error: t('mainError.merge.invoiceTooBig') }
     }
 
     let invoiceBuffer: Buffer
@@ -283,10 +321,10 @@ export async function mergeExportHandler(
       if (isErrnoException(e) && (e.code === 'EBUSY' || e.code === 'EPERM')) {
         return {
           ok: false,
-          error: `Datei ist durch ein anderes Programm gesperrt: ${parse(resolvedInvoice).base}`
+          error: t('mainError.merge.fileLocked', { file: parse(resolvedInvoice).base })
         }
       }
-      return { ok: false, error: String(e) }
+      return { ok: false, error: errorText(e) }
     }
 
     const settingsRows = db.prepare(`SELECT key, value FROM settings`).all() as Array<{
@@ -309,7 +347,6 @@ export async function mergeExportHandler(
     })
 
     const { dir, name } = parse(resolvedInvoice)
-    const locale = dialogDeps.locale()
     let outputPath = join(dir, mergedFileName(locale, name))
     if (fsDeps.existsSync(outputPath)) {
       const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
@@ -333,9 +370,9 @@ export async function mergeExportHandler(
         fsDeps.writeFileSync(fallback.filePath, merged)
         return { ok: true, data: { path: fallback.filePath } }
       }
-      return { ok: false, error: String(writeErr) }
+      return { ok: false, error: errorText(writeErr) }
     }
   } catch (e) {
-    return { ok: false, error: String(e) }
+    return { ok: false, error: errorText(e) }
   }
 }

@@ -19,7 +19,7 @@ import type { IpcResult, UpdateStatus } from '../shared/types'
 import { isUpdateCheckEnabled, UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
 import { clearShutdown, releaseHolders, type Holder, type ReleaseOutcome } from '../mcp/holders'
 import type { Locale } from '../shared/i18n'
-import { updateDownloadedNotification } from './mainI18n'
+import { dialogT, updateDownloadedNotification } from './mainI18n'
 
 export type { UpdateStatus }
 
@@ -100,7 +100,8 @@ function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  // The message, not `Error: <message>`: the renderer shows it (#296).
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
 function broadcast(status: UpdateStatus): void {
@@ -161,23 +162,19 @@ export function reduceUpdateStatus(prev: UpdateStatus, event: UpdaterEvent): Upd
  * ignoring a request that predates it.
  */
 export function blockedByHoldersMessage(
+  locale: Locale,
   remaining: Holder[],
   requestedAt: number | null = null
 ): string {
-  const list = remaining.map((h) => `PID ${h.pid}`).join(', ')
-  const [uses, reacted] = remaining.length === 1 ? ['benutzt', 'hat'] : ['benutzen', 'haben']
-  const base =
-    `Das Update kann nicht installiert werden: ${remaining.length} MCP-Server ` +
-    `(${list}) ${uses} noch die TimeTrack-Programmdatei und ${reacted} auf die ` +
-    'Aufforderung zum Beenden nicht reagiert. Diese Prozesse haben kein Fenster — ' +
-    'sie gehören zu einem laufenden AI-Client (Einstellungen → Integrationen). ' +
-    'Beende den AI-Client und versuche es erneut.'
+  // In the app language (#296 part B): singular and plural are their own texts.
+  const t = dialogT(locale)
+  const vars = { count: remaining.length, list: remaining.map((h) => `PID ${h.pid}`).join(', ') }
+  const base = t(
+    remaining.length === 1 ? 'mainError.update.blockedOne' : 'mainError.update.blockedMany',
+    vars
+  )
   const startedMidUpdate = requestedAt !== null && remaining.some((h) => h.startedAt >= requestedAt)
-  return startedMidUpdate
-    ? base +
-        ' Mindestens einer dieser Server wurde erst während des Updates gestartet — ' +
-        'solange der AI-Client läuft, startet er beendete Server automatisch neu.'
-    : base
+  return startedMidUpdate ? `${base} ${t('mainError.update.startedMidUpdate')}` : base
 }
 
 /**
@@ -194,6 +191,8 @@ export async function performUpdateInstall(deps: {
   notify: (status: UpdateStatus) => void
   logWarn: (msg: string) => void
   logInfo: (msg: string) => void
+  /** The language of the refusal (#296); must not throw (appLocale). */
+  locale: () => Locale
 }): Promise<IpcResult<void>> {
   try {
     // #198 — hand over a directory the installer can actually replace.
@@ -215,7 +214,11 @@ export async function performUpdateInstall(deps: {
         )
       }
       if (!outcome.ok) {
-        const message = blockedByHoldersMessage(outcome.remaining, outcome.requestedAt)
+        const message = blockedByHoldersMessage(
+          deps.locale(),
+          outcome.remaining,
+          outcome.requestedAt
+        )
         deps.logWarn(`[updater] update aborted, ${outcome.remaining.length} MCP holder(s) left`)
         deps.notify({ status: 'error', message })
         return fail(message)
@@ -313,7 +316,7 @@ export function initAutoUpdater(opts: {
 
   ipcMain.handle('update:check', async (): Promise<IpcResult<void>> => {
     if (opts.isDev) {
-      return fail('Update-Check ist im Entwicklungsmodus deaktiviert.')
+      return fail(dialogT(opts.getLocale())('mainError.update.devMode'))
     }
     try {
       // An explicit check surfaces its errors, also when it joins a start-up
@@ -345,7 +348,8 @@ export function initAutoUpdater(opts: {
         quitAndInstall: () => autoUpdater.quitAndInstall(false, true),
         notify: broadcast,
         logWarn: (m) => log.warn(m),
-        logInfo: (m) => log.info(m)
+        logInfo: (m) => log.info(m),
+        locale: opts.getLocale
       })
   )
 

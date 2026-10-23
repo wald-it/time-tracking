@@ -15,7 +15,11 @@ import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { de } from '../shared/locales/de'
+import { en } from '../shared/locales/en'
+import { ENTRY_ERROR_CODES, entryError } from './entryErrors'
 import {
+  entryErrorText,
   appLocale,
   forgetLastAppLocale,
   cancelledResult,
@@ -168,7 +172,7 @@ describe('index.ts — the dialogs at start', () => {
   it('hotkey conflict, German as before and English', () => {
     expect(hotkeyConflictDialog('de', 'Alt+Shift+M')).toEqual({
       title: 'TimeTrack — Hotkey-Konflikt',
-      message: 'Der Mini-Widget-Hotkey "Alt+Shift+M" konnte nicht registriert werden.',
+      message: 'Der Mini-Widget-Hotkey „Alt+Shift+M“ konnte nicht registriert werden.',
       detail:
         'Eine andere Anwendung verwendet diese Tastenkombination bereits.\n\n' +
         'Du kannst in den Einstellungen einen anderen Hotkey wählen.',
@@ -304,6 +308,29 @@ describe('#296 — tray', () => {
   })
 })
 
+describe('#296 part B — refused entry writes', () => {
+  it('every EntryErrorCode has a de and an en text, and every text a code', () => {
+    const codes = [...ENTRY_ERROR_CODES].sort()
+    const keysOf = (strings: Record<string, string>): string[] =>
+      Object.keys(strings)
+        .filter((k) => k.startsWith('mainError.entry.'))
+        .map((k) => k.slice('mainError.'.length))
+        .sort()
+    expect(keysOf(de)).toEqual(codes)
+    expect(keysOf(en)).toEqual(codes)
+  })
+
+  it('words a code with its values; German as the app always wrote it', () => {
+    const e = entryError('entry.descriptionTooLong', { max: 500 })
+    expect(entryErrorText(e, 'de')).toBe('Beschreibung überschreitet 500 Zeichen')
+    expect(entryErrorText(e, 'en')).toBe('The description is longer than 500 characters')
+    expect(entryErrorText(entryError('entry.splitEdge'), 'de')).toBe(
+      'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. ' +
+        'Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten.'
+    )
+  })
+})
+
 describe('#296 — one way to the app language in the main process', () => {
   // Tray, dialogs, file names and the update notification (#309) all go
   // through appLocale, so they answer alike, also with the handle closed.
@@ -368,7 +395,7 @@ describe('updater.ts — the notification after a download (#309)', () => {
   it('German and English, word for word', () => {
     expect(updateDownloadedNotification('de', '1.23.0')).toEqual({
       title: 'Ein neues Update kann installiert werden',
-      body: 'TimeTrack 1.23.0 wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf "Jetzt neu starten".'
+      body: 'TimeTrack 1.23.0 wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf „Jetzt neu starten“.'
     })
     expect(updateDownloadedNotification('en', '1.23.0')).toEqual({
       title: 'A new update is ready to install',
@@ -380,7 +407,9 @@ describe('updater.ts — the notification after a download (#309)', () => {
     '%s: names exactly the label the update banner renders',
     (locale) => {
       const label = dialogT(locale)('update.ready.install')
-      expect(updateDownloadedNotification(locale, '1.23.0').body).toContain(`"${label}"`)
+      // German quotes „…“ (#296 part B), English straight ones.
+      const quoted = locale === 'de' ? `„${label}“` : `"${label}"`
+      expect(updateDownloadedNotification(locale, '1.23.0').body).toContain(quoted)
     }
   )
 })

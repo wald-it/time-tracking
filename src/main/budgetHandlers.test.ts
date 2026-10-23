@@ -136,7 +136,7 @@ describe('buildBudgetStatus', () => {
         started_at: secondsAgo(62 * 60 + 20),
         project_id: 1
       })
-      if (!started.ok) throw new Error(started.error)
+      if (!started.ok) throw new Error(started.error.code)
       expect(stopEntry(db, started.data.id).ok).toBe(true)
       // 62:20 → 63 whole minutes → next 15-minute step: 75, as on the invoice.
       expect(buildBudgetStatus(db, 1)).toEqual({
@@ -153,7 +153,7 @@ describe('buildBudgetStatus', () => {
         started_at: secondsAgo(20 * 60 + 10),
         project_id: 1
       })
-      if (!first.ok) throw new Error(first.error)
+      if (!first.ok) throw new Error(first.error.code)
       // The next timer runs on no project; only the ended entry counts.
       const next = switchTimer(db, {
         client_id: 1,
@@ -176,7 +176,7 @@ describe('buildBudgetStatus', () => {
         started_at: secondsAgo(62 * 60 + 20),
         project_id: 1
       })
-      if (!started.ok) throw new Error(started.error)
+      if (!started.ok) throw new Error(started.error.code)
       expect(stopEntry(db, started.data.id).ok).toBe(true)
       const billable = createManualEntry(db, {
         client_id: 1,

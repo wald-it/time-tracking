@@ -55,14 +55,19 @@ export async function handleIcalExport(
   req: IcalRequest
 ): Promise<IpcResult<{ path: string }>> {
   try {
+    const locale = appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
+    const t = dialogT(locale)
     if (!req || typeof req.clientId !== 'number' || !req.fromIso || !req.toIso) {
-      return fail('Ungültige iCal-Anfrage')
+      return fail(t('mainError.export.badIcalRequest'))
     }
 
     const client = db
       .prepare(`SELECT id, name, color, active, rate_cent, created_at FROM clients WHERE id = ?`)
       .get(req.clientId) as Client | undefined
-    if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
+    if (!client) return fail(t('mainError.export.clientNotFound', { id: req.clientId }))
 
     const entries = exportEntries(db, req)
 
@@ -78,12 +83,8 @@ export async function handleIcalExport(
     // leerer Name hängt hier nichts an).
     const proj = req.projectId != null ? projectMap.get(req.projectId) : undefined
 
-    const locale = appLocale(
-      () => db,
-      () => app.getPreferredSystemLanguages()
-    )
     const result = await dialog.showSaveDialog({
-      title: dialogT(locale)('mainDialog.ical.title'),
+      title: t('mainDialog.ical.title'),
       defaultPath: await exportDefaultPath(
         db,
         'ical',

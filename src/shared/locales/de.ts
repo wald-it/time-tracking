@@ -30,7 +30,7 @@ export const de = {
   // System notification after a download (main process, #309). {button} is 'update.ready.install'.
   'mainNotification.update.title': 'Ein neues Update kann installiert werden',
   'mainNotification.update.body':
-    'TimeTrack {version} wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf "{button}".',
+    'TimeTrack {version} wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf „{button}“.',
   'update.error.text': 'Update-Fehler: {message}',
   'update.error.details': 'Details in Einstellungen',
 
@@ -263,7 +263,7 @@ export const de = {
   'clients.action.archive': 'Archivieren',
   'clients.action.reactivate': 'Reaktivieren',
   'clients.confirm.delete':
-    'Kunde "{name}" wirklich löschen?\nAlle Zeiteinträge werden mitgelöscht.',
+    'Kunde „{name}“ wirklich löschen?\nAlle Zeiteinträge werden mitgelöscht.',
   'clients.confirm.deleteTitle': 'Kunde löschen?',
   'clients.form.createTitle': 'Neuer Kunde',
   'clients.form.editTitle': 'Kunde bearbeiten',
@@ -313,7 +313,7 @@ export const de = {
   'projects.confirm.delete': 'Projekt „{name}“ wirklich löschen?',
   'projects.confirm.deleteTitle': 'Projekt löschen?',
   'projects.confirm.deleteWithEntries':
-    'Projekt „{name}" hat noch {count} Einträge. Trotzdem löschen?\nDie Einträge werden dem Kunden zugeordnet.',
+    'Projekt „{name}“ hat noch {count} Einträge. Trotzdem löschen?\nDie Einträge werden dem Kunden zugeordnet.',
   'projects.form.createTitle': 'Neues Projekt',
   'projects.form.editTitle': 'Projekt bearbeiten',
   'projects.form.nameLabel': 'Name',
@@ -447,7 +447,7 @@ export const de = {
   'export.csv.groupByTagHint': 'Fügt pro Tag eine Kopfzeile und Zwischensumme ein.',
   'export.ical.showClientName': 'Kundenname im Titel',
   'export.ical.showClientNameHint':
-    'An: Titel = Kunde (+ Projekt) und Beschreibung. Aus: nur ein generisches „Fokus" — auch Beschreibung und Tags bleiben dann weg.',
+    'An: Titel = Kunde (+ Projekt) und Beschreibung. Aus: nur ein generisches „Fokus“ — auch Beschreibung und Tags bleiben dann weg.',
   'export.ical.privacyNote': 'Honorare und interne Notizen erscheinen nie im Kalender.',
   'export.footer.pdfHint': 'Vorlage anpassen unter',
   'export.footer.pdfHintPath': 'Einstellungen → PDF-Vorlage',
@@ -675,7 +675,7 @@ export const de = {
   'settings.mcp.registrationHint':
     'In die .mcp.json (Projekt) oder ~/.claude.json eintragen — die Pfade sind für diese Installation bereits eingesetzt.',
   'settings.mcp.unavailable':
-    'Der mitgelieferte Server fehlt in dieser Installation. Im Entwicklungs-Checkout: „pnpm build:mcp" ausführen und die Einstellungen erneut öffnen.',
+    'Der mitgelieferte Server fehlt in dieser Installation. Im Entwicklungs-Checkout: „pnpm build:mcp“ ausführen und die Einstellungen erneut öffnen.',
   'settings.mcp.copy': 'Kopieren',
   'settings.mcp.copied': 'In die Zwischenablage kopiert.',
   'settings.mcp.privacyTitle': 'Datenschutz',
@@ -703,10 +703,10 @@ export const de = {
   // v1.17 #132 — Teams-Presence spiegeln
   'settings.presence.enable': 'Teams-Status spiegeln',
   'settings.presence.enableHint':
-    'Setzt dich bei laufendem Timer in Teams auf Beschäftigt (rot) und hinterlegt eine Statusmeldung („🔴 Fokus …") — beim Stoppen wird beides entfernt. Ein manuell gesetzter Status hat Vorrang. Nur mit Arbeits-/Schulkonto; Fehler beeinflussen den Timer nie.',
+    'Setzt dich bei laufendem Timer in Teams auf Beschäftigt (rot) und hinterlegt eine Statusmeldung („🔴 Fokus …“) — beim Stoppen wird beides entfernt. Ein manuell gesetzter Status hat Vorrang. Nur mit Arbeits-/Schulkonto; Fehler beeinflussen den Timer nie.',
   'settings.presence.showClient': 'Kundennamen im Status anzeigen',
   'settings.presence.showClientHint':
-    'Aus: nur „🔴 Fokus". An: „🔴 Fokus: Kunde — Projekt". Der Text ist für Kolleg:innen sichtbar.',
+    'Aus: nur „🔴 Fokus“. An: „🔴 Fokus: Kunde — Projekt“. Der Text ist für Kolleg:innen sichtbar.',
   'settings.presence.reconnectHint':
     'Für den Teams-Status fehlt noch die Berechtigung (Presence.ReadWrite) — einmal neu verbinden.',
   'settings.presence.reconnect': 'Erneut verbinden',
@@ -717,7 +717,7 @@ export const de = {
     'Erlaubt Konsolen wie dem Stream Deck, Timer pro Kunde (und Projekt) zu starten und zu stoppen. Der Tastendruck gilt als Bestätigung; jede Aktion landet im Audit-Log. Nur bei laufender App.',
   'settings.controller.plugin': 'Stream-Deck-Plugin',
   'settings.controller.pluginHint':
-    'Die Tasten und das Drehrad brauchen das TimeTrack-Plugin in der Stream-Deck-App. Es liegt jedem Release als Datei „com.timetrack.streamdeck.streamDeckPlugin" bei — herunterladen, doppelklicken, fertig. Es steckt bewusst nicht im Installer: die Stream-Deck-App verwaltet ihre Plugins selbst.',
+    'Die Tasten und das Drehrad brauchen das TimeTrack-Plugin in der Stream-Deck-App. Es liegt jedem Release als Datei „com.timetrack.streamdeck.streamDeckPlugin“ bei — herunterladen, doppelklicken, fertig. Es steckt bewusst nicht im Installer: die Stream-Deck-App verwaltet ihre Plugins selbst.',
   'settings.controller.pluginButton': 'Zum Download',
   // v1.17 #169 — abonnierbarer iCal-Feed
   'settings.icalFeed.title': 'Kalender-Feed (webcal)',
@@ -855,7 +855,7 @@ export const de = {
   'settings.tags.mergeSelect': '— Ziel-Tag wählen —',
   'settings.tags.mergeConfirmTitle': 'Tags zusammenführen',
   'settings.tags.mergeConfirmBody':
-    "{count} Eintrag/Einträge von '{source}' werden in '{target}' umgeschrieben. Diese Aktion kann nicht rückgängig gemacht werden.",
+    '{count} Eintrag/Einträge von „{source}“ werden in „{target}“ umgeschrieben. Diese Aktion kann nicht rückgängig gemacht werden.',
   'settings.tags.mergeConfirmOk': 'Zusammenführen',
   'settings.tags.delete': 'Löschen',
   'settings.tags.deleteTitle': 'Tag löschen',
@@ -866,7 +866,7 @@ export const de = {
   'settings.tags.noEntries': '0 Einträge',
 
   // ── TagInput — closed system (v1.12 #107) ──────────────────────────────────
-  'tags.createOption': "+ '{tag}' erstellen",
+  'tags.createOption': '+ „{tag}“ erstellen',
   'tags.manageLink': 'Tags verwalten →',
 
   // ── Native dialogs of the main process (#270) ─────────────────────────────
@@ -927,7 +927,7 @@ export const de = {
     'Die Microsoft-Anmeldung läuft dann über die App-ID {id} statt über die von TimeTrack. Ändere das nur, wenn deine IT es vorgibt.',
   'mainDialog.settingConfirm.graphClientId.confirm': 'Verwenden',
   'mainDialog.hotkey.title': 'TimeTrack — Hotkey-Konflikt',
-  'mainDialog.hotkey.message': 'Der Mini-Widget-Hotkey "{hotkey}" konnte nicht registriert werden.',
+  'mainDialog.hotkey.message': 'Der Mini-Widget-Hotkey „{hotkey}“ konnte nicht registriert werden.',
   'mainDialog.hotkey.detail':
     'Eine andere Anwendung verwendet diese Tastenkombination bereits.\n\nDu kannst in den Einstellungen einen anderen Hotkey wählen.',
   'mainDialog.ok': 'OK',
@@ -971,7 +971,97 @@ export const de = {
   'mainFile.fallbackClient': 'Kunde',
   'mainError.exportCancelled': 'Export abgebrochen',
   'mainError.selectionCancelled': 'Auswahl abgebrochen',
-  'mainError.saveCancelled': 'Speichern abgebrochen'
+  'mainError.saveCancelled': 'Speichern abgebrochen',
+
+  // ── Main process: refused entry writes (#296 part B) ─────────────────────
+  // One key per EntryErrorCode (main/entryErrors.ts). German word for word as
+  // before: the MCP bridge sends these to its clients (client API).
+  'mainError.entry.startInvalid': 'Startzeit ist ungültig',
+  'mainError.entry.endInvalid': 'Endzeit ist ungültig',
+  'mainError.entry.startInFuture': 'Startzeit darf nicht in der Zukunft liegen',
+  'mainError.entry.endBeforeStart': 'Endzeit muss nach der Startzeit liegen',
+  'mainError.entry.tooLong': 'Dauer überschreitet 24 Stunden',
+  'mainError.entry.descriptionTooLong': 'Beschreibung überschreitet {max} Zeichen',
+  'mainError.entry.referenceTooLong': 'Referenz überschreitet {max} Zeichen',
+  'mainError.entry.noteTooLong': 'Notiz überschreitet {max} Zeichen',
+  'mainError.entry.clientMissing': 'Kunde existiert nicht',
+  'mainError.entry.projectNotOfClient': 'Projekt gehört nicht zu diesem Kunden',
+  'mainError.entry.overlap': 'Eintrag überlappt mit einem bestehenden Eintrag desselben Kunden',
+  'mainError.entry.missing': 'Eintrag existiert nicht',
+  'mainError.entry.splitEdge':
+    'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten.',
+  'mainError.entry.splitGap':
+    'Ein mittlerer Teil dieses Eintrags wurde gelöscht. Die übrigen Teile lassen sich deshalb nicht gemeinsam bearbeiten.',
+  'mainError.entry.staleEdit':
+    'Der Eintrag hat sich während der Rückfrage geändert. Bitte die Änderung erneut anfragen.',
+  'mainError.entry.timerStartInFuture': 'Startzeit liegt in der Zukunft',
+  'mainError.entry.startBeforeRunning': 'Startzeit liegt vor dem Beginn des laufenden Eintrags',
+
+  // ── Main process: tag management (#296 part B) ────────────────────────────
+  'mainError.tag.empty': 'Tag-Name darf nicht leer sein',
+  'mainError.tag.tooLong': 'Tag-Name darf maximal {max} Zeichen haben',
+  'mainError.tag.whitespace': 'Tag-Name darf keine Leerzeichen enthalten (nutze „_“ oder „-“)',
+  'mainError.tag.chars': 'Tag-Name darf nur Kleinbuchstaben, Ziffern und . _ - enthalten',
+  'mainError.tag.exists': 'Tag „{tag}“ existiert bereits',
+  'mainError.tag.renameExists': 'Ein Tag mit dem Namen „{tag}“ existiert bereits',
+  'mainError.tag.mergeSame': 'Quell- und Ziel-Tag dürfen nicht gleich sein',
+  'mainError.tag.inUse':
+    'Tag „{tag}“ hat noch {count} Eintrag/Einträge und kann nicht gelöscht werden',
+
+  // ── Main process: PDF merge (#296 part B) ─────────────────────────────────
+  'mainError.merge.noInvoicePath': 'Kein Rechnungspfad angegeben',
+  'mainError.merge.noPath': 'Kein Pfad angegeben',
+  'mainError.merge.notPdf': 'Die gewählte Datei ist keine PDF',
+  'mainError.merge.notFound': 'Datei nicht gefunden',
+  'mainError.merge.badRequest': 'Ungültige PDF-Anfrage',
+  'mainError.merge.bothRequired': 'Beide PDF-Pfade sind erforderlich',
+  'mainError.merge.timesheetRequired': 'Mindestens ein Stundennachweis ist erforderlich',
+  'mainError.merge.timesheetPathInvalid': 'Ungültiger Stundennachweis-Pfad',
+  'mainError.merge.labelTimesheet': 'Stundennachweis',
+  'mainError.merge.labelTimesheetN': 'Stundennachweis {n}',
+  'mainError.merge.labelInvoice': 'Rechnung',
+  'mainError.merge.labeled': '{label}: {error}',
+  'mainError.merge.timesheetTooBig': '{label}-PDF zu groß (max. 50 MB)',
+  'mainError.merge.invoiceTooBig': 'Rechnungs-PDF zu groß (max. 50 MB)',
+  'mainError.merge.pdfTooBig': 'PDF zu groß (max. 50 MB)',
+  'mainError.merge.locked': '{label} ist durch ein anderes Programm gesperrt: {file}',
+  'mainError.merge.fileLocked': 'Datei ist durch ein anderes Programm gesperrt: {file}',
+  'mainError.merge.invalidPdf': 'Ungültige oder verschlüsselte PDF-Datei',
+
+  // ── Main process: clients, projects, export, logo, settings (#296 part B) ─
+  'mainError.ipc.rateNegative': 'Stundensatz darf nicht negativ sein',
+  'mainError.ipc.nameEmpty': 'Name darf nicht leer sein',
+  'mainError.ipc.nameTooLong': 'Name darf höchstens 100 Zeichen lang sein',
+  'mainError.ipc.nameReserved': '„{name}“ ist ein reservierter Name',
+  'mainError.ipc.projectMissing': 'Projekt nicht gefunden',
+  'mainError.ipc.projectMoveHasEntries':
+    'Projekt hat Einträge und kann nicht zu einem anderen Kunden verschoben werden',
+  'mainError.ipc.projectHasActive': 'Projekt hat noch aktive Einträge',
+  'mainError.ipc.linkNotAllowed': 'Nur http:// und https:// Links erlaubt',
+  'mainError.export.badPdfRequest': 'Ungültige PDF-Anfrage',
+  'mainError.export.badCsvRequest': 'Ungültige CSV-Anfrage',
+  'mainError.export.badIcalRequest': 'Ungültige iCal-Anfrage',
+  'mainError.export.clientNotFound': 'Kunde {id} nicht gefunden',
+  'mainError.logo.format': 'Logo-Format nicht unterstützt: {ext}',
+  'mainError.logo.formatNone': 'Logo-Format nicht unterstützt: (unbekannt)',
+  'mainError.logo.tooBig': 'Logo überschreitet 1 MB ({kb} KB)',
+  'mainError.settings.hotkeyRefused': 'Hotkey „{hotkey}“ konnte nicht registriert werden.',
+  'mainError.settings.hotkeyLost': 'Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.',
+  'mainError.settings.unknownKey': 'Unbekannte Einstellung: {key}',
+  'mainError.settings.badValue': 'Ungültiger Wert für {key}',
+  'mainError.analytics.badMonth': 'Ungültige Monatsangabe',
+
+  // ── Main process: update install, calendar-import domains (#296 part B) ──
+  'mainError.update.blockedOne':
+    'Das Update kann nicht installiert werden: {count} MCP-Server ({list}) benutzt noch die TimeTrack-Programmdatei und hat auf die Aufforderung zum Beenden nicht reagiert. Diese Prozesse haben kein Fenster — sie gehören zu einem laufenden AI-Client (Einstellungen → Integrationen). Beende den AI-Client und versuche es erneut.',
+  'mainError.update.blockedMany':
+    'Das Update kann nicht installiert werden: {count} MCP-Server ({list}) benutzen noch die TimeTrack-Programmdatei und haben auf die Aufforderung zum Beenden nicht reagiert. Diese Prozesse haben kein Fenster — sie gehören zu einem laufenden AI-Client (Einstellungen → Integrationen). Beende den AI-Client und versuche es erneut.',
+  'mainError.update.startedMidUpdate':
+    'Mindestens einer dieser Server wurde erst während des Updates gestartet — solange der AI-Client läuft, startet er beendete Server automatisch neu.',
+  'mainError.update.devMode': 'Update-Check ist im Entwicklungsmodus deaktiviert.',
+  'mainError.domain.invalid': '„{domain}“ ist keine gültige Domain.',
+  'mainError.domain.clientMissing': 'Kunde {id} existiert nicht.',
+  'mainError.domain.projectNotOfClient': 'Projekt {project} gehört nicht zu Kunde {client}.'
 } as const
 
 export type TranslationKey = keyof typeof de

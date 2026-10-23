@@ -688,6 +688,32 @@ Beschreibung: "Workshop"
       })
       expect(res).toMatchObject({ ok: false, error: 'Eintrag existiert nicht' })
     })
+
+    // #296 part B: the entry write path refuses with a code; the MCP bridge
+    // words it, and always in German (client API), even with the app set to
+    // English. Through the domain: validation, overlap, the timer switch.
+    it('refusals from the entry write path reach the MCP client in German', async () => {
+      const { ctx } = recording()
+      const bad = await handleRequest(ctx, {
+        ...create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'),
+        args: {
+          client_id: 999,
+          started_at: '2025-10-28T09:00:00+01:00',
+          stopped_at: '2025-10-28T12:00:00+01:00'
+        }
+      })
+      expect(bad).toMatchObject({ ok: false, code: 'invalid', error: 'Kunde existiert nicht' })
+
+      await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
+      const overlap = await handleRequest(
+        ctx,
+        create('2025-10-28T10:00:00+01:00', '2025-10-28T11:00:00+01:00')
+      )
+      expect(overlap).toMatchObject({
+        ok: false,
+        error: 'Eintrag überlappt mit einem bestehenden Eintrag desselben Kunden'
+      })
+    })
   })
 
   // Owner review #255: free text from the MCP client must not shape the

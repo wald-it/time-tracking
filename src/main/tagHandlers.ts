@@ -1,8 +1,9 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import log from 'electron-log/main'
 import type { IpcResult } from '../shared/types'
 import { MAX_TAG_LEN, TAG_RE } from '../shared/tags'
+import { appLocale, dialogT, type DialogT } from './mainI18n'
 
 export interface TagWithCount {
   name: string
@@ -13,18 +14,29 @@ function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  // The message, not `Error: <message>`: the renderer shows it as a toast (#296).
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
-function validateTagName(name: string): string | null {
+/** The tag texts in the app language (#296 part B). */
+function tFor(db: Database.Database): DialogT {
+  return dialogT(
+    appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
+  )
+}
+
+function validateTagName(t: DialogT, name: string): string | null {
   const trimmed = name.trim().toLowerCase()
-  if (trimmed.length === 0) return 'Tag-Name darf nicht leer sein'
-  if (trimmed.length > MAX_TAG_LEN) return `Tag-Name darf maximal ${MAX_TAG_LEN} Zeichen haben`
+  if (trimmed.length === 0) return t('mainError.tag.empty')
+  if (trimmed.length > MAX_TAG_LEN) return t('mainError.tag.tooLong', { max: MAX_TAG_LEN })
   if (/\s/.test(trimmed)) {
-    return 'Tag-Name darf keine Leerzeichen enthalten (nutze "_" oder "-")'
+    return t('mainError.tag.whitespace')
   }
   if (!TAG_RE.test(trimmed)) {
-    return 'Tag-Name darf nur Kleinbuchstaben, Ziffern und . _ - enthalten'
+    return t('mainError.tag.chars')
   }
   return null
 }
@@ -72,12 +84,13 @@ export function getAllTagsWithCount(db: Database.Database): IpcResult<TagWithCou
  */
 export function createTag(db: Database.Database, name: string): IpcResult<void> {
   const trimmed = name.trim().toLowerCase()
-  const err = validateTagName(trimmed)
+  const t = tFor(db)
+  const err = validateTagName(t, trimmed)
   if (err) return fail(err)
 
   try {
     const existing = db.prepare('SELECT name FROM tags WHERE name = ?').get(trimmed)
-    if (existing) return fail(`Tag '${trimmed}' existiert bereits`)
+    if (existing) return fail(t('mainError.tag.exists', { tag: trimmed }))
     db.prepare('INSERT INTO tags (name) VALUES (?)').run(trimmed)
     return ok(undefined)
   } catch (e) {
@@ -104,12 +117,13 @@ export function renameTag(
 
   if (trimmedOld === trimmedNew) return ok(undefined)
 
-  const errNew = validateTagName(trimmedNew)
+  const t = tFor(db)
+  const errNew = validateTagName(t, trimmedNew)
   if (errNew) return fail(errNew)
 
   const tx = db.transaction(() => {
     const existing = db.prepare('SELECT name FROM tags WHERE name = ?').get(trimmedNew)
-    if (existing) throw new Error(`Ein Tag mit dem Namen '${trimmedNew}' existiert bereits`)
+    if (existing) throw new Error(t('mainError.tag.renameExists', { tag: trimmedNew }))
 
     db.prepare('UPDATE tags SET name = ? WHERE name = ?').run(trimmedNew, trimmedOld)
 
@@ -142,7 +156,7 @@ export function mergeTag(db: Database.Database, source: string, target: string):
   const trimmedSource = source.trim().toLowerCase()
   const trimmedTarget = target.trim().toLowerCase()
 
-  if (trimmedSource === trimmedTarget) return fail('Quell- und Ziel-Tag dürfen nicht gleich sein')
+  if (trimmedSource === trimmedTarget) return fail(tFor(db)('mainError.tag.mergeSame'))
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -181,9 +195,7 @@ export function deleteTag(db: Database.Database, name: string): IpcResult<void> 
       .get(trimmed) as { cnt: number }
 
     if (rows.cnt > 0) {
-      return fail(
-        `Tag '${trimmed}' hat noch ${rows.cnt} Eintrag/Einträge und kann nicht gelöscht werden`
-      )
+      return fail(tFor(db)('mainError.tag.inUse', { tag: trimmed, count: rows.cnt }))
     }
 
     db.prepare('DELETE FROM tags WHERE name = ?').run(trimmed)

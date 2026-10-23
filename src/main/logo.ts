@@ -23,10 +23,26 @@ const MIME_BY_EXT: Record<AllowedExt, string> = {
   '.webp': 'image/webp'
 }
 
+/**
+ * A logo that cannot be used: the locale key of the reason and its values,
+ * worded by the IPC handler in the app language (#296 part B).
+ */
+export class LogoError extends Error {
+  constructor(
+    readonly key: 'mainError.logo.format' | 'mainError.logo.formatNone' | 'mainError.logo.tooBig',
+    readonly vars: Record<string, string | number> = {}
+  ) {
+    super(key)
+    this.name = 'LogoError'
+  }
+}
+
 function normaliseExt(filename: string): AllowedExt {
   const ext = extname(filename).toLowerCase() as AllowedExt
   if (!ALLOWED_EXTS.includes(ext)) {
-    throw new Error(`Logo-Format nicht unterstützt: ${ext || '(unbekannt)'}`)
+    throw ext
+      ? new LogoError('mainError.logo.format', { ext })
+      : new LogoError('mainError.logo.formatNone')
   }
   return ext
 }
@@ -40,7 +56,7 @@ function normaliseExt(filename: string): AllowedExt {
 export function saveLogo(sourcePath: string, userDataDir: string): string {
   const stat = statSync(sourcePath)
   if (stat.size > MAX_LOGO_BYTES) {
-    throw new Error(`Logo überschreitet 1 MB (${(stat.size / 1024).toFixed(0)} KB)`)
+    throw new LogoError('mainError.logo.tooBig', { kb: (stat.size / 1024).toFixed(0) })
   }
   const ext = normaliseExt(sourcePath)
   removeLogo(userDataDir)

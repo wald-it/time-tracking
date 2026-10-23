@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { saveLogo, removeLogo, readLogoAsDataUrl, MAX_LOGO_BYTES } from './logo'
+import { LogoError, saveLogo, removeLogo, readLogoAsDataUrl, MAX_LOGO_BYTES } from './logo'
+import { dialogT } from './mainI18n'
 
 describe('logo storage', () => {
   let tmpDir: string
@@ -23,15 +24,32 @@ describe('logo storage', () => {
     return p
   }
 
+  /** The LogoError saveLogo throws, worded as the IPC handler does (#296). */
+  function refusal(src: string, locale: 'de' | 'en'): string {
+    try {
+      saveLogo(src, userDataDir)
+    } catch (e) {
+      if (e instanceof LogoError) return dialogT(locale)(e.key, e.vars)
+      throw e
+    }
+    throw new Error('saveLogo accepted the file')
+  }
+
   it('rejects unsupported extensions', () => {
     const src = writeFixture('logo.gif', Buffer.from([0x47, 0x49, 0x46]))
-    expect(() => saveLogo(src, userDataDir)).toThrow(/nicht unterstützt/)
+    expect(() => saveLogo(src, userDataDir)).toThrow(LogoError)
+    expect(refusal(src, 'de')).toBe('Logo-Format nicht unterstützt: .gif')
+    expect(refusal(src, 'en')).toBe('Logo format not supported: .gif')
+    expect(refusal(writeFixture('logo', 'x'), 'de')).toBe(
+      'Logo-Format nicht unterstützt: (unbekannt)'
+    )
   })
 
   it('rejects files larger than 1 MB', () => {
     const big = Buffer.alloc(MAX_LOGO_BYTES + 1, 0xff)
     const src = writeFixture('big.png', big)
-    expect(() => saveLogo(src, userDataDir)).toThrow(/1 MB/)
+    expect(refusal(src, 'de')).toBe('Logo überschreitet 1 MB (1024 KB)')
+    expect(refusal(src, 'en')).toBe('The logo is larger than 1 MB (1024 KB)')
   })
 
   it('saves a PNG logo into userData and returns the new path', () => {

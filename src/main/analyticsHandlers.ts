@@ -2,12 +2,14 @@ import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { IpcResult, MonthQuery, AnalyticsSummary } from '../shared/types'
 import { billedMinutesSql, feeCentSql } from '../shared/currency'
+import { appLocale, dialogT } from './mainI18n'
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  // The message, not `Error: <message>`: the renderer shows it (#296).
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
 function pad(n: number): string {
@@ -61,7 +63,15 @@ export function buildAnalyticsSummary(
       month < 1 ||
       month > 12
     ) {
-      return fail('Ungültige Monatsangabe')
+      // In the app language (#296); the db is open, the system list unused.
+      return fail(
+        dialogT(
+          appLocale(
+            () => db,
+            () => []
+          )
+        )('mainError.analytics.badMonth')
+      )
     }
 
     const result = db.transaction((): AnalyticsSummary => {

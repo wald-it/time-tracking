@@ -80,6 +80,13 @@ describe('locale completeness', () => {
     expect(emptyEN).toEqual([])
   })
 
+  // #296 part B: German quotes are „…“ throughout; a straight " or ' in a
+  // German text is a quote that slipped back in.
+  it('DE strings quote with „…“, never with straight quotes', () => {
+    const straight = deKeys.filter((k) => /["']/.test(de[k]))
+    expect(straight).toEqual([])
+  })
+
   it('all DE strings contain their interpolation slots in EN', () => {
     // Slots like {version} in DE must also appear in EN (or be intentionally dropped).
     // This catches copy-paste mistakes where the slot is forgotten.

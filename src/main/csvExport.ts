@@ -46,14 +46,19 @@ export async function handleCsvExport(
   req: CsvRequest
 ): Promise<IpcResult<{ path: string }>> {
   try {
+    const locale = appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
+    const t = dialogT(locale)
     if (!req || typeof req.clientId !== 'number' || !req.fromIso || !req.toIso) {
-      return fail('Ungültige CSV-Anfrage')
+      return fail(t('mainError.export.badCsvRequest'))
     }
 
     const client = db
       .prepare(`SELECT id, name, color, active, rate_cent, created_at FROM clients WHERE id = ?`)
       .get(req.clientId) as Client | undefined
-    if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
+    if (!client) return fail(t('mainError.export.clientNotFound', { id: req.clientId }))
 
     const entries = exportEntries(db, req)
 
@@ -65,12 +70,8 @@ export async function handleCsvExport(
             | undefined)
         : undefined
 
-    const locale = appLocale(
-      () => db,
-      () => app.getPreferredSystemLanguages()
-    )
     const result = await dialog.showSaveDialog({
-      title: dialogT(locale)('mainDialog.csv.title'),
+      title: t('mainDialog.csv.title'),
       defaultPath: await exportDefaultPath(
         db,
         'csv',

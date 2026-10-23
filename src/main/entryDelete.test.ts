@@ -38,7 +38,7 @@ describe('deleteEntry / undeleteEntry (#323)', () => {
       started_at: new Date(2026, 5, 10, 23, 0, 0).toISOString(),
       stopped_at: new Date(2026, 5, 11, 1, 0, 0).toISOString()
     })
-    if (!r.ok) throw new Error(r.error)
+    if (!r.ok) throw new Error(r.error.code)
     return rowsOf(r.data.link_id!)
   }
 
@@ -105,7 +105,7 @@ describe('deleteEntry / undeleteEntry (#323)', () => {
       started_at: '2026-06-12T09:00:00.000Z',
       stopped_at: '2026-06-12T10:00:00.000Z'
     })
-    if (!single.ok) throw new Error(single.error)
+    if (!single.ok) throw new Error(single.error.code)
     expect(deleteEntry(db, single.data.id).ok).toBe(true)
     expect(liveCount()).toBe(2) // the pair is untouched
     expect(undeleteEntry(db, single.data.id).ok).toBe(true)
