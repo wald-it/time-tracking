@@ -17,7 +17,8 @@ import {
   GraphAuthError,
   isPersonalAccount,
   needsRefresh,
-  PRESENCE_SCOPE
+  PRESENCE_SCOPE,
+  hasScope
 } from '../shared/graphAuth'
 import type { AccountInfo, StoredTokens } from '../shared/graphAuth'
 import { refreshTokens } from './graphAuth'
@@ -178,21 +179,32 @@ async function refreshWithFallback(
   tokens: StoredTokens,
   deps: GraphAccountDeps
 ): Promise<StoredTokens> {
-  const wanted = cfg.scopes ?? CALENDAR_SCOPES
   const base = CALENDAR_SCOPES as readonly string[]
-  if (wanted.every((s) => base.includes(s))) return refreshTokens(cfg, tokens, deps.auth)
+  const extras = (cfg.scopes ?? base).filter((s) => !hasScope(base, s))
   try {
     return await refreshTokens(cfg, tokens, deps.auth)
   } catch (err) {
-    // Only a refusal by the server; a network error is retried by the caller.
-    if (!(err instanceof GraphAuthError) || err.code === null) throw err
+    // Only a refusal of the scopes; a network error, an outage or throttling
+    // must not cost a consented feature its scope.
+    if (extras.length === 0 || !(err instanceof GraphAuthError) || !isRefusal(err.code)) {
+      throw err
+    }
     deps.log?.(
-      `graph account: refresh with feature scopes refused (${err.code}), retrying with the calendar scopes`
+      `graph account: refresh with ${extras.join(' ')} refused (${err.code}), retrying with the calendar scopes`
     )
     return refreshTokens({ ...cfg, scopes: [...CALENDAR_SCOPES] }, tokens, deps.auth)
   }
 }
-/** Outcome of "check connection" — proves the stored token is accepted by Graph. */
+
+/** OAuth codes with which the token endpoint refuses a grant or its scopes. */
+function isRefusal(code: string | null): boolean {
+  return (
+    code === 'invalid_grant' ||
+    code === 'consent_required' ||
+    code === 'interaction_required' ||
+    code === 'invalid_scope'
+  )
+} /** Outcome of "check connection" — proves the stored token is accepted by Graph. */
 export interface VerifyResult {
   /** From Graph's own `/me`, not from the id_token — a second, independent source. */
   displayName: string | null
