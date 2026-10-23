@@ -167,15 +167,16 @@ export async function performUpdateInstall(deps: {
 
 /**
  * The switch as stored (#273). A failed read must not take the rest of the
- * startup down with it (initAutoUpdater runs in the middle of whenReady), so
- * it falls back to the default, which is on.
+ * startup down with it (initAutoUpdater runs in the middle of whenReady), and
+ * it must not contact GitHub for someone who switched the check off — so an
+ * unreadable setting skips the check at start. "Check now" still works.
  */
 function startupCheckEnabled(getSetting: (key: string) => string | undefined): boolean {
   try {
     return isUpdateCheckEnabled(getSetting(UPDATE_CHECK_SETTING_KEY))
   } catch (err) {
-    log.warn('[updater] could not read the update-check setting, using the default:', err)
-    return isUpdateCheckEnabled(undefined)
+    log.warn('[updater] could not read the update-check setting, skipping the check at start:', err)
+    return false
   }
 }
 

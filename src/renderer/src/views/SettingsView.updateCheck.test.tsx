@@ -74,12 +74,16 @@ describe('Settings → Updates: automatic check switch (#273)', () => {
     const { set } = mockApi({})
     await openUpdates()
     expect(autoCheckSwitch().getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText(de['settings.update.autoInfo'])).toBeTruthy()
 
     await act(async () => {
       fireEvent.click(autoCheckSwitch())
     })
     expect(set).toHaveBeenCalledWith('update_check_enabled', '0')
     expect(autoCheckSwitch().getAttribute('aria-checked')).toBe('false')
+    // The switch applies from the next start, so the Actions hint must not
+    // follow it within the session.
+    expect(screen.getByText(de['settings.update.autoInfo'])).toBeTruthy()
   })
 
   it('stored off: shows off, and "Check now" still checks', async () => {

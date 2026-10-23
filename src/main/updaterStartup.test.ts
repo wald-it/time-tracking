@@ -27,8 +27,9 @@ vi.mock('electron', () => ({
     handle: (channel: string, fn: (...args: unknown[]) => unknown) => handlers.set(channel, fn)
   }
 }))
+const logWarn = vi.hoisted(() => vi.fn())
 vi.mock('electron-log/main', () => ({
-  default: { info: () => undefined, warn: () => undefined, error: () => undefined }
+  default: { info: () => undefined, warn: logWarn, error: () => undefined }
 }))
 vi.mock('electron-updater', () => ({ default: { autoUpdater: updater } }))
 
@@ -50,6 +51,7 @@ beforeEach(async () => {
   vi.resetModules()
   ;({ initAutoUpdater } = await import('./updater'))
   handlers.clear()
+  logWarn.mockClear()
   updater.checkForUpdates.mockClear()
   updater.checkForUpdatesAndNotify.mockClear()
   updater.downloadUpdate.mockClear()
@@ -81,7 +83,7 @@ describe('update check at start (#273)', () => {
     expect(updater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1)
   })
 
-  it('a failed settings read does not abort startup and falls back to the default (on)', () => {
+  it('a failed settings read does not abort startup, skips the check at start and logs it', () => {
     expect(() =>
       initAutoUpdater({
         isDev: false,
@@ -90,8 +92,13 @@ describe('update check at start (#273)', () => {
         }
       })
     ).not.toThrow()
-    expect(updater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1)
+    expect(updater.checkForUpdatesAndNotify).not.toHaveBeenCalled()
+    expect(updater.checkForUpdates).not.toHaveBeenCalled()
     expect(handlers.has('update:check')).toBe(true)
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.stringContaining('could not read the update-check setting'),
+      expect.any(Error)
+    )
   })
 
   it('dev mode: no check at start even when switched on', () => {

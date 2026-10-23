@@ -760,6 +760,7 @@ export const de = {
   'settings.update.autoCheck': 'Automatisch nach Updates suchen',
   'settings.update.autoCheckHint':
     'Bei jedem Start fragt TimeTrack bei GitHub, ob es eine neue Version gibt. Ist der Schalter aus, fragt es nur, wenn du auf „Jetzt nach Updates suchen“ klickst. Eine Änderung gilt ab dem nächsten Start.',
+
   // ── Timer — Projekt-Picker (v1.9 #75 PR 3) ────────────────────────────────
   'timer.project.label': 'Projekt',
   'timer.project.placeholder': '— Kein Projekt —',

@@ -749,6 +749,7 @@ export const en: Record<TranslationKey, string> = {
   'settings.update.autoCheck': 'Check for updates automatically',
   'settings.update.autoCheckHint':
     'At every start, TimeTrack asks GitHub whether there is a new version. When the switch is off, it only asks when you click “Check for updates now”. A change applies from the next start.',
+
   // ── Timer — Project picker (v1.9 #75 PR 3) ───────────────────────────────
   'timer.project.label': 'Project',
   'timer.project.placeholder': '— No project —',
