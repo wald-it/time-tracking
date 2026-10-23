@@ -153,6 +153,8 @@ export const en: Record<TranslationKey, string> = {
   'timer.client.noClientsSuffix': ', to add some.',
   'timer.description.label': 'Description',
   'timer.description.placeholder': 'What are you working on?',
+  'timer.startFailed': 'Start failed: {error}',
+  'timer.switchFailed': 'Switch failed: {error}. The running timer keeps running.',
 
   // ── TodayView ─────────────────────────────────────────────────────────────
   'today.error.title': 'Data could not be loaded.',

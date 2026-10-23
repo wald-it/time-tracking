@@ -39,7 +39,6 @@ function mockApi(stored: Partial<Settings>): {
     },
     update: {
       onStatus: () => () => undefined,
-      getVersion: async () => ok('0.0.0-test'),
       getStatus: async () => ok({ status: 'idle' }),
       getLastCheck: async () => ok(null),
       check,
