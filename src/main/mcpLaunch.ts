@@ -2,17 +2,14 @@
  * Resolves how an MCP client (Claude Code et al.) should launch TimeTrack's
  * bundled MCP server.
  *
- * The server is a plain Node program, but `better-sqlite3` in this project is
- * compiled against the **Electron** ABI (`electron-builder install-app-deps`).
- * Running it under a system Node therefore fails with NODE_MODULE_VERSION
- * mismatch, and keeping a second Node-ABI copy of the binary around means two
- * artifacts to build, ship and bump.
- *
- * Instead we launch the server with the Electron binary in Node mode
- * (`ELECTRON_RUN_AS_NODE=1`): same V8, same module ABI as the native module the
- * app already ships, and no extra artifact. In a packaged install that binary
- * is `TimeTrack.exe` itself; in dev it's `node_modules/electron/dist/electron`.
- * Both are `process.execPath`, so one expression covers both.
+ * The server is a plain Node program, and a user's machine has no Node of its
+ * own to rely on. So we launch it with the Electron binary in Node mode
+ * (`ELECTRON_RUN_AS_NODE=1`): the app already ships that runtime, and the
+ * N-API better-sqlite3 binary in the package loads under it (#269; before
+ * that, the module's Electron-only ABI was a second reason). In a packaged
+ * install that binary is `TimeTrack.exe` itself; in dev it's
+ * `node_modules/electron/dist/electron`. Both are `process.execPath`, so one
+ * expression covers both.
  *
  * The server entry lives next to the app bundle (`out/mcp/mcp/server.js`
  * relative to `app.getAppPath()`), which is inside `app.asar` in a packaged

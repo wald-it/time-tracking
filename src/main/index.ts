@@ -566,10 +566,10 @@ app.whenReady().then(async () => {
   // Smoke-test mode (CI release pipeline). When invoked with
   // `--smoke-test=<path>`, open a fresh DB in the temp userData set up
   // at module load (never the user's live DB), which runs migrations against
-  // the Electron-ABI better-sqlite3 binary), write a JSON status to
+  // the packaged better-sqlite3 binary), write a JSON status to
   // <path>, and exit. No window, no tray, no IPC handlers.
   // This is the v1.2 packaged-binary smoke check (E11) that catches
-  // ABI / native-module regressions before we publish a release.
+  // native-module and packaging regressions — on every PR since #269.
   if (smokeTestArg !== undefined) {
     const outPath = parseSmokeOutPath(smokeTestArg)
     let smokeDb: ReturnType<typeof getDb> | undefined

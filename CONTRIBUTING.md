@@ -52,42 +52,39 @@ App data lands locally in `%AppData%\time-tracking\` (Windows) or
 `~/Library/Application Support/time-tracking/` (macOS). You can safely back these
 up or delete them during development.
 
-### Tests and the native SQLite ABI
+### Tests and native SQLite
 
-`better-sqlite3` is a native module and is built against the **Electron** ABI
-during `pnpm install`, because the app needs it at runtime. A system Node cannot
-load this binary. `pnpm test` solves this by starting Vitest via
-`scripts/run-vitest.mjs` on the Electron binary in Node mode
-(`ELECTRON_RUN_AS_NODE=1`) — the same solution as the MCP server
-(`src/main/mcpLaunch.ts`). There is **no** second binary copy and **no**
-rebuild before the test run; `pnpm dev` and the package builds keep
-working.
+`pnpm test` starts Vitest via `scripts/run-vitest.mjs` on the Electron binary
+in Node mode (`ELECTRON_RUN_AS_NODE=1`), so the suite runs on the Node version
+the app ships — the same launch path as the MCP server
+(`src/main/mcpLaunch.ts`). Calling Vitest directly (`pnpm exec vitest`, an IDE
+runner on the system Node) fails on purpose: `vitest.config.ts` refuses to load
+outside Electron, with a hint to use `pnpm test`.
 
-A green run is therefore **0 skipped** across all Vitest projects. If you
-instead see a three-digit skip count, the environment is broken — not the code.
-There is deliberately no absolute test count here — it goes stale with every
-PR and then reads like a defect; a silently shrinking suite is instead guarded
-by `src/test/vitestProjects.test.ts`, which fails when a `*.test.ts(x)` file is
+`better-sqlite3` is an N-API module (since
+[#269](https://github.com/wald-it/time-tracking/issues/269)). Its package ships
+prebuilt binaries under `node_modules/better-sqlite3/prebuilds/` that load
+under Node and Electron alike, so **nothing is compiled**: there is no
+`postinstall` rebuild, no `electron-rebuild` step in CI, and pnpm is told not
+to build the package (`pnpm.ignoredBuiltDependencies` in `package.json`). Please
+do not add a rebuild back — none is needed, and on a machine without Visual
+Studio (Windows) or Xcode (macOS) it makes `pnpm install` fail.
+
+A green run is **0 skipped** across all Vitest projects. If you see a
+three-digit skip count, the environment is broken — not the code. There is
+deliberately no absolute test count here — it goes stale with every PR and then
+reads like a defect; a silently shrinking suite is instead guarded by
+`src/test/vitestProjects.test.ts`, which fails when a `*.test.ts(x)` file is
 not covered by any Vitest project.
 
-**If tests fail with `ERR_DLOPEN_FAILED` / `NODE_MODULE_VERSION`:**
+**If tests fail with `ERR_DLOPEN_FAILED` / `NODE_MODULE_VERSION`:** the
+install is broken (the prebuilt file for your platform is missing or was
+replaced). Reinstall with `pnpm install --frozen-lockfile`.
 
-1. Are you calling Vitest directly (`pnpm exec vitest`, IDE runner)? Then use
-   `pnpm test`. Directly under system Node it cannot work.
-2. Otherwise the binary is stale — usually because at some point
-   `pnpm rebuild better-sqlite3` ran and replaced it with a Node-ABI build.
-   **`pnpm install` does not fix this:** electron-builder remembers the
-   built ABI in `node_modules/better-sqlite3/build/Release/.forge-meta` and
-   skips the rebuild when the marker already matches — the file lies then.
-   Force it:
-
-   ```powershell
-   pnpm exec electron-rebuild -f -w better-sqlite3
-   ```
-
-In short: please do **not** use `pnpm rebuild better-sqlite3`. It leaves an
-app that can no longer open its own database, without any command
-complaining about it.
+Until 1.22 the module was built against the Electron ABI, and the rule here
+was never to run `pnpm rebuild better-sqlite3`
+([#151](https://github.com/wald-it/time-tracking/issues/151)). That trap is
+gone with the N-API build.
 
 ## Pull request workflow
 

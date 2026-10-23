@@ -67,7 +67,7 @@ What is planned lives in [ROADMAP.md](ROADMAP.md), what was deferred with a reas
 **Requirements:** Node.js 22, pnpm 10 (the versions CI uses). Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
-# Install dependencies (also compiles native SQLite module)
+# Install dependencies
 pnpm install
 
 # Start dev server with hot reload
@@ -83,19 +83,17 @@ pnpm test
 pnpm build:win
 ```
 
-> **Why `pnpm test` and not `vitest`:** `better-sqlite3` is built against the
-> **Electron** ABI (`postinstall` → `electron-builder install-app-deps`), because
-> the app needs it at runtime. A system Node cannot load this binary.
-> `pnpm test` therefore starts Vitest via `scripts/run-vitest.mjs` on the
-> Electron binary in Node mode (`ELECTRON_RUN_AS_NODE=1`) — the same answer as
-> the MCP server, see below. This way local and CI runs execute the same tests,
-> without a second binary copy and without the rebuild back-and-forth that would
-> break `pnpm dev`.
+> **Why `pnpm test` and not `vitest`:** the tests run in the runtime the app
+> ships. `pnpm test` starts Vitest via `scripts/run-vitest.mjs` on the Electron
+> binary in Node mode (`ELECTRON_RUN_AS_NODE=1`), so the suite runs on
+> Electron's own Node, not on whichever Node is installed — the same launch
+> path as the MCP server, see below.
 >
-> Calling `pnpm exec vitest run` **directly** fails accordingly — with a hint
-> pointing to `pnpm test`. This is intentional: previously the DB tests would
-> silently skip themselves in that case and a third of the coverage disappeared
-> behind a green summary ([#151](https://github.com/wald-it/time-tracking/issues/151)).
+> Calling `pnpm exec vitest run` **directly** fails on purpose, with a hint
+> pointing to `pnpm test` (`vitest.config.ts` refuses to load outside Electron).
+> `better-sqlite3` is an N-API module with prebuilt binaries since
+> [#269](https://github.com/wald-it/time-tracking/issues/269), so there is no
+> native rebuild step anywhere — neither on install nor before the tests.
 
 ## MCP Integration
 
@@ -144,10 +142,10 @@ separately installed Node required.
 }
 ```
 
-> **Why the app starts itself:** `better-sqlite3` is built against the **Electron** ABI
-> (`electron-builder install-app-deps`); a system Node cannot load the module.
-> `ELECTRON_RUN_AS_NODE=1` runs the Electron binary as plain Node — same ABI
-> as the bundled module, without a second binary copy in the installer.
+> **Why the app starts itself:** the server is a Node program, and TimeTrack
+> does not assume a Node installation on your machine. `ELECTRON_RUN_AS_NODE=1`
+> runs the app's own Electron binary as plain Node, which loads the bundled
+> `better-sqlite3` from the installation.
 
 > **Updates while MCP servers are running (#198):** Because each server runs the
 > installed binary, it holds `TimeTrack.exe` open — which would block the Windows

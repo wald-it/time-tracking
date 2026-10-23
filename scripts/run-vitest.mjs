@@ -1,26 +1,25 @@
 /**
  * Runs Vitest on the Electron binary in Node mode (`ELECTRON_RUN_AS_NODE=1`).
  *
- * Why this exists (#151): `better-sqlite3` is compiled against the **Electron**
- * ABI by the `postinstall` hook (`electron-builder install-app-deps`), because
- * that is the ABI the app needs at runtime. A system Node cannot load that
- * binary, so every DB-backed suite used to skip itself — locally that meant
- * `334 passed | 201 skipped` next to a green summary, and two bugs reached CI
- * in the v1.15.0 release that a truthful local run would have caught.
+ * Why this exists: the tests run in the runtime the app ships. Electron brings
+ * its own Node (24.x with Electron 44), and the host may have another one
+ * (CI uses Node 22). Test code that behaves differently on the two would pass
+ * here and fail in the app, or the other way round.
  *
- * The repo already answers this conflict once, for the MCP server (see
- * `src/main/mcpLaunch.ts`): don't keep a second Node-ABI copy of the binary —
- * run the consumer on Electron instead. Same V8, same module ABI, no extra
- * artifact, and no rebuild round-trip that would leave `pnpm dev` broken.
- * This script applies the same answer to the test runner.
+ * History (#151, #269): this script was first the answer to a native ABI
+ * conflict. `better-sqlite3` used to be compiled against the Electron ABI, so a
+ * system Node could not load it, and every DB-backed suite skipped itself
+ * (`334 passed | 201 skipped` next to a green summary). Since #269 it is an
+ * N-API module whose prebuilt binary loads under both runtimes, so the ABI
+ * reason is gone — the runtime reason stays, and `vitest.config.ts` refuses to
+ * load outside Electron so that a direct `vitest` call cannot quietly test on
+ * the host's Node.
  *
  * Vitest spawns its workers with `process.execPath` and inherits this
- * environment, so the flag reaches them too. Verified on 2026-07-26:
- * `595 passed | 1 skipped`, identical to CI, with the Electron-ABI binary in
- * place and `pnpm dev` still functional.
+ * environment, so the flag reaches them too.
  *
  * Depends on Electron's **RunAsNode** fuse staying enabled — the same caveat
- * `src/main/mcpLaunch.ts` documents. The project sets no fuses today.
+ * `src/main/mcpLaunch.ts` documents.
  */
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -36,13 +35,16 @@ function fail(lines) {
 
 let electronPath
 try {
+  // Since Electron 42 the package downloads its binary on first use instead
+  // of during install, so the first run after a fresh install may print
+  // "Downloading Electron binary..." here.
   electronPath = require('electron')
 } catch (cause) {
   fail([
     'Cannot run the test suite: the Electron binary is missing.',
     '',
-    'Tests run on Electron so that they load the same better-sqlite3 build the',
-    'app uses. Reinstall dependencies first:',
+    'Tests run on Electron so that they run in the runtime the app ships.',
+    'Reinstall dependencies first:',
     '',
     '    pnpm install',
     '',
