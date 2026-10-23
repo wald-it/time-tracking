@@ -34,6 +34,8 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
+- **The installer carries only what the app needs** — The app package used to include everything in the source folder that was not explicitly excluded: design material, documentation, notes, scripts and the Stream Deck plugin sources. It now contains only the built app, its bundled resources and the licence; a check after every release build fails if anything else gets in or a required file is missing.
+
 - **Starting from the start dialog while a timer runs switches like a quick-start key** — If a timer was started elsewhere while the start dialog was open, confirming the dialog now stops that timer and starts the new one at the same moment, asks for a description of the stopped entry if it had none, and leaves an open description prompt in place instead of closing it.
 
 - **A backfilled entry can no longer overlap the running timer of the same client** — Adding or editing an entry inside the time of a running timer for the same client was accepted (the comparison against "now" mixed two time formats, so on the same day the running entry looked already finished), and both entries counted the same hours. A running entry now counts as open-ended: anything after its start overlaps it, in the app, over MCP (`create_manual_entry`, `update_entry_fields`) and in the calendar import, which now reports such an appointment as not imported, with the reason on its row. Entries before its start and entries of other clients are not affected.

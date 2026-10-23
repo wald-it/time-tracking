@@ -256,6 +256,9 @@ jobs:
           pnpm run build
           pnpm exec electron-builder --win --publish never
 
+      - name: Check package contents (only runtime files in app.asar)
+        run: node scripts/check-package-contents.mjs dist/win-unpacked/resources/app.asar
+
       - name: Smoke test packaged binary (DB + migrations against Electron ABI)
         shell: pwsh
         run: |
@@ -354,6 +357,9 @@ jobs:
         run: |
           pnpm run build
           pnpm exec electron-builder --mac --publish never
+
+      - name: Check package contents (only runtime files in app.asar)
+        run: node scripts/check-package-contents.mjs dist/mac-arm64/TimeTrack.app/Contents/Resources/app.asar
 
       - name: Smoke test packaged binary (DB + migrations against Electron ABI)
         run: |
