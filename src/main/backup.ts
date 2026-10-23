@@ -12,6 +12,8 @@ import {
   readSync,
   closeSync
 } from 'fs'
+import type { Locale } from '../shared/i18n'
+import { dialogT } from './mainI18n'
 
 export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
 
@@ -300,52 +302,50 @@ export function restoreBackup(
   return { safetyBackupPath }
 }
 
-/** What the user is told when a restore did not happen. */
-export const RESTORE_FAILED_TITLE = 'TimeTrack — Wiederherstellung nicht durchgeführt'
-export const RESTORE_IN_USE_MESSAGE =
-  'Wiederherstellung nicht durchgeführt — die Datenbank ist noch in einem anderen Programm ' +
-  'geöffnet (z. B. ein MCP-Client wie Claude Desktop). Programm beenden und erneut versuchen.'
-
 /**
  * `restoreBackup` for the IPC handler: a failure is reported through
  * `report` (a native dialog in the app) before the result goes back. The
  * renderer relaunches the app after every restore attempt, so a message shown
  * only in the renderer would vanish with the window and the user would take
  * the relaunch for a successful restore.
+ *
+ * The caller reads the language before the restore starts: by the time a
+ * failure is reported, the database handle may already be closed (#270).
  */
 export function restoreBackupOrReport(
   db: Database.Database,
   backupPath: string,
   currentDbPath: string,
+  locale: Locale,
   report: (title: string, message: string) => void
 ): { ok: true; data: { safetyBackupPath: string } } | { ok: false; error: string } {
+  const t = dialogT(locale)
   try {
     return { ok: true, data: restoreBackup(db, backupPath, currentDbPath) }
   } catch (err) {
     const message =
       err instanceof DbInUseError
-        ? RESTORE_IN_USE_MESSAGE
-        : `Wiederherstellung nicht durchgeführt: ${(err as Error).message}`
-    report(RESTORE_FAILED_TITLE, message)
+        ? t('mainDialog.restore.inUse')
+        : t('mainDialog.restore.failed', { cause: (err as Error).message })
+    report(t('mainDialog.restore.title'), message)
     return { ok: false, error: message }
   }
 }
 
-export const RESTORE_UNKNOWN_MESSAGE =
-  'Wiederherstellung nicht durchgeführt — diese Backup-Datei steht nicht in der Backup-Liste.'
-
 /**
  * #272 — `backup:restore` takes the file NAME of a backup that `listBackups`
  * shows for the current backup folder, never a path. Anything else is refused
- * before the open database is touched.
+ * before the open database is touched. The texts follow `locale` (#270).
  */
 export function restoreListedBackupOrReport(
   db: Database.Database,
   filename: unknown,
   backupPathOverride: string | undefined,
   currentDbPath: string,
+  locale: Locale,
   report: (title: string, message: string) => void
 ): { ok: true; data: { safetyBackupPath: string } } | { ok: false; error: string } {
+  const t = dialogT(locale)
   let listed: BackupInfo | undefined
   try {
     listed =
@@ -355,13 +355,14 @@ export function restoreListedBackupOrReport(
   } catch (err) {
     // The folder is unreachable (an offline network share): say so here, the
     // renderer relaunches right after and would swallow its own message.
-    const message = `Wiederherstellung nicht durchgeführt: ${(err as Error).message}`
-    report(RESTORE_FAILED_TITLE, message)
+    const message = t('mainDialog.restore.failed', { cause: (err as Error).message })
+    report(t('mainDialog.restore.title'), message)
     return { ok: false, error: message }
   }
   if (!listed) {
-    report(RESTORE_FAILED_TITLE, RESTORE_UNKNOWN_MESSAGE)
-    return { ok: false, error: RESTORE_UNKNOWN_MESSAGE }
+    const message = t('mainDialog.restore.unknown')
+    report(t('mainDialog.restore.title'), message)
+    return { ok: false, error: message }
   }
-  return restoreBackupOrReport(db, listed.fullPath, currentDbPath, report)
+  return restoreBackupOrReport(db, listed.fullPath, currentDbPath, locale, report)
 }

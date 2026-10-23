@@ -15,6 +15,7 @@ import type Database from 'better-sqlite3'
 import { formatCsv, type CsvOptions } from '../shared/csv'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
+import { dialogT, readLanguage } from './mainI18n'
 
 export interface CsvRequest {
   clientId: number
@@ -70,7 +71,7 @@ export async function handleCsvExport(
     }
 
     const result = await dialog.showSaveDialog({
-      title: 'CSV speichern',
+      title: dialogT(readLanguage(db))('mainDialog.csv.title'),
       defaultPath: `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
