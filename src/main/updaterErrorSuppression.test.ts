@@ -1,11 +1,12 @@
 /**
  * #284 — the offline tolerance of the start-up check must not outlive it.
  *
- * initAutoUpdater swallows the first `error` event (broadcast `idle`, no red
- * banner) so that an offline app start stays quiet. That suppression belongs
- * to the start-up check alone: once it has succeeded, later errors — a
- * failing "Check now", or a download that fails after a check found an update
- * — must reach the renderer as `error` over `update:status`. The download
+ * While the start-up check runs, initAutoUpdater holds its `error` events and
+ * keeps quiet only the one that is the check's own rejection (broadcast
+ * `idle`, no red banner), so an offline app start stays quiet. Every other
+ * error — a failing "Check now", or a download that fails, before or after
+ * the check has settled — must reach the renderer as `error` over
+ * `update:status`. The download
  * failure matters most: it is not part of the `update:check` result, so the
  * broadcast is the only way the UI learns about it.
  */
@@ -46,8 +47,8 @@ vi.mock('electron-updater', () => ({ default: { autoUpdater: updater } }))
 
 import { UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
 
-// updater.ts keeps module-level state, and the suppression flag is exactly
-// that state — every test starts from a fresh module.
+// updater.ts keeps the running start-up check in module-level state, so every
+// test starts from a fresh module.
 let initAutoUpdater: typeof import('./updater').initAutoUpdater
 
 /** electron-updater's own order: emit `error`, then reject (AppUpdater.checkForUpdates). */
