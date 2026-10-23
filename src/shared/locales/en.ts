@@ -972,7 +972,7 @@ export const en: Record<TranslationKey, string> = {
   'mainError.entry.splitGap':
     'A middle part of this entry was deleted, so the remaining parts cannot be edited together.',
   'mainError.entry.staleEdit':
-    'The entry changed while you were being asked. Please request the change again.',
+    'The entry changed while the confirmation was open. Please request the change again.',
   'mainError.entry.timerStartInFuture': 'The start time is in the future',
   'mainError.entry.startBeforeRunning': 'The start time is before the start of the running entry',
 
@@ -984,7 +984,7 @@ export const en: Record<TranslationKey, string> = {
   'mainError.tag.exists': "Tag '{tag}' already exists",
   'mainError.tag.renameExists': "A tag named '{tag}' already exists",
   'mainError.tag.mergeSame': 'Source and target tag cannot be the same',
-  'mainError.tag.inUse': "Tag '{tag}' is still used by entries ({count}) and cannot be deleted",
+  'mainError.tag.inUse': "Tag '{tag}' is still used by {count} entry/entries and cannot be deleted",
 
   // ── Main process: PDF merge (#296 part B) ─────────────────────────────────
   'mainError.merge.noInvoicePath': 'No invoice path given',
