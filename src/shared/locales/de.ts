@@ -755,7 +755,10 @@ export const de = {
   'settings.update.idle': 'Bereit',
   'settings.update.upToDate': 'Du verwendest die aktuelle Version.',
   'settings.update.autoInfo':
-    'Updates werden bei App-Start automatisch geprüft und im Hintergrund geladen. Du entscheidest, wann installiert wird.',
+    'Findet eine Suche ein Update, lädt TimeTrack es im Hintergrund. Du entscheidest, wann installiert wird.',
+  'settings.update.autoCheck': 'Automatisch nach Updates suchen',
+  'settings.update.autoCheckHint':
+    'Bei jedem Start fragt TimeTrack bei GitHub, ob es eine neue Version gibt. Ist der Schalter aus, fragt es nur, wenn du auf „Jetzt nach Updates suchen“ klickst. Eine Änderung gilt ab dem nächsten Start.',
 
   // ── Timer — Projekt-Picker (v1.9 #75 PR 3) ────────────────────────────────
   'timer.project.label': 'Projekt',
