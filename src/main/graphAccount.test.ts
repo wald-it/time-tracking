@@ -411,4 +411,65 @@ describe('concurrent token requests share one refresh (#341)', () => {
     await expect(getAccessToken(d)).resolves.toBe('access-2')
     expect(s.requests()).toBe(1)
   })
+  /** A token endpoint that answers after `during` ran, with `answer`. */
+  function slowServer(
+    answer: 'ok' | 'invalid_grant' | 'network',
+    during: () => void
+  ): { requests: () => number; fetchFn: typeof fetch } {
+    let n = 0
+    const fetchFn = (async () => {
+      n++
+      await new Promise((r) => setTimeout(r, 10))
+      during()
+      if (answer === 'network') throw new TypeError('fetch failed')
+      return (answer === 'ok'
+        ? {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              access_token: 'access-2',
+              refresh_token: 'rt-2',
+              expires_in: 3600
+            })
+          }
+        : {
+            ok: false,
+            status: 400,
+            json: async () => ({ error: 'invalid_grant' })
+          }) as unknown as Response
+    }) as unknown as typeof fetch
+    return { requests: () => n, fetchFn }
+  }
+
+  it('a disconnect during the refresh is not undone by its result', async () => {
+    let d!: GraphAccountDeps
+    const s = slowServer('ok', () => disconnect(d))
+    d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(loadTokens(d.store)).toBeNull()
+  })
+
+  it('a new connection made during a refused refresh is not deleted', async () => {
+    let d!: GraphAccountDeps
+    const fresh = tokens({ accessToken: 'access-new', refreshToken: 'rt-new' })
+    const s = slowServer('invalid_grant', () => saveTokens(fresh, d.store))
+    d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBe('access-new')
+    expect(loadTokens(d.store)?.refreshToken).toBe('rt-new')
+  })
+
+  it('a failed shared refresh reaches every caller once and is not kept', async () => {
+    const s = slowServer('network', () => {})
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    const results = await Promise.allSettled([getAccessToken(d), getAccessToken(d)])
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected'])
+    expect(s.requests()).toBe(1)
+    // The next call starts a new refresh instead of reusing the failed one.
+    await getAccessToken(d).catch(() => {})
+    expect(s.requests()).toBe(2)
+    expect(loadTokens(d.store)).not.toBeNull()
+  })
 })
