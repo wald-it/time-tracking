@@ -11,7 +11,7 @@ import { buildServer } from './server'
 
 const READ = { readOnlyHint: true, openWorldHint: false }
 // Writes can fire the user's outbound webhooks: openWorldHint true. None is
-// idempotent: a repeat adds again or acts on whatever runs at that moment.
+// marked idempotent, so no client retries a write on its own.
 const write = (destructiveHint: boolean): Record<string, boolean> => ({
   readOnlyHint: false,
   destructiveHint,
@@ -30,9 +30,9 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
   create_manual_entry: write(false),
   // Deletes the entry's rows and inserts the edited range under a new id.
   update_entry_fields: write(true),
-  // Ends a running entry at the new start, possibly in the past.
+  // Ends every entry without a stop time at the new start.
   start_timer: write(true),
-  // Ends whatever runs when the call arrives; it takes no id.
+  // Ends whatever runs when the write executes; it takes no id.
   stop_running_timer: write(true)
 }
 

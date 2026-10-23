@@ -86,20 +86,25 @@ function errorResult(e: unknown): {
  */
 const READ_TOOL_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const
 
-/** None of the writes is idempotent: a repeat adds, or acts on whatever runs then. */
+/**
+ * idempotentHint stays false for every write, so no client retries one on its
+ * own: create, start and stop act again on a repeat. update would fail on its
+ * now-stale id, but a client cannot tell that from the hint.
+ */
 const writeTool = (destructiveHint: boolean) =>
   ({ readOnlyHint: false, destructiveHint, idempotentHint: false, openWorldHint: true }) as const
 
 const WRITE_TOOL_ANNOTATIONS = {
   /** Only adds: a new, finished entry. */
   create_manual_entry: writeTool(false),
-  /** Changes an existing entry: the app deletes its rows (every linked
-   * midnight segment) and inserts the edited range under a new id. */
+  /** Deletes the entry's rows (every linked midnight segment) and inserts the
+   * edited range under a new id; the old id is gone afterwards. */
   update_entry_fields: writeTool(true),
-  /** Ends a running entry at the new start time, which may lie in the past. */
+  /** Ends every entry still without a stop time at the new start, which may
+   * lie in the past or up to a minute ahead. */
   start_timer: writeTool(true),
-  /** Ends whichever entry is running when the call arrives. It takes no id,
-   * so a retry can end a timer started in the meantime. */
+  /** Ends the entry that is running when the write executes, after any
+   * confirmation. It takes no id, so this need not be the one shown. */
   stop_running_timer: writeTool(true)
 } as const
 
