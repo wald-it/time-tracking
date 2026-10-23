@@ -10,6 +10,13 @@ import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './ba
 import { createBackup, listBackups, restoreListedBackupOrReport } from './backup'
 import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
 import {
+  MAIN_ONLY_SETTING_KEYS,
+  rememberPickedPdf,
+  ShellTargets,
+  SHELL_REFUSED_MESSAGE,
+  unpickedPdfError
+} from './handedOutPaths'
+import {
   createManualEntry,
   updateManualEntry,
   switchTimerAndNotify,
@@ -143,6 +150,40 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       }
     }
   }
+
+  /**
+   * The app's own locations, without touching the file system (no mkdir of a
+   * possibly dead network share). The shell helpers accept these, plus the
+   * default backup folder and the files a merge wrote. `paths:get` reports
+   * them too, with its own `backups` value (which creates the folder).
+   */
+  function appLocations(): { db: string; backups: string; logs: string; logFile: string } {
+    // electron-log returns a File transport whose `getFile()` resolves
+    // the on-disk log path lazily; the directory is its parent.
+    const logFile = log.transports.file.getFile().path
+    return {
+      db: getDbPath(),
+      backups: readBackupPathSetting(db) ?? getDefaultBackupsDir(),
+      logs: dirname(logFile),
+      logFile
+    }
+  }
+
+  /** #272: why a PDF request is refused, or null. A DB error refuses too. */
+  function pdfRequestRefusal(req: unknown): string | null {
+    try {
+      return unpickedPdfError(db, req)
+    } catch (e) {
+      return String(e)
+    }
+  }
+
+  // #272: what the shell helpers may open or reveal. The default backup
+  // folder stays allowed while a custom one is set (Settings falls back to it).
+  const shellTargets = new ShellTargets(() => [
+    ...Object.values(appLocations()),
+    getDefaultBackupsDir()
+  ])
 
   // ── Clients ──────────────────────────────────────────────────
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
@@ -610,7 +651,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         key: string
         value: string
       }[]
-      const settings = Object.fromEntries(rows.map((r) => [r.key, r.value])) as unknown as Settings
+      const settings = Object.fromEntries(
+        rows.filter((r) => !MAIN_ONLY_SETTING_KEYS.has(r.key)).map((r) => [r.key, r.value])
+      ) as unknown as Settings
       return ok(settings)
     } catch (e) {
       return fail(e)
@@ -784,8 +827,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   })
 
   // ── Shell helpers ────────────────────────────────
-  ipcMain.handle('shell:openPath', async (_e, path: string): Promise<IpcResult<void>> => {
-    const err = await shell.openPath(path)
+  // #272: only the app's own locations and files it wrote (handedOutPaths.ts).
+  ipcMain.handle('shell:openPath', async (_e, path: unknown): Promise<IpcResult<void>> => {
+    if (!shellTargets.allows(path)) return fail(SHELL_REFUSED_MESSAGE)
+    const err = await shell.openPath(path as string)
     if (err) return fail(err)
     return ok(undefined)
   })
@@ -796,8 +841,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     return ok(undefined)
   })
 
-  ipcMain.handle('shell:showItemInFolder', (_e, path: string): IpcResult<void> => {
-    shell.showItemInFolder(path)
+  ipcMain.handle('shell:showItemInFolder', (_e, path: unknown): IpcResult<void> => {
+    if (!shellTargets.allows(path)) return fail(SHELL_REFUSED_MESSAGE)
+    shell.showItemInFolder(path as string)
     return ok(undefined)
   })
 
@@ -811,20 +857,16 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       logFile: string
       mcp: McpRegistration
     }> => {
-      // electron-log returns a File transport whose `getFile()` resolves
-      // the on-disk log path lazily; the directory is its parent.
-      const logFile = log.transports.file.getFile().path
-      let backupsDir: string
+      // Settings opens the backup folder from here, so create it if missing.
+      let backups: string
       try {
-        backupsDir = getBackupsDir(getBackupPathSetting() || undefined)
+        backups = getBackupsDir(getBackupPathSetting() || undefined)
       } catch {
-        backupsDir = getDefaultBackupsDir()
+        backups = getDefaultBackupsDir()
       }
       return ok({
-        db: getDbPath(),
-        backups: backupsDir,
-        logs: dirname(logFile),
-        logFile,
+        ...appLocations(),
+        backups,
         // Settings → Integrationen renders this as a copy-paste `.mcp.json`.
         mcp: buildMcpRegistration(process.execPath, app.getAppPath())
       })
@@ -931,19 +973,44 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // <stem>_inkl_Stundennachweis.pdf. Falls back to a save dialog when the
   // target directory is not writable (e.g. a corporate archive folder).
   // Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-export', (_e, req) =>
-    mergeExportHandler(db, req, realFsDeps, saveDialogIn(dialogLocale))
-  )
+  // #272: every input PDF must have been picked in pdf:open-pdf-dialog, and the
+  // written file becomes a path the shell helpers may reveal.
+  ipcMain.handle('pdf:merge-export', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await mergeExportHandler(db, req, realFsDeps, saveDialogIn(dialogLocale))
+    if (res.ok) shellTargets.rememberWritten(res.data.path)
+    return res
+  })
 
   // PDF merge-only: merges two existing PDFs (Stundennachweis + invoice) without
   // re-rendering. Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-only', (_e, req) =>
-    mergeOnlyHandler(req, realFsDeps, saveDialogIn(dialogLocale))
-  )
+  ipcMain.handle('pdf:merge-only', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await mergeOnlyHandler(req, realFsDeps, saveDialogIn(dialogLocale))
+    if (res.ok) shellTargets.rememberWritten(res.data.path)
+    return res
+  })
 
   // PDF info: returns page count for a given PDF path. Used by the renderer to
   // show page counts before confirming a merge.
-  ipcMain.handle('pdf:pdf-info', (_e, req) => pdfInfoHandler(req))
+  // The PDF it read is refreshed in the pick list, so a selection the merge
+  // dialog keeps using never ages out. A failing refresh does not fail the read.
+  ipcMain.handle('pdf:pdf-info', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await pdfInfoHandler(req)
+    const filePath = (req as { filePath?: unknown }).filePath
+    if (res.ok && typeof filePath === 'string') {
+      try {
+        rememberPickedPdf(db, filePath)
+      } catch (e) {
+        log.warn('[pdf:pdf-info] could not refresh the pick list:', e)
+      }
+    }
+    return res
+  })
 
   // PDF open dialog: opens a native file picker and returns the selected path.
   // Safer than relying on file.path in the renderer (not available with contextIsolation).
@@ -957,6 +1024,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           properties: ['openFile']
         })
         if (result.canceled || !result.filePaths[0]) return ok(null)
+        rememberPickedPdf(db, result.filePaths[0])
         return ok({ filePath: result.filePaths[0] })
       } catch (e) {
         return fail(e)
