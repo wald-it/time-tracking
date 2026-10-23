@@ -168,7 +168,10 @@ describe('smoke userData isolation', () => {
     // prefix check differs would answer 'skipped' here and leave them behind.
     const dir = join(root, `${SMOKE_DIR_PREFIX}drift`)
     mkdirSync(dir)
-    const { command, args, env } = buildCleanerCommand(process.execPath, dir, 999999)
+    // A PID no OS hands out in practice, so the liveness check sees it gone at
+    // once (999999 can be a live process on Linux, and Windows masks PIDs).
+    const neverAPid = 2_147_483_647
+    const { command, args, env } = buildCleanerCommand(process.execPath, dir, neverAPid)
     const cleaner = spawn(command, args, {
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe']

@@ -131,12 +131,15 @@ export function removeSmokeUserDataDir(dir: string, tmpRoot: string = tmpdir()):
  * ignores it; tests wait for it instead of the cleaner's exit, because under
  * load Windows can take many seconds to finish tearing down an exited
  * process, and Node's `exit` event waits for that (#264).
+ *
+ * The prefix it accepts is SMOKE_DIR_PREFIX, built into the script text
+ * (#289): a fixed limit no caller can widen, unlike a value passed in the
+ * environment next to TT_SMOKE_DIR. JSON.stringify quotes it safely.
  */
 const CLEANER_SCRIPT = `
 const { rmSync } = require('fs')
 const { basename } = require('path')
 const dir = process.env.TT_SMOKE_DIR
-const prefix = process.env.TT_SMOKE_PREFIX
 const pid = Number(process.env.TT_SMOKE_PID)
 const deadline = Date.now() + 60000
 const alive = () => { try { process.kill(pid, 0); return true } catch { return false } }
@@ -146,7 +149,7 @@ const tick = () => {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch { outcome = 'failed' }
   process.stdout.write(outcome + '\\n')
 }
-if (!dir || !prefix || !basename(dir).startsWith(prefix)) process.stdout.write('skipped\\n')
+if (!dir || !basename(dir).startsWith(${JSON.stringify(SMOKE_DIR_PREFIX)})) process.stdout.write('skipped\\n')
 else tick()
 `
 
@@ -166,14 +169,7 @@ export function buildCleanerCommand(execPath: string, dir: string, pid: number):
   return {
     command: execPath,
     args: ['-e', CLEANER_SCRIPT],
-    env: {
-      ELECTRON_RUN_AS_NODE: '1',
-      TT_SMOKE_DIR: dir,
-      TT_SMOKE_PID: String(pid),
-      // Passed as data, not pasted into the script: no quoting to get wrong,
-      // and the cleaner checks exactly the prefix the app names its dirs with.
-      TT_SMOKE_PREFIX: SMOKE_DIR_PREFIX
-    }
+    env: { ELECTRON_RUN_AS_NODE: '1', TT_SMOKE_DIR: dir, TT_SMOKE_PID: String(pid) }
   }
 }
 
