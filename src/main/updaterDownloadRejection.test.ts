@@ -107,12 +107,22 @@ const settle = async (): Promise<void> => {
   for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 10))
 }
 
-async function start(stored: string | undefined): Promise<void> {
-  initAutoUpdater({
-    isDev: false,
-    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined)
-  })
+/** The settings table as updater.ts reads it, at the moment it reads. */
+const settings = new Map<string, string>()
+
+async function start(updateCheck: string | undefined): Promise<void> {
+  if (updateCheck !== undefined) settings.set(UPDATE_CHECK_SETTING_KEY, updateCheck)
+  initAutoUpdater({ isDev: false, getSetting: (key) => settings.get(key) })
   await settle()
+}
+
+const GERMAN = {
+  title: 'Ein neues Update kann installiert werden',
+  body: 'TimeTrack 9.9.9 wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf "Jetzt neu starten".'
+}
+const ENGLISH = {
+  title: 'A new update is ready to install',
+  body: 'TimeTrack 9.9.9 has been downloaded. To install it, click "Restart now" in the banner at the top of the TimeTrack window.'
 }
 
 const unhandled: unknown[] = []
@@ -128,6 +138,7 @@ beforeEach(async () => {
   sent.length = 0
   notifications.length = 0
   unhandled.length = 0
+  settings.clear()
   updater.checkForUpdates.mockReset()
   updater.checkForUpdatesAndNotify.mockClear()
   process.on('unhandledRejection', onUnhandled)
@@ -158,28 +169,51 @@ describe('a failed update download leaves no unhandled rejection (#309)', () => 
     expect(unhandled).toEqual([])
     expect(lastStatus()).toEqual({ status: 'error', message: 'download interrupted' })
   })
+})
 
-  it('start-up check: a finished download shows the "ready to install" notification', async () => {
+describe('the "update downloaded" notification (#309)', () => {
+  it('in the default language, German', async () => {
     updater.checkForUpdates.mockImplementation(findsUpdate('succeeds'))
     await start(undefined)
 
-    expect(notifications).toEqual([
-      {
-        title: 'A new update is ready to install',
-        body: 'TimeTrack 9.9.9 has been downloaded. To install it, click "Restart now" in the banner at the top of the TimeTrack window.'
-      }
-    ])
+    expect(notifications).toEqual([GERMAN])
     expect(unhandled).toEqual([])
   })
 
-  it('the notification names TimeTrack, not the package name app.getName() returns', async () => {
+  it('in English when the app is set to English', async () => {
+    settings.set('language', 'en')
     updater.checkForUpdates.mockImplementation(findsUpdate('succeeds'))
     await start(undefined)
 
-    expect(notifications).toHaveLength(1)
-    expect(notifications[0].body).toMatch(/^TimeTrack 9\.9\.9 /)
-    expect(notifications[0].body).not.toContain('time-tracking')
-    // And it does not promise an install on quit: autoInstallOnAppQuit is false.
-    expect(notifications[0].body).not.toMatch(/on exit|on quit/)
+    expect(notifications).toEqual([ENGLISH])
   })
+
+  it('in the language set when the download finishes, not at start', async () => {
+    let finish: (files: string[]) => void = () => undefined
+    updater.checkForUpdates.mockImplementation(async () => ({
+      updateInfo: { version: '9.9.9' },
+      downloadPromise: new Promise<string[]>((resolve) => (finish = resolve))
+    }))
+    await start(undefined) // German at start
+    settings.set('language', 'en')
+    finish(['TimeTrack-9.9.9-setup.exe'])
+    await settle()
+
+    expect(notifications).toEqual([ENGLISH])
+  })
+
+  it.each([undefined, 'en'])(
+    'language %s: names TimeTrack, not the package name app.getName() returns',
+    async (language) => {
+      if (language) settings.set('language', language)
+      updater.checkForUpdates.mockImplementation(findsUpdate('succeeds'))
+      await start(undefined)
+
+      expect(notifications).toHaveLength(1)
+      expect(notifications[0].body).toMatch(/^TimeTrack 9\.9\.9 /)
+      expect(notifications[0].body).not.toContain('time-tracking')
+      // And it promises no install on quit: autoInstallOnAppQuit is false.
+      expect(notifications[0].body).not.toMatch(/on exit|on quit|beim Beenden/)
+    }
+  )
 })

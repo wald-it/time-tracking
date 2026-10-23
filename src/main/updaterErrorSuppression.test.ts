@@ -22,8 +22,7 @@ const updater = vi.hoisted(() => ({
   autoDownload: false,
   autoInstallOnAppQuit: true,
   on: (event: string, fn: Handler) => updaterEvents.set(event, fn),
-  checkForUpdates: vi.fn(),
-  checkForUpdatesAndNotify: vi.fn()
+  checkForUpdates: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -88,7 +87,6 @@ beforeEach(async () => {
   updaterEvents.clear()
   sent.length = 0
   updater.checkForUpdates.mockReset()
-  updater.checkForUpdatesAndNotify.mockReset()
   // A start-up check that reaches GitHub and finds nothing new. The start-up
   // check and "Check now" both call checkForUpdates (#309): a test sets its own
   // start-up check with mockImplementationOnce before start().
