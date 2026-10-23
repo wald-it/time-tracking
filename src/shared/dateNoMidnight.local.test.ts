@@ -33,6 +33,6 @@ describe('a first half that ends at 01:00 because 00:00 does not exist', () => {
     const start = new Date(2026, 8, 5, 20)
     const boundary = split.localMidnightAfter(start)
     expect(date.endsAtNextMidnight(start, boundary)).toBe(true)
-    expect(date.parseStopToDate('2026-09-05T12:00:00', '01:00', true)).toEqual(boundary)
+    expect(date.parseStopToDate('2026-09-05', '01:00', true)).toEqual(boundary)
   })
 })

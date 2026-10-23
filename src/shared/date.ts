@@ -12,8 +12,16 @@ import { localMidnightAfter } from './midnightSplit'
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 function toDate(input: string | Date): Date {
-  return input instanceof Date ? input : new Date(input)
+  if (input instanceof Date) return input
+  // A bare date (what <input type="date"> gives) is a local calendar day.
+  // `new Date('2026-06-10')` would read it as UTC midnight, which is the day
+  // before everywhere west of UTC, and the form saved entries a day early.
+  const day = DATE_ONLY_RE.exec(input)
+  if (day) return new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]))
+  return new Date(input)
 }
+
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 
 /**
  * True iff `a` and `b` fall on the same calendar day in the host's local
