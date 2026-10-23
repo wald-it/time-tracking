@@ -438,3 +438,61 @@ describe('switchTimer (B1)', () => {
     expect(near.ok).toBe(true)
   })
 })
+
+// Release 1.22 (owner decision): a running entry counts as open-ended for the
+// overlap check. It compared against SQLite's datetime('now') as text, which
+// has a space where the stored ISO values have a `T` — on the same day the
+// running entry looked already ended, and a backfill inside it went through.
+describe('overlap with a running entry', () => {
+  let db: Database.Database
+  const H = 3_600_000
+  const at = (offsetMs: number): string => new Date(Date.now() + offsetMs).toISOString()
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+    // Acme runs since three hours ago.
+    startTimer(db, { client_id: 1, description: 'läuft', started_at: at(-3 * H) })
+  })
+
+  const backfill = (
+    client_id: number,
+    from: number,
+    to: number
+  ): ReturnType<typeof createManualEntry> =>
+    createManualEntry(db, {
+      client_id,
+      description: 'Nachtrag',
+      started_at: at(from),
+      stopped_at: at(to)
+    })
+
+  it('a backfill inside the running entry of the same client is refused', () => {
+    expect(backfill(1, -2 * H, -1 * H)).toEqual({
+      ok: false,
+      error: 'Eintrag überlappt mit einem bestehenden Eintrag desselben Kunden'
+    })
+  })
+
+  it('a backfill that reaches past now is refused too — the running entry will end later', () => {
+    expect(backfill(1, -1 * H, 1 * H)).toMatchObject({ ok: false, error: /überlappt/ })
+  })
+
+  it('before the running start is fine, and so is another client', () => {
+    expect(backfill(1, -5 * H, -4 * H).ok).toBe(true)
+    expect(backfill(2, -2 * H, -1 * H).ok).toBe(true)
+  })
+
+  it('an edit that moves an entry into the running one is refused', () => {
+    const made = backfill(1, -5 * H, -4 * H)
+    if (!made.ok || !made.data) throw new Error('setup')
+    const res = updateManualEntry(db, {
+      id: made.data.id,
+      client_id: 1,
+      description: 'verschoben',
+      started_at: at(-2 * H),
+      stopped_at: at(-1 * H)
+    })
+    expect(res).toMatchObject({ ok: false, error: /überlappt/ })
+  })
+})

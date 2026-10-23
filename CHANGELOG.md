@@ -34,6 +34,8 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
+- **A backfilled entry can no longer overlap the running timer of the same client** — Adding or editing an entry inside the time of a running timer for the same client was accepted (the comparison against "now" mixed two time formats, so on the same day the running entry looked already finished), and both entries counted the same hours. A running entry now counts as open-ended: anything after its start overlaps it, in the app, over MCP (`create_manual_entry`, `update_entry_fields`) and in the calendar import, which now reports such an appointment as not imported, with the reason on its row. Entries before its start and entries of other clients are not affected.
+
 - **Links open in the browser only when they are web links** — TimeTrack hands a link to the system only when it starts with `https://` or `http://`, from the main window, the mini widget and the in-app link buttons alike; other kinds of links are not opened. The app windows also no longer navigate away from the app.
 
 - **CSV export keeps text cells as text in spreadsheet apps** — A client name, description, tag or reference that starts with `=`, `+`, `-`, `@`, a tab or a carriage return now gets a leading `'`, so Excel, LibreOffice and Google Sheets show it as typed instead of reading it as a formula. The same applies to the tag labels of grouped exports. Dates, times, durations, rates and amounts are never prefixed. Both the DE and the US format behave the same.

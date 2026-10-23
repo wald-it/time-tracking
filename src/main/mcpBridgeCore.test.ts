@@ -645,3 +645,61 @@ describe('handleRequest — controller scope', () => {
     }
   })
 })
+
+// Release 1.22: the overlap rule with a running entry holds over MCP too —
+// both for a new entry and for an edit that moves one into the running entry.
+describe('handleRequest — overlap with a running entry', () => {
+  let db: Database.Database
+  const H = 3_600_000
+  const at = (offsetMs: number): string => new Date(Date.now() + offsetMs).toISOString()
+  const req = (op: string, args: Record<string, unknown>): BridgeRequest => ({
+    v: 1,
+    token: 'secret',
+    op,
+    args
+  })
+
+  beforeEach(async () => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, req('start_timer', { client_id: 1, started_at: at(-3 * H) }))
+  })
+
+  it('create_manual_entry inside the running entry of the same client is refused', async () => {
+    const { ctx } = makeCtx(db)
+    const res = await handleRequest(
+      ctx,
+      req('create_manual_entry', { client_id: 1, started_at: at(-2 * H), stopped_at: at(-1 * H) })
+    )
+    expect(res).toMatchObject({
+      ok: false,
+      code: 'invalid',
+      error: expect.stringMatching(/überlappt/)
+    })
+    const other = await handleRequest(
+      ctx,
+      req('create_manual_entry', { client_id: 2, started_at: at(-2 * H), stopped_at: at(-1 * H) })
+    )
+    expect(other.ok).toBe(true)
+  })
+
+  it('update_entry_fields moving an entry into the running one is refused', async () => {
+    const { ctx } = makeCtx(db)
+    const made = await handleRequest(
+      ctx,
+      req('create_manual_entry', { client_id: 1, started_at: at(-5 * H), stopped_at: at(-4 * H) })
+    )
+    expect(made.ok).toBe(true)
+    const id = made.ok ? (made.data as { id: number }).id : 0
+    const res = await handleRequest(
+      ctx,
+      req('update_entry_fields', { id, started_at: at(-2 * H), stopped_at: at(-1 * H) })
+    )
+    expect(res).toMatchObject({
+      ok: false,
+      code: 'invalid',
+      error: expect.stringMatching(/überlappt/)
+    })
+  })
+})
