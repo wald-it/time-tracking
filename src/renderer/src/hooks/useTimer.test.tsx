@@ -524,6 +524,194 @@ describe('useTimer — start() while a timer runs', () => {
   })
 })
 
+// A failed switch must not go unnoticed: the caller gets the error to show,
+// and a call that never answers must not leave the switch path locked.
+describe('useTimer — a failed switch is reported', () => {
+  it('switchTo() returns the error of a refused switch', async () => {
+    const { hook } = await setup({ switchFails: true })
+    await startTimer(hook)
+
+    let error: string | null = null
+    await act(async () => {
+      error = await hook.result.current.switchTo(1, null)
+    })
+
+    expect(error).toBe('boom')
+  })
+
+  it('start() while a timer runs returns the error of a refused switch', async () => {
+    const { hook } = await setup({ switchFails: true })
+    await startTimer(hook)
+
+    let error: string | null = null
+    await act(async () => {
+      error = await hook.result.current.start()
+    })
+
+    expect(error).toBe('boom')
+  })
+
+  it('a successful switch returns no error', async () => {
+    const { hook } = await setup()
+    await startTimer(hook)
+
+    let error: string | null = 'unset'
+    await act(async () => {
+      error = await hook.result.current.switchTo(1, null)
+    })
+
+    expect(error).toBeNull()
+  })
+
+  it('a call ignored while another switch is in flight returns no error', async () => {
+    const { hook } = await setup()
+    await startTimer(hook)
+
+    let results: Array<string | null> = []
+    await act(async () => {
+      results = await Promise.all([
+        hook.result.current.switchTo(1, null),
+        hook.result.current.switchTo(1, null)
+      ])
+    })
+
+    expect(results).toEqual([null, null])
+  })
+
+  it('a rejected switch call returns its message and unlocks the next switch', async () => {
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients })
+    const first = await startTimer(hook)
+    api.switch.mockRejectedValueOnce(new Error('ipc gone'))
+
+    let error: string | null = null
+    await act(async () => {
+      error = await hook.result.current.switchTo(2, null)
+    })
+
+    expect(error).toBe('ipc gone')
+    expect(hook.result.current.isLoading).toBe(false)
+    expect(hook.result.current.runningEntry?.id).toBe(first.id)
+
+    await act(async () => {
+      await hook.result.current.switchTo(2, null)
+    })
+
+    expect(api.switch).toHaveBeenCalledTimes(2)
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+  })
+})
+
+describe('useTimer — a refused or rejected start is reported', () => {
+  it('start() returns the error of a refused start', async () => {
+    const { api, hook } = await setup()
+    api.start.mockResolvedValueOnce({ ok: false, error: 'refused' })
+
+    let error: string | null = null
+    await act(async () => {
+      error = await hook.result.current.start()
+    })
+
+    expect(error).toBe('refused')
+    expect(hook.result.current.runningEntry).toBeNull()
+  })
+
+  it('startWithClient() returns the error of a refused start', async () => {
+    const { api, hook } = await setup()
+    api.start.mockResolvedValueOnce({ ok: false, error: 'refused' })
+
+    let error: string | null = null
+    await act(async () => {
+      error = await hook.result.current.startWithClient(1, null)
+    })
+
+    expect(error).toBe('refused')
+  })
+
+  it('a successful start returns no error', async () => {
+    const { hook } = await setup()
+
+    let error: string | null = 'unset'
+    await act(async () => {
+      error = await hook.result.current.start()
+    })
+
+    expect(error).toBeNull()
+  })
+
+  it('a rejected start call returns its message and clears isLoading', async () => {
+    const { api, hook } = await setup()
+    api.start.mockRejectedValueOnce(new Error('ipc gone'))
+
+    let error: string | null = null
+    await act(async () => {
+      error = await hook.result.current.start()
+    })
+
+    expect(error).toBe('ipc gone')
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+
+  it('a rejected startWithClient call returns its message and clears isLoading', async () => {
+    const { api, hook } = await setup()
+    api.start.mockRejectedValueOnce(new Error('ipc gone'))
+
+    let error: string | null = null
+    await act(async () => {
+      error = await hook.result.current.startWithClient(1, null)
+    })
+
+    expect(error).toBe('ipc gone')
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+})
+
+// Every timer action that sets isLoading around an IPC call must clear it
+// even when the call rejects: a stuck flag disables the start dialog's start
+// key and makes the switch path ignore every later call.
+describe('useTimer — a rejected call never leaves isLoading set', () => {
+  it('stop()', async () => {
+    const { api, hook } = await setup()
+    await startTimer(hook)
+    api.stop.mockRejectedValueOnce(new Error('ipc gone'))
+
+    await act(async () => {
+      await hook.result.current.stop().catch(() => {})
+    })
+
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+
+  it('idleStopAtIdle()', async () => {
+    const { api, hook } = await setup()
+    await startTimer(hook)
+    act(() => api.listeners.idleDetected?.(IDLE))
+    api.update.mockRejectedValueOnce(new Error('ipc gone'))
+
+    await act(async () => {
+      await hook.result.current.idleStopAtIdle().catch(() => {})
+    })
+
+    expect(hook.result.current.isLoading).toBe(false)
+    // The idle prompt stays open for a retry: nothing was stopped.
+    expect(hook.result.current.idleEvent).not.toBeNull()
+    expect(api.idleDismiss).not.toHaveBeenCalled()
+  })
+
+  it('idleMarkPause()', async () => {
+    const { api, hook } = await setup()
+    await startTimer(hook)
+    act(() => api.listeners.idleDetected?.(IDLE))
+    api.update.mockRejectedValueOnce(new Error('ipc gone'))
+
+    await act(async () => {
+      await hook.result.current.idleMarkPause().catch(() => {})
+    })
+
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+})
+
 describe('useTimer — one engine per window', () => {
   // Every view calls useTimer(); before, each mounted instance ran its own
   // 1 s tick and 30 s heartbeat, so the main process got one heartbeat (and

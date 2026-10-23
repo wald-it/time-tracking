@@ -10,6 +10,7 @@ import { fireEvent } from '@testing-library/dom'
 import { StartTimerModal } from './StartTimerModal'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useTimerStore } from '../store/timerStore'
+import { useToastStore } from '../store/toastStore'
 import type { Client, Project } from '../../../shared/types'
 
 afterEach(() => {
@@ -234,5 +235,79 @@ describe('StartTimerModal — dialog shell (PR 5)', () => {
     expect(document.activeElement).toBe(first)
     fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
     expect(document.activeElement).toBe(last)
+  })
+})
+
+// Started while a timer runs, the dialog takes the switch path. When the main
+// process refuses the switch, the old timer keeps running, and the user has
+// to learn that the dialog's choice did not take effect.
+describe('StartTimerModal — a refused start or switch', () => {
+  afterEach(() => {
+    useTimerStore.setState({ runningEntry: null, description: '' })
+    useToastStore.setState({ toasts: [] })
+  })
+
+  it('shows the error as a toast and says the running timer keeps running', async () => {
+    setup()
+    const api = (window as unknown as { api: { entries: Record<string, unknown> } }).api
+    api.entries.switch = vi.fn(async () => ({
+      ok: false as const,
+      error: 'Projekt gehört nicht zu diesem Kunden'
+    }))
+    useTimerStore.setState({
+      runningEntry: {
+        id: 1,
+        client_id: 1,
+        description: 'Läuft',
+        started_at: '2026-10-23T08:00:00.000Z',
+        stopped_at: null,
+        heartbeat_at: null,
+        rounded_min: null,
+        deleted_at: null,
+        created_at: '2026-10-23T08:00:00.000Z',
+        link_id: null,
+        tags: '',
+        reference: '',
+        billable: 1,
+        private_note: '',
+        project_id: null
+      }
+    })
+    const onClose = vi.fn()
+    render(
+      <I18nProvider>
+        <StartTimerModal open onClose={onClose} prefill={{ clientId: 2, projectId: null }} />
+      </I18nProvider>
+    )
+    const startKey = await screen.findByRole('button', { name: 'Timer starten' })
+    await waitFor(() => expect((startKey as HTMLButtonElement).disabled).toBe(false))
+
+    fireEvent.click(startKey)
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual([
+      'Wechsel fehlgeschlagen: Projekt gehört nicht zu diesem Kunden. Der laufende Timer läuft weiter.'
+    ])
+  })
+
+  it('a refused start with no timer running shows the error as a toast', async () => {
+    setup()
+    const api = (window as unknown as { api: { entries: Record<string, unknown> } }).api
+    api.entries.start = vi.fn(async () => ({ ok: false as const, error: 'Kunde existiert nicht' }))
+    const onClose = vi.fn()
+    render(
+      <I18nProvider>
+        <StartTimerModal open onClose={onClose} prefill={{ clientId: 2, projectId: null }} />
+      </I18nProvider>
+    )
+    const startKey = await screen.findByRole('button', { name: 'Timer starten' })
+    await waitFor(() => expect((startKey as HTMLButtonElement).disabled).toBe(false))
+
+    fireEvent.click(startKey)
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual([
+      'Start fehlgeschlagen: Kunde existiert nicht'
+    ])
   })
 })
