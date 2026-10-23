@@ -68,9 +68,12 @@ function fail(error: unknown): IpcResult<never> {
 
 /**
  * #292: a hotkey is stored only once it is registered, so the setting and the
- * active shortcut agree. Refused, the previous one stays in both. If storing
- * fails after the new one was registered, the previous one is registered
- * again, for the same reason.
+ * active shortcut agree. Refused, the previous one stays in both.
+ *
+ * Accepted gap: if storing fails after the new one was registered (a locked
+ * database), the OS holds the new hotkey while the setting keeps the old one,
+ * which comes back at the next start. The error is reported and logged; no
+ * rollback, because undoing the registration has its own failure cases.
  */
 function writeHotkey(
   db: Database.Database,
@@ -78,15 +81,8 @@ function writeHotkey(
   key: 'hotkey_toggle' | 'mini_hotkey',
   value: string
 ): IpcResult<void> {
-  const apply = (accelerator: string): HotkeyChange =>
-    key === 'hotkey_toggle' ? hooks.setHotkey(accelerator) : hooks.setMiniHotkey(accelerator)
-  const previous =
-    (
-      db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
-        | { value: string }
-        | undefined
-    )?.value ?? ''
-  const change = apply(value)
+  const change: HotkeyChange =
+    key === 'hotkey_toggle' ? hooks.setHotkey(value) : hooks.setMiniHotkey(value)
   if (!change.ok) {
     const lost = change.previousKept ? '' : ' Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
     return fail(`Hotkey "${value}" konnte nicht registriert werden.${lost}`)
@@ -94,7 +90,7 @@ function writeHotkey(
   try {
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
   } catch (e) {
-    if (previous) apply(previous)
+    console.error(`[settings] ${key} "${value}" is registered but could not be stored:`, e)
     return fail(e)
   }
   return ok(undefined)

@@ -115,7 +115,7 @@ describe('settings:set allow-list', () => {
     expect(stored('hotkey_toggle')).toBe('Alt+Shift+S')
   })
 
-  it('storing fails after the new hotkey was registered: the previous one is registered again', () => {
+  it('storing fails after the new hotkey was registered: reported, no rollback (accepted gap)', () => {
     db.prepare("INSERT INTO settings (key, value) VALUES ('hotkey_toggle', 'Alt+Shift+S')").run()
     db.exec(
       "CREATE TRIGGER no_write BEFORE INSERT ON settings WHEN NEW.key = 'hotkey_toggle' " +
@@ -124,7 +124,7 @@ describe('settings:set allow-list', () => {
     const res = writeSettingFromRenderer(db, hooks(), 'hotkey_toggle', 'Ctrl+Alt+T')
     expect(res).toEqual({ ok: false, error: expect.stringMatching(/database is locked/) })
     expect(stored('hotkey_toggle')).toBe('Alt+Shift+S')
-    expect(calls).toEqual(['setHotkey(Ctrl+Alt+T)', 'setHotkey(Alt+Shift+S)'])
+    expect(calls).toEqual(['setHotkey(Ctrl+Alt+T)'])
   })
 
   it('refuses an unknown key and writes nothing', () => {
