@@ -14,6 +14,7 @@ import {
   readRoundMinutes,
   readRoundedTotals,
   readTodayEntries,
+  readTopClients30d,
   readTotals,
   readWeekDaySeconds,
   readWeekStart
@@ -86,8 +87,13 @@ describe('readTotals', () => {
   })
 
   it('sums closed entries of today into both windows', () => {
-    addClosed(db, iso(-3 * 3_600_000), 30)
-    addClosed(db, iso(-2 * 3_600_000), 15)
+    // Built forwards from local midnight, not backwards from now: `now - 3h`
+    // is yesterday between 00:00 and 03:00, and the test went red at night
+    // (same trap as #213).
+    const midnight = new Date()
+    midnight.setHours(0, 0, 0, 0)
+    addClosed(db, new Date(midnight.getTime()).toISOString(), 30)
+    addClosed(db, new Date(midnight.getTime() + 30 * 60_000).toISOString(), 15)
     const t = readTotals(db)
     expect(t.today_seconds).toBe(45 * 60)
     expect(t.week_seconds).toBe(45 * 60)
@@ -428,5 +434,68 @@ describe('readRoundedTotals', () => {
     const t = readTotals(db)
     expect(r.today_rounded_seconds).toBe(t.today_seconds)
     expect(r.week_rounded_seconds).toBe(t.week_seconds)
+  })
+})
+
+/**
+ * The Schnellstart keys (HANDOFF §3.11, owner correction to B1): inactive
+ * clients never take a slot, and a key's "last project" is one that can still
+ * be started.
+ */
+describe('readTopClients30d', () => {
+  let db: Database.Database
+
+  function entry(client: number, project: number | null, daysAgo: number): void {
+    const start = daysAgoAt10(daysAgo).toISOString()
+    db.prepare(
+      `INSERT INTO entries (client_id, project_id, description, started_at, stopped_at, billable)
+       VALUES (?, ?, 'x', ?, ?, 1)`
+    ).run(client, project, start, new Date(Date.parse(start) + 3_600_000).toISOString())
+  }
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    db.pragma('foreign_keys = ON')
+    applyMigrations(db)
+    db.prepare(
+      `INSERT INTO clients (id, name, color, active, rate_cent) VALUES
+         (1,'Acme','#111',1,0), (2,'Archiv','#222',0,0)`
+    ).run()
+    db.prepare(
+      `INSERT INTO projects (id, client_id, name, status, active) VALUES
+         (10, 1, 'Alt', 'active', 1), (11, 1, 'Neu', 'active', 1)`
+    ).run()
+  })
+
+  it('leaves inactive clients out', () => {
+    entry(1, null, 1)
+    entry(2, null, 1)
+    entry(2, null, 2)
+    expect(readTopClients30d(db).map((c) => c.client_id)).toEqual([1])
+  })
+
+  it('takes the project of the last entry while it is active', () => {
+    entry(1, 10, 3)
+    entry(1, 11, 1)
+    expect(readTopClients30d(db)[0].last_project_id).toBe(11)
+  })
+
+  it('falls back to the most recently used ACTIVE project when the last one was archived', () => {
+    entry(1, 10, 3)
+    entry(1, 11, 1)
+    db.prepare(`UPDATE projects SET status = 'archived', active = 0 WHERE id = 11`).run()
+    expect(readTopClients30d(db)[0].last_project_id).toBe(10)
+  })
+
+  it('is null ("Kein Projekt") when no active project of the client was used', () => {
+    entry(1, 11, 1)
+    db.prepare(`UPDATE projects SET status = 'paused', active = 0 WHERE id = 11`).run()
+    expect(readTopClients30d(db)[0].last_project_id).toBeNull()
+  })
+
+  it('stays null when the last entry had no project', () => {
+    entry(1, 10, 3)
+    entry(1, null, 1)
+    expect(readTopClients30d(db)[0].last_project_id).toBeNull()
   })
 })

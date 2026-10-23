@@ -290,6 +290,44 @@ describe('emitWebhooks (fake DB, runs everywhere)', () => {
     expect(logged!.attempts).toBe(3)
   })
 
+  it('keeps the emit order per target when the first delivery needs a retry', async () => {
+    const db = fakeDb({
+      client,
+      targetsRaw: JSON.stringify([
+        {
+          id: 'one',
+          url: 'https://a.test',
+          secret: '',
+          events: ['timer.stopped', 'timer.started'],
+          enabled: true
+        }
+      ])
+    })
+    // The first request (timer.stopped) fails with a 503 and is retried; every
+    // later request succeeds. Unchained, timer.started went out while the stop
+    // waited for its retry and arrived first.
+    const { fn, calls } = mockFetch([503, 200])
+    let settled = 0
+    const done = new Promise<void>((resolve) => {
+      const log = (): void => {
+        if (++settled === 2) resolve()
+      }
+      emitWebhooks(db, 'timer.stopped', stoppedEntryObj(), {
+        fetchImpl: fn,
+        sleep: NOOP_SLEEP,
+        log
+      })
+      emitWebhooks(db, 'timer.started', stoppedEntryObj({ id: 8, stopped_at: null }), {
+        fetchImpl: fn,
+        sleep: NOOP_SLEEP,
+        log
+      })
+    })
+    await done
+    const events = calls.map((c) => c.headers['X-TimeTrack-Event'])
+    expect(events).toEqual(['timer.stopped', 'timer.stopped', 'timer.started'])
+  })
+
   it('does nothing (and never throws) for a corrupt blob or a null entry', () => {
     const bad = fakeDb({ client, targetsRaw: '{not json' })
     const { fn, calls } = mockFetch([200])

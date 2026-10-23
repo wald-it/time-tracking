@@ -81,7 +81,14 @@ function App(): React.JSX.Element {
           />
         )}
         {quickNoteEntry && (
-          <QuickNoteModal entry={quickNoteEntry} onDone={() => setQuickNoteEntry(null)} />
+          // Keyed by entry: after a switch the prompt for the stopped entry is
+          // open while the next one runs; stopping that one replaces the
+          // prompt, and its text must not carry over to the other entry.
+          <QuickNoteModal
+            key={quickNoteEntry.id}
+            entry={quickNoteEntry}
+            onDone={() => setQuickNoteEntry(null)}
+          />
         )}
 
         <ToastTray />

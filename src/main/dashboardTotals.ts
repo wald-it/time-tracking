@@ -194,3 +194,73 @@ export function readRoundedTotals(db: Db): RoundedTotals {
   }
   return { today_rounded_seconds: today, week_rounded_seconds: week }
 }
+
+export interface TopClient30d {
+  client_id: number
+  name: string
+  color: string
+  seconds: number
+  last_project_id: number | null
+}
+
+/**
+ * The most-used ACTIVE clients of the last 30 days (max. 5, most hours first)
+ * — the Schnellstart keys on "Heute" (HANDOFF §3.11). Inactive clients are
+ * left out here, before the limit, so an archived client never takes a slot.
+ *
+ * `last_project_id` is what a key's click starts and what its sub-line shows,
+ * so both read this one value:
+ * - the project of the client's most recent entry, when that project is
+ *   still active;
+ * - if that project was archived or paused since, the client's most recently
+ *   used project that is still active;
+ * - null ("Kein Projekt") when the last entry had no project, or no active
+ *   project of the client was ever used.
+ */
+export function readTopClients30d(db: Db): TopClient30d[] {
+  const rows = db
+    .prepare(
+      `SELECT c.id AS client_id, c.name, c.color,
+              COALESCE(SUM(
+                CASE
+                  WHEN e.stopped_at IS NULL
+                    THEN CAST(strftime('%s', 'now') AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER)
+                  ELSE CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER)
+                END
+              ), 0) AS seconds,
+              (SELECT project_id FROM entries
+                 WHERE client_id = c.id AND deleted_at IS NULL
+                 ORDER BY started_at DESC LIMIT 1) AS raw_last_project_id,
+              (SELECT le.project_id FROM entries le
+                 JOIN projects p ON p.id = le.project_id
+                WHERE le.client_id = c.id AND le.deleted_at IS NULL
+                  AND p.client_id = c.id AND p.status = 'active'
+                ORDER BY le.started_at DESC LIMIT 1) AS active_last_project_id
+         FROM clients c
+         LEFT JOIN entries e ON e.client_id = c.id
+           AND e.deleted_at IS NULL
+           AND DATE(e.started_at, 'localtime')
+                 >= DATE('now', 'localtime', '-30 days')
+        WHERE c.active = 1
+        GROUP BY c.id
+       HAVING seconds > 0
+        ORDER BY seconds DESC
+        LIMIT 5`
+    )
+    .all() as Array<{
+    client_id: number
+    name: string
+    color: string
+    seconds: number
+    raw_last_project_id: number | null
+    active_last_project_id: number | null
+  }>
+  return rows.map((r) => ({
+    client_id: r.client_id,
+    name: r.name,
+    color: r.color,
+    seconds: Math.max(0, Math.floor(r.seconds ?? 0)),
+    // The last entry had no project ⇒ "Kein Projekt" stays the last choice.
+    last_project_id: r.raw_last_project_id == null ? null : (r.active_last_project_id ?? null)
+  }))
+}

@@ -148,6 +148,11 @@ function clock(d: Date): string {
     : localTime(d)
 }
 
+/** `09:00`; `02:15 (+02:00)` on a clock-change day. */
+export function formatLocalClock(iso: string): string {
+  return clock(new Date(iso))
+}
+
 /** `Di 27.10.2026 09:00`; `So 26.10.2025 02:15 (+02:00)` on a clock-change day. */
 export function formatLocalMoment(iso: string): string {
   const d = new Date(iso)

@@ -246,6 +246,15 @@ export interface EmitDeps extends DeliveryDeps {
   log?: (record: WebhookLogRecord) => void
 }
 
+/**
+ * The tail of the delivery chain per target. Deliveries to one target run one
+ * after another, so a receiver sees events in the order they were emitted even
+ * when one of them needs a retry: a switch emits `timer.stopped` before
+ * `timer.started`, and a stateful receiver that got them the other way round
+ * would show a stopped timer. Different targets stay independent.
+ */
+const deliveryChains = new Map<string, Promise<void>>()
+
 function safeHost(url: string): string {
   try {
     return new URL(url).host
@@ -293,7 +302,9 @@ export function emitWebhooks(
       const deliveryId = newDeliveryId ? newDeliveryId() : freshId()
       const payload = buildWebhookPayload(db, event, entry, privacy, { deliveryId, now })
       const rawBody = JSON.stringify(payload)
-      void deliverWebhook(target, event, rawBody, deliveryId, deps)
+      const previous = deliveryChains.get(target.id) ?? Promise.resolve()
+      const delivery = previous
+        .then(() => deliverWebhook(target, event, rawBody, deliveryId, deps))
         .then((result) => {
           log({
             delivery_id: deliveryId,
@@ -310,6 +321,10 @@ export function emitWebhooks(
           // deliverWebhook never rejects, but guard anyway — a throwing logger
           // must not become an unhandled rejection.
         })
+      deliveryChains.set(target.id, delivery)
+      void delivery.then(() => {
+        if (deliveryChains.get(target.id) === delivery) deliveryChains.delete(target.id)
+      })
     }
   } catch {
     // Absolutely nothing about webhook emission may propagate to the mutation.

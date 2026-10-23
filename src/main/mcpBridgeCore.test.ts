@@ -444,12 +444,15 @@ describe('handleRequest — controller scope', () => {
       })
     }
 
-    // One closed 30-minute entry today, then a running one.
-    const now = Date.now()
+    // One closed 30-minute entry today, then a running one. Built forwards
+    // from local midnight: `now - 1h` is yesterday between 00:00 and 01:00 and
+    // the test went red at night (#213).
+    const midnight = new Date()
+    midnight.setHours(0, 0, 0, 0)
     db.prepare(
       `INSERT INTO entries (client_id, description, started_at, stopped_at, billable)
        VALUES (1, 'closed', ?, ?, 1)`
-    ).run(new Date(now - 3_600_000).toISOString(), new Date(now - 1_800_000).toISOString())
+    ).run(midnight.toISOString(), new Date(midnight.getTime() + 1_800_000).toISOString())
     await handleRequest(ctx, ctl('toggle_timer', { client_id: 1, project_id: 10 }))
 
     const busy = await handleRequest(ctx, ctl('get_summary'))
@@ -563,6 +566,20 @@ describe('handleRequest — controller scope', () => {
     expect(res.ok).toBe(true)
     if (res.ok) expect(res.data).toMatchObject({ action: 'switched' })
     expect(runningRow(db)).toEqual({ client_id: 2, project_id: null })
+  })
+
+  // B1: a switch ends the old entry where the new one begins, and the
+  // receiver hears timer.stopped for it before timer.started.
+  it('a switch emits stop before start and leaves no gap', async () => {
+    const { ctx, spies } = makeCtx(db)
+    await handleRequest(ctx, ctl('toggle_timer', { client_id: 1, project_id: 10 }))
+    await handleRequest(ctx, ctl('toggle_timer', { client_id: 2 }))
+    expect(spies.webhooks).toEqual(['start_timer', 'stop_running_timer', 'start_timer'])
+    const rows = db
+      .prepare(`SELECT started_at, stopped_at FROM entries ORDER BY id`)
+      .all() as Array<{ started_at: string; stopped_at: string | null }>
+    expect(rows).toHaveLength(2)
+    expect(rows[0].stopped_at).toBe(rows[1].started_at)
   })
 
   it('same client, different project is a switch, not a stop', async () => {

@@ -6,6 +6,7 @@ import type {
   CreateClientInput,
   UpdateClientInput,
   CreateEntryInput,
+  SwitchTimerResult,
   CreateManualEntryInput,
   UpdateEntryInput,
   CreateProjectInput,
@@ -67,6 +68,7 @@ declare global {
       }
       entries: {
         start(input: CreateEntryInput): Promise<IpcResult<Entry>>
+        switch(input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>>
         stop(id: number): Promise<IpcResult<Entry>>
         heartbeat(id: number): Promise<IpcResult<void>>
         getRunning(): Promise<IpcResult<Entry | null>>

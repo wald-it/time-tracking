@@ -20,7 +20,8 @@ import type {
   CreateEntryInput,
   CreateManualEntryInput,
   UpdateEntryInput,
-  IpcResult
+  IpcResult,
+  SwitchTimerResult
 } from '../shared/types'
 
 // Server-side limits (were module-private constants in ipc.ts).
@@ -223,8 +224,24 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
   return ok(tx())
 }
 
-/** Start a running timer (stops any running entry first). Mirrors `entries:start`. */
-export function startTimer(db: Db, input: CreateEntryInput): IpcResult<Entry> {
+/**
+ * Start a running timer and stop whatever runs — ONE instant for both (B1).
+ *
+ * The running entry (if any) ends exactly where the new one begins:
+ * `stopped_at = heartbeat_at = started_at` of the new entry, so a switch
+ * leaves neither a gap nor an overlap. Both writes share one transaction: if
+ * the insert fails, the old entry keeps running. `stopped` is the entry that
+ * was ended (null when nothing ran), so callers can emit `timer.stopped` and
+ * open the quick-note prompt for it.
+ *
+ * A start before the running entry's own start is refused — stopping there
+ * would give the old entry a negative duration. So is a start more than
+ * `FUTURE_START_TOLERANCE_MS` ahead: the running entry would end in the
+ * future (MCP `start_timer` takes a free `started_at`).
+ */
+export const FUTURE_START_TOLERANCE_MS = 60_000
+
+export function switchTimer(db: Db, input: CreateEntryInput): IpcResult<SwitchTimerResult> {
   const clientRow = db.prepare(`SELECT id FROM clients WHERE id = ?`).get(input.client_id) as
     | { id: number }
     | undefined
@@ -240,20 +257,74 @@ export function startTimer(db: Db, input: CreateEntryInput): IpcResult<Entry> {
   // wrong day or month.
   const start = new Date(input.started_at)
   if (Number.isNaN(start.getTime())) return fail('Startzeit ist ungültig')
+  if (start.getTime() > Date.now() + FUTURE_START_TOLERANCE_MS) {
+    return fail('Startzeit liegt in der Zukunft')
+  }
   const startedAt = start.toISOString()
-  const tx = db.transaction((): Entry => {
-    db.prepare(`UPDATE entries SET stopped_at = ? WHERE stopped_at IS NULL`).run(
-      new Date().toISOString()
-    )
+  const running = db
+    .prepare(`SELECT id, started_at, deleted_at FROM entries WHERE stopped_at IS NULL`)
+    .all() as Array<{ id: number; started_at: string; deleted_at: string | null }>
+  // Only live entries: a soft-deleted row left running is invisible to the
+  // user and must not block a start.
+  if (running.some((r) => r.deleted_at === null && Date.parse(r.started_at) > start.getTime())) {
+    return fail('Startzeit liegt vor dem Beginn des laufenden Eintrags')
+  }
+  const tx = db.transaction((): SwitchTimerResult => {
+    // Never before a row's own start: a soft-deleted row left running may have
+    // started after the new entry (the check above lets that through), and an
+    // undelete would bring a negative duration back. Live rows cannot reach
+    // the CASE — an earlier start was refused above.
+    db.prepare(
+      `UPDATE entries
+          SET stopped_at = CASE WHEN started_at > ? THEN started_at ELSE ? END,
+              heartbeat_at = CASE WHEN started_at > ? THEN started_at ELSE ? END
+        WHERE stopped_at IS NULL`
+    ).run(startedAt, startedAt, startedAt, startedAt)
     const info = db
       .prepare(
         `INSERT INTO entries (client_id, description, started_at, heartbeat_at, project_id)
          VALUES (?, ?, ?, ?, ?)`
       )
       .run(input.client_id, input.description, startedAt, startedAt, input.project_id ?? null)
-    return db.prepare(`SELECT * FROM entries WHERE id = ?`).get(info.lastInsertRowid) as Entry
+    const entry = db
+      .prepare(`SELECT * FROM entries WHERE id = ?`)
+      .get(info.lastInsertRowid) as Entry
+    // The live (not soft-deleted) one, newest first — the same pick as
+    // stopRunningTimer. Normally there is exactly one.
+    const live = running
+      .filter((r) => r.deleted_at === null)
+      .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0]
+    const stopped = live
+      ? (db.prepare(`SELECT * FROM entries WHERE id = ?`).get(live.id) as Entry)
+      : null
+    return { entry, stopped }
   })
   return ok(tx())
+}
+
+/**
+ * switchTimer plus its notifications, in the order a receiver needs them:
+ * `timer.stopped` for the ended entry BEFORE `timer.started` for the new one.
+ * `emit` is fire-and-forget (the IPC layer passes `emitWebhooks`); it only
+ * runs after the transaction committed.
+ */
+export function switchTimerAndNotify(
+  db: Db,
+  input: CreateEntryInput,
+  emit: (event: 'timer.stopped' | 'timer.started', entry: Entry) => void
+): IpcResult<SwitchTimerResult> {
+  const res = switchTimer(db, input)
+  if (res.ok) {
+    if (res.data.stopped) emit('timer.stopped', res.data.stopped)
+    emit('timer.started', res.data.entry)
+  }
+  return res
+}
+
+/** Start a running timer (stops any running entry at the same instant). Mirrors `entries:start`. */
+export function startTimer(db: Db, input: CreateEntryInput): IpcResult<Entry> {
+  const res = switchTimer(db, input)
+  return res.ok ? ok(res.data.entry) : res
 }
 
 /** Stop a specific entry by id (stamps now). Mirrors `entries:stop`. */

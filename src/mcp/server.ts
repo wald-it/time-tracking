@@ -431,7 +431,7 @@ export function buildServer(): McpServer {
     'start_timer',
     {
       title: 'Timer starten',
-      description: `Startet einen laufenden Timer für einen Kunden (stoppt einen ggf. laufenden). ${WRITE_HINT}`,
+      description: `Startet einen laufenden Timer für einen Kunden. Ein laufender Timer endet zur Startzeit des neuen; die Startzeit darf nicht vor seinem Beginn und höchstens eine Minute in der Zukunft liegen. ${WRITE_HINT}`,
       inputSchema: {
         client_id: z.number().int().describe('Kunden-ID'),
         description: z.string().optional().describe('Beschreibung'),

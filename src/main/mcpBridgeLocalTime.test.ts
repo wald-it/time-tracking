@@ -146,12 +146,12 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
       v: 1,
       token: 'secret',
       op: 'start_timer',
-      args: { client_id: 1, started_at: '2026-10-28T09:00:00+02:00' }
+      args: { client_id: 1, started_at: '2025-10-28T09:00:00+02:00' }
     })
     expect(started.ok).toBe(true)
     if (started.ok) {
       expect(started.data).toMatchObject({
-        started_at: '2026-10-28T07:00:00.000Z',
+        started_at: '2025-10-28T07:00:00.000Z',
         zeit_hinweise: {
           started_at:
             'Hinweis: +02:00 weicht von der Ortszeit am 28.10. ab (+01:00) — wird als 08:00 Ortszeit gespeichert.'
@@ -184,9 +184,146 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
       op: 'start_timer',
       args: { client_id: 1, description: 'Call' }
     })
-    expect(asked).toEqual([
-      'Timer starten — Kunde 1, ab Di 28.10.2025 09:00: "Call"',
-      'Timer starten — Kunde 1, ab jetzt: "Call"'
-    ])
+    expect(asked[0]).toBe('Timer starten — Kunde 1, ab Di 28.10.2025 09:00: "Call"')
+    // the second start ends the first one "now"
+    expect(asked[1]).toMatch(
+      /^Timer starten — Kunde 1, ab jetzt: "Call"; beendet #\d+ \(Acme\) um (\S+ \d\d\.\d\d\.\d{4} )?\d\d:\d\d/
+    )
+  })
+
+  // Owner review PR 5a: start_timer switches like the app (B1) — the dialog
+  // says which entry ends and when, and the receiver hears timer.stopped
+  // for it before timer.started.
+  it('start_timer while running: dialog and preview name the ended entry, stop before start', async () => {
+    const { ctx, asked } = recording()
+    const { ctx: base, spies } = makeCtx(db)
+    ctx.emitWebhook = base.emitWebhook
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, description: 'Call', started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    const first = db.prepare(`SELECT id FROM entries`).get() as { id: number }
+    const req: BridgeRequest = {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 2, description: 'Audit', started_at: '2025-10-28T10:00:00+01:00' }
+    }
+    const prev = await handleRequest(ctx, { ...req, preview: true })
+    expect(prev.ok).toBe(true)
+    if (prev.ok) {
+      expect(prev.data).toMatchObject({
+        stops: {
+          id: first.id,
+          client_name: 'Acme',
+          stopped_at: '2025-10-28T09:00:00.000Z',
+          stopped_local: '2025-10-28T10:00:00+01:00'
+        }
+      })
+    }
+    await handleRequest(ctx, req)
+    expect(asked[1]).toBe(
+      `Timer starten — Kunde 2, ab Di 28.10.2025 10:00: "Audit"; beendet #${first.id} (Acme) um 10:00`
+    )
+    expect(spies.webhooks).toEqual(['start_timer', 'stop_running_timer', 'start_timer'])
+    const ended = db.prepare(`SELECT stopped_at FROM entries WHERE id = ?`).get(first.id)
+    expect(ended).toEqual({ stopped_at: '2025-10-28T09:00:00.000Z' })
+  })
+
+  it('start_timer more than a minute ahead is refused before any dialog', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, description: 'Call' }
+    })
+    const ahead = new Date(Date.now() + 10 * 60_000).toISOString()
+    const req: BridgeRequest = {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 2, started_at: ahead }
+    }
+    for (const preview of [true, false]) {
+      const res = await handleRequest(ctx, { ...req, preview })
+      expect(res).toMatchObject({
+        ok: false,
+        code: 'invalid',
+        error: 'Startzeit liegt in der Zukunft'
+      })
+    }
+    expect(asked).toHaveLength(1)
+    const running = db.prepare(`SELECT client_id FROM entries WHERE stopped_at IS NULL`).all()
+    expect(running).toEqual([{ client_id: 1 }])
+  })
+
+  it('start_timer before the running start is refused before any dialog', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 2, started_at: '2025-10-28T08:00:00+01:00' },
+      preview: true
+    })
+    expect(res).toMatchObject({
+      ok: false,
+      error: 'Startzeit liegt vor dem Beginn des laufenden Eintrags'
+    })
+    expect(asked).toHaveLength(1)
+  })
+
+  it('start_timer refuses when the running entry changed while the dialog was open', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    // The owner switches in the app while the MCP confirmation is open.
+    ctx.confirm = async () => {
+      db.prepare(`UPDATE entries SET stopped_at = started_at WHERE stopped_at IS NULL`).run()
+      db.prepare(
+        `INSERT INTO entries (client_id, description, started_at, heartbeat_at)
+         VALUES (2, '', '2025-10-28T08:30:00.000Z', '2025-10-28T08:30:00.000Z')`
+      ).run()
+      return true
+    }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-28T10:00:00+01:00' }
+    })
+    expect(res).toMatchObject({ ok: false, code: 'invalid' })
+    const running = db.prepare(`SELECT client_id FROM entries WHERE stopped_at IS NULL`).all()
+    expect(running).toEqual([{ client_id: 2 }])
+  })
+
+  it('start_timer ending an entry from another day names the date', async () => {
+    const { ctx, asked } = recording()
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-27T17:00:00+01:00' }
+    })
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 2, started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    expect(asked[1]).toMatch(/; beendet #\d+ \(Acme\) um Di 28\.10\.2025 09:00$/)
   })
 })
