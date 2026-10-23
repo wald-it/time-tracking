@@ -569,7 +569,8 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
   it('a midnight-split pair keeps created_at on both halves, the anchor on the first', () => {
     const id = imported(...SPLIT)
     expect(rows()).toHaveLength(2)
-    edit(id, local(10, 20, 30), SPLIT[1])
+    // The first half's start is the entry's start (#311: the 0:00 edge stays).
+    edit(id, local(10, 20, 30), local(11, 0))
     const after = rows()
     expect(after.map((r) => r.created_at)).toEqual([CREATED, CREATED])
     expect(after.map((r) => r.graph_event_id)).toEqual(['EVT-1', null])
@@ -578,20 +579,19 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
   it('editing the second half of a pair keeps the anchor too', () => {
     imported(...SPLIT)
     const second = rows()[1].id
-    edit(second, SPLIT[0], local(11, 3))
+    edit(second, local(11, 0), local(11, 3))
     expect(rows().map((r) => r.graph_event_id)).toEqual(['EVT-1', null])
     expect([...importedEventIds(db)]).toEqual(['EVT-1'])
   })
 
-  it('a single entry edited into a pair, and the pair given a new range, keeps both fields', () => {
+  it('a single entry edited into a pair, and the pair edited again, keeps both fields', () => {
     const id = imported(local(10, 9), local(10, 10))
     const pairId = edit(id, ...SPLIT)
     expect(rows().map((r) => [r.graph_event_id, r.created_at])).toEqual([
       ['EVT-1', CREATED],
       [null, CREATED]
     ])
-    // A range across midnight given for one half is the entry's new range (#311).
-    edit(pairId, local(10, 21), local(11, 2))
+    edit(pairId, local(10, 21), local(11, 0))
     expect(rows().map((r) => [r.graph_event_id, r.created_at])).toEqual([
       ['EVT-1', CREATED],
       [null, CREATED]

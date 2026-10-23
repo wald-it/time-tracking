@@ -218,30 +218,35 @@ type Range = { started_at: string; stopped_at: string }
  * #311: callers hand over the range of the half they were called on — MCP
  * `update_entry_fields` fills unchanged times from that row, the calendar
  * drawer sends the times of the half it opened. The edit replaces the whole
- * entry, so that range is mapped onto the entry first: the half's outer edge
- * (the entry's start on the first half, its end on the last) takes the
- * input's value, and an edge at a midnight cut keeps the entry's own edge and
- * may not move (null). A range that itself crosses midnight is the new range
- * of the whole entry. Before this, the other half was simply deleted.
+ * entry, so that range is mapped onto the entry first, and only where the
+ * meaning is plain:
+ * - times unchanged: the entry keeps its range (a field edit);
+ * - only the half's outer edge changed (the entry's start on the first half,
+ *   its end on the last): that edge of the entry moves.
+ * Anything else — moving an edge at a midnight cut, a new range across
+ * midnight, both edges at once — is refused (null), because each of those
+ * would have to guess what happens to the other half. Before this, the other
+ * half was simply deleted.
+ *
+ * `group` is every row of the entry, also halves in the trash: their cuts are
+ * still the entry's cuts. `live` are the rows the edit replaces, so the range
+ * it returns never reaches into a trashed half.
  *
  * An unusable range (invalid, or not ending after it starts) is passed on
  * unchanged, so validateManualEntry reports it in its own words.
  */
-function rangeOfEntry(half: Range, group: Range[], input: Range): Range | null {
+function rangeOfEntry(half: Range, group: Range[], live: Range[], input: Range): Range | null {
   const start = Date.parse(input.started_at)
   const stop = Date.parse(input.stopped_at)
   if (!Number.isFinite(start) || !Number.isFinite(stop) || stop <= start) return input
-  if (splitAtMidnight(new Date(start), new Date(stop)).length > 1) return input
   const same = (a: string, b: string): boolean => Date.parse(a) === Date.parse(b)
-  const entryStart = group[0].started_at
-  const entryStop = group[group.length - 1].stopped_at
-  const atStart = same(half.started_at, entryStart)
-  const atStop = same(half.stopped_at, entryStop)
+  const atStart = same(half.started_at, group[0].started_at)
+  const atStop = same(half.stopped_at, group[group.length - 1].stopped_at)
   if (!atStart && !same(input.started_at, half.started_at)) return null
   if (!atStop && !same(input.stopped_at, half.stopped_at)) return null
   return {
-    started_at: atStart ? input.started_at : entryStart,
-    stopped_at: atStop ? input.stopped_at : entryStop
+    started_at: atStart ? input.started_at : live[0].started_at,
+    stopped_at: atStop ? input.stopped_at : live[live.length - 1].stopped_at
   }
 }
 
@@ -256,28 +261,33 @@ export function resolveEditRange(
   given: UpdateEntryInput
 ): { input: UpdateEntryInput; before: Range; linkId?: string } | { error: string } {
   const existing = db
-    .prepare(
-      `SELECT link_id, started_at, stopped_at FROM entries WHERE id = ? AND deleted_at IS NULL`
-    )
+    .prepare(`SELECT link_id, started_at, stopped_at, deleted_at FROM entries WHERE id = ?`)
     .get(given.id) as
-    | { link_id: string | null; started_at: string; stopped_at: string | null }
+    | {
+        link_id: string | null
+        started_at: string
+        stopped_at: string | null
+        deleted_at: string | null
+      }
     | undefined
   if (!existing) return { error: 'Eintrag existiert nicht' }
   const linkId = existing.link_id ?? undefined
   const own = { started_at: existing.started_at, stopped_at: existing.stopped_at ?? '' }
   if (!linkId || existing.stopped_at === null) return { input: given, before: own, linkId }
-  const group = db
+  // A half in the trash is not edited: the edit would replace its live
+  // sibling with the trashed half's range.
+  if (existing.deleted_at !== null) return { error: 'Eintrag existiert nicht' }
+  const rows = db
     .prepare(
-      `SELECT started_at, stopped_at FROM entries
-        WHERE link_id = ? AND deleted_at IS NULL ORDER BY started_at`
+      `SELECT started_at, stopped_at, deleted_at FROM entries WHERE link_id = ? ORDER BY started_at`
     )
-    .all(linkId) as Range[]
-  const range = rangeOfEntry(own, group, given)
+    .all(linkId) as Array<Range & { deleted_at: string | null }>
+  const live = rows.filter((r) => r.deleted_at === null)
+  const range = rangeOfEntry(own, rows, live, given)
   if (!range) return { error: SPLIT_EDGE_ERROR }
-  const before = { started_at: group[0].started_at, stopped_at: group[group.length - 1].stopped_at }
+  const before = { started_at: live[0].started_at, stopped_at: live[live.length - 1].stopped_at }
   return { input: { ...given, ...range }, before, linkId }
 }
-
 /** Update an entry (delete-and-reinsert with cross-midnight bookkeeping). Mirrors `entries:update`. */
 export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<Entry> {
   const resolved = resolveEditRange(db, given)

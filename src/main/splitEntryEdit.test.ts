@@ -129,17 +129,19 @@ describe('editing one half of a split entry (#311)', () => {
     ])
   })
 
-  it('a range across midnight given for one half becomes the range of the entry', () => {
-    const res = updateManualEntry(db, {
-      id: rows()[1].id,
-      client_id: 1,
-      description: 'Nachtschicht',
-      started_at: local(10, 21),
-      stopped_at: local(11, 3)
-    })
-    expect(res.ok).toBe(true)
-    expect(totalHours()).toBe(6)
-    expect(rows()).toHaveLength(2)
+  it('a new range across midnight given for one half is refused, nothing changes', () => {
+    // It would have to guess what happens to the other half (#311).
+    const before = rows()
+    expect(
+      updateManualEntry(db, {
+        id: before[1].id,
+        client_id: 1,
+        description: 'Nachtschicht',
+        started_at: local(10, 23),
+        stopped_at: local(11, 4)
+      })
+    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    expect(rows()).toEqual(before)
   })
 
   it('moving the edge at midnight on one half is refused, nothing changes', async () => {
@@ -244,5 +246,47 @@ describe('editing one half of a split entry (#311)', () => {
     expect(res).toMatchObject({ ok: false })
     expect(spies.confirmCalls).toBe(0)
     expect(totalHours()).toBe(8)
+  })
+  it('with the other half in the trash, the 0:00 edge of the live half still may not move', () => {
+    const [first, second] = rows()
+    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(local(12, 9), first.id)
+    expect(
+      updateManualEntry(db, {
+        id: second.id,
+        client_id: 1,
+        description: 'Nachtschicht',
+        started_at: local(11, 0, 30),
+        stopped_at: second.stopped_at
+      })
+    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    // Its outer edge may, and the trashed half's time does not come back.
+    const res = updateManualEntry(db, {
+      id: second.id,
+      client_id: 1,
+      description: 'Nachtschicht',
+      started_at: second.started_at,
+      stopped_at: local(11, 5)
+    })
+    expect(res.ok).toBe(true)
+    expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([[local(11, 0), local(11, 5)]])
+  })
+
+  it('an MCP edit is mapped again at confirmation and never revives a half trashed meanwhile', async () => {
+    const { ctx } = makeCtx(db)
+    const [first, second] = rows()
+    // The first half goes to the trash while the dialog is open.
+    ctx.confirm = async () => {
+      db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(local(12, 9), first.id)
+      return true
+    }
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id: second.id, stopped_at: local(11, 5) }
+    })
+    expect(res.ok).toBe(true)
+    // Mapped again at confirmation: only the live half, its end moved.
+    expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([[local(11, 0), local(11, 5)]])
   })
 })

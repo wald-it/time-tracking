@@ -522,7 +522,9 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
           ...hintPreview(hints)
         },
         hints,
-        run: () => updateManualEntry(db, input),
+        // The half's own input: updateManualEntry maps it again against the
+        // state at confirmation, so a plan gone stale is refused, not applied.
+        run: () => updateManualEntry(db, given),
         audit: (r) => ({
           op,
           id: r?.id ?? id,
