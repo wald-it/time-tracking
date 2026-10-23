@@ -15,6 +15,8 @@ import {
   validatePdfPath
 } from './pdfMergeValidation'
 import type { IpcResult, Settings } from '../shared/types'
+import type { Locale } from '../shared/i18n'
+import { dialogT } from './mainI18n'
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024 // 50 MB
 
@@ -40,10 +42,20 @@ export interface FsDeps {
 
 export interface DialogDeps {
   showSaveDialog: (opts: Electron.SaveDialogOptions) => Promise<Electron.SaveDialogReturnValue>
+  /**
+   * The language of the dialog title (#270). Asked only when the fallback
+   * dialog opens, inside the handler's try, so a failing settings read
+   * cannot break a merge that needs no dialog.
+   */
+  locale: () => Locale
 }
 
-const realFsDeps: FsDeps = { existsSync, statSync, readFileSync, writeFileSync }
-const realDialogDeps: DialogDeps = { showSaveDialog: (o) => dialog.showSaveDialog(o) }
+/** The native save dialog; ipc.ts passes the app language as `locale`. */
+export function saveDialogIn(locale: () => Locale): DialogDeps {
+  return { showSaveDialog: (o) => dialog.showSaveDialog(o), locale }
+}
+
+export const realFsDeps: FsDeps = { existsSync, statSync, readFileSync, writeFileSync }
 
 // ── pdf:merge-only handler ────────────────────────────────────────────────────
 
@@ -57,8 +69,8 @@ export interface MergeOnlyRequest {
 
 export async function mergeOnlyHandler(
   req: unknown,
-  fsDeps: FsDeps = realFsDeps,
-  dialogDeps: DialogDeps = realDialogDeps
+  fsDeps: FsDeps,
+  dialogDeps: DialogDeps
 ): Promise<IpcResult<{ path: string }>> {
   try {
     // Shape check — invoice + at least one SN path must be present.
@@ -159,7 +171,7 @@ export async function mergeOnlyHandler(
       // Target directory is read-only — fall back to a user-chosen path.
       if (isErrnoException(writeErr) && (writeErr.code === 'EPERM' || writeErr.code === 'EACCES')) {
         const fallback = await dialogDeps.showSaveDialog({
-          title: 'Zusammengeführte PDF speichern',
+          title: dialogT(dialogDeps.locale())('mainDialog.pdf.mergeSaveTitle'),
           defaultPath: `${name}_inkl_Stundennachweis.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
@@ -244,8 +256,8 @@ const realMergeExportPdfDeps: MergeExportPdfDeps = {
 export async function mergeExportHandler(
   db: Database.Database,
   req: unknown,
-  fsDeps: FsDeps = realFsDeps,
-  dialogDeps: DialogDeps = realDialogDeps,
+  fsDeps: FsDeps,
+  dialogDeps: DialogDeps,
   pdfDeps: MergeExportPdfDeps = realMergeExportPdfDeps
 ): Promise<IpcResult<{ path: string }>> {
   try {
@@ -308,7 +320,7 @@ export async function mergeExportHandler(
       // Target directory is read-only — fall back to a user-chosen path.
       if (isErrnoException(writeErr) && (writeErr.code === 'EPERM' || writeErr.code === 'EACCES')) {
         const fallback = await dialogDeps.showSaveDialog({
-          title: 'Zusammengeführte PDF speichern',
+          title: dialogT(dialogDeps.locale())('mainDialog.pdf.mergeSaveTitle'),
           defaultPath: `${name}_inkl_Stundennachweis.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
