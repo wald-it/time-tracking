@@ -24,7 +24,9 @@ import {
   createManualEntry,
   updateManualEntry,
   switchTimerAndNotify,
-  stopEntry
+  stopEntry,
+  deleteEntry,
+  undeleteEntry
 } from './entryMutations'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
@@ -393,25 +395,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   /**
    * Soft-delete: flip deleted_at instead of removing the row, so the Toast
    * "Rückgängig" path can restore the SAME id (preserves future PDF FKs — E10).
-   *
-   * v1.3 PR B: when `cascadeLinked` is true and the row has a `link_id`,
-   * all rows sharing that id are soft-deleted in one transaction (used by
-   * the Drawer's "auch zweite Hälfte löschen" confirm).
+   * Either half of an entry across midnight deletes the whole entry, and undo
+   * brings back what that delete removed (#323, see `deleteEntry`).
    */
-  ipcMain.handle('entries:delete', (_e, id: number, cascadeLinked = false): IpcResult<void> => {
+  ipcMain.handle('entries:delete', (_e, id: number): IpcResult<void> => {
     try {
-      const now = new Date().toISOString()
-      if (cascadeLinked) {
-        const row = db.prepare(`SELECT link_id FROM entries WHERE id = ?`).get(id) as
-          | { link_id: string | null }
-          | undefined
-        if (row?.link_id) {
-          db.prepare(`UPDATE entries SET deleted_at = ? WHERE link_id = ?`).run(now, row.link_id)
-          return ok(undefined)
-        }
-      }
-      db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(now, id)
-      return ok(undefined)
+      return deleteEntry(db, id)
     } catch (e) {
       return fail(e)
     }
@@ -419,9 +408,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('entries:undelete', (_e, id: number): IpcResult<Entry> => {
     try {
-      db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(id)
-      const row = db.prepare(`SELECT * FROM entries WHERE id = ?`).get(id) as Entry
-      return ok(row)
+      return undeleteEntry(db, id)
     } catch (e) {
       return fail(e)
     }

@@ -140,6 +140,8 @@ export const en: Record<TranslationKey, string> = {
   'common.deleteEntryTitle': 'Delete entry?',
   'common.deleteEntryMessage':
     '{client} · {date} · {duration} — Really delete? You can undo for 5 seconds.',
+  'common.deleteEntryMessageLinked':
+    '{client} · {date} · {duration} — This entry runs past midnight and is deleted on both days. Really delete? You can undo for 5 seconds.',
   'common.stopRunningFirst': 'Stop the running timer first',
   'common.error': 'Error: {error}',
 

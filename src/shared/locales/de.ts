@@ -140,6 +140,8 @@ export const de = {
   'common.deleteEntryTitle': 'Eintrag löschen?',
   'common.deleteEntryMessage':
     '{client} · {date} · {duration} — Wirklich löschen? Du kannst es 5 Sekunden lang rückgängig machen.',
+  'common.deleteEntryMessageLinked':
+    '{client} · {date} · {duration} — Der Eintrag geht über Mitternacht und wird an beiden Tagen gelöscht. Wirklich löschen? Du kannst es 5 Sekunden lang rückgängig machen.',
   'common.stopRunningFirst': 'Laufenden Timer zuerst stoppen',
   'common.error': 'Fehler: {error}',
 
