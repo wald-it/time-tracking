@@ -9,7 +9,9 @@ All notable changes to TimeTrack are documented here.
 
 ### Breaking for MCP clients and integrations
 
-- **`list_projects` `used_minutes` counts like the invoice.** It now holds the billed minutes of the project's billable entries, rounded per entry with the app's rounding setting, and includes time recorded with the timer. Non-billable entries no longer count. Details in the entry under Changed.
+If you call TimeTrack's MCP tools from your own scripts or agents, check this before updating.
+
+- **`list_projects` `used_minutes` counts like the invoice.** It now holds the billed minutes of the project's billable entries, rounded per entry with the app's rounding setting, and includes time recorded with the timer. Non-billable entries no longer count, and the stored `rounded_min` of an entry is no longer its basis. Details in the entry under Changed ([#285](https://github.com/wald-it/time-tracking/issues/285)).
 
 ### Added
 
