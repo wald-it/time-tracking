@@ -202,7 +202,7 @@ export function TagInput({
     <div ref={containerRef} className="relative">
       <div
         className={`flex min-h-[36px] flex-wrap items-center gap-1 rounded border px-2 py-1.5 focus-within:border-[var(--ink)] transition-colors ${disabled ? 'opacity-50' : ''}`}
-        style={{ background: 'var(--input-bg)', borderColor: 'var(--card-border)' }}
+        style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
         onClick={() => {
           inputRef.current?.focus()
           // Reopening hangs off `onFocus` alone, which does not fire again
@@ -248,7 +248,7 @@ export function TagInput({
           disabled={disabled}
           placeholder={tags.length === 0 ? t('tags.placeholder') : ''}
           className="min-w-[80px] flex-1 bg-transparent text-xs focus:outline-none"
-          style={{ color: 'var(--text)' }}
+          style={{ color: 'var(--ink)' }}
           aria-label={t('tags.inputAria')}
           aria-autocomplete="list"
           aria-expanded={showDropdown}
@@ -259,7 +259,7 @@ export function TagInput({
         <ul
           role="listbox"
           className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded border py-1"
-          style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+          style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
         >
           {suggestions.map((s, i) => (
             <li
@@ -277,7 +277,7 @@ export function TagInput({
               }`}
               style={
                 i !== highlightedIndex
-                  ? { color: s === CREATE_SENTINEL ? 'var(--text2)' : 'var(--text)' }
+                  ? { color: s === CREATE_SENTINEL ? 'var(--ink2)' : 'var(--ink)' }
                   : undefined
               }
             >
@@ -294,7 +294,7 @@ export function TagInput({
           type="button"
           onClick={onManageTags}
           className="mt-1 text-xs underline focus:outline-none"
-          style={{ color: 'var(--text3)' }}
+          style={{ color: 'var(--ink3)' }}
         >
           {t('tags.manageLink')}
         </button>

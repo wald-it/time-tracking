@@ -183,7 +183,7 @@ export default function TodayView(): React.JSX.Element {
 
       {status === 'loading' && <SummarySkeleton />}
       {status === 'error' && (
-        <div className="rounded-[var(--r-key)] border border-[var(--danger)] bg-[var(--danger-bg)] p-4 text-sm text-[var(--danger)]">
+        <div className="rounded-[var(--r-key)] border border-[var(--danger)] bg-[color-mix(in_srgb,_var(--danger)_8%,_transparent)] p-4 text-sm text-[var(--danger)]">
           <p className="mb-2 font-medium">{t('today.error.title')}</p>
           {errorMsg && <p className="mb-2 text-xs text-[var(--danger)]">{errorMsg}</p>}
           <button

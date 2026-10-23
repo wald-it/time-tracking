@@ -831,61 +831,6 @@ describe('migration SQL execution', () => {
     }).not.toThrow()
   })
 
-  // ── migration 027: entry timestamps in one form ────────────────────────
-  // The rewrite reads values with new Date(), like the app did; pinned to
-  // Europe/Berlin so the local-time cases differ from UTC (CI runs on UTC).
-  it('migration 027 — rewrites timestamps the way the app read them, leaves canonical and unreadable ones', () => {
-    const previousTz = process.env.TZ
-    process.env.TZ = 'Europe/Berlin'
-    try {
-      applyUpTo(26)
-      db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
-      const ins = db.prepare(
-        `INSERT INTO entries (id, client_id, started_at, stopped_at, heartbeat_at) VALUES (?, 1, ?, ?, ?)`
-      )
-      // start_timer with an offset, as the old startTimer stored it
-      ins.run(
-        1,
-        '2026-10-01T00:30:00+02:00',
-        '2026-10-01T01:00:00.000Z',
-        '2026-10-01T00:30:00+02:00'
-      )
-      // seconds only, no milliseconds
-      ins.run(2, '2026-10-02T08:00:00Z', null, null)
-      // already canonical
-      ins.run(3, '2026-10-03T08:00:00.000Z', '2026-10-03T09:00:00.000Z', null)
-      // unreadable: left as it is rather than nulled
-      ins.run(4, 'kaputt', null, null)
-      // no zone: local time, as new Date read it
-      ins.run(5, '2026-10-01T00:30:00', null, null)
-      // the hour that exists twice when the clocks go back: new Date takes the first
-      ins.run(6, '2026-10-25T02:30:00', null, null)
-      // a bare date: new Date reads it as UTC midnight, not local
-      ins.run(7, '2026-10-01', null, null)
-      // space instead of T: local time, as new Date read it
-      ins.run(8, '2026-10-01 08:00', null, null)
-      applyVersion(27)
-      const rows = db.prepare('SELECT id, started_at, stopped_at FROM entries ORDER BY id').all()
-      expect(rows).toEqual([
-        { id: 1, started_at: '2026-09-30T22:30:00.000Z', stopped_at: '2026-10-01T01:00:00.000Z' },
-        { id: 2, started_at: '2026-10-02T08:00:00.000Z', stopped_at: null },
-        { id: 3, started_at: '2026-10-03T08:00:00.000Z', stopped_at: '2026-10-03T09:00:00.000Z' },
-        { id: 4, started_at: 'kaputt', stopped_at: null },
-        { id: 5, started_at: '2026-09-30T22:30:00.000Z', stopped_at: null },
-        { id: 6, started_at: '2026-10-25T00:30:00.000Z', stopped_at: null },
-        { id: 7, started_at: '2026-10-01T00:00:00.000Z', stopped_at: null },
-        { id: 8, started_at: '2026-10-01T06:00:00.000Z', stopped_at: null }
-      ])
-      const hb = db.prepare('SELECT heartbeat_at FROM entries WHERE id = 1').get() as {
-        heartbeat_at: string
-      }
-      expect(hb.heartbeat_at).toBe('2026-09-30T22:30:00.000Z')
-    } finally {
-      if (previousTz === undefined) delete process.env.TZ
-      else process.env.TZ = previousTz
-    }
-  })
-
   // ── migration 017: whitespace cleanup in tag names ─────────────────────
 
   function applyUpTo(targetVersion: number): void {

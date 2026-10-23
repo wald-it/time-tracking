@@ -50,7 +50,7 @@ function App(): React.JSX.Element {
     <NowProvider running={runningEntry !== null}>
       <div
         className="h-screen flex flex-col overflow-hidden"
-        style={{ background: 'var(--page-bg)', color: 'var(--text)' }}
+        style={{ background: 'var(--bg)', color: 'var(--ink)' }}
       >
         <UpdateBanner />
         <AppHeader

@@ -76,16 +76,16 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element {
     >
       <div
         className="w-[420px] rounded-[var(--r-disp)] p-6 border"
-        style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+        style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
       >
         <h2
           id="quicknote-title"
           className="mb-1 text-xl font-semibold"
-          style={{ color: 'var(--text)' }}
+          style={{ color: 'var(--ink)' }}
         >
           {t('quicknote.title')}
         </h2>
-        <p className="mb-4 text-sm" style={{ color: 'var(--text2)' }}>
+        <p className="mb-4 text-sm" style={{ color: 'var(--ink2)' }}>
           {t('quicknote.body')}
         </p>
 
@@ -103,16 +103,16 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element {
           className="mb-4 w-full rounded-[var(--r-key)] px-3 py-2.5 text-sm border outline-none
             focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
           style={{
-            background: 'var(--input-bg)',
-            borderColor: 'var(--card-border)',
-            color: 'var(--text)'
+            background: 'var(--key)',
+            borderColor: 'var(--line)',
+            color: 'var(--ink)'
           }}
         />
 
         {/* Progress bar */}
         <div
           className="mb-5 h-1 w-full overflow-hidden rounded-[var(--r-fine)]"
-          style={{ background: 'var(--card-border)' }}
+          style={{ background: 'var(--line)' }}
         >
           <div
             className="h-1 rounded-[var(--r-fine)] bg-[var(--ink)] transition-none"
@@ -137,9 +137,9 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element {
             className="rounded-[var(--r-key)] px-4 py-2.5 text-sm font-medium border
               key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] transition-colors"
             style={{
-              background: 'var(--card-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text2)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink2)'
             }}
           >
             {t('quicknote.skip', { remaining: String(remaining) })}

@@ -121,13 +121,13 @@ export function StartTimerModal({
       <div
         className="fixed left-1/2 top-1/2 z-[101] w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[var(--r-disp)] border p-6 flex flex-col gap-4"
         style={{
-          background: 'var(--modal-bg)',
-          borderColor: 'var(--card-border)'
+          background: 'var(--key)',
+          borderColor: 'var(--line)'
         }}
       >
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
+          <h2 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
             {t('timer.modal.title')}
           </h2>
           <button
@@ -144,7 +144,7 @@ export function StartTimerModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-semibold uppercase tracking-wide"
-            style={{ color: 'var(--text3)' }}
+            style={{ color: 'var(--ink3)' }}
           >
             {t('timer.client.label')}
           </label>
@@ -156,9 +156,9 @@ export function StartTimerModal({
               className="w-full appearance-none rounded-[var(--r-key)] border px-3.5 py-2.5 pr-9 text-sm
                 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{
-                background: 'var(--input-bg)',
-                borderColor: 'var(--card-border)',
-                color: 'var(--text)'
+                background: 'var(--key)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink)'
               }}
             >
               <option value="">{t('timer.client.placeholder')}</option>
@@ -170,15 +170,15 @@ export function StartTimerModal({
             </select>
             <span
               className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
-              style={{ color: 'var(--text3)' }}
+              style={{ color: 'var(--ink3)' }}
             >
               <Icons.ChevronDown />
             </span>
           </div>
           {activeClients.length === 0 && (
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>
+            <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('timer.client.noClientsHint')}{' '}
-              <span style={{ color: 'var(--accent)' }}>{t('timer.client.noClientsLink')}</span>
+              <span style={{ color: 'var(--inv)' }}>{t('timer.client.noClientsLink')}</span>
               {t('timer.client.noClientsSuffix')}
             </p>
           )}
@@ -189,7 +189,7 @@ export function StartTimerModal({
           <div className="flex flex-col gap-1.5">
             <label
               className="text-xs font-semibold uppercase tracking-wide"
-              style={{ color: 'var(--text3)' }}
+              style={{ color: 'var(--ink3)' }}
             >
               {t('timer.project.label')}
             </label>
@@ -203,9 +203,9 @@ export function StartTimerModal({
                 className="w-full appearance-none rounded-[var(--r-key)] border px-3.5 py-2.5 pr-9 text-sm
                   focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
                 style={{
-                  background: 'var(--input-bg)',
-                  borderColor: 'var(--card-border)',
-                  color: 'var(--text)'
+                  background: 'var(--key)',
+                  borderColor: 'var(--line)',
+                  color: 'var(--ink)'
                 }}
               >
                 <option value="">{t('timer.project.placeholder')}</option>
@@ -223,13 +223,13 @@ export function StartTimerModal({
               </select>
               <span
                 className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: 'var(--text3)' }}
+                style={{ color: 'var(--ink3)' }}
               >
                 <Icons.ChevronDown />
               </span>
             </div>
             {showRateHint && effectiveRate !== null && (
-              <p className="text-xs" style={{ color: 'var(--text3)' }}>
+              <p className="text-xs" style={{ color: 'var(--ink3)' }}>
                 {t('timer.project.effectiveRate', {
                   rate: effectiveRate.toLocaleString('de-DE', {
                     minimumFractionDigits: 2,
@@ -256,7 +256,9 @@ export function StartTimerModal({
               <div
                 className="flex items-start gap-2 rounded-[var(--r-key)] px-3 py-2.5 text-xs"
                 style={{
-                  background: over ? 'var(--danger-bg)' : 'var(--key)',
+                  background: over
+                    ? 'color-mix(in srgb, var(--danger) 8%, transparent)'
+                    : 'var(--key)',
                   color: over ? 'var(--danger)' : 'var(--ink)',
                   border: `1px solid ${over ? 'transparent' : 'var(--key-edge)'}`
                 }}
@@ -279,7 +281,7 @@ export function StartTimerModal({
         <div className="flex flex-col gap-1.5">
           <label
             className="text-xs font-semibold uppercase tracking-wide"
-            style={{ color: 'var(--text3)' }}
+            style={{ color: 'var(--ink3)' }}
           >
             {t('timer.description.label')}
           </label>
@@ -293,9 +295,9 @@ export function StartTimerModal({
             className="rounded-[var(--r-key)] border px-3.5 py-2.5 text-sm
               focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             style={{
-              background: 'var(--input-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
           />
         </div>
@@ -308,8 +310,8 @@ export function StartTimerModal({
           className="flex items-center justify-center gap-2.5 rounded-[var(--r-key)] py-3 text-base font-bold transition-all
             disabled:cursor-not-allowed"
           style={{
-            background: canStart ? 'var(--accent)' : 'var(--card-bg)',
-            color: canStart ? 'var(--inv-ink)' : 'var(--text3)',
+            background: canStart ? 'var(--inv)' : 'var(--key)',
+            color: canStart ? 'var(--inv-ink)' : 'var(--ink3)',
             border: 'none'
           }}
         >

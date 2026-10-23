@@ -121,7 +121,7 @@ export function GraphAccountSection(): React.JSX.Element {
     // Without them the content sits flush against the border and the first
     // character of each line is clipped.
     <div className="flex min-w-0 flex-col gap-3 px-[18px] py-[13px]">
-      <p className="text-xs" style={{ color: 'var(--text3)' }}>
+      <p className="text-xs" style={{ color: 'var(--ink3)' }}>
         {t('settings.graph.desc')}
       </p>
 
@@ -138,18 +138,18 @@ export function GraphAccountSection(): React.JSX.Element {
             >
               {t('settings.graph.connected')}
             </span>
-            <span className="text-sm" style={{ color: 'var(--text)' }}>
+            <span className="text-sm" style={{ color: 'var(--ink)' }}>
               {status?.account?.displayName ?? status?.account?.username ?? ''}
             </span>
             {status?.account?.username && status.account.displayName && (
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                 {status.account.username}
               </span>
             )}
           </div>
 
           {status?.personalAccount && (
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>
+            <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('settings.graph.personalAccountNote')}
             </p>
           )}
@@ -158,14 +158,14 @@ export function GraphAccountSection(): React.JSX.Element {
           {!status?.personalAccount && (
             <div
               className="flex flex-col gap-2 rounded-[var(--r-key)] border p-3"
-              style={{ borderColor: 'var(--card-border)' }}
+              style={{ borderColor: 'var(--line)' }}
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm" style={{ color: 'var(--text)' }}>
+                  <p className="text-sm" style={{ color: 'var(--ink)' }}>
                     {t('settings.presence.enable')}
                   </p>
-                  <p className="text-xs" style={{ color: 'var(--text3)' }}>
+                  <p className="text-xs" style={{ color: 'var(--ink3)' }}>
                     {t('settings.presence.enableHint')}
                   </p>
                 </div>
@@ -185,7 +185,7 @@ export function GraphAccountSection(): React.JSX.Element {
                         onClick={() => void onConnect()}
                         disabled={busy}
                         className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-                        style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
+                        style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
                       >
                         {busy ? t('settings.graph.connecting') : t('settings.presence.reconnect')}
                       </button>
@@ -193,10 +193,10 @@ export function GraphAccountSection(): React.JSX.Element {
                   )}
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm" style={{ color: 'var(--text)' }}>
+                      <p className="text-sm" style={{ color: 'var(--ink)' }}>
                         {t('settings.presence.showClient')}
                       </p>
-                      <p className="text-xs" style={{ color: 'var(--text3)' }}>
+                      <p className="text-xs" style={{ color: 'var(--ink3)' }}>
                         {t('settings.presence.showClientHint')}
                       </p>
                     </div>
@@ -216,7 +216,7 @@ export function GraphAccountSection(): React.JSX.Element {
               onClick={() => void onVerify()}
               disabled={verifying}
               className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
+              style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
             >
               {verifying ? t('settings.graph.verifying') : t('settings.graph.verify')}
             </button>
@@ -224,7 +224,7 @@ export function GraphAccountSection(): React.JSX.Element {
               type="button"
               onClick={() => void onDisconnect()}
               className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
+              style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
             >
               {t('settings.graph.disconnect')}
             </button>
@@ -243,20 +243,20 @@ export function GraphAccountSection(): React.JSX.Element {
             onClick={() => void onConnect()}
             disabled={busy || storageMissing}
             className="rounded-[var(--r-key)] px-3 py-1.5 text-xs font-semibold text-[var(--inv-ink)] hover:opacity-90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            style={{ background: 'var(--accent)' }}
+            style={{ background: 'var(--inv)' }}
           >
             {busy ? t('settings.graph.connecting') : t('settings.graph.connect')}
           </button>
           {busy && (
             <>
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>
+              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
                 {t('settings.graph.browserHint')}
               </span>
               <button
                 type="button"
                 onClick={() => void onCancel()}
                 className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-                style={{ borderColor: 'var(--card-border)', color: 'var(--text2)' }}
+                style={{ borderColor: 'var(--line)', color: 'var(--ink2)' }}
               >
                 {t('settings.graph.cancel')}
               </button>
@@ -274,11 +274,11 @@ export function GraphAccountSection(): React.JSX.Element {
       {/* Escape hatch for tenants that block third-party apps, and for anyone
           who would rather use their own registration. */}
       <details className="mt-1">
-        <summary className="cursor-pointer text-xs" style={{ color: 'var(--text3)' }}>
+        <summary className="cursor-pointer text-xs" style={{ color: 'var(--ink3)' }}>
           {t('settings.graph.advanced')}
         </summary>
         <div className="mt-2 flex flex-col gap-2">
-          <p className="text-xs" style={{ color: 'var(--text3)' }}>
+          <p className="text-xs" style={{ color: 'var(--ink3)' }}>
             {t('settings.graph.clientIdHint')}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -295,16 +295,16 @@ export function GraphAccountSection(): React.JSX.Element {
               // button out of the card in a narrow settings pane.
               className="min-w-0 flex-1 rounded-[var(--r-key)] border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{
-                background: 'var(--card-bg)',
-                borderColor: 'var(--card-border)',
-                color: 'var(--text)'
+                background: 'var(--key)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink)'
               }}
             />
             <button
               type="button"
               onClick={() => void onSaveClientId()}
               className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--card-border)', color: 'var(--text)' }}
+              style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
             >
               {t('common.save')}
             </button>

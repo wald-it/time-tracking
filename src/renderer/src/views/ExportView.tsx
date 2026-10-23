@@ -47,7 +47,7 @@ export default function ExportView(): React.JSX.Element {
 
   return (
     <div className="mx-auto flex w-full max-w-[920px] flex-col gap-4">
-      <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text)' }}>
+      <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--ink)' }}>
         {t('export.view.title')}
       </h1>
 
@@ -61,12 +61,12 @@ export default function ExportView(): React.JSX.Element {
             type="button"
             onClick={() => onQuickRange('lastMonth')}
             className="rounded-[var(--r-key)] px-3 py-1.5 text-xs font-semibold text-[var(--inv-ink)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            style={{ background: 'var(--accent)' }}
+            style={{ background: 'var(--inv)' }}
             title={t('export.view.lastMonthTitle')}
           >
             {t('export.view.lastMonth')}
           </button>
-          <span className="ml-1 text-xs uppercase tracking-wide" style={{ color: 'var(--text3)' }}>
+          <span className="ml-1 text-xs uppercase tracking-wide" style={{ color: 'var(--ink3)' }}>
             {t('export.view.rangeLabel')}
           </span>
           {(['thisWeek', 'lastWeek', 'thisMonth'] as const).map((k) => (
@@ -76,9 +76,9 @@ export default function ExportView(): React.JSX.Element {
               onClick={() => onQuickRange(k)}
               className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
               style={{
-                background: 'var(--card-bg)',
-                borderColor: 'var(--card-border)',
-                color: 'var(--text)'
+                background: 'var(--key)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink)'
               }}
             >
               {t(('export.range.' + k) as TranslationKey)}
@@ -95,9 +95,9 @@ export default function ExportView(): React.JSX.Element {
             onClick={() => setMergeOpen(true)}
             className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
             style={{
-              background: 'var(--card-bg)',
-              borderColor: 'var(--card-border)',
-              color: 'var(--text)'
+              background: 'var(--key)',
+              borderColor: 'var(--line)',
+              color: 'var(--ink)'
             }}
             title={t('export.view.mergeButtonTitle')}
           >
@@ -126,7 +126,7 @@ function Card({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <section
       className="flex flex-col gap-3 rounded-[var(--r-disp)] border p-4"
-      style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}
+      style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
     >
       {children}
     </section>
@@ -136,10 +136,10 @@ function Card({ children }: { children: React.ReactNode }): React.JSX.Element {
 function CardHeading({ title, hint }: { title: string; hint: string }): React.JSX.Element {
   return (
     <div className="flex flex-col gap-1">
-      <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+      <h2 className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>
         {title}
       </h2>
-      <p className="text-xs" style={{ color: 'var(--text3)' }}>
+      <p className="text-xs" style={{ color: 'var(--ink3)' }}>
         {hint}
       </p>
     </div>

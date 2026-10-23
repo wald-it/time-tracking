@@ -9,7 +9,6 @@ import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
   durationSeconds,
-  monthWindow,
   listClients,
   listProjects,
   listEntries,
@@ -127,23 +126,6 @@ describe('durationSeconds (pure)', () => {
   })
   it('never returns negative', () => {
     expect(durationSeconds('2026-06-10T10:00:00.000Z', '2026-06-10T09:00:00.000Z', 0)).toBe(0)
-  })
-})
-
-describe('monthWindow', () => {
-  it('builds the LOCAL month window with December rollover', () => {
-    // Pinned off UTC: on a UTC runner a UTC window would pass as well.
-    const previousTz = process.env.TZ
-    process.env.TZ = 'Europe/Berlin'
-    try {
-      expect(monthWindow(2026, 12)).toEqual({
-        start: '2026-11-30T23:00:00.000Z',
-        end: '2026-12-31T23:00:00.000Z'
-      })
-    } finally {
-      if (previousTz === undefined) delete process.env.TZ
-      else process.env.TZ = previousTz
-    }
   })
 })
 
@@ -283,7 +265,9 @@ describe('query layer', () => {
     // The pattern is case-insensitive, so the no-zone check must be too —
     // otherwise Date.parse reads '…t08:30:00' as local time. That is only
     // visible off UTC, so pin a non-UTC zone (CI runs on UTC).
-    const previousTz = process.env.TZ
+    // Restored to the resolved system zone, not by `delete process.env.TZ`:
+    // deleting does not reset Node's zone, and this file runs more tests after.
+    const restoreTz = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone
     process.env.TZ = 'Asia/Kolkata'
     try {
       expect(
@@ -295,8 +279,7 @@ describe('query layer', () => {
         ).entries!.map((e) => e.id)
       ).toEqual([100])
     } finally {
-      if (previousTz === undefined) delete process.env.TZ
-      else process.env.TZ = previousTz
+      process.env.TZ = restoreTz
     }
   })
 

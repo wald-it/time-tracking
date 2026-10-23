@@ -17,12 +17,12 @@ interface MergeConfirm {
 
 const inputClass =
   'rounded-[var(--r-key)] px-3 py-1.5 text-sm border ' +
-  '[background:var(--input-bg)] [border-color:var(--card-border)] [color:var(--text)] ' +
+  '[background:var(--key)] [border-color:var(--line)] [color:var(--ink)] ' +
   'focus:outline-none focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent'
 
 const btnClass =
   'rounded-[var(--r-key)] px-3 py-1.5 text-sm font-medium key-hover ' +
-  'border [background:var(--card-bg)] [border-color:var(--card-border)] [color:var(--text)] ' +
+  'border [background:var(--key)] [border-color:var(--line)] [color:var(--ink)] ' +
   'focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-40 disabled:cursor-not-allowed'
 
 export default function TagManagementView(): React.JSX.Element {
@@ -124,7 +124,7 @@ export default function TagManagementView(): React.JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
+      <h2 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
         {t('settings.tags.title')}
       </h2>
 
@@ -153,16 +153,16 @@ export default function TagManagementView(): React.JSX.Element {
       {/* Tag list */}
       <div
         className="overflow-hidden rounded-[var(--r-disp)] border"
-        style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}
+        style={{ borderColor: 'var(--line)', background: 'var(--key)' }}
       >
         {loading && (
-          <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--text3)' }}>
+          <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--ink3)' }}>
             …
           </div>
         )}
 
         {!loading && tags.length === 0 && (
-          <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--text3)' }}>
+          <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--ink3)' }}>
             {t('settings.tags.empty')}
           </div>
         )}
@@ -173,16 +173,16 @@ export default function TagManagementView(): React.JSX.Element {
               key={tag.name}
               className="flex items-center gap-3 px-4 py-3 border-t"
               style={{
-                borderColor: idx === 0 ? 'transparent' : 'var(--card-border)'
+                borderColor: idx === 0 ? 'transparent' : 'var(--line)'
               }}
             >
               {/* Tag chip */}
               <span
                 className="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium"
                 style={{
-                  background: 'var(--nav-bg)',
-                  borderColor: 'var(--card-border)',
-                  color: 'var(--text)',
+                  background: 'var(--bg)',
+                  borderColor: 'var(--line)',
+                  color: 'var(--ink)',
                   fontFamily: 'monospace',
                   minWidth: 80
                 }}
@@ -191,10 +191,7 @@ export default function TagManagementView(): React.JSX.Element {
               </span>
 
               {/* Entry count */}
-              <span
-                className="w-20 shrink-0 text-xs tabular-nums"
-                style={{ color: 'var(--text3)' }}
-              >
+              <span className="w-20 shrink-0 text-xs tabular-nums" style={{ color: 'var(--ink3)' }}>
                 {entryLabel(tag.count)}
               </span>
 
@@ -232,7 +229,7 @@ export default function TagManagementView(): React.JSX.Element {
                     type="button"
                     onClick={() => startRename(tag.name)}
                     className="rounded p-1 hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)] transition-colors"
-                    style={{ color: 'var(--text2)' }}
+                    style={{ color: 'var(--ink2)' }}
                     aria-label={t('settings.tags.rename')}
                     title={t('settings.tags.rename')}
                   >
