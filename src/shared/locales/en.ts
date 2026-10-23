@@ -909,5 +909,24 @@ export const en: Record<TranslationKey, string> = {
   'mainDialog.logo.title': 'Choose logo',
   'mainDialog.logo.filter': 'Images',
   'mainDialog.csv.title': 'Save CSV',
-  'mainDialog.ical.title': 'Save iCal'
+  'mainDialog.ical.title': 'Save iCal',
+
+  // ── Main process: tray, default file names, cancel results (#296) ─────────
+  'mainTray.idle': 'No timer running',
+  'mainTray.stop': 'Stop',
+  'mainTray.quickStart': 'Quick start',
+  'mainTray.noClients': 'No active clients',
+  'mainTray.showWindow': 'Show window',
+  'mainTray.quit': 'Quit',
+  'mainTray.tooltipRunning': '● {label} · Today {today}',
+  'mainTray.tooltipIdle': 'TimeTrack — Today {today}',
+  'mainFile.pdf': 'Timesheet-{client}{project}-{month}.pdf',
+  'mainFile.csv': 'Time-entries-{client}{project}-{month}.csv',
+  'mainFile.ical': 'Time-entries-{client}{project}-{month}.ics',
+  'mainFile.merged': '{name}_incl_Timesheet.pdf',
+  'mainFile.mergedStamped': '{name}_incl_Timesheet_{stamp}.pdf',
+  'mainFile.fallbackClient': 'Client',
+  'mainError.exportCancelled': 'Export cancelled',
+  'mainError.selectionCancelled': 'Selection cancelled',
+  'mainError.saveCancelled': 'Saving cancelled'
 } as const satisfies Record<TranslationKey, string>

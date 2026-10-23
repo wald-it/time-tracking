@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react'
 import type { Locale } from '../../../shared/i18n'
-import { translate } from '../../../shared/i18n'
+import { localeFromSetting, translate } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/locales/de'
 import { de } from '../../../shared/locales/de'
 import { en } from '../../../shared/locales/en'
@@ -33,16 +33,29 @@ export function I18nProvider({ children }: { children: React.ReactNode }): React
   // settings write (v1.13.2 PR 2).
   const language = useSettingsStore((s) => s.settings?.language)
   const [locale, setLocaleState] = useState<Locale>('de')
+  // Set once the user picks a language. load() may still be running when the
+  // user picks (onboarding on first run); it then writes the snapshot from
+  // before the pick into the store, and that must not undo the pick.
+  const pickedRef = useRef(false)
 
-  // Sync locale once settings are loaded.
+  // Sync locale with the stored value (shared rule, #296) until the user
+  // picks one. Before the settings load (`undefined`) the default stays.
+  // Local state on purpose (#142): settings:set sends no push update.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — ruft rohes window.api.settings.set, und settings:set sendet kein Push-Update — lokaler State ist die einzige Stelle, die von der Änderung erfährt (wie ThemeContext)
-    if (language === 'en') setLocaleState('en')
+    if (language !== undefined && !pickedRef.current) setLocaleState(localeFromSetting(language))
   }, [language])
 
   const setLocale = useCallback(async (l: Locale) => {
+    pickedRef.current = true
     setLocaleState(l)
-    await window.api.settings.set('language', l)
+    const res = await window.api.settings.set('language', l)
+    // Only a saved pick goes into the store's copy, for anyone else reading
+    // settings.language; a failed save leaves the store at what the DB holds.
+    if (res.ok) {
+      useSettingsStore.setState((s) =>
+        s.settings ? { settings: { ...s.settings, language: l } } : s
+      )
+    }
   }, [])
 
   const t = useCallback<TFunction>((key, vars) => translate(localeMap[locale], key, vars), [locale])

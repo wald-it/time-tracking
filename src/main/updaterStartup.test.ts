@@ -44,7 +44,8 @@ let initAutoUpdater: typeof import('./updater').initAutoUpdater
 function init(stored: string | undefined, isDev = false): void {
   initAutoUpdater({
     isDev,
-    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined)
+    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined),
+    getLocale: () => 'de'
   })
 }
 
@@ -92,7 +93,8 @@ describe('update check at start (#273)', () => {
         isDev: false,
         getSetting: () => {
           throw new Error('database is locked')
-        }
+        },
+        getLocale: () => 'de'
       })
     ).not.toThrow()
     expect(updater.checkForUpdatesAndNotify).not.toHaveBeenCalled()
