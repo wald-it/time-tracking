@@ -75,7 +75,8 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 async function start(stored: string | undefined): Promise<void> {
   initAutoUpdater({
     isDev: false,
-    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined)
+    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined),
+    getLocale: () => 'de'
   })
   await settle()
 }

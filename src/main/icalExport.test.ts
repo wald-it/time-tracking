@@ -169,6 +169,11 @@ describe('handleIcalExport', () => {
       'iCal speichern',
       'Save iCal'
     ])
+    // #296: the suggested name too; German as the app always wrote it.
+    expect(save.mock.calls.map((c) => (c[0] as Electron.SaveDialogOptions).defaultPath)).toEqual([
+      'Zeiterfassung-Acme-2026-04.ics',
+      'Time-entries-Acme-2026-04.ics'
+    ])
   })
 
   it('exportiert nur abgeschlossene, nicht gelöschte Einträge im Zeitraum + Kunde', async () => {
