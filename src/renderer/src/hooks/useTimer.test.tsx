@@ -481,6 +481,49 @@ describe('useTimer — switchTo (B1)', () => {
   })
 })
 
+// Owner decision for 1.22: the start dialog, submitted while a timer runs
+// (one started elsewhere while the dialog was open), takes the switch path.
+describe('useTimer — start() while a timer runs', () => {
+  it('switches in one step and opens the quick note for the stopped entry', async () => {
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients })
+    const first = await startTimer(hook)
+    // The module registry is fresh per setup(); take the store from it.
+    const { useTimerStore } = await import('../store/timerStore')
+    act(() => {
+      useTimerStore.getState().setSelectedClientId(2)
+      hook.result.current.setDescription('Review')
+    })
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.switch).toHaveBeenCalledWith({
+      client_id: 2,
+      project_id: null,
+      description: 'Review',
+      started_at: expect.any(String)
+    })
+    expect(api.stop).not.toHaveBeenCalled()
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+    expect(hook.result.current.quickNoteEntry?.id).toBe(first.id)
+  })
+
+  it('does not dismiss an open quick note', async () => {
+    const { hook } = await setup()
+    act(() => hook.result.current.setDescription('work'))
+    await startTimer(hook)
+    act(() => hook.result.current.setQuickNoteEntry(makeEntry({ id: 55, description: '' })))
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(hook.result.current.quickNoteEntry?.id).toBe(55)
+  })
+})
+
 describe('useTimer — one engine per window', () => {
   // Every view calls useTimer(); before, each mounted instance ran its own
   // 1 s tick and 30 s heartbeat, so the main process got one heartbeat (and

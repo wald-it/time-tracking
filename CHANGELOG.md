@@ -34,6 +34,8 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
+- **Starting from the start dialog while a timer runs switches like a quick-start key** — If a timer was started elsewhere while the start dialog was open, confirming the dialog now stops that timer and starts the new one at the same moment, asks for a description of the stopped entry if it had none, and leaves an open description prompt in place instead of closing it.
+
 - **A backfilled entry can no longer overlap the running timer of the same client** — Adding or editing an entry inside the time of a running timer for the same client was accepted (the comparison against "now" mixed two time formats, so on the same day the running entry looked already finished), and both entries counted the same hours. A running entry now counts as open-ended: anything after its start overlaps it, in the app, over MCP (`create_manual_entry`, `update_entry_fields`) and in the calendar import, which now reports such an appointment as not imported, with the reason on its row. Entries before its start and entries of other clients are not affected.
 
 - **Links open in the browser only when they are web links** — TimeTrack hands a link to the system only when it starts with `https://` or `http://`, from the main window, the mini widget and the in-app link buttons alike; other kinds of links are not opened. The app windows also no longer navigate away from the app.

@@ -185,8 +185,35 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       clientId = fallback.id
       setSelectedClientId(clientId)
     }
-    setIsLoading(true)
     const projectId = useTimerStore.getState().selectedProjectId
+    // A timer already runs (the start dialog was open while one started
+    // elsewhere): take the same switch path as a quick-start key (owner
+    // decision for 1.22) — one instant in the main process, the quick-note
+    // prompt for the stopped entry if it had no description, and an open
+    // prompt is NOT dismissed.
+    if (useTimerStore.getState().runningEntry) {
+      if (useTimerStore.getState().isLoading) return
+      setIsLoading(true)
+      const sw = await window.api.entries.switch({
+        client_id: clientId,
+        project_id: projectId ?? null,
+        description,
+        started_at: new Date().toISOString()
+      })
+      setIsLoading(false)
+      if (!sw.ok) return
+      const { entry, stopped } = sw.data
+      setRunningEntry(entry)
+      if (useTimerStore.getState().idleEvent) {
+        setIdleEvent(null)
+        window.api.idle.dismiss()
+      }
+      const name = clients.find((c) => c.id === clientId)?.name ?? ''
+      await pushTrayUpdate(true, name)
+      if (stopped && stopped.description.trim() === '') setQuickNoteEntry(stopped)
+      return
+    }
+    setIsLoading(true)
     const res = await window.api.entries.start({
       client_id: clientId,
       project_id: projectId ?? undefined,
