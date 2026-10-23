@@ -73,8 +73,10 @@ export async function renderPdfBuffer(opts: RenderPdfOptions): Promise<Buffer> {
       win.webContents.printToPDF({
         pageSize: opts.pageSize ?? 'A4',
         printBackground: true,
+        // printToPDF takes margins in inches. Electron 44 typed them on their
+        // own (#269); the `marginType` key the shared print() type allowed
+        // here was never read by printToPDF.
         margins: {
-          marginType: 'custom',
           top: 0.79, // ~2 cm in inches
           bottom: 0.79,
           left: 0.79,
