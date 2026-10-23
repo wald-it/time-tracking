@@ -10,11 +10,14 @@ name: Update probe
 # local feed that serves the throw-away build, starts the app and reads its
 # log.
 #
-# - macOS: the build is signed ad hoc only. Squirrel.Mac checks the code
-#   signature of a downloaded update against the running app before it reports
-#   the update as downloaded, so the log answers the open question without a
-#   click: is an ad-hoc-signed update accepted? (owner decision 2026-10-23: a
-#   rejection is reported in the release notes, it does not block #269).
+# - macOS: the build is signed ad hoc only. electron-updater downloads the
+#   update itself, but hands it to Squirrel.Mac only when the user clicks
+#   (autoInstallOnAppQuit is off), and Squirrel then checks the update against
+#   the designated requirement of the running app. The job makes that same
+#   check on the update the 1.22.0 updater downloaded, with a positive control
+#   on the release itself: is an ad-hoc-signed update accepted? (owner
+#   decision 2026-10-23: a rejection is reported in the release notes, it does
+#   not block #269).
 # - Windows: the log shows download and SHA-512 check. Installing needs a click
 #   on "Jetzt neu starten", which a runner cannot give; that step runs in the
 #   Windows Sandbox with the installer this job uploads.
@@ -105,9 +108,21 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             echo "--- signature of the released 1.22.0"
             codesign -dv "$APP_DIR" 2>&1 | grep -E 'Signature|TeamIdentifier|flags|Identifier=' || true
+            # The designated requirement of the app as users have it. Squirrel
+            # checks every update against the running app's requirement.
+            OLD_REQUIREMENT="$(codesign -d -r- "$APP_DIR" 2>&1 | sed -n 's/^designated => //p')"
+            echo "designated requirement: $OLD_REQUIREMENT"
+            test -n "$OLD_REQUIREMENT" || { echo "::error::no designated requirement on 1.22.0"; exit 1; }
+            echo "OLD_REQUIREMENT=$OLD_REQUIREMENT" >> "$GITHUB_ENV"
+            # Positive control for the check below: an untouched copy of the
+            # release must satisfy its own requirement, or the check proves nothing.
+            ditto "$APP_DIR" "$RUNNER_TEMP/pristine/TimeTrack.app"
+            codesign --verify --deep --strict -R="=$OLD_REQUIREMENT" "$RUNNER_TEMP/pristine/TimeTrack.app" \
+              || { echo "::error::the released 1.22.0 does not satisfy its own requirement; the signature check cannot be trusted"; exit 1; }
+            echo "positive control: released 1.22.0 satisfies its own designated requirement"
             # Editing Resources breaks the seal of the ad-hoc signature. Sign
-            # again the way the release build is signed: ad hoc, hardened
-            # runtime, the same entitlements (electron-builder.yml, mac:).
+            # again with the flags the release has (adhoc, runtime — compared
+            # in the two printouts) and the release entitlements.
             codesign --force --deep --sign - --options runtime \
               --entitlements build/entitlements.mac.plist "$APP_DIR"
             echo "--- signature after the feed edit"
@@ -126,48 +141,47 @@ jobs:
           sleep 2
           "$APP_EXE" > "$RUNNER_TEMP/app.log" 2>&1 &
           APP_PID=$!
-          # Only errors of the updater count; the app may log others at start.
+          # Updater errors only; the app may log others at start, and the
+          # differential-download fallback is an expected [error] line.
           UPDATER_ERROR='error.*(updat|squirrel|signature)|(updat|squirrel|signature).*error|did not pass validation'
-          # Squirrel.Mac keeps its state here; ShipItState.plist is written
-          # once it has downloaded AND verified an update, ready to install.
-          SHIPIT_DIR="$HOME/Library/Caches/com.timetrack.app.ShipIt"
           OUTCOME=""
           for _ in $(seq 1 120); do
             sleep 2
             [ -f "$LOG_FILE" ] || continue
-            if grep -qiE "$UPDATER_ERROR" "$LOG_FILE"; then OUTCOME=error; break; fi
             if grep -qiE 'has been downloaded' "$LOG_FILE"; then OUTCOME=downloaded; break; fi
+            if grep -viE 'Cannot download differentially' "$LOG_FILE" | grep -qiE "$UPDATER_ERROR"; then OUTCOME=error; break; fi
           done
-          if [ "$OUTCOME" = downloaded ] && [ "$RUNNER_OS" = "macOS" ]; then
-            # "has been downloaded" is electron-updater's own download into its
-            # cache. Only then does it hand the zip to Squirrel.Mac, which
-            # checks the code signature. Wait for Squirrel's verdict.
-            OUTCOME=handed-to-squirrel
-            for _ in $(seq 1 60); do
-              sleep 2
-              if grep -qiE "$UPDATER_ERROR" "$LOG_FILE"; then OUTCOME=error; break; fi
-              if [ -f "$SHIPIT_DIR/ShipItState.plist" ]; then OUTCOME=squirrel-ready; break; fi
-            done
-          fi
-          sleep 5
           echo "--- feed requests"; cat "$RUNNER_TEMP/feed.log" || true
           echo "--- main.log of the installed 1.22.0"; cat "$LOG_FILE" 2>/dev/null || echo "(no main.log at $LOG_FILE)"
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            echo "--- ShipIt ($SHIPIT_DIR)"
-            ls -la "$SHIPIT_DIR" 2>/dev/null || echo "(no ShipIt directory)"
-            for f in "$SHIPIT_DIR"/*.log "$SHIPIT_DIR"/ShipItState.plist; do
-              [ -f "$f" ] && { echo "--- $f"; cat "$f"; }
-            done
-          fi
           kill "$APP_PID" 2>/dev/null || true
           if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM TimeTrack.exe > /dev/null 2>&1 || true; fi
           kill "$FEED_PID" 2>/dev/null || true
-          if grep -qiE 'code signature|did not pass validation' "$LOG_FILE" 2>/dev/null; then OUTCOME=rejected-signature; fi
+
+          if [ "$OUTCOME" = downloaded ] && [ "$RUNNER_OS" = "macOS" ]; then
+            # electron-updater hands the zip to Squirrel.Mac only inside
+            # quitAndInstall() when autoInstallOnAppQuit is off, as TimeTrack
+            # sets it (electron-updater 6.8.11, MacUpdater.js) — so the app
+            # never reaches Squirrel's signature check without the click.
+            # Make that check here: Squirrel (SQRLCodeSignature) verifies the
+            # new bundle against the designated requirement of the running
+            # app, taken above from the released 1.22.0.
+            PENDING="$(sed -n 's/.*has been downloaded to \(.*\.zip\).*/\1/p' "$LOG_FILE" | tail -n 1)"
+            echo "--- downloaded update: $PENDING"
+            mkdir -p "$RUNNER_TEMP/new"
+            ditto -x -k "$PENDING" "$RUNNER_TEMP/new"
+            NEW_APP="$RUNNER_TEMP/new/TimeTrack.app"
+            codesign -dv "$NEW_APP" 2>&1 | grep -E 'Signature|flags' || true
+            if codesign --verify --deep --strict -R="=$OLD_REQUIREMENT" "$NEW_APP" > "$RUNNER_TEMP/verify.txt" 2>&1; then
+              OUTCOME=signature-accepted
+            else
+              OUTCOME=rejected-signature
+            fi
+            echo "--- codesign --verify against the 1.22.0 requirement"; cat "$RUNNER_TEMP/verify.txt"
+          fi
           case "$OUTCOME" in
             downloaded) echo "::notice::$RUNNER_OS: the 1.22.0 updater downloaded $PROBE_VERSION and checked it (SHA-512); installing needs the click" ;;
-            squirrel-ready) echo "::notice::$RUNNER_OS: Squirrel.Mac accepted $PROBE_VERSION (ShipItState.plist written, ready to install)" ;;
-            handed-to-squirrel) echo "::warning::$RUNNER_OS: downloaded, but Squirrel.Mac reported neither an error nor a ready update within 120 s (see ShipIt above)" ;;
-            rejected-signature) echo "::warning::$RUNNER_OS: the 1.22.0 updater rejected $PROBE_VERSION over its code signature (see main.log above)" ;;
+            signature-accepted) echo "::notice::$RUNNER_OS: the 1.22.0 updater downloaded $PROBE_VERSION, and the update satisfies 1.22.0's designated requirement (Squirrel.Mac's check)" ;;
+            rejected-signature) echo "::warning::$RUNNER_OS: the 1.22.0 updater downloads $PROBE_VERSION, but the update does not satisfy 1.22.0's designated requirement, so Squirrel.Mac will refuse to install it (see codesign output above)" ;;
             error) echo "::warning::$RUNNER_OS: the 1.22.0 updater reported an error (see main.log above)" ;;
             *) echo "::error::$RUNNER_OS: no updater outcome in main.log within 240 s"; exit 1 ;;
           esac

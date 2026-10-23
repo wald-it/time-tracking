@@ -1,5 +1,6 @@
 import type { Client, Entry } from '../shared/types'
 import type Database from 'better-sqlite3'
+import { EXPORT_FOLDERS_SETTING } from './exportFolders'
 
 export interface JsonExportPayload {
   meta: { schemaVersion: number; exportedAt: string; appVersion: string }
@@ -9,14 +10,15 @@ export interface JsonExportPayload {
 }
 
 /**
- * Settings rows left out of the export: they hold a secret. `webhook_targets`
+ * Settings rows left out of the export. Two hold a secret: `webhook_targets`
  * goes as a whole — besides the HMAC secret, a webhook URL is often a secret
  * itself (Slack, Discord, Teams, Zapier and n8n put the token in the path or
  * query), and with no importer for this file the targets are of no use in it.
- * `export_folders` (#269) holds the folders of the last exports — local paths
- * that often name clients — and is of no use outside this machine.
+ * One is left out for privacy: `export_folders` (#269) holds the folders of
+ * the last exports, local paths that often name clients, and is of no use
+ * outside this machine.
  */
-const OMITTED_SETTING_KEYS = new Set(['ical_feed_token', 'webhook_targets', 'export_folders'])
+const OMITTED_SETTING_KEYS = new Set(['ical_feed_token', 'webhook_targets', EXPORT_FOLDERS_SETTING])
 
 /**
  * Any key that names a secret is left out too, so a secret stored later under
@@ -39,9 +41,10 @@ function exportableSettings(
  * filtering, soft-deleted rows included) so users can verify their data and
  * future CSV/PDF tooling can build on top of the snapshot.
  *
- * Settings are dumped verbatim except for secrets: the iCal feed token, the
- * webhook targets (URLs and HMAC secrets) and every key that matches
- * /token|secret|password/i are left out. The Graph tokens and the MCP/controller tokens
+ * Settings are dumped verbatim except for secrets and one private row: the iCal
+ * feed token, the webhook targets (URLs and HMAC secrets), every key that
+ * matches /token|secret|password/i, and the remembered export folders are left
+ * out. The Graph tokens and the MCP/controller tokens
  * live in files, not in the database, so they never reach this export. There
  * is no importer for this file; a full restore goes through the SQLite backup
  * (backup.ts), which keeps everything.

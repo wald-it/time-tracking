@@ -3,7 +3,7 @@
  * Check what a packaged build ships (release 1.22): the asar must hold what
  * the app reads at runtime and nothing from the rest of the checkout.
  *
- * Usage: node scripts/check-package-contents.mjs <path to app.asar>
+ * Usage: node scripts/check-package-contents.mjs <path to app.asar> [<platform>-<arch>]
  *
  * Fails (exit 1) when
  *  - a required file is missing (main, preload, renderer, MCP server,
@@ -47,10 +47,13 @@ const unexpected = [...new Set(files.map((f) => f.split('/')[0]))].filter(
 )
 const missing = REQUIRED.filter((r) => !fileSet.has(r))
 
-// #269: exactly the native SQLite binary of the platform that built the
-// package (this script runs on the build runner), none of the other seven.
+// #269: exactly the native SQLite binary of the package's target, none of the
+// other seven. The target defaults to the machine running this script (the
+// build runner builds natively); pass `<platform>-<arch>` as the second
+// argument for a cross build, e.g. `darwin-x64`.
 const PREBUILDS = 'node_modules/better-sqlite3/prebuilds/'
-const ownPrebuild = `${PREBUILDS}${process.platform}-${process.arch}.node`
+const target = process.argv[3] ?? `${process.platform}-${process.arch}`
+const ownPrebuild = `${PREBUILDS}${target}.node`
 const prebuilds = files.filter((f) => f.startsWith(PREBUILDS) && f.endsWith('.node'))
 const prebuildProblem =
   prebuilds.length === 1 && prebuilds[0] === ownPrebuild

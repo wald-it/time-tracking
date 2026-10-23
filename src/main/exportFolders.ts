@@ -36,34 +36,53 @@ function readFolders(db: Database.Database): Folders {
   }
 }
 
+/** How long the dialog waits for the remembered folder to answer. */
+const FOLDER_CHECK_MS = 2000
+
 /**
- * Asynchronous on purpose: the remembered folder may sit on a network share
- * that is offline, and a synchronous stat of an unreachable path can block the
- * main process (window, tray, timer) for many seconds.
+ * Asynchronous and bounded on purpose: the remembered folder may sit on a
+ * network share that is offline. A synchronous stat of an unreachable path can
+ * block the main process (window, tray, timer) for many seconds, and even an
+ * asynchronous one would keep the dialog from opening that long.
  */
 async function isFolder(path: string): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), FOLDER_CHECK_MS)
+  })
+  const check = stat(path).then(
+    (s) => s.isDirectory(),
+    () => false
+  )
   try {
-    return (await stat(path)).isDirectory()
-  } catch {
-    return false
+    return await Promise.race([check, timeout])
+  } finally {
+    clearTimeout(timer)
   }
 }
 
 /**
  * The `defaultPath` for a save dialog: the suggested file name inside the
- * folder last used for this export type. Without a remembered folder, or when
- * it no longer exists (a removed USB drive, a renamed folder), it is the bare
- * file name and the dialog opens where Electron opens it (Downloads).
+ * folder last used for this export type. Without a remembered folder, when it
+ * no longer exists (a removed USB drive, a renamed folder) or does not answer
+ * in time, and when the setting cannot be read, it is the bare file name and
+ * the dialog opens where Electron opens it (Downloads). A convenience never
+ * stops an export.
  */
 export async function exportDefaultPath(
   db: Database.Database,
   kind: ExportKind,
   fileName: string
 ): Promise<string> {
-  const folder = readFolders(db)[kind]
-  return typeof folder === 'string' && isAbsolute(folder) && (await isFolder(folder))
-    ? join(folder, fileName)
-    : fileName
+  try {
+    const folder = readFolders(db)[kind]
+    return typeof folder === 'string' && isAbsolute(folder) && (await isFolder(folder))
+      ? join(folder, fileName)
+      : fileName
+  } catch (error) {
+    log.warn(`[export] could not read the remembered ${kind} export folder:`, error)
+    return fileName
+  }
 }
 
 /**

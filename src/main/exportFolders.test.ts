@@ -5,7 +5,8 @@
  * module is the only thing that keeps a monthly export landing where the user
  * filed the last one.
  */
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
+import log from 'electron-log/main'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -103,12 +104,33 @@ describe('export folders', () => {
     expect(keys).not.toContain(EXPORT_FOLDERS_SETTING)
   })
 
-  it('a failed settings write does not fail the export it follows', () => {
+  it('a failed settings write does not fail the export it follows, and is logged', () => {
     // The export file is already written when the folder is remembered; a
     // database that refuses the write must not turn that into an error.
-    db.close()
-    expect(() => rememberExportFolder(db, 'csv', join(tmpDir, 'a.csv'))).not.toThrow()
-    db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
+    try {
+      db.exec(`CREATE TRIGGER no_settings_writes BEFORE INSERT ON settings
+               BEGIN SELECT RAISE(ABORT, 'read-only for this test'); END`)
+      expect(() => rememberExportFolder(db, 'csv', join(tmpDir, 'a.csv'))).not.toThrow()
+      expect(warn).toHaveBeenCalledWith(
+        '[export] could not remember the csv export folder:',
+        expect.anything()
+      )
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('an unreadable setting gives the bare file name instead of failing the export', async () => {
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
+    try {
+      db.close()
+      expect(await exportDefaultPath(db, 'csv', 'a.csv')).toBe('a.csv')
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+      db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    }
   })
 })
 
