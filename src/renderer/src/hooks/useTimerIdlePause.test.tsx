@@ -27,6 +27,7 @@ beforeAll(async () => {
 // `globals` is off, so Testing Library's auto-cleanup is not registered.
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
 })
 
 type IdleCb = (data: { idleSince: string; idleSeconds: number }) => void
@@ -88,8 +89,12 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
   it('books the pause as not billable, so it stays off the timesheet', async () => {
     const db = new DatabaseImpl(':memory:')
     seed(db)
-    const startedAt = new Date(Date.now() - 2 * 60 * 60_000).toISOString()
-    const idleSince = new Date(Date.now() - 30 * 60_000).toISOString()
+    // Local noon today: no entry crosses midnight, which updateManualEntry
+    // would split into two rows. The clock is pinned to it after setup.
+    const today = new Date()
+    const NOW = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0)
+    const startedAt = new Date(NOW.getTime() - 2 * 60 * 60_000).toISOString()
+    const idleSince = new Date(NOW.getTime() - 30 * 60_000).toISOString()
     db.prepare(
       `INSERT INTO entries (id, client_id, description, started_at, heartbeat_at)
        VALUES (1, 1, 'Konzept', ?, ?)`
@@ -102,6 +107,10 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
     const hook = renderHook(() => useTimer({ engine: true }))
     await waitFor(() => expect(trayUpdate).toHaveBeenCalled())
     await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(1))
+    // Only Date, and only after the dynamic import (module-runner trap, see
+    // the clock tests in useTimer.test.tsx).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
 
     act(() => idle.current?.({ idleSince, idleSeconds: 30 * 60 }))
     await waitFor(() => expect(hook.result.current.idleEvent).not.toBeNull())
@@ -127,15 +136,12 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
       ['Pause', idleSince, 0]
     ])
     expect(rows[0].stopped_at).toBe(idleSince)
-    expect(rows[1].stopped_at).not.toBeNull()
+    expect(rows[1].stopped_at).toBe(NOW.toISOString())
 
     // The client's timesheet (PDF attachment) lists the work, not the pause.
-    // Yesterday to today, so a run shortly after midnight is covered too.
-    const today = new Date()
-    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
     const sheet = buildPdfPayload(
       db,
-      { clientId: 1, fromIso: localDate(yesterday), toIso: localDate(today) },
+      { clientId: 1, fromIso: localDate(NOW), toIso: localDate(NOW) },
       ''
     )
     expect(sheet.rows.map((r) => r.description)).not.toContain('Pause')
