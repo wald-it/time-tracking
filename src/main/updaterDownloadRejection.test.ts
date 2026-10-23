@@ -7,8 +7,9 @@
  * now". In electron-updater 6.8.11, `checkForUpdatesAndNotify` chains
  * `void it.downloadPromise.then(() => notification)` (AppUpdater.js:294): that
  * `.then` makes a new promise nobody handles, so a `.catch` on
- * `downloadPromise` from outside cannot silence it. The mock below reproduces
- * that method 1:1, so the start-up path is tested against the real trap.
+ * `downloadPromise` from outside cannot silence it. updater.ts therefore no
+ * longer calls that method; the mock below reproduces it 1:1 so that going
+ * back to it turns the start-up test red again.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
@@ -36,9 +37,10 @@ const updater = vi.hoisted(() => {
       const it = await u.checkForUpdates()
       if (!it?.downloadPromise) return it
       void it.downloadPromise.then(() => {
+        // formatDownloadNotification's default, with this.app.name = getName().
         notifications.push({
           title: 'A new update is ready to install',
-          body: `TimeTrack version ${it.updateInfo.version} has been downloaded and will be automatically installed on exit`
+          body: `time-tracking version ${it.updateInfo.version} has been downloaded and will be automatically installed on exit`
         })
       })
       return it
@@ -48,7 +50,8 @@ const updater = vi.hoisted(() => {
 })
 
 vi.mock('electron', () => ({
-  app: { getVersion: () => '0.0.0-test', name: 'TimeTrack' },
+  // As in the packaged app: getName() is package.json's name, not productName.
+  app: { getVersion: () => '0.0.0-test', name: 'time-tracking', getName: () => 'time-tracking' },
   BrowserWindow: {
     getAllWindows: () => [
       {
@@ -156,16 +159,27 @@ describe('a failed update download leaves no unhandled rejection (#309)', () => 
     expect(lastStatus()).toEqual({ status: 'error', message: 'download interrupted' })
   })
 
-  it('start-up check: a finished download still shows the "ready to install" notification', async () => {
+  it('start-up check: a finished download shows the "ready to install" notification', async () => {
     updater.checkForUpdates.mockImplementation(findsUpdate('succeeds'))
     await start(undefined)
 
     expect(notifications).toEqual([
       {
         title: 'A new update is ready to install',
-        body: 'TimeTrack version 9.9.9 has been downloaded and will be automatically installed on exit'
+        body: 'TimeTrack 9.9.9 has been downloaded. To install it, click "Restart now" in the banner at the top of the TimeTrack window.'
       }
     ])
     expect(unhandled).toEqual([])
+  })
+
+  it('the notification names TimeTrack, not the package name app.getName() returns', async () => {
+    updater.checkForUpdates.mockImplementation(findsUpdate('succeeds'))
+    await start(undefined)
+
+    expect(notifications).toHaveLength(1)
+    expect(notifications[0].body).toMatch(/^TimeTrack 9\.9\.9 /)
+    expect(notifications[0].body).not.toContain('time-tracking')
+    // And it does not promise an install on quit: autoInstallOnAppQuit is false.
+    expect(notifications[0].body).not.toMatch(/on exit|on quit/)
   })
 })

@@ -11,7 +11,7 @@
  * offline app start. Errors triggered by an explicit user "check now"
  * are surfaced (so the Settings UI can show "no connection").
  */
-import { app, BrowserWindow, ipcMain, Notification } from 'electron'
+import { BrowserWindow, ipcMain, Notification } from 'electron'
 import log from 'electron-log/main'
 import pkg, { type UpdateCheckResult } from 'electron-updater'
 const { autoUpdater } = pkg
@@ -39,23 +39,33 @@ interface StartupCheck {
 let startupCheck: StartupCheck | null = null
 
 /**
- * The notification `checkForUpdatesAndNotify` shows once its download is
- * done, which the start-up check now raises itself (#309). Title and body
- * mirror electron-updater 6.8.11's private
- * `AppUpdater.formatDownloadNotification` default verbatim; translating it is
- * #296. A failed download is reported through the `error` event, so its
- * rejection is only caught here, not reported twice.
+ * The notification shown once a download found by the start-up check is
+ * done, which `checkForUpdatesAndNotify` used to show (#309). The title is
+ * electron-updater 6.8.11's private `AppUpdater.formatDownloadNotification`
+ * default; the body is not. Its "{appName} version {version} has been
+ * downloaded and will be automatically installed on exit" was wrong twice for
+ * TimeTrack: `autoInstallOnAppQuit` is false (installing takes the "Restart
+ * now" key), and the name came from `app.getName()`, which is the package
+ * name `time-tracking`, not the product name. Translation: #296.
+ */
+export function downloadNotification(version: string): { title: string; body: string } {
+  return {
+    title: 'A new update is ready to install',
+    body: `TimeTrack ${version} has been downloaded. To install it, click "Restart now" in the banner at the top of the TimeTrack window.`
+  }
+}
+
+/**
+ * Show {@link downloadNotification} once `result`'s download is done. A
+ * failed download is reported through the `error` event, so its rejection is
+ * only caught here, not reported twice.
  */
 function notifyWhenDownloaded(result: UpdateCheckResult | null): void {
   if (!result?.downloadPromise) return
   const { version } = result.updateInfo
   result.downloadPromise
     .then(
-      () =>
-        new Notification({
-          title: 'A new update is ready to install',
-          body: `${app.name} version ${version} has been downloaded and will be automatically installed on exit`
-        }).show(),
+      () => new Notification(downloadNotification(version)).show(),
       () => undefined
     )
     .catch((err: unknown) => log.warn('[updater] could not show the download notification', err))
@@ -346,8 +356,10 @@ export function initAutoUpdater(opts: {
     // downloadPromise (#309). Same check, our own notification.
     autoUpdater.checkForUpdates().then(
       (result) => {
-        settleStartupCheck(run, null)
+        // First: the download's rejection must be handled even if settling
+        // the check throws (a broadcast to a window that is going away).
         notifyWhenDownloaded(result)
+        settleStartupCheck(run, null)
       },
       (err: Error) => settleStartupCheck(run, err)
     )
