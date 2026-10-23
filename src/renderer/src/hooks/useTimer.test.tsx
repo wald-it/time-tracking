@@ -106,6 +106,10 @@ interface MockOpts {
   recent?: Entry[]
   /** projects:getAll — for the last pair's project (#297). Default: none. */
   projects?: Project[]
+  /** projects:getAll answers { ok: false } (#297 review). */
+  projectsFail?: boolean
+  /** dashboard:summary waits for this before it answers (#297 review). */
+  summaryGate?: Promise<void>
 }
 
 function mockApi(opts: MockOpts = {}): ApiMock {
@@ -169,23 +173,31 @@ function mockApi(opts: MockOpts = {}): ApiMock {
     },
     dashboard: {
       todayTotal: async () => ({ ok: true as const, data: 0 }),
-      summary: async () => ({
-        ok: true as const,
-        data: {
-          todaySeconds: 0,
-          weekSeconds: 0,
-          weekDaySeconds: [0, 0, 0, 0, 0, 0, 0],
-          recentEntries: opts.recent ?? [makeEntry({ id: 1, client_id: 1, project_id: null })],
-          todayEntries: [],
-          topClients30d: []
+      summary: async () => {
+        if (opts.summaryGate) await opts.summaryGate
+        return {
+          ok: true as const,
+          data: {
+            todaySeconds: 0,
+            weekSeconds: 0,
+            weekDaySeconds: [0, 0, 0, 0, 0, 0, 0],
+            recentEntries: opts.recent ?? [makeEntry({ id: 1, client_id: 1, project_id: null })],
+            todayEntries: [],
+            topClients30d: []
+          }
         }
-      })
+      }
     },
     projects: {
-      getAll: async ({ clientId }: { clientId?: number }) => ({
-        ok: true as const,
-        data: (opts.projects ?? []).filter((p) => clientId == null || p.client_id === clientId)
-      })
+      getAll: async ({ clientId }: { clientId?: number }) =>
+        opts.projectsFail
+          ? { ok: false as const, error: 'db busy' }
+          : {
+              ok: true as const,
+              data: (opts.projects ?? []).filter(
+                (p) => clientId == null || p.client_id === clientId
+              )
+            }
     },
     tray: { update: trayUpdate },
     idle: { dismiss: idleDismiss },
@@ -383,6 +395,76 @@ describe('useTimer — start/stop', () => {
 
     expect(api.start).toHaveBeenCalledTimes(1)
     expect(api.switch).not.toHaveBeenCalled()
+  })
+
+  // #297 review 2: while the selection-less start resolves its pair, the
+  // timer is busy — the dialog's start key and the switch path must wait,
+  // or a choice confirmed meanwhile would be dropped or switch the new entry.
+  it('is busy while the last pair resolves: a switch meanwhile is ignored', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const { api, hook } = await setup({ summaryGate })
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    await waitFor(() => expect(hook.result.current.isLoading).toBe(true))
+    let switched: string | null = 'unset'
+    await act(async () => {
+      switched = await hook.result.current.switchTo(2, null)
+    })
+    expect(switched).toBeNull()
+    expect(api.switch).not.toHaveBeenCalled()
+
+    await act(async () => {
+      release()
+      await pending
+    })
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+
+  // #297 review 2: an archived selection without a pair to fall back to is
+  // cleared, so the dialog does not show the hidden client's projects.
+  it('clears a selected archived client when it opens the dialog', async () => {
+    const clients = [makeClient({ id: 1, name: 'Archived', active: 0 })]
+    const { api, hook } = await setup({ clients, recent: [] })
+    act(() => hook.result.current.setSelectedClientId(1))
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    expect(hook.result.current.selectedClientId).toBeNull()
+    expect(hook.result.current.selectedProjectId).toBeNull()
+  })
+
+  // #297 review 2: with no client list (not loaded yet, or the load failed)
+  // nothing says the selection is archived; it starts as it always did.
+  it('starts the selection when the client list is unknown', async () => {
+    const { api, hook } = await setup({ clients: [] })
+    act(() => hook.result.current.setSelectedClientId(5))
+
+    await startTimer(hook)
+
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 5 }))
+  })
+
+  // #297 review 2: a failed project lookup is not "archived" — the last
+  // entry's project is kept rather than silently dropped.
+  it('keeps the last project when the project list cannot be read', async () => {
+    const { api, hook } = await setup({
+      recent: [makeEntry({ id: 9, client_id: 1, project_id: 10 })],
+      projectsFail: true
+    })
+
+    await startTimer(hook)
+
+    expect(api.start).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 1, project_id: 10 })
+    )
   })
 
   it('start() with no active client at all is a silent no-op', async () => {
@@ -1016,6 +1098,22 @@ describe('useTimer — handleOpenStart (#297)', () => {
 
     expect(api.start).not.toHaveBeenCalled()
     await waitFor(() => expect(useStartTimerModalStore.getState().open).toBe(true))
+  })
+
+  // #297 review 2: the caller (App) shows the error, as the dialog does.
+  it('returns the error of a refused start', async () => {
+    const clients = [makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients, recent: [] })
+    const { handleOpenStart } = await import('./useTimer')
+    act(() => hook.result.current.setSelectedClientId(2))
+    api.start.mockResolvedValueOnce({ ok: false, error: 'refused' })
+
+    let error: string | null = null
+    await act(async () => {
+      error = await handleOpenStart()
+    })
+
+    expect(error).toBe('refused')
   })
 
   it('does nothing while a timer runs (no switch from a window-forward event)', async () => {

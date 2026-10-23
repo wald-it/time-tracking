@@ -13,6 +13,8 @@ import { ToastTray } from './components/Toast'
 import { UpdateBanner } from './components/UpdateBanner'
 import { OnboardingWizard } from './components/OnboardingWizard'
 import { handleOpenStart, useTimer } from './hooks/useTimer'
+import { useT } from './contexts/I18nContext'
+import { useToastStore } from './store/toastStore'
 import { useSettingsStore } from './store/settingsStore'
 import { useUiPrefsStore } from './store/uiPrefsStore'
 import { NowProvider } from './contexts/NowContext'
@@ -43,8 +45,18 @@ function App(): React.JSX.Element {
 
   // #297: the start hotkey or the mini widget's play key found nothing to
   // start in the database; main has brought the window forward. The answer
-  // is the timer's own start path (a valid selection, else the START dialog).
-  useEffect(() => window.api.onOpenStart(() => void handleOpenStart()), [])
+  // is the timer's own start path (a valid selection, else the START dialog);
+  // a refused start shows the same toast as the dialog.
+  const t = useT()
+  useEffect(
+    () =>
+      window.api.onOpenStart(() => {
+        void handleOpenStart().then((error) => {
+          if (error) useToastStore.getState().show(t('timer.startFailed', { error }))
+        })
+      }),
+    [t]
+  )
 
   async function finishOnboarding(): Promise<void> {
     setShowOnboarding(false)

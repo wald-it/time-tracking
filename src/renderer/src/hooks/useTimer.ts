@@ -121,11 +121,12 @@ let startPending = false
  * answer is the same start path: a valid selection starts, else the last
  * pair, else the START dialog opens — in a window that is visible now.
  * Nothing happens if a timer runs by then: a window-forward event must not
- * switch away from it.
+ * switch away from it. Resolves to the error of a refused start, for the
+ * caller (App) to show as the dialog does.
  */
-export async function handleOpenStart(): Promise<void> {
-  if (useTimerStore.getState().runningEntry) return
-  await globalStartRef.current()
+export async function handleOpenStart(): Promise<string | null> {
+  if (useTimerStore.getState().runningEntry) return null
+  return globalStartRef.current()
 }
 
 function installGlobalListenersOnce(
@@ -305,19 +306,36 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       // for). Client and project are set together, so no stale project of
       // another client travels along. Without such a pair the dialog opens.
       // A selection of a client archived since counts as none: the selector
-      // lists active clients only, so the user cannot see it.
-      let clientId = clients.some((c) => c.id === selectedClientId && c.active === 1)
-        ? selectedClientId
-        : null
+      // lists active clients only, so the user cannot see it. With no client
+      // list at all (not loaded yet, or the load failed) nothing says so, and
+      // the selection starts as it always did.
+      const selectionValid =
+        selectedClientId !== null &&
+        (clients.length === 0 || clients.some((c) => c.id === selectedClientId && c.active === 1))
+      let clientId = selectionValid ? selectedClientId : null
       if (!clientId) {
-        const pair = await readLastStartPair()
+        // The stale selection goes, so the dialog does not show its projects.
+        if (selectedClientId !== null) {
+          setSelectedClientId(null)
+          useTimerStore.getState().setSelectedProjectId(null)
+        }
+        // Busy while the pair resolves: the dialog's start key and the switch
+        // path wait, so nothing confirmed meanwhile is dropped or switched.
+        setIsLoading(true)
+        let pair: Awaited<ReturnType<typeof readLastStartPair>>
+        try {
+          pair = await readLastStartPair()
+        } finally {
+          setIsLoading(false)
+        }
         if (!pair) {
           void useStartTimerModalStore.getState().openStart()
           return null
         }
         clientId = pair.clientId
         setSelectedClientId(clientId)
-        useTimerStore.getState().setSelectedProjectId(pair.projectId)
+        // A dropped (archived) project starts as "no project".
+        useTimerStore.getState().setSelectedProjectId(pair.projectId ?? null)
       }
       const projectId = useTimerStore.getState().selectedProjectId
       // A timer already runs (the start dialog was open while one started

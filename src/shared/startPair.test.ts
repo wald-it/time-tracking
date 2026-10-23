@@ -30,19 +30,16 @@ describe('lastStartPair', () => {
     })
   })
 
-  it('drops an archived project, keeps the client, and says so', () => {
+  // projectId left out (undefined) = dropped; null = the entry had none.
+  it('drops an archived project, keeps the client', () => {
     expect(lastStartPair({ client_id: 2, project_id: 21 }, CLIENTS, PROJECTS)).toStrictEqual({
-      clientId: 2,
-      projectId: null,
-      droppedProject: true
+      clientId: 2
     })
   })
 
-  it('drops a project it does not know, keeps the client, and says so', () => {
+  it('drops a project it does not know, keeps the client', () => {
     expect(lastStartPair({ client_id: 2, project_id: 99 }, CLIENTS, PROJECTS)).toStrictEqual({
-      clientId: 2,
-      projectId: null,
-      droppedProject: true
+      clientId: 2
     })
   })
 

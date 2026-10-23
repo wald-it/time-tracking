@@ -9,14 +9,14 @@
  */
 export interface StartPair {
   clientId: number
-  projectId: number | null
   /**
-   * Set when the last entry had a project the rule left out (archived or
-   * unknown). A direct start then books without a project; the START dialog
-   * leaves the project unset instead, so it picks the client's single active
-   * project as if the user had chosen the client.
+   * The project: a number, or `null` when the last entry had none. Left out
+   * (undefined) when the last entry had a project the rule dropped (archived
+   * or unknown): a direct start then books without a project, while the
+   * START dialog leaves the project unset and picks the client's single
+   * active project, as if the user had just chosen the client.
    */
-  droppedProject?: true
+  projectId?: number | null
 }
 
 /**
@@ -36,5 +36,5 @@ export function lastStartPair(
   if (last.project_id == null) return { clientId: last.client_id, projectId: null }
   const project = projects.find((p) => p.id === last.project_id)
   if (project?.active === 1) return { clientId: last.client_id, projectId: project.id }
-  return { clientId: last.client_id, projectId: null, droppedProject: true }
+  return { clientId: last.client_id }
 }
