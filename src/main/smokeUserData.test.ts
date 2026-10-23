@@ -11,7 +11,8 @@ import {
   isSameOrInside,
   parseSmokeOutPath,
   removeSmokeUserDataDir,
-  setupSmokeUserData
+  setupSmokeUserData,
+  SMOKE_DIR_PREFIX
 } from './smokeUserData'
 
 let root: string
@@ -140,7 +141,7 @@ describe('smoke userData isolation', () => {
     expect(isRemovableSmokeDir(smoke, root)).toBe(true)
     expect(isRemovableSmokeDir(other, root)).toBe(false)
     expect(isRemovableSmokeDir(root, root)).toBe(false)
-    const outside = mkdtempSync(join(tmpdir(), 'timetrack-smoke-'))
+    const outside = mkdtempSync(join(tmpdir(), SMOKE_DIR_PREFIX))
     try {
       expect(isRemovableSmokeDir(outside, join(root, 'elsewhere'))).toBe(false)
     } finally {
@@ -160,6 +161,20 @@ describe('smoke userData isolation', () => {
     })
     expect(await cleanerOutcome(cleaner)).toBe('skipped')
     expect(existsSync(victim)).toBe(true)
+  }, 15_000)
+
+  it('cleaner script removes a directory named by SMOKE_DIR_PREFIX (#289)', async () => {
+    // The app names its smoke dirs with SMOKE_DIR_PREFIX; a cleaner whose own
+    // prefix check differs would answer 'skipped' here and leave them behind.
+    const dir = join(root, `${SMOKE_DIR_PREFIX}drift`)
+    mkdirSync(dir)
+    const { command, args, env } = buildCleanerCommand(process.execPath, dir, 999999)
+    const cleaner = spawn(command, args, {
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    expect(await cleanerOutcome(cleaner)).toBe('removed')
+    expect(existsSync(dir)).toBe(false)
   }, 15_000)
 
   it('setup moves userData to a fresh temp dir and remembers both defaults', () => {
@@ -215,8 +230,6 @@ describe('smoke userData isolation', () => {
   })
 
   it('cleaner waits for the given process to exit, then removes the directory', async () => {
-    // Named by SMOKE_DIR_PREFIX, as in the app: should the cleaner's own
-    // prefix check ever differ from it, it answers 'skipped' and this fails (#289).
     const dir = createSmokeUserDataDir(root)
     writeFileSync(join(dir, 'timetrack.sqlite'), 'x')
     // Stand-in for the smoke process: lives ~1.5 s and leaves a marker (outside
