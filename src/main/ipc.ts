@@ -1008,7 +1008,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('pdf:pdf-info', async (_e, req) => {
     const refused = pdfRequestRefusal(req)
     if (refused) return fail(refused)
-    const res = await pdfInfoHandler(req)
+    const res = await pdfInfoHandler(req, realFsDeps, dialogLocale)
     const filePath = (req as { filePath?: unknown }).filePath
     if (res.ok && typeof filePath === 'string') {
       try {

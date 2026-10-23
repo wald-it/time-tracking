@@ -981,7 +981,27 @@ export const de = {
   'mainError.tag.renameExists': "Ein Tag mit dem Namen '{tag}' existiert bereits",
   'mainError.tag.mergeSame': 'Quell- und Ziel-Tag dürfen nicht gleich sein',
   'mainError.tag.inUse':
-    "Tag '{tag}' hat noch {count} Eintrag/Einträge und kann nicht gelöscht werden"
+    "Tag '{tag}' hat noch {count} Eintrag/Einträge und kann nicht gelöscht werden",
+
+  // ── Main process: PDF merge (#296 part B) ─────────────────────────────────
+  'mainError.merge.noInvoicePath': 'Kein Rechnungspfad angegeben',
+  'mainError.merge.noPath': 'Kein Pfad angegeben',
+  'mainError.merge.notPdf': 'Die gewählte Datei ist keine PDF',
+  'mainError.merge.notFound': 'Datei nicht gefunden',
+  'mainError.merge.badRequest': 'Ungültige PDF-Anfrage',
+  'mainError.merge.bothRequired': 'Beide PDF-Pfade sind erforderlich',
+  'mainError.merge.timesheetRequired': 'Mindestens ein Stundennachweis ist erforderlich',
+  'mainError.merge.timesheetPathInvalid': 'Ungültiger Stundennachweis-Pfad',
+  'mainError.merge.labelTimesheet': 'Stundennachweis',
+  'mainError.merge.labelTimesheetN': 'Stundennachweis {n}',
+  'mainError.merge.labelInvoice': 'Rechnung',
+  'mainError.merge.labeled': '{label}: {error}',
+  'mainError.merge.timesheetTooBig': '{label}-PDF zu groß (max. 50 MB)',
+  'mainError.merge.invoiceTooBig': 'Rechnungs-PDF zu groß (max. 50 MB)',
+  'mainError.merge.pdfTooBig': 'PDF zu groß (max. 50 MB)',
+  'mainError.merge.locked': '{label} ist durch ein anderes Programm gesperrt: {file}',
+  'mainError.merge.fileLocked': 'Datei ist durch ein anderes Programm gesperrt: {file}',
+  'mainError.merge.invalidPdf': 'Ungültige oder verschlüsselte PDF-Datei'
 } as const
 
 export type TranslationKey = keyof typeof de

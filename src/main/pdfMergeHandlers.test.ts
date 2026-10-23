@@ -59,6 +59,9 @@ function mockFs(files: Record<string, Buffer | 'EBUSY' | 'EPERM'>): FsDeps {
   }
 }
 
+/** The app language for the refusal texts: German, as these tests pin them. */
+const de = (): 'de' => 'de'
+
 const noDialog: DialogDeps = {
   // Electron liefert bei Abbruch einen leeren `filePath` (nicht undefined).
   showSaveDialog: async () => ({ canceled: true, filePath: '' }),
@@ -68,6 +71,22 @@ const noDialog: DialogDeps = {
 // ── mergeOnlyHandler tests ────────────────────────────────────────────────────
 
 describe('mergeOnlyHandler', () => {
+  // #296 part B: refusals in the app language; German word for word as before.
+  it('words its refusals in the language it is given', async () => {
+    const req = { stundennachweisPaths: ['C:/sn1.pdf', 'C:/sn2.txt'], invoicePath: 'C:/inv.pdf' }
+    const fs = mockFs({ 'C:/sn1.pdf': Buffer.from('x'), 'C:/inv.pdf': Buffer.from('x') })
+    const de = await mergeOnlyHandler(req, fs, noDialog)
+    expect(unwrapErr(de)).toBe('Stundennachweis 2: Die gewählte Datei ist keine PDF')
+    const en = await mergeOnlyHandler(req, fs, { ...noDialog, locale: () => 'en' })
+    expect(unwrapErr(en)).toBe('Timesheet 2: The chosen file is not a PDF')
+    const inv = await mergeOnlyHandler(
+      { stundennachweisPath: 'C:/sn1.pdf', invoicePath: 'C:/missing.pdf' },
+      fs,
+      noDialog
+    )
+    expect(unwrapErr(inv)).toBe('Rechnung: Datei nicht gefunden')
+  })
+
   it('rejects null request', async () => {
     const res = await mergeOnlyHandler(null, mockFs({}), noDialog)
     expect(res.ok).toBe(false)
@@ -337,18 +356,18 @@ describe('mergeOnlyHandler — stundennachweisPaths (multi)', () => {
 
 describe('pdfInfoHandler', () => {
   it('rejects null request', async () => {
-    const res = await pdfInfoHandler(null, mockFs({}))
+    const res = await pdfInfoHandler(null, mockFs({}), de)
     expect(res.ok).toBe(false)
   })
 
   it('rejects empty filePath', async () => {
-    const res = await pdfInfoHandler({ filePath: '' }, mockFs({}))
+    const res = await pdfInfoHandler({ filePath: '' }, mockFs({}), de)
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/Pfad/)
   })
 
   it('rejects non-pdf extension', async () => {
-    const res = await pdfInfoHandler({ filePath: 'C:/doc.txt' }, mockFs({ 'C:/doc.txt': pdf1 }))
+    const res = await pdfInfoHandler({ filePath: 'C:/doc.txt' }, mockFs({ 'C:/doc.txt': pdf1 }), de)
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/keine PDF/)
   })
@@ -360,7 +379,7 @@ describe('pdfInfoHandler', () => {
       readFileSync: () => pdf1,
       writeFileSync: () => {}
     }
-    const res = await pdfInfoHandler({ filePath: 'C:/big.pdf' }, fs)
+    const res = await pdfInfoHandler({ filePath: 'C:/big.pdf' }, fs, de)
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/zu groß/)
   })
@@ -368,7 +387,8 @@ describe('pdfInfoHandler', () => {
   it('returns EBUSY error for locked file', async () => {
     const res = await pdfInfoHandler(
       { filePath: 'C:/locked.pdf' },
-      mockFs({ 'C:/locked.pdf': 'EBUSY' })
+      mockFs({ 'C:/locked.pdf': 'EBUSY' }),
+      de
     )
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/gesperrt/)
@@ -381,7 +401,7 @@ describe('pdfInfoHandler', () => {
       readFileSync: () => Buffer.from('this is not a pdf'),
       writeFileSync: () => {}
     }
-    const res = await pdfInfoHandler({ filePath: 'C:/corrupt.pdf' }, fs)
+    const res = await pdfInfoHandler({ filePath: 'C:/corrupt.pdf' }, fs, de)
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/Ungültige|verschlüsselt/)
   })
@@ -393,7 +413,7 @@ describe('pdfInfoHandler', () => {
       readFileSync: () => pdf3page,
       writeFileSync: () => {}
     }
-    const res = await pdfInfoHandler({ filePath: 'C:/three.pdf' }, fs)
+    const res = await pdfInfoHandler({ filePath: 'C:/three.pdf' }, fs, de)
     expect(res.ok).toBe(true)
     expect(unwrapData(res).pageCount).toBe(3)
   })

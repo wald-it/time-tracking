@@ -960,5 +960,25 @@ export const en: Record<TranslationKey, string> = {
   'mainError.tag.exists': "Tag '{tag}' already exists",
   'mainError.tag.renameExists': "A tag named '{tag}' already exists",
   'mainError.tag.mergeSame': 'Source and target tag cannot be the same',
-  'mainError.tag.inUse': "Tag '{tag}' is still used by entries ({count}) and cannot be deleted"
+  'mainError.tag.inUse': "Tag '{tag}' is still used by entries ({count}) and cannot be deleted",
+
+  // ── Main process: PDF merge (#296 part B) ─────────────────────────────────
+  'mainError.merge.noInvoicePath': 'No invoice path given',
+  'mainError.merge.noPath': 'No path given',
+  'mainError.merge.notPdf': 'The chosen file is not a PDF',
+  'mainError.merge.notFound': 'File not found',
+  'mainError.merge.badRequest': 'Invalid PDF request',
+  'mainError.merge.bothRequired': 'Both PDF paths are required',
+  'mainError.merge.timesheetRequired': 'At least one timesheet is required',
+  'mainError.merge.timesheetPathInvalid': 'Invalid timesheet path',
+  'mainError.merge.labelTimesheet': 'Timesheet',
+  'mainError.merge.labelTimesheetN': 'Timesheet {n}',
+  'mainError.merge.labelInvoice': 'Invoice',
+  'mainError.merge.labeled': '{label}: {error}',
+  'mainError.merge.timesheetTooBig': '{label} PDF is too large (max. 50 MB)',
+  'mainError.merge.invoiceTooBig': 'The invoice PDF is too large (max. 50 MB)',
+  'mainError.merge.pdfTooBig': 'The PDF is too large (max. 50 MB)',
+  'mainError.merge.locked': '{label} is locked by another program: {file}',
+  'mainError.merge.fileLocked': 'The file is locked by another program: {file}',
+  'mainError.merge.invalidPdf': 'Invalid or encrypted PDF file'
 } as const satisfies Record<TranslationKey, string>
