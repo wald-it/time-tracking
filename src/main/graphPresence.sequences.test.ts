@@ -249,9 +249,7 @@ function makeDeps(w: World): PresenceDeps {
           ? w.showClient
             ? '1'
             : '0'
-          : k === 'language'
-            ? 'de'
-            : undefined,
+          : undefined,
     getAccountStatus: () => ({
       connected: w.connected,
       personalAccount: false,

@@ -11,6 +11,7 @@ import {
   type PresenceDeps
 } from './graphPresence'
 import type { RunningStatus } from './mcpBridgeCore'
+import { localeFromSetting } from '../shared/i18n'
 
 const RUNNING: RunningStatus = {
   id: 1,
@@ -131,7 +132,7 @@ function makeDeps(
     }),
     getAccessToken: async () => (o.token === undefined ? 'tok' : o.token),
     getClientId: () => 'app-client-id',
-    getLocale: () => (settings.language === 'en' ? 'en' : 'de'),
+    getLocale: () => localeFromSetting(settings.language),
     fetchFn,
     now: () => o.now ?? 1_750_000_000_000,
     log: (m) => logs.push(m)
@@ -722,6 +723,12 @@ describe('reconcilePresence', () => {
     expect(all).not.toContain('Acme')
     expect(all).not.toContain('Rollout')
     expect(logs.some((l) => /read-back .*statusMessage=matches/.test(l))).toBe(true)
+  })
+
+  it('the injected app language reaches the Teams text: English gives "🔴 Focus" (#347)', async () => {
+    const { deps } = makeDeps({ language: 'en', showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    expect(teams.content).toBe('🔴 Focus: Acme — Rollout')
   })
 
   it('privacy switch mid-run re-renders the message', async () => {
