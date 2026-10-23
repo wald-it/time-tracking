@@ -71,6 +71,7 @@ import { reconcilePresence, type PresenceDeps } from './graphPresence'
 import { graphAccountDepsFor } from './graphHandlers'
 import { effectiveClientId, getAccessToken, getStatus } from './graphAccount'
 import { applyMiniEnabled, destroyMini, pushMiniState, toggleMini } from './miniWindow'
+import { decideStartRequest } from './startRequest'
 import {
   generateFeedToken,
   restartFeedServer,
@@ -169,9 +170,7 @@ if (isSecondInstance) {
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
+      bringWindowForward(mainWindow)
     } else {
       // Startup race: second launch arrived before createWindow ran.
       log.info('second-instance signal received before main window exists — ignored')
@@ -182,9 +181,8 @@ if (isSecondInstance) {
 // ── Hotkey registration state ────────────────────────────────────
 // Tracked per-slot so `registerHotkey` and `registerMiniHotkey` can update
 // independently without clobbering each other (no more `unregisterAll`).
-const toggleSlot: HotkeySlot = hotkeySlot(() => {
-  mainWindow?.webContents.send('timer:hotkey-toggle')
-})
+// The start hotkey takes the same handler as the mini play key (#297).
+const toggleSlot: HotkeySlot = hotkeySlot(onStartKey)
 const miniSlot: HotkeySlot = hotkeySlot(() => toggleMini())
 
 // ── State for tray quick-start ──────────────────────────────────
@@ -287,6 +285,29 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   const locale = appLanguage()
   tray.setToolTip(trayTooltip(locale, running, label, fmtHHMM(todaySeconds)))
   tray.setContextMenu(buildTrayMenu(locale))
+}
+
+/**
+ * The global start hotkey and the mini widget's play key (#297). The only
+ * place that sends `timer:open-start` and brings the window forward for it:
+ * an explicit press, never a background event (startRequest.test.ts pins
+ * that). Everything else goes the old way, `timer:hotkey-toggle`.
+ */
+function onStartKey(): void {
+  if (!mainWindow) return
+  if (decideStartRequest(getDb()) === 'open-start') {
+    bringWindowForward(mainWindow)
+    mainWindow.webContents.send('timer:open-start')
+    return
+  }
+  mainWindow.webContents.send('timer:hotkey-toggle')
+}
+
+/** Restore, show and focus the main window: a second launch, or a start key press. */
+function bringWindowForward(win: BrowserWindow): void {
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
 }
 
 /** Log a refused change; the slot itself is left as `changeHotkey` says. */
@@ -861,11 +882,9 @@ app.whenReady().then(async () => {
   ipcMain.on('mini:request-stop', () => {
     mainWindow?.webContents.send('timer:tray-stop')
   })
-  ipcMain.on('mini:request-start', () => {
-    // hotkey-toggle starts when no timer is running and falls back to the
-    // first active client — exactly what we want for the play button.
-    mainWindow?.webContents.send('timer:hotkey-toggle')
-  })
+  // The play button does what the start hotkey does (#297): start the last
+  // pair, or open the START dialog when there is none.
+  ipcMain.on('mini:request-start', onStartKey)
 
   // Settings view → main: pause/resume registered global shortcuts during
   // hotkey capture so the user can rebind a key (e.g. Alt+Shift+S) without
