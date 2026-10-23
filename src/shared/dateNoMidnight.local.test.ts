@@ -16,6 +16,8 @@ beforeAll(async () => {
   date = await import('./date')
   split = await import('./midnightSplit')
 })
+// Tidy, not isolation: the file's own process is what keeps the zone from
+// leaking (see the header).
 afterAll(() => {
   if (previousTz === undefined) delete process.env.TZ
   else process.env.TZ = previousTz

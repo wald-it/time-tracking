@@ -50,8 +50,10 @@ export function parseTimeToDate(dateISO: string | Date, time: string): Date {
  * across midnight (20:00 to 00:00) reads, and a whole day from 00:00 to
  * 00:00. The boundary is the one the split uses (`localMidnightAfter`), so it
  * also holds where the clock jumps from 00:00 to 01:00 and the form shows
- * 01:00. A new entry or any other stop stays on the same day, so a stop
- * before the start is still refused instead of becoming an overnight entry.
+ * 01:00 (there, a stop of 01:00 on such an entry always means the boundary,
+ * since that time exists only once). A new entry, or any other stop, stays on
+ * the same day, so a stop before the start is still refused instead of
+ * becoming an overnight entry.
  */
 export function parseStopToDate(
   dateISO: string | Date,

@@ -63,7 +63,8 @@ export function EntryEditForm({
     : new Date(initialStart.getTime() + 60 * 60 * 1000)
 
   // #334: the first half of an entry across midnight (or a whole day) ends at
-  // the next midnight, which the form shows as 00:00.
+  // the next midnight, which the form shows as 00:00 (01:00 where the clock
+  // jumps over 00:00).
   // Fixed at mount, like the other initial values below.
   const [untilMidnight] = useState(() =>
     entry?.stopped_at ? endsAtNextMidnight(entry.started_at, entry.stopped_at) : false
