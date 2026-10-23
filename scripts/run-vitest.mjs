@@ -18,8 +18,11 @@
  * Vitest spawns its workers with `process.execPath` and inherits this
  * environment, so the flag reaches them too.
  *
- * Depends on Electron's **RunAsNode** fuse staying enabled — the same caveat
- * `src/main/mcpLaunch.ts` documents.
+ * Depends on Electron's **RunAsNode** fuse, like `src/main/mcpLaunch.ts`. This
+ * runs the dev binary from node_modules/electron, which carries no fuses: the
+ * fuses are set only when packaging (`electronFuses` in electron-builder.yml).
+ * Never write fuses into node_modules/electron — pnpm shares that binary
+ * across worktrees, and RunAsNode off there would break every test run.
  */
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
