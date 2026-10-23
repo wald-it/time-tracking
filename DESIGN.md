@@ -451,7 +451,7 @@ Full state-matrix and component catalogue follow in v1.3.
 
 | #   | Limitation                                                                  | Defer-to  | Reason                                                       |
 | --- | --------------------------------------------------------------------------- | --------- | ------------------------------------------------------------ |
-| L1  | Tray-tooltip is German-only (ignores `settings.language`)                   | v1.4      | Full i18n pass scoped together                               |
+| L1  | ~~Tray-tooltip is German-only (ignores `settings.language`)~~               | done      | Tray menu and tooltip follow the app language (#296)         |
 | L2  | Client color palette not colorblind-safe (Indigo/Violet, Blue/Teal cluster) | v1.4      | Palette change requires migration of saved per-client colors |
 | L3  | No mobile/tablet layout (<1024 px); Calendar grid breaks below that width   | v1.4      | App is Windows-desktop-first; web build not on roadmap       |
 | L4  | No light mode                                                               | post-v1.5 | Single user, dark-only tested                                |
