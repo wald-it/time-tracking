@@ -155,7 +155,9 @@ function newTableSums(): Sums {
 const sorted = (m: Sums): [string, Totals][] => [...m].sort(([a], [b]) => a.localeCompare(b))
 
 // ── T1 + T2: every shape, every invariant, over many seeds ──────────────────
-const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1)
+// Every seed contains every shape (the generator guarantees each kind once),
+// so 20 seeds keep all migration mutants red at half the run time of 40.
+const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1)
 
 describe('migrateEntriesToV2 over generated 1.x databases (#P1, test 11.9)', () => {
   it.each(SEEDS)(
