@@ -157,6 +157,20 @@ describe('handleIcalExport', () => {
     seed(db)
   })
 
+  // #270: the save dialog follows the app language.
+  it('titles the save dialog in the app language', async () => {
+    const { dialog } = await import('electron')
+    const save = vi.mocked(dialog.showSaveDialog)
+    save.mockClear()
+    await run(db)
+    db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+    await run(db)
+    expect(save.mock.calls.map((c) => (c[0] as Electron.SaveDialogOptions).title)).toEqual([
+      'iCal speichern',
+      'Save iCal'
+    ])
+  })
+
   it('exportiert nur abgeschlossene, nicht gelöschte Einträge im Zeitraum + Kunde', async () => {
     const ics = await run(db)
     const events = ics.match(/BEGIN:VEVENT/g) ?? []

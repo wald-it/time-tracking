@@ -16,6 +16,7 @@ import { formatCsv, type CsvOptions } from '../shared/csv'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
 import { exportDefaultPath, rememberExportFolder } from './exportFolders'
+import { dialogT, readLanguage } from './mainI18n'
 
 export interface CsvRequest {
   clientId: number
@@ -71,7 +72,7 @@ export async function handleCsvExport(
     }
 
     const result = await dialog.showSaveDialog({
-      title: 'CSV speichern',
+      title: dialogT(readLanguage(db))('mainDialog.csv.title'),
       defaultPath: await exportDefaultPath(
         db,
         'csv',

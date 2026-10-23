@@ -7,12 +7,7 @@ import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
-import {
-  createBackup,
-  listBackups,
-  restoreListedBackupOrReport,
-  RESTORE_FAILED_TITLE
-} from './backup'
+import { createBackup, listBackups, restoreListedBackupOrReport } from './backup'
 import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
 import {
   createManualEntry,
@@ -29,7 +24,15 @@ import { renderPdfBuffer } from './pdfWindow'
 import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
 import { handleCsvExport, type CsvRequest } from './csvExport'
 import { handleIcalExport, type IcalRequest } from './icalExport'
-import { mergeExportHandler, mergeOnlyHandler, pdfInfoHandler } from './pdfMergeHandlers'
+import {
+  mergeExportHandler,
+  mergeOnlyHandler,
+  pdfInfoHandler,
+  realFsDeps,
+  saveDialogIn
+} from './pdfMergeHandlers'
+import { dialogT, localeFromSystem, readLanguageOr, type DialogT } from './mainI18n'
+import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { budgetUsedMinutesSql } from '../shared/currency'
@@ -119,6 +122,26 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+  // Native dialogs follow the app language (#270); with the handle closed
+  // (after a restore attempt) the system language, as at start.
+  const systemLocale = (): Locale => localeFromSystem(app.getPreferredSystemLanguages())
+  const dialogLocale = (): Locale => readLanguageOr(db, systemLocale)
+  const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
+  // A restore failure must reach the user whatever the database says: this
+  // never throws. Read once, before the restore can close the handle. If the
+  // system language cannot be read either: German, the app's default
+  // (migration 002, localeFromSetting).
+  const restoreLocale = (): Locale => {
+    try {
+      return dialogLocale()
+    } catch {
+      try {
+        return systemLocale()
+      } catch {
+        return 'de'
+      }
+    }
+  }
 
   // ── Clients ──────────────────────────────────────────────────
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
@@ -682,19 +705,24 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle(
     'backup:restore',
     (_e, filename: unknown): IpcResult<{ safetyBackupPath: string }> => {
+      const locale = restoreLocale()
       try {
         return restoreListedBackupOrReport(
           db,
           filename,
           getBackupPathSetting() || undefined,
           getDbPath(),
+          locale,
           (title, message) => dialog.showErrorBox(title, message)
         )
       } catch (e) {
         // Same rule as inside: the renderer relaunches next, so say it here.
-        const message = `Wiederherstellung nicht durchgeführt: ${e instanceof Error ? e.message : String(e)}`
+        const t = dialogT(locale)
+        const message = t('mainDialog.restore.failed', {
+          cause: e instanceof Error ? e.message : String(e)
+        })
         try {
-          dialog.showErrorBox(RESTORE_FAILED_TITLE, message)
+          dialog.showErrorBox(t('mainDialog.restore.title'), message)
         } catch {
           // The dialog itself may be what failed; still answer the renderer.
         }
@@ -707,7 +735,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openDirectory', 'createDirectory'],
-        title: 'Backup-Pfad wählen'
+        title: tDialog('mainDialog.backupPath.title')
       })
       if (canceled || filePaths.length === 0) return ok('')
       const dir = filePaths[0]
@@ -836,7 +864,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const today = new Date().toISOString().slice(0, 10)
       const result = await dialog.showSaveDialog({
-        title: 'Datenexport speichern',
+        title: tDialog('mainDialog.exportJson.title'),
         defaultPath: await exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
@@ -884,7 +912,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           }
         }
         const result = await dialog.showSaveDialog({
-          title: 'Stundennachweis speichern',
+          title: tDialog('mainDialog.pdf.saveTitle'),
           defaultPath: await exportDefaultPath(
             db,
             'pdf',
@@ -923,11 +951,15 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // <stem>_inkl_Stundennachweis.pdf. Falls back to a save dialog when the
   // target directory is not writable (e.g. a corporate archive folder).
   // Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-export', (_e, req) => mergeExportHandler(db, req))
+  ipcMain.handle('pdf:merge-export', (_e, req) =>
+    mergeExportHandler(db, req, realFsDeps, saveDialogIn(dialogLocale))
+  )
 
   // PDF merge-only: merges two existing PDFs (Stundennachweis + invoice) without
   // re-rendering. Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-only', (_e, req) => mergeOnlyHandler(req))
+  ipcMain.handle('pdf:merge-only', (_e, req) =>
+    mergeOnlyHandler(req, realFsDeps, saveDialogIn(dialogLocale))
+  )
 
   // PDF info: returns page count for a given PDF path. Used by the renderer to
   // show page counts before confirming a merge.
@@ -940,7 +972,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     async (): Promise<IpcResult<{ filePath: string } | null>> => {
       try {
         const result = await dialog.showOpenDialog({
-          title: 'PDF auswählen',
+          title: tDialog('mainDialog.pdf.openTitle'),
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
           properties: ['openFile']
         })
@@ -956,10 +988,13 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // and persists the path into settings.pdf_logo_path.
   ipcMain.handle('logo:set', async (): Promise<IpcResult<{ path: string }>> => {
     try {
+      const t = dialogT(dialogLocale())
       const result = await dialog.showOpenDialog({
-        title: 'Logo auswählen',
+        title: t('mainDialog.logo.title'),
         properties: ['openFile'],
-        filters: [{ name: 'Bilder', extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }]
+        filters: [
+          { name: t('mainDialog.logo.filter'), extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }
+        ]
       })
       if (result.canceled || result.filePaths.length === 0) {
         return fail('Auswahl abgebrochen')
