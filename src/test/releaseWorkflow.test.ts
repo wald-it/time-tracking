@@ -25,7 +25,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -307,6 +307,159 @@ describe('release.yml wiring (#221)', () => {
       expect(editPath).toContain('node scripts/release-latest.mjs')
       expect(editPath).toContain('CURRENT_LATEST')
     })
+  })
+})
+
+// Release provenance: the tag is validated before anything runs with write
+// rights, every job builds the one commit `prepare` resolved, and what is
+// published carries an attestation and its checksums. Checked as text like the
+// wiring above.
+
+/** Each job of a workflow as text, keyed by job id. */
+function jobsOf(workflowText: string): Record<string, string> {
+  const lines = workflowText.split('\n')
+  const start = lines.indexOf('jobs:')
+  const jobs: Record<string, string> = {}
+  let current: string | null = null
+  for (const line of lines.slice(start + 1)) {
+    const head = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/)
+    if (head) {
+      current = head[1]
+      jobs[current] = ''
+      continue
+    }
+    if (current !== null) jobs[current] += line + '\n'
+  }
+  return jobs
+}
+
+/** The body of every `run:` script (block or single line), with its line number. */
+function runScripts(workflowText: string): { line: number; body: string }[] {
+  const lines = workflowText.split('\n')
+  const scripts: { line: number; body: string }[] = []
+  lines.forEach((line, i) => {
+    const m = line.match(/^(\s*)(?:- )?run:\s*(.*)$/)
+    if (!m) return
+    const keyIndent = line.indexOf('run:')
+    if (!/^[|>]/.test(m[2])) {
+      scripts.push({ line: i + 1, body: m[2] })
+      return
+    }
+    const body: string[] = []
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j]
+      if (next.trim() !== '' && next.search(/\S/) <= keyIndent) break
+      body.push(next)
+    }
+    scripts.push({ line: i + 1, body: body.join('\n') })
+  })
+  return scripts
+}
+
+const WORKFLOW_DIR = join(REPO_ROOT, '.github', 'workflows')
+
+describe('release.yml provenance', () => {
+  const text = readFileSync(WORKFLOW, 'utf8').replace(/\r\n/g, '\n')
+  const jobs = jobsOf(text)
+
+  it.each(readdirSync(WORKFLOW_DIR).filter((f) => /\.ya?ml$/.test(f)))(
+    '%s expands no ${{ }} expression inside a run: script',
+    (file) => {
+      // Values reach scripts through env: and are used as quoted variables,
+      // so a tag or ref is never pasted into the script text itself.
+      const wf = readFileSync(join(WORKFLOW_DIR, file), 'utf8').replace(/\r\n/g, '\n')
+      const scripts = runScripts(wf)
+      expect(scripts.length).toBeGreaterThan(0)
+      const offending = scripts.filter((s) => s.body.includes('${{')).map((s) => s.line)
+      expect(offending, `run: scripts with \${{ }} at lines ${offending.join(', ')}`).toEqual([])
+    }
+  )
+
+  it('validates the tag in the first step of prepare, before the checkout', () => {
+    const prepare = jobs['prepare'] ?? ''
+    const steps = prepare.slice(prepare.indexOf('\n    steps:\n'))
+    const first = steps.indexOf('\n      - ')
+    const firstStep = steps.slice(first, steps.indexOf('\n      - ', first + 1))
+    expect(firstStep).toContain('name: Validate tag and ref')
+    expect(firstStep).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$')
+    expect(firstStep).toContain('TAG: ${{ inputs.tag || github.ref_name }}')
+    expect(firstStep).not.toContain('uses:')
+  })
+
+  it('prepare resolves the commit and exposes it as an output', () => {
+    expect(jobs['prepare']).toContain('sha: ${{ steps.resolve.outputs.sha }}')
+    expect(jobs['prepare']).toContain('echo "sha=$SHA"')
+  })
+
+  // Codex finding on #256: the provenance attestation takes the commit from
+  // the OIDC token (GITHUB_SHA), not from the checkout. prepare refuses to
+  // build any other commit, so the attestation always names what is built.
+  it('prepare refuses to build a commit other than the one the run started from', () => {
+    const prepare = jobs['prepare'] ?? ''
+    const guard = prepare.indexOf('if [ "$SHA" != "$GITHUB_SHA" ]; then')
+    expect(guard).toBeGreaterThan(-1)
+    expect(guard).toBeLessThan(prepare.indexOf('echo "sha=$SHA"'))
+    expect(prepare.slice(guard, prepare.indexOf('fi', guard))).toContain('exit 1')
+  })
+
+  // Codex finding on 540e601: with `default: main` on the ref input, a run
+  // started from a tag with the field left empty built main and was refused.
+  it('a dispatch with no ref builds the commit it was started from', () => {
+    const inputs = text.slice(text.indexOf('workflow_dispatch:'), text.indexOf('\nenv:'))
+    expect(inputs).toContain('ref:')
+    expect(inputs).not.toContain('default:')
+    expect(jobs['prepare']).toContain('ref: ${{ inputs.ref || github.sha }}')
+  })
+
+  it('every job after prepare checks out exactly that commit', () => {
+    const others = Object.entries(jobs).filter(([id]) => id !== 'prepare')
+    expect(others.length).toBeGreaterThan(0)
+    for (const [id, body] of others) {
+      const checkouts = body.split('uses: actions/checkout@').length - 1
+      expect(checkouts, `${id} has no checkout`).toBeGreaterThan(0)
+      const pinned = body.split('ref: ${{ needs.prepare.outputs.sha }}').length - 1
+      expect(pinned, `${id}: every checkout must use needs.prepare.outputs.sha`).toBe(checkouts)
+      expect(body, `${id} must need prepare`).toMatch(
+        /(?:^|\n) {4}needs: (prepare|\[[^\]]*prepare[^\]]*\])\n/
+      )
+    }
+  })
+
+  it('grants nothing at workflow level; every job declares its own permissions', () => {
+    expect(text).toMatch(/\npermissions: \{\}\n/)
+    for (const [id, body] of Object.entries(jobs)) {
+      expect(body, `${id} declares no permissions`).toMatch(/\n {4}permissions:\n/)
+    }
+  })
+
+  it('only publish-release may mint an OIDC token, and it attests what it publishes', () => {
+    for (const [id, body] of Object.entries(jobs)) {
+      if (id === 'publish-release') continue
+      expect(body, id).not.toContain('id-token: write')
+      expect(body, id).not.toContain('attestations: write')
+    }
+    const publish = jobs['publish-release'] ?? ''
+    expect(publish).toContain('id-token: write')
+    expect(publish).toContain('attestations: write')
+    const attest = publish.indexOf('uses: actions/attest-build-provenance@')
+    expect(attest, 'attest step not found').toBeGreaterThanOrEqual(0)
+    // Pinned to a full commit SHA like every other action.
+    expect(publish.slice(attest)).toMatch(/^uses: actions\/attest-build-provenance@[0-9a-f]{40} #/)
+    expect(publish).toContain('subject-path: dist/*')
+    expect(attest).toBeLessThan(publish.indexOf('- name: Create / update GitHub Release'))
+  })
+
+  it('both release paths close the notes with checksums and how to verify', () => {
+    const publish = jobs['publish-release'] ?? ''
+    expect(publish).toContain('sha256sum')
+    expect(publish).toContain('gh attestation verify')
+    expect(publish).toContain('Get-FileHash')
+    expect(publish).toContain('shasum -a 256')
+    // Called once on the re-run path (from the attached assets) and once on
+    // the first publish (from dist/).
+    expect(publish.match(/\n\s+write_verify_section \S+/g) ?? []).toHaveLength(2)
+    expect(publish).toContain('"$VERIFY_FILE" > "$NOTES_FILE"')
+    expect(publish).toContain('--verify-tag')
   })
 })
 
