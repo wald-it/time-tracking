@@ -4,6 +4,8 @@ import { useT } from '../contexts/I18nContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useTimerStore } from '../store/timerStore'
 import * as Icons from './Icons'
+import { Dialog } from './Dialog'
+import { FIELD_LABEL, INPUT, KEY_INV } from './instrumentClasses'
 import type { Project } from '../../../shared/types'
 
 interface StartTimerModalProps {
@@ -41,6 +43,8 @@ export function StartTimerModal({
   // the single-project default below. Holds that client's id until another
   // client is chosen.
   const explicitNoProjectFor = useRef<number | null>(null)
+  // B6: focus lands on the description, so Enter starts the prefilled pair.
+  const descriptionRef = useRef<HTMLInputElement>(null)
 
   // B6: apply the prefill once per opening. Project first, so the project
   // loader below finds a valid preselection and keeps it.
@@ -114,52 +118,23 @@ export function StartTimerModal({
   }
 
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-[100] bg-[rgb(0_0_0/0.35)]" onPointerDown={onClose} />
-      {/* Modal */}
-      <div
-        className="fixed left-1/2 top-1/2 z-[101] w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-[var(--r-disp)] border p-6 flex flex-col gap-4"
-        style={{
-          background: 'var(--key)',
-          borderColor: 'var(--line)'
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>
-            {t('timer.modal.title')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[var(--r-key)] p-1.5 transition-colors hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            aria-label={t('common.close')}
-          >
-            <Icons.X />
-          </button>
-        </div>
-
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t('timer.modal.title')}
+      widthClass="w-[420px]"
+      initialFocusRef={descriptionRef}
+    >
+      <div className="flex flex-col gap-4">
         {/* Client */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-semibold uppercase tracking-wide"
-            style={{ color: 'var(--ink3)' }}
-          >
-            {t('timer.client.label')}
-          </label>
+          <label className={FIELD_LABEL}>{t('timer.client.label')}</label>
           <div className="relative">
             <select
               aria-label={t('timer.client.label')}
               value={selectedClientId ?? ''}
               onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full appearance-none rounded-[var(--r-key)] border px-3.5 py-2.5 pr-9 text-sm
-                focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink)'
-              }}
+              className={`w-full appearance-none pr-9 ${INPUT}`}
             >
               <option value="">{t('timer.client.placeholder')}</option>
               {activeClients.map((c) => (
@@ -178,7 +153,9 @@ export function StartTimerModal({
           {activeClients.length === 0 && (
             <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('timer.client.noClientsHint')}{' '}
-              <span style={{ color: 'var(--inv)' }}>{t('timer.client.noClientsLink')}</span>
+              <span className="font-semibold text-[var(--ink)]">
+                {t('timer.client.noClientsLink')}
+              </span>
               {t('timer.client.noClientsSuffix')}
             </p>
           )}
@@ -187,12 +164,7 @@ export function StartTimerModal({
         {/* Project — only when client has projects */}
         {selectedClientId !== null && projects.length > 0 && (
           <div className="flex flex-col gap-1.5">
-            <label
-              className="text-xs font-semibold uppercase tracking-wide"
-              style={{ color: 'var(--ink3)' }}
-            >
-              {t('timer.project.label')}
-            </label>
+            <label className={FIELD_LABEL}>{t('timer.project.label')}</label>
             <div className="relative">
               <select
                 aria-label={t('timer.project.label')}
@@ -200,13 +172,7 @@ export function StartTimerModal({
                 onChange={(e) =>
                   setSelectedProjectId(e.target.value ? Number(e.target.value) : null)
                 }
-                className="w-full appearance-none rounded-[var(--r-key)] border px-3.5 py-2.5 pr-9 text-sm
-                  focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-                style={{
-                  background: 'var(--key)',
-                  borderColor: 'var(--line)',
-                  color: 'var(--ink)'
-                }}
+                className={`w-full appearance-none pr-9 ${INPUT}`}
               >
                 <option value="">{t('timer.project.placeholder')}</option>
                 {projects.map((p) => {
@@ -279,26 +245,15 @@ export function StartTimerModal({
 
         {/* Description */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-semibold uppercase tracking-wide"
-            style={{ color: 'var(--ink3)' }}
-          >
-            {t('timer.description.label')}
-          </label>
+          <label className={FIELD_LABEL}>{t('timer.description.label')}</label>
           <input
             type="text"
             placeholder={t('timer.description.placeholder')}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void handleStart()}
-            autoFocus
-            className="rounded-[var(--r-key)] border px-3.5 py-2.5 text-sm
-              focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            ref={descriptionRef}
+            className={INPUT}
           />
         </div>
 
@@ -307,18 +262,12 @@ export function StartTimerModal({
           type="button"
           onClick={() => void handleStart()}
           disabled={!canStart}
-          className="flex items-center justify-center gap-2.5 rounded-[var(--r-key)] py-3 text-base font-bold transition-all
-            disabled:cursor-not-allowed"
-          style={{
-            background: canStart ? 'var(--inv)' : 'var(--key)',
-            color: canStart ? 'var(--inv-ink)' : 'var(--ink3)',
-            border: 'none'
-          }}
+          className={`w-full ${KEY_INV}`}
         >
           <Icons.Play />
           {t('timer.modal.start')}
         </button>
       </div>
-    </>
+    </Dialog>
   )
 }

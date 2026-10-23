@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { Client, Entry, Project } from '../../../shared/types'
 import { formatTimeHHMM, parseTimeToDate } from '../../../shared/date'
 import { useEntriesStore } from '../store/entriesStore'
@@ -6,6 +6,7 @@ import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useT } from '../contexts/I18nContext'
 import { TagInput } from './TagInput'
 import { Toggle } from './Toggle'
+import { FIELD_LABEL, INPUT, KEY, KEY_INV, TEXTAREA } from './instrumentClasses'
 
 interface Props {
   /** Existing entry to edit; omit for create-mode. */
@@ -49,6 +50,7 @@ export function EntryEditForm({
   onCancel
 }: Props): React.ReactElement {
   const t = useT()
+  const billableLabelId = useId()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const initialStart = entry ? new Date(entry.started_at) : (defaultDate ?? new Date())
   const initialStop = entry?.stopped_at
@@ -169,73 +171,47 @@ export function EntryEditForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 text-sm">
-      <div className="grid grid-cols-3 gap-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs" style={{ color: 'var(--ink2)' }}>
-            {t('entry.date')}
-          </span>
+      {/* Date on a row of its own: in the day panel a third of the width is
+          too narrow for a mono date or time plus the picker icon. */}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="col-span-2 flex flex-col gap-1">
+          <span className={FIELD_LABEL}>{t('entry.date')}</span>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={`${INPUT} font-num min-w-0`}
             disabled={isSaving}
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs" style={{ color: 'var(--ink2)' }}>
-            {t('entry.start')}
-          </span>
+          <span className={FIELD_LABEL}>{t('entry.start')}</span>
           <input
             type="time"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
-            className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={`${INPUT} font-num min-w-0`}
             disabled={isSaving}
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs" style={{ color: 'var(--ink2)' }}>
-            {t('entry.end')}
-          </span>
+          <span className={FIELD_LABEL}>{t('entry.end')}</span>
           <input
             type="time"
             value={stopTime}
             onChange={(e) => setStopTime(e.target.value)}
-            className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={`${INPUT} font-num min-w-0`}
             disabled={isSaving || (entry?.stopped_at == null && entry !== undefined)}
           />
         </label>
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
-          {t('entry.client')}
-        </span>
+        <span className={FIELD_LABEL}>{t('entry.client')}</span>
         <select
           value={clientId}
           onChange={(e) => setClientId(parseInt(e.target.value, 10))}
-          className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
-          style={{
-            background: 'var(--key)',
-            borderColor: 'var(--line)',
-            color: 'var(--ink)'
-          }}
+          className={INPUT}
           disabled={isSaving}
         >
           {activeClients.map((c) => (
@@ -249,18 +225,11 @@ export function EntryEditForm({
       {/* Project picker — only shown when there are active projects for the client */}
       {projects.length > 0 && (
         <label className="flex flex-col gap-1">
-          <span className="text-xs" style={{ color: 'var(--ink2)' }}>
-            {t('entry.project')}
-          </span>
+          <span className={FIELD_LABEL}>{t('entry.project')}</span>
           <select
             value={projectId ?? ''}
             onChange={(e) => setProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
-            className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={INPUT}
             disabled={isSaving}
           >
             <option value="">{t('entry.project.placeholder')}</option>
@@ -280,9 +249,9 @@ export function EntryEditForm({
       )}
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
+        <span className={FIELD_LABEL}>
           {t('entry.description')}{' '}
-          <span className="text-xs" style={{ color: 'var(--ink3)' }}>
+          <span className="font-num" style={{ color: 'var(--ink3)' }}>
             ({description.length}/{MAX_DESCRIPTION_LEN})
           </span>
         </span>
@@ -291,20 +260,13 @@ export function EntryEditForm({
           onChange={(e) => setDescription(e.target.value)}
           rows={2}
           maxLength={MAX_DESCRIPTION_LEN}
-          className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
-          style={{
-            background: 'var(--key)',
-            borderColor: 'var(--line)',
-            color: 'var(--ink)'
-          }}
+          className={TEXTAREA}
           disabled={isSaving}
         />
       </label>
 
       <div className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
-          {t('entry.tags')}
-        </span>
+        <span className={FIELD_LABEL}>{t('entry.tags')}</span>
         <TagInput value={tags} onChange={(serialized) => setTags(serialized)} disabled={isSaving} />
         <span className="text-xs" style={{ color: 'var(--ink3)' }}>
           {t('entry.tagsHint')}
@@ -312,21 +274,14 @@ export function EntryEditForm({
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
-          {t('entry.reference.label')}
-        </span>
+        <span className={FIELD_LABEL}>{t('entry.reference.label')}</span>
         <input
           type="text"
           value={reference}
           onChange={(e) => setReference(e.target.value)}
           maxLength={MAX_REFERENCE_LEN}
           placeholder={t('entry.reference.placeholder')}
-          className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
-          style={{
-            background: 'var(--key)',
-            borderColor: 'var(--line)',
-            color: 'var(--ink)'
-          }}
+          className={INPUT}
           disabled={isSaving}
         />
         <span className="text-xs" style={{ color: 'var(--ink3)' }}>
@@ -335,7 +290,7 @@ export function EntryEditForm({
       </label>
 
       <div className="flex items-center justify-between">
-        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
+        <span id={billableLabelId} className={FIELD_LABEL}>
           {t('entry.billable.label')}
         </span>
         <div className="flex items-center gap-2">
@@ -348,26 +303,20 @@ export function EntryEditForm({
             checked={billable === 1}
             onChange={(v) => setBillable(v ? 1 : 0)}
             disabled={isSaving}
+            labelledBy={billableLabelId}
           />
         </div>
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs" style={{ color: 'var(--ink2)' }}>
-          {t('entry.privateNote.label')}
-        </span>
+        <span className={FIELD_LABEL}>{t('entry.privateNote.label')}</span>
         <textarea
           value={privateNote}
           onChange={(e) => setPrivateNote(e.target.value)}
           rows={2}
           maxLength={MAX_NOTE_LEN}
           placeholder={t('entry.privateNote.placeholder')}
-          className="rounded border px-2 py-1.5 focus:border-[var(--ink)] focus:outline-none"
-          style={{
-            background: 'var(--key)',
-            borderColor: 'var(--line)',
-            color: 'var(--ink)'
-          }}
+          className={TEXTAREA}
           disabled={isSaving}
         />
         <span className="text-xs" style={{ color: 'var(--ink3)' }}>
@@ -387,27 +336,13 @@ export function EntryEditForm({
       )}
 
       <div
-        className="sticky bottom-0 -mx-1 mt-1 flex justify-end gap-2 px-1 pt-2 border-t"
+        className="sticky bottom-0 -mx-1 mt-1 flex justify-end gap-2 border-t px-1 pt-2 pb-1"
         style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
       >
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSaving}
-          className="rounded-[var(--r-key)] px-3 py-1.5 text-sm font-medium key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50 border"
-          style={{
-            background: 'var(--key)',
-            borderColor: 'var(--line)',
-            color: 'var(--ink)'
-          }}
-        >
+        <button type="button" onClick={onCancel} disabled={isSaving} className={KEY}>
           {t('common.cancel')}
         </button>
-        <button
-          type="submit"
-          disabled={isSaving || localError !== null}
-          className="rounded-[var(--r-key)] bg-[var(--inv)] px-3 py-1.5 text-sm font-medium text-[var(--inv-ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)] disabled:opacity-50"
-        >
+        <button type="submit" disabled={isSaving || localError !== null} className={KEY_INV}>
           {isSaving ? t('common.saving') : t('common.save')}
         </button>
       </div>

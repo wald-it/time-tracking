@@ -1,19 +1,26 @@
 import { useToastStore } from '../store/toastStore'
+import { useT } from '../contexts/I18nContext'
+import { Z_TOAST } from './Dialog'
+import { FOCUS } from './instrumentClasses'
 
 /**
  * Toast tray. Mount once at the App root. Renders bottom-right above any
- * Drawer (z-index 60). Each toast lives ~5s; clicking the action button
+ * Drawer and any modal (`Z_TOAST`). Each toast lives ~5s; clicking the action button
  * (e.g. "Rückgängig") fires the snapshot stored on the toast.
  */
 export function ToastTray(): React.ReactElement | null {
   const toasts = useToastStore((s) => s.toasts)
   const dismiss = useToastStore((s) => s.dismiss)
   const executeAction = useToastStore((s) => s.executeAction)
+  const tr = useT()
 
   if (toasts.length === 0) return null
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex flex-col gap-2">
+    <div
+      className="pointer-events-none fixed bottom-4 right-4 flex flex-col gap-2"
+      style={{ zIndex: Z_TOAST }}
+    >
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -30,7 +37,7 @@ export function ToastTray(): React.ReactElement | null {
             <button
               type="button"
               onClick={() => void executeAction(t.id)}
-              className="rounded px-2 py-1 text-sm font-medium underline hover:bg-[var(--disp-line)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
+              className={`-my-1.5 min-h-11 rounded-[var(--r-fine)] px-2 text-sm font-semibold underline hover:bg-[var(--disp-line)] ${FOCUS}`}
               style={{ color: 'var(--disp-ink)' }}
             >
               {t.action.label}
@@ -39,8 +46,8 @@ export function ToastTray(): React.ReactElement | null {
           <button
             type="button"
             onClick={() => dismiss(t.id)}
-            aria-label="Schließen"
-            className="grid h-7 w-7 place-items-center rounded hover:bg-[var(--disp-line)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
+            aria-label={tr('common.close')}
+            className={`-m-1.5 grid h-11 w-11 place-items-center rounded-[var(--r-fine)] hover:bg-[var(--disp-line)] hover:text-[var(--disp-ink)] ${FOCUS}`}
             style={{ color: 'var(--disp-dim)' }}
           >
             ×

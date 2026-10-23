@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { Settings, BackupInfo } from '../../../shared/types'
 import { useUpdateStore } from '../store/updateStore'
 import { useT, useLocale } from '../contexts/I18nContext'
@@ -8,10 +8,24 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { useTheme, type ThemeMode } from '../contexts/ThemeContext'
 import { useRounding } from '../contexts/RoundingContext'
 import { Toggle } from '../components/Toggle'
+import { ToggleHintContext, ToggleLabelContext } from '../components/toggleLabelContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import TagManagementView from './TagManagementView'
 import { GraphAccountSection } from '../components/GraphAccountSection'
 import { IcalFeedSection } from '../components/IcalFeedSection'
+import {
+  FIELD_LABEL,
+  FOCUS,
+  INPUT,
+  INPUT_FRAME,
+  KEY,
+  KEY_INV,
+  LEGEND,
+  READOUT,
+  READOUT_FRAME,
+  SECTION,
+  TEXTAREA
+} from '../components/instrumentClasses'
 import {
   WEBHOOK_EVENTS,
   isValidWebhookUrl,
@@ -293,9 +307,9 @@ export default function SettingsView(): React.JSX.Element {
   }
 
   return (
-    <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-row gap-8 pb-12">
+    <div className="flex w-full min-w-0 max-w-4xl flex-row gap-8 pb-12">
       {/* Sidebar navigation */}
-      <nav className="w-44 shrink-0 flex flex-col gap-1 pt-1">
+      <nav className="flex w-44 shrink-0 flex-col gap-1">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
@@ -304,10 +318,11 @@ export default function SettingsView(): React.JSX.Element {
               setTab(item.id)
               setStatusMsg(null)
             }}
-            className={`w-full rounded-[var(--r-key)] px-4 py-2 text-left text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--focus)] ${
-              tab === item.id ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:bg-[var(--key)]'
+            className={`flex min-h-11 w-full items-center rounded-[var(--r-key)] px-4 text-left text-sm ${FOCUS} ${
+              tab === item.id
+                ? 'bg-[var(--inv)] font-semibold text-[var(--inv-ink)]'
+                : 'font-medium text-[var(--ink2)] hover:bg-[var(--key)] hover:text-[var(--ink)]'
             }`}
-            style={tab !== item.id ? { color: 'var(--ink2)' } : undefined}
           >
             {item.label}
           </button>
@@ -315,12 +330,9 @@ export default function SettingsView(): React.JSX.Element {
       </nav>
 
       {/* Content */}
-      <div className="flex-1 min-w-0 flex flex-col gap-6 max-w-xl">
+      <div className="flex min-w-0 max-w-xl flex-1 flex-col gap-10">
         {statusMsg && (
-          <div
-            className="rounded-[var(--r-key)] px-3 py-2 text-sm"
-            style={{ background: 'var(--key)', color: 'var(--ink)' }}
-          >
+          <div className="rounded-[var(--r-key)] border border-[var(--line)] px-3 py-2 text-sm text-[var(--ink)]">
             {statusMsg}
           </div>
         )}
@@ -410,7 +422,7 @@ export default function SettingsView(): React.JSX.Element {
           <>
             <Section title={t('settings.section.timer')}>
               <Row label={t('settings.timer.idle')} hint={t('settings.timer.idleHint')}>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     aria-label={t('settings.timer.idleAria')}
                     type="number"
@@ -426,11 +438,8 @@ export default function SettingsView(): React.JSX.Element {
                 </div>
               </Row>
               <Row label={t('settings.timer.hotkey')} hint={t('settings.timer.hotkeyHint')}>
-                <div className="flex items-center gap-2">
-                  <code
-                    className="rounded px-3 py-1.5 text-sm"
-                    style={{ background: 'var(--key)', color: 'var(--ink)' }}
-                  >
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className={`${READOUT_FRAME} text-[13px] text-[var(--ink)]`}>
                     {capturingHotkey === 'hotkey_toggle'
                       ? t('settings.timer.hotkeyCapturing')
                       : settings.hotkey_toggle}
@@ -472,11 +481,8 @@ export default function SettingsView(): React.JSX.Element {
                 />
               </Row>
               <Row label={t('settings.mini.hotkey')} hint={t('settings.mini.hotkeyHint')}>
-                <div className="flex items-center gap-2">
-                  <code
-                    className="rounded px-3 py-1.5 text-sm"
-                    style={{ background: 'var(--key)', color: 'var(--ink)' }}
-                  >
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className={`${READOUT_FRAME} text-[13px] text-[var(--ink)]`}>
                     {capturingHotkey === 'mini_hotkey'
                       ? t('settings.timer.hotkeyCapturing')
                       : settings.mini_hotkey}
@@ -529,12 +535,9 @@ export default function SettingsView(): React.JSX.Element {
         {tab === 'export' && (
           <Section title={t('settings.section.pdf')}>
             <Row label={t('settings.pdf.logo')} hint={t('settings.pdf.logoHint')} stacked>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {settings.pdf_logo_path ? (
-                  <code
-                    className="flex-1 truncate rounded px-3 py-1.5 text-xs"
-                    style={{ background: 'var(--key)', color: 'var(--ink2)' }}
-                  >
+                  <code className={`${READOUT} min-w-0 flex-[1_1_12rem] truncate`}>
                     {settings.pdf_logo_path}
                   </code>
                 ) : (
@@ -558,7 +561,7 @@ export default function SettingsView(): React.JSX.Element {
                 value={settings.pdf_sender_address}
                 onChange={(e) => update('pdf_sender_address', e.target.value)}
                 placeholder={'Robin GmbH\nMusterstr. 1\n12345 Berlin'}
-                className={`${inputClass} resize-y font-sans`}
+                className={`${TEXTAREA} w-full resize-y`}
               />
             </Row>
             <Row label={t('settings.pdf.taxId')}>
@@ -571,7 +574,7 @@ export default function SettingsView(): React.JSX.Element {
               />
             </Row>
             <Row label={t('settings.pdf.accentColor')} hint={t('settings.pdf.accentColorHint')}>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <input
                   type="color"
                   value={
@@ -580,16 +583,10 @@ export default function SettingsView(): React.JSX.Element {
                       : '#4f46e5'
                   }
                   onChange={(e) => update('pdf_accent_color', e.target.value)}
-                  className="h-10 w-16 cursor-pointer rounded border"
-                  style={{ borderColor: 'var(--line)', background: 'var(--key)' }}
+                  className={`h-11 w-16 cursor-pointer rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] p-1 ${FOCUS}`}
                   aria-label={t('settings.pdf.accentColorAria')}
                 />
-                <code
-                  className="rounded px-3 py-1.5 text-xs"
-                  style={{ background: 'var(--key)', color: 'var(--ink2)' }}
-                >
-                  {settings.pdf_accent_color || '#4f46e5'}
-                </code>
+                <code className={READOUT}>{settings.pdf_accent_color || '#4f46e5'}</code>
               </div>
             </Row>
             <Row label={t('settings.pdf.footer')} hint={t('settings.pdf.footerHint')} stacked>
@@ -598,7 +595,7 @@ export default function SettingsView(): React.JSX.Element {
                 value={settings.pdf_footer_text}
                 onChange={(e) => update('pdf_footer_text', e.target.value)}
                 placeholder="Bitte überweisen Sie bis zum 15. des Folgemonats."
-                className={`${inputClass} resize-y font-sans`}
+                className={`${TEXTAREA} w-full resize-y`}
               />
             </Row>
             <Row label={t('settings.pdf.roundMinutes')} hint={t('settings.pdf.roundMinutesHint')}>
@@ -625,13 +622,8 @@ export default function SettingsView(): React.JSX.Element {
           <>
             <Section title={t('settings.section.data')}>
               <Row label={t('settings.data.database')} stacked>
-                <div className="flex items-center gap-2">
-                  <code
-                    className="flex-1 truncate rounded px-3 py-1.5 text-xs"
-                    style={{ background: 'var(--key)', color: 'var(--ink2)' }}
-                  >
-                    {paths.db}
-                  </code>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className={`${READOUT} min-w-0 flex-[1_1_12rem] truncate`}>{paths.db}</code>
                   <button
                     type="button"
                     onClick={() => window.api.shell.showItemInFolder(paths.db)}
@@ -644,10 +636,7 @@ export default function SettingsView(): React.JSX.Element {
 
               {/* T2: Offline-Warnung */}
               {backupPathInfo?.isCustom && !backupPathInfo.isReachable && (
-                <div
-                  className="rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-3 py-2 text-sm"
-                  style={{ color: 'var(--ink)' }}
-                >
+                <div className="my-3 rounded-[var(--r-key)] border border-[var(--danger)] px-3 py-2 text-sm text-[var(--ink)]">
                   ⚠️ {t('settings.data.backupPathUnreachable')}
                 </div>
               )}
@@ -657,11 +646,8 @@ export default function SettingsView(): React.JSX.Element {
                 hint={t('settings.data.backupPathHint')}
                 stacked
               >
-                <div className="flex items-center gap-2">
-                  <code
-                    className="flex-1 truncate rounded px-3 py-1.5 text-xs"
-                    style={{ background: 'var(--key)', color: 'var(--ink2)' }}
-                  >
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className={`${READOUT} min-w-0 flex-[1_1_12rem] truncate`}>
                     {backupPathInfo?.dir ?? paths.backups}
                   </code>
                   <button
@@ -713,17 +699,12 @@ export default function SettingsView(): React.JSX.Element {
                     {t('settings.data.noBackupToRestore')}
                   </p>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <select
                       aria-label={t('settings.data.restoreBackup')}
                       value={selectedRestoreFile}
                       onChange={(e) => setSelectedRestoreFile(e.target.value)}
-                      className="flex-1 rounded-[var(--r-key)] border px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-                      style={{
-                        background: 'var(--key)',
-                        borderColor: 'var(--line)',
-                        color: 'var(--ink)'
-                      }}
+                      className={`${INPUT_FRAME} font-num min-w-0 flex-1 text-xs`}
                     >
                       {backups.map((b) => (
                         <option key={b.fullPath} value={b.fullPath}>
@@ -767,11 +748,8 @@ export default function SettingsView(): React.JSX.Element {
             {/* Diagnose (v1.5 PR A, issue #34) */}
             <Section title={t('settings.diagnose.title')}>
               <Row label="Log-Datei" hint={t('settings.diagnose.hint')} stacked>
-                <div className="flex items-center gap-2">
-                  <code
-                    className="flex-1 truncate rounded px-3 py-1.5 text-xs"
-                    style={{ background: 'var(--key)', color: 'var(--ink2)' }}
-                  >
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className={`${READOUT} min-w-0 flex-[1_1_12rem] truncate`}>
                     {paths.logFile}
                   </code>
                   <button
@@ -806,7 +784,7 @@ export default function SettingsView(): React.JSX.Element {
 
             <Section title={t('settings.section.about')}>
               <Row label={t('settings.about.version')}>
-                <span className="text-sm" style={{ color: 'var(--ink)' }}>
+                <span className="font-num text-sm" style={{ color: 'var(--ink)' }}>
                   {version || '—'}
                 </span>
               </Row>
@@ -836,23 +814,14 @@ export default function SettingsView(): React.JSX.Element {
             <Section title={t('settings.mcp.section')}>
               <Row label={t('settings.mcp.section')} hint={t('settings.mcp.desc')} stacked>
                 <span
-                  className="inline-flex w-fit items-center rounded-[var(--r-key)] px-2.5 py-0.5 text-xs font-semibold"
-                  style={{
-                    background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
-                    color: 'var(--inv)'
-                  }}
+                  className={`inline-flex w-fit items-center rounded-[var(--r-fine)] border border-[var(--ink3)] px-2 py-0.5 ${FIELD_LABEL}`}
                 >
                   {t('settings.mcp.readonlyBadge')}
                 </span>
               </Row>
               <Row label={t('settings.mcp.dbPath')} stacked>
-                <div className="flex items-center gap-2">
-                  <code
-                    className="flex-1 truncate rounded px-3 py-1.5 text-xs"
-                    style={{ background: 'var(--key)', color: 'var(--ink2)' }}
-                  >
-                    {paths.db}
-                  </code>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className={`${READOUT} min-w-0 flex-[1_1_12rem] truncate`}>{paths.db}</code>
                   <button
                     type="button"
                     onClick={() => window.api.shell.showItemInFolder(paths.db)}
@@ -871,12 +840,7 @@ export default function SettingsView(): React.JSX.Element {
                   {!paths.mcp.available && (
                     <p className="text-xs text-[var(--ink)]">{t('settings.mcp.unavailable')}</p>
                   )}
-                  <pre
-                    className="overflow-x-auto rounded px-3 py-2 text-xs"
-                    style={{ background: 'var(--key)', color: 'var(--ink2)' }}
-                  >
-                    {mcpConfigSnippet}
-                  </pre>
+                  <pre className={`${READOUT} overflow-x-auto`}>{mcpConfigSnippet}</pre>
                   <button
                     type="button"
                     onClick={() => void copyMcpConfig()}
@@ -996,15 +960,9 @@ export default function SettingsView(): React.JSX.Element {
   )
 }
 
-const inputClass =
-  'w-full rounded-[var(--r-key)] px-3 py-2 text-sm border ' +
-  '[background:var(--key)] [border-color:var(--line)] [color:var(--ink)] ' +
-  'focus:outline-none focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent'
+const inputClass = `${INPUT} w-full`
 
-const btnSecondaryClass =
-  'rounded-[var(--r-key)] px-3 py-1.5 text-sm font-medium key-hover ' +
-  'border [background:var(--key)] [border-color:var(--line)] [color:var(--ink)] ' +
-  'focus:outline-none focus:ring-2 focus:ring-[var(--focus)]'
+const btnSecondaryClass = KEY
 
 function Section({
   title,
@@ -1014,19 +972,9 @@ function Section({
   children: React.ReactNode
 }): React.JSX.Element {
   return (
-    <section className="flex flex-col gap-2.5">
-      <h2
-        className="text-xs font-bold uppercase tracking-widest px-1"
-        style={{ color: 'var(--ink3)' }}
-      >
-        {title}
-      </h2>
-      <div
-        className="rounded-[var(--r-disp)] border overflow-hidden [&>*:last-child]:border-b-0"
-        style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
-      >
-        {children}
-      </div>
+    <section className={SECTION}>
+      <h2 className={`${LEGEND} pb-1`}>{title}</h2>
+      <div className="flex flex-col [&>*:last-child]:border-b-0">{children}</div>
     </section>
   )
 }
@@ -1042,25 +990,33 @@ function Row({
   children: React.ReactNode
   stacked?: boolean
 }): React.JSX.Element {
+  // Names and describes a switch in this row (Toggle reads both from context, §8).
+  const labelId = useId()
+  const hintId = useId()
   return (
     <div
-      className={`flex ${stacked ? 'flex-col gap-2.5' : 'items-center justify-between gap-4'} px-[18px] py-[13px]`}
-      style={{ borderBottom: '1px solid var(--line)' }}
+      className={`flex ${stacked ? 'flex-col gap-2.5' : 'items-center justify-between gap-4'} border-b border-[var(--line)] py-3`}
     >
       <div
         className="flex flex-col gap-0.5 min-w-0"
         style={{ flex: stacked ? undefined : '1 1 0%' }}
       >
-        <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+        <span id={labelId} className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
           {label}
         </span>
         {hint && (
-          <span className="text-xs" style={{ color: 'var(--ink3)' }}>
+          <span id={hintId} className="text-xs" style={{ color: 'var(--ink3)' }}>
             {hint}
           </span>
         )}
       </div>
-      <div className={stacked ? 'w-full' : 'shrink-0'}>{children}</div>
+      <div className={stacked ? 'w-full' : 'shrink-0'}>
+        <ToggleLabelContext.Provider value={labelId}>
+          <ToggleHintContext.Provider value={hint ? hintId : undefined}>
+            {children}
+          </ToggleHintContext.Provider>
+        </ToggleLabelContext.Provider>
+      </div>
     </div>
   )
 }
@@ -1128,22 +1084,20 @@ function WebhooksSection({
           {targets.map((tg, i) => {
             const urlInvalid = tg.url !== '' && !isValidWebhookUrl(tg.url)
             return (
-              <div
-                key={tg.id}
-                className="flex flex-col gap-2.5 rounded-[var(--r-disp)] border p-3"
-                style={{ borderColor: 'var(--line)', background: 'var(--key)' }}
-              >
+              <div key={tg.id} className="flex flex-col gap-2.5 border-t border-[var(--line)] pt-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold" style={{ color: 'var(--ink2)' }}>
-                    {t('settings.webhooks.target', { n: i + 1 })}
-                  </span>
-                  <div className="flex items-center gap-3">
+                  <span className={LEGEND}>{t('settings.webhooks.target', { n: i + 1 })}</span>
+                  <div className="flex flex-wrap items-center gap-3">
                     <label
                       className="flex items-center gap-1.5 text-xs"
                       style={{ color: 'var(--ink2)' }}
                     >
-                      {t('settings.webhooks.enabled')}
-                      <Toggle checked={tg.enabled} onChange={(v) => patch(tg.id, { enabled: v })} />
+                      <span id={`webhook-enabled-${tg.id}`}>{t('settings.webhooks.enabled')}</span>
+                      <Toggle
+                        checked={tg.enabled}
+                        onChange={(v) => patch(tg.id, { enabled: v })}
+                        labelledBy={`webhook-enabled-${tg.id}`}
+                      />
                     </label>
                     <button
                       type="button"
@@ -1196,6 +1150,7 @@ function WebhooksSection({
                       >
                         <input
                           type="checkbox"
+                          className={`h-4 w-4 accent-[var(--ink)] ${FOCUS}`}
                           checked={tg.events.includes(ev)}
                           onChange={(e) => toggleEvent(tg, ev, e.target.checked)}
                         />
@@ -1236,21 +1191,19 @@ function SegmentedPicker<T extends string>({
   onChange: (v: T) => void
 }): React.JSX.Element {
   return (
-    <div className="flex gap-1">
+    // Segmented control (HANDOFF §3.5): one --key well, the active segment inverse.
+    <div className="flex flex-wrap gap-[3px] rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] p-[3px]">
       {options.map((opt) => (
         <button
           key={opt.value}
           type="button"
           onClick={() => onChange(opt.value)}
-          className="text-xs font-semibold cursor-pointer transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
-          style={{
-            padding: '5px 12px',
-            borderRadius: 8,
-            border: `1px solid ${value === opt.value ? 'var(--inv)' : 'var(--line)'}`,
-            background:
-              value === opt.value ? 'color-mix(in srgb, var(--ink) 6%, transparent)' : 'var(--key)',
-            color: value === opt.value ? 'var(--inv)' : 'var(--ink2)'
-          }}
+          aria-pressed={value === opt.value}
+          className={`h-9 cursor-pointer rounded-[var(--r-fine)] px-3 text-xs font-semibold ${FOCUS} ${
+            value === opt.value
+              ? 'bg-[var(--inv)] text-[var(--inv-ink)]'
+              : 'bg-transparent text-[var(--ink2)] hover:text-[var(--ink)]'
+          }`}
         >
           {opt.label}
         </button>
@@ -1308,7 +1261,7 @@ function UpdatesSection(): React.JSX.Element {
   return (
     <Section title={t('settings.update.title')}>
       <Row label={t('settings.update.version', { version: appVersion || '—' })}>
-        <span className="text-sm" style={{ color: 'var(--ink2)' }}>
+        <span className="font-num text-sm" style={{ color: 'var(--ink2)' }}>
           {appVersion || '\u2014'}
         </span>
       </Row>
@@ -1326,16 +1279,12 @@ function UpdatesSection(): React.JSX.Element {
             type="button"
             onClick={() => void checkNow()}
             disabled={busy}
-            className={`${btnSecondaryClass} disabled:cursor-not-allowed disabled:opacity-50`}
+            className={btnSecondaryClass}
           >
             {t('settings.update.checkNow')}
           </button>
           {status.status === 'ready' && (
-            <button
-              type="button"
-              onClick={() => void installNow()}
-              className="rounded-[var(--r-key)] bg-[var(--inv)] px-3 py-1.5 text-sm font-medium text-[var(--inv-ink)] key-hover focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-            >
+            <button type="button" onClick={() => void installNow()} className={KEY_INV}>
               {t('update.ready.install')}
             </button>
           )}

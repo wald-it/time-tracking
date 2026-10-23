@@ -146,7 +146,9 @@ function clickButton(container: HTMLElement, label: string): void {
 
 /** The open dialog's heading, or null when no dialog is mounted. */
 function dialogTitle(): string | null {
-  return document.querySelector('#dialog-title')?.textContent?.trim() ?? null
+  // The title id is generated per dialog since PR 5 — follow aria-labelledby.
+  const id = document.querySelector('[role="dialog"]')?.getAttribute('aria-labelledby')
+  return (id && document.getElementById(id)?.textContent?.trim()) || null
 }
 
 /** `[from, to]` as currently shown in the export dialog's two date inputs. */

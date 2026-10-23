@@ -13,9 +13,21 @@ import { useClientsStore } from '../store/clientsStore'
 import { useProjectsStore } from '../store/projectsStore'
 import { useT, useLocale } from '../contexts/I18nContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
-import type { TranslationKey } from '../../../shared/locales/de'
 import * as Icons from '../components/Icons'
+import {
+  FIELD_LABEL,
+  FOCUS,
+  ICON_BTN,
+  INPUT,
+  KEY,
+  KEY_INV,
+  LEGEND,
+  SECTION,
+  VIEW_TITLE
+} from '../components/instrumentClasses'
 import { Dialog } from '../components/Dialog'
+import { ColorSwatches } from '../components/ColorSwatches'
+import { CLIENT_COLORS } from '../components/clientColors'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 
 /** Lightens a hex color by the given amount (0-100) to create a visually
@@ -81,31 +93,8 @@ function formatRelativeDate(isoDate: string, locale: string): string {
   return rtf.format(Math.round(diffDays / 365), 'year')
 }
 
-const COLORS = [
-  '#6366f1', // indigo
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#f59e0b', // amber
-  '#10b981', // emerald
-  '#3b82f6', // blue
-  '#ef4444', // red
-  '#f97316', // orange
-  '#14b8a6', // teal
-  '#84cc16' // lime
-]
-
-const COLOR_NAMES_KEYS: Record<string, TranslationKey> = {
-  '#6366f1': 'clients.color.indigo',
-  '#8b5cf6': 'clients.color.violet',
-  '#ec4899': 'clients.color.pink',
-  '#f59e0b': 'clients.color.amber',
-  '#10b981': 'clients.color.emerald',
-  '#3b82f6': 'clients.color.blue',
-  '#ef4444': 'clients.color.red',
-  '#f97316': 'clients.color.orange',
-  '#14b8a6': 'clients.color.teal',
-  '#84cc16': 'clients.color.lime'
-}
+/** Status legend beside a name (paused, archived): hairline frame, table-label type. */
+const STATUS_TAG = `shrink-0 rounded-[var(--r-fine)] border border-[var(--ink3)] px-1.5 py-0.5 leading-none ${FIELD_LABEL}`
 
 export default function ClientsView(): React.JSX.Element {
   const t = useT()
@@ -278,15 +267,10 @@ export default function ClientsView(): React.JSX.Element {
   const inactiveClients = clients.filter((c) => !c.active)
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>
-          {t('clients.title')}
-        </h1>
-        <button
-          onClick={openNew}
-          className="flex items-center gap-2 rounded-[var(--r-key)] bg-[var(--inv)] key-hover text-[var(--inv-ink)] text-sm font-medium px-4 py-1.5 transition-colors"
-        >
+    <div className="w-full max-w-3xl">
+      <div className="mb-8 flex items-center justify-between gap-4">
+        <h1 className={VIEW_TITLE}>{t('clients.title')}</h1>
+        <button onClick={openNew} className={KEY_INV}>
           <Icons.Plus />
           {t('clients.addNew')}
         </button>
@@ -321,16 +305,15 @@ export default function ClientsView(): React.JSX.Element {
           )}
 
           {inactiveClients.length > 0 && (
-            <div className="mt-6">
+            <div className={`mt-12 ${SECTION}`}>
               <button
                 onClick={() => setArchivedExpanded((v) => !v)}
                 aria-expanded={archivedExpanded}
-                className="flex items-center gap-1.5 text-[var(--ink3)] hover:text-[var(--ink)]
-                  text-xs font-medium uppercase tracking-wide mb-2 transition-colors"
+                className={`flex min-h-11 items-center gap-1.5 self-start hover:text-[var(--ink)] ${LEGEND} ${FOCUS}`}
               >
                 <svg
                   aria-hidden="true"
-                  className={`w-3 h-3 transition-transform duration-200 ${archivedExpanded ? 'rotate-90' : ''}`}
+                  className={`w-3 h-3 ${archivedExpanded ? 'rotate-90' : ''}`}
                   viewBox="0 0 12 12"
                   fill="none"
                   stroke="currentColor"
@@ -451,7 +434,10 @@ function ClientList({
   dimmed?: boolean
 }): React.JSX.Element {
   return (
-    <ul className="flex flex-col gap-2">
+    // Section pattern (HANDOFF §2.3): rows separated by 1 px hairlines, no cards.
+    <ul
+      className={`flex flex-col border-b border-[var(--line)] ${dimmed ? 'border-t border-t-[var(--line)]' : 'border-t-2 border-t-[var(--ink)]'}`}
+    >
       {clients.map((c) => (
         <ClientItem
           key={c.id}
@@ -509,25 +495,21 @@ function ClientItem({
   const allProjects = projects ?? []
 
   return (
-    <li
-      className="rounded-[var(--r-disp)] border transition-colors overflow-hidden"
-      style={{ background: 'var(--key)', borderColor: 'var(--line)' }}
-    >
+    <li className="border-t border-[var(--line)] first:border-t-0">
       {/* Client row */}
       <div
-        className="flex items-center gap-3 px-4 py-3"
+        className="flex min-h-14 items-center gap-3 py-1.5 hover:bg-[var(--key)]"
         style={c.contact_person ? { alignItems: 'flex-start' } : {}}
       >
         {/* Chevron toggle */}
         <button
           onClick={() => onToggleExpand(c.id)}
           aria-expanded={expanded}
-          aria-label={expanded ? 'Projekte verbergen' : 'Projekte anzeigen'}
-          className="rounded p-0.5 transition-colors hover:bg-[var(--key)] shrink-0"
-          style={{ color: 'var(--ink3)' }}
+          aria-label={t(expanded ? 'clients.projects.hide' : 'clients.projects.show')}
+          className={ICON_BTN}
         >
           <svg
-            className={`w-3.5 h-3.5 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+            className={`w-3.5 h-3.5 ${expanded ? 'rotate-90' : ''}`}
             viewBox="0 0 12 12"
             fill="none"
             stroke="currentColor"
@@ -541,12 +523,20 @@ function ClientItem({
         </button>
 
         <span
-          className={`w-4 h-4 rounded-[var(--r-fine)] shrink-0 self-start mt-1 ${dimmed ? 'opacity-40' : ''}`}
+          className={`h-3 w-3 shrink-0 ${dimmed ? 'opacity-40' : ''}`}
           style={{ backgroundColor: c.color }}
         />
-        <span className={`flex-1 min-w-0 ${dimmed ? 'opacity-50' : ''}`}>
-          <span className="block font-medium" style={{ color: 'var(--ink)' }}>
-            {c.name}
+        {/* Archived: --ink3 and a legend instead of a faded row, which fell
+            below --ink3's contrast. */}
+        <span className="flex-1 min-w-0">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span
+              className="font-semibold"
+              style={{ color: dimmed ? 'var(--ink3)' : 'var(--ink)' }}
+            >
+              {c.name}
+            </span>
+            {dimmed && <span className={STATUS_TAG}>{t('clients.archived.label')}</span>}
           </span>
           {c.contact_person && (
             <span className="block text-xs" style={{ color: 'var(--ink3)' }}>
@@ -556,18 +546,15 @@ function ClientItem({
         </span>
         {/* project count badge */}
         {allProjects.length > 0 && !expanded && (
-          <span
-            className="text-xs px-1.5 py-0.5 rounded-[var(--r-key)]"
-            style={{ background: 'var(--key)', color: 'var(--ink3)' }}
-          >
+          <span className="font-num rounded-[var(--r-fine)] border border-[var(--line)] px-1.5 py-0.5 text-xs text-[var(--ink3)]">
             {allProjects.length}
           </span>
         )}
         <button
           onClick={() => onToggleActive(c)}
           title={c.active ? t('clients.action.archive') : t('clients.action.reactivate')}
-          className="rounded p-1 transition-colors hover:bg-[var(--key)]"
-          style={{ color: 'var(--ink3)' }}
+          aria-label={`${c.active ? t('clients.action.archive') : t('clients.action.reactivate')}: ${c.name}`}
+          className={ICON_BTN}
         >
           {c.active ? <Icons.Archive /> : <Icons.Unarchive />}
         </button>
@@ -575,23 +562,26 @@ function ClientItem({
           <button
             onClick={() => onNewProject(c.id)}
             title={t('projects.addNew')}
-            className="rounded p-1 transition-colors hover:bg-[var(--key)]"
-            style={{ color: 'var(--ink3)' }}
+            aria-label={`${t('projects.addNew')}: ${c.name}`}
+            className={ICON_BTN}
           >
             <Icons.Plus />
           </button>
         )}
         <button
           onClick={() => onEdit(c)}
-          className="rounded p-1 transition-colors hover:bg-[var(--key)]"
-          style={{ color: 'var(--ink3)' }}
+          className={ICON_BTN}
+          aria-label={`${t('common.edit')}: ${c.name}`}
+          title={t('common.edit')}
         >
           <Icons.Edit />
         </button>
         <button
           onClick={() => onDelete(c)}
-          className="rounded p-1 transition-colors hover:bg-[var(--key)]"
+          className={ICON_BTN}
           style={{ color: 'var(--danger)' }}
+          aria-label={`${t('common.delete')}: ${c.name}`}
+          title={t('common.delete')}
         >
           <Icons.Trash />
         </button>
@@ -599,7 +589,7 @@ function ClientItem({
 
       {/* Project sub-list (collapsible) */}
       {expanded && (
-        <div className="border-t px-4 pb-3 pt-2" style={{ borderColor: 'var(--line)' }}>
+        <div className="border-t border-[var(--line)] pt-1 pb-3 pl-14">
           {/* Active projects */}
           {activeProjects.length === 0 &&
             pausedProjects.length === 0 &&
@@ -609,7 +599,7 @@ function ClientItem({
               </p>
             )}
           {activeProjects.length > 0 && (
-            <ul className="flex flex-col gap-1.5 mb-2">
+            <ul className="mb-2 flex flex-col">
               {activeProjects.map((p) => (
                 <ProjectItem
                   key={p.id}
@@ -625,13 +615,10 @@ function ClientItem({
           {/* Paused projects */}
           {pausedProjects.length > 0 && (
             <div className="mb-2">
-              <p
-                className="text-xs font-medium uppercase tracking-wide mb-1.5"
-                style={{ color: 'var(--ink3)' }}
-              >
+              <p className={`${FIELD_LABEL} mt-2 mb-1`}>
                 {t('projects.pausedSection', { count: String(pausedProjects.length) })}
               </p>
-              <ul className="flex flex-col gap-1.5">
+              <ul className="flex flex-col">
                 {pausedProjects.map((p) => (
                   <ProjectItem
                     key={p.id}
@@ -657,11 +644,7 @@ function ClientItem({
           )}
           {/* Add project button */}
           {c.active && (
-            <button
-              onClick={() => onNewProject(c.id)}
-              className="flex items-center gap-1.5 text-xs mt-1 rounded-[var(--r-key)] px-2 py-1.5 transition-colors hover:bg-[var(--key)]"
-              style={{ color: 'var(--ink2)' }}
-            >
+            <button onClick={() => onNewProject(c.id)} className={`${KEY} mt-2`}>
               <Icons.Plus />
               {t('projects.addNew')}
             </button>
@@ -689,6 +672,7 @@ function ProjectItem({
   const { locale } = useLocale()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const dotColor = p.color || (clientColor ? shiftColor(clientColor) : '')
+  const archived = p.status === 'archived' || (!p.status && !p.active)
   const rateLabel =
     p.rate_cent === null
       ? t('projects.inheritedRate')
@@ -713,27 +697,23 @@ function ProjectItem({
   const budgetWarn = hasBudget && budgetPct >= 80
 
   return (
-    <li
-      className="flex items-center gap-2.5 rounded-[var(--r-key)] px-2 py-1.5 group"
-      style={{ background: 'var(--key)' }}
-    >
-      <span
-        className="w-3 h-3 rounded-[var(--r-fine)] shrink-0 self-start mt-1"
-        style={{ backgroundColor: dotColor }}
-      />
+    <li className="group flex min-h-11 items-center gap-2.5 border-t border-[var(--line)] py-1 first:border-t-0 hover:bg-[var(--key)]">
+      <span className="h-2 w-2 shrink-0 self-start mt-1.5" style={{ backgroundColor: dotColor }} />
       <span className="flex-1 min-w-0">
         <span className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+          <span
+            className="text-sm font-medium"
+            style={{ color: archived ? 'var(--ink3)' : 'var(--ink)' }}
+          >
             {p.name}
             {showProjectNumber && p.external_project_number ? (
               <span style={{ color: 'var(--ink3)' }}> [{p.external_project_number}]</span>
             ) : null}
           </span>
           {p.status === 'paused' && (
-            <span className="text-xs px-1.5 py-0.5 rounded-[var(--r-key)] leading-none shrink-0 border border-[var(--key-edge)] bg-[var(--key)] text-[var(--ink)]">
-              {t('projects.form.statusPaused')}
-            </span>
+            <span className={STATUS_TAG}>{t('projects.form.statusPaused')}</span>
           )}
+          {archived && <span className={STATUS_TAG}>{t('projects.form.statusArchived')}</span>}
         </span>
         {p.contact_person && (
           <span className="block text-xs mt-0.5" style={{ color: 'var(--ink3)' }}>
@@ -747,20 +727,23 @@ function ProjectItem({
         )}
         {hasBudget && (
           <span className="flex items-center gap-1.5 mt-1">
-            <span
-              className="flex-1 h-1 rounded-[var(--r-fine)] overflow-hidden"
-              style={{ background: 'var(--line)' }}
-            >
+            <span className="h-1 flex-1 overflow-hidden" style={{ background: 'var(--line)' }}>
               <span
-                className="h-full rounded-[var(--r-fine)] block transition-all"
+                className="block h-full"
                 style={{
                   width: `${budgetPct}%`,
-                  background: overBudget ? 'var(--danger)' : budgetWarn ? '#f59e0b' : 'var(--inv)'
+                  // No hard-coded amber any more (tokens only): warn = full ink,
+                  // normal = tick grey; the figures beside it carry the meaning.
+                  background: overBudget
+                    ? 'var(--danger)'
+                    : budgetWarn
+                      ? 'var(--ink)'
+                      : 'var(--tick)'
                 }}
               />
             </span>
             <span
-              className="text-xs shrink-0 tabular-nums"
+              className="font-num shrink-0 text-xs"
               style={{
                 color: overBudget ? 'var(--danger)' : budgetWarn ? 'var(--ink)' : 'var(--ink3)'
               }}
@@ -771,16 +754,17 @@ function ProjectItem({
         )}
       </span>
       <span className="flex flex-col items-end gap-0.5">
-        <span className="text-xs" style={{ color: 'var(--ink3)' }}>
+        <span className="font-num text-xs" style={{ color: 'var(--ink3)' }}>
           {rateLabel}
         </span>
         {p.end_date && (
           <span className="text-xs" style={{ color: 'var(--ink3)' }}>
-            bis{' '}
-            {new Date(p.end_date).toLocaleDateString('de-DE', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric'
+            {t('projects.endsOn', {
+              // A plain date: read as local midnight, not UTC.
+              date: new Date(`${p.end_date.slice(0, 10)}T00:00:00`).toLocaleDateString(
+                locale === 'en' ? 'en-GB' : 'de-DE',
+                { day: '2-digit', month: '2-digit', year: 'numeric' }
+              )
             })}
           </span>
         )}
@@ -788,22 +772,25 @@ function ProjectItem({
       <button
         onClick={() => onArchive(p)}
         title={p.active ? t('projects.action.archive') : t('projects.action.reactivate')}
-        className="rounded p-0.5 transition-colors hover:bg-[var(--key)] opacity-0 group-hover:opacity-100"
-        style={{ color: 'var(--ink3)' }}
+        aria-label={`${p.active ? t('projects.action.archive') : t('projects.action.reactivate')}: ${p.name}`}
+        className={`${ICON_BTN} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
       >
         {p.active ? <Icons.Archive /> : <Icons.Unarchive />}
       </button>
       <button
         onClick={() => onEdit(p)}
-        className="rounded p-0.5 transition-colors hover:bg-[var(--key)] opacity-0 group-hover:opacity-100"
-        style={{ color: 'var(--ink3)' }}
+        className={`${ICON_BTN} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
+        aria-label={`${t('common.edit')}: ${p.name}`}
+        title={t('common.edit')}
       >
         <Icons.Edit />
       </button>
       <button
         onClick={() => onDelete(p)}
-        className="rounded p-0.5 transition-colors hover:bg-[var(--key)] opacity-0 group-hover:opacity-100"
+        className={`${ICON_BTN} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
         style={{ color: 'var(--danger)' }}
+        aria-label={`${t('common.delete')}: ${p.name}`}
+        title={t('common.delete')}
       >
         <Icons.Trash />
       </button>
@@ -831,11 +818,11 @@ function ArchivedProjectsSection({
     <div className="mt-1">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1 text-xs mb-1 transition-colors hover:opacity-80"
+        className={`flex min-h-11 items-center gap-1 text-xs hover:text-[var(--ink)] ${FOCUS}`}
         style={{ color: 'var(--ink3)' }}
       >
         <svg
-          className={`w-3 h-3 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+          className={`w-3 h-3 ${expanded ? 'rotate-90' : ''}`}
           viewBox="0 0 12 12"
           fill="none"
           stroke="currentColor"
@@ -849,7 +836,7 @@ function ArchivedProjectsSection({
         {t('projects.archivedSection', { count: String(projects.length) })}
       </button>
       {expanded && (
-        <ul className="flex flex-col gap-1.5 opacity-60">
+        <ul className="flex flex-col">
           {projects.map((p) => (
             <ProjectItem
               key={p.id}
@@ -888,7 +875,7 @@ function ClientFormModal({
 }): React.JSX.Element {
   const t = useT()
   const [name, setName] = useState(client?.name ?? '')
-  const [color, setColor] = useState(client?.color ?? COLORS[0])
+  const [color, setColor] = useState(client?.color ?? CLIENT_COLORS[0])
   const [rateInput, setRateInput] = useState(() => formatRateInput(client?.rate_cent ?? 0))
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
@@ -958,14 +945,8 @@ function ClientFormModal({
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {/* Name */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
-            {t('clients.form.nameLabel')}
-          </label>
+          <label className={FIELD_LABEL}>{t('clients.form.nameLabel')}</label>
           <input
-            autoFocus
             type="text"
             value={name}
             onChange={(e) => {
@@ -973,13 +954,7 @@ function ClientFormModal({
               setError('')
             }}
             placeholder={t('clients.form.namePlaceholder')}
-            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={INPUT}
           />
           {error && (
             <p className="text-xs" style={{ color: 'var(--danger)' }}>
@@ -990,40 +965,17 @@ function ClientFormModal({
 
         {/* Color */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
-            {t('clients.form.colorLabel')}
-          </label>
-          <div className="flex gap-2 flex-wrap">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                title={t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')}
-                aria-label={t('clients.form.colorAria', {
-                  color: t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')
-                })}
-                onClick={() => setColor(c)}
-                className={`w-8 h-8 rounded-[var(--r-fine)] transition-transform ${
-                  color === c
-                    ? 'scale-125 ring-2 ring-[var(--ink)] ring-offset-2'
-                    : 'hover:scale-110'
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
+          <label className={FIELD_LABEL}>{t('clients.form.colorLabel')}</label>
+          <ColorSwatches
+            value={color}
+            onChange={setColor}
+            groupLabel={t('clients.form.colorLabel')}
+          />
         </div>
 
         {/* Hourly rate */}
         <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="client-rate"
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
+          <label htmlFor="client-rate" className={FIELD_LABEL}>
             {t('clients.form.rateLabel')}
           </label>
           <div className="relative">
@@ -1037,13 +989,7 @@ function ClientFormModal({
                 setRateError('')
               }}
               placeholder={t('clients.form.ratePlaceholder')}
-              className="rounded-[var(--r-key)] pl-3 pr-10 py-2.5 w-full border focus:outline-none
-                  focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink)'
-              }}
+              className={`${INPUT} w-full pr-10`}
             />
             <span
               className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm"
@@ -1068,18 +1014,18 @@ function ClientFormModal({
         <button
           type="button"
           onClick={() => setShowDetails((v) => !v)}
-          className="flex items-center gap-2 w-full text-left"
+          className={`flex min-h-11 w-full items-center gap-2 text-left ${FOCUS}`}
           style={{ color: 'var(--ink3)' }}
         >
           <hr className="flex-1" style={{ borderColor: 'var(--line)' }} />
-          <span className="text-xs font-medium uppercase tracking-wide whitespace-nowrap">
+          <span className={`${FIELD_LABEL} whitespace-nowrap`}>
             {t('clients.form.billingAddressLabel')}
           </span>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
             fill="currentColor"
-            className="w-3.5 h-3.5 shrink-0 transition-transform"
+            className="w-3.5 h-3.5 shrink-0"
             style={{ transform: showDetails ? 'rotate(180deg)' : 'rotate(0deg)' }}
           >
             <path
@@ -1123,81 +1069,42 @@ function ClientFormModal({
                   value={value ?? ''}
                   onChange={(e) => set(e.target.value)}
                   placeholder={placeholder}
-                  className="rounded-[var(--r-key)] px-3 py-2 border focus:outline-none
-                  focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-                  style={{
-                    background: 'var(--key)',
-                    borderColor: 'var(--line)',
-                    color: 'var(--ink)'
-                  }}
+                  className={INPUT}
                 />
               ))}
             </div>
 
             {/* VAT ID */}
             <div className="flex flex-col gap-1.5">
-              <label
-                className="text-xs font-medium uppercase tracking-wide"
-                style={{ color: 'var(--ink2)' }}
-              >
-                {t('clients.form.vatIdLabel')}
-              </label>
+              <label className={FIELD_LABEL}>{t('clients.form.vatIdLabel')}</label>
               <input
                 type="text"
                 value={vatId ?? ''}
                 onChange={(e) => setVatId(e.target.value)}
                 placeholder={t('clients.form.vatIdPlaceholder')}
-                className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-                style={{
-                  background: 'var(--key)',
-                  borderColor: 'var(--line)',
-                  color: 'var(--ink)'
-                }}
+                className={INPUT}
               />
             </div>
 
             {/* Contact */}
             <div className="flex flex-col gap-1.5">
-              <label
-                className="text-xs font-medium uppercase tracking-wide"
-                style={{ color: 'var(--ink2)' }}
-              >
-                {t('clients.form.contactPersonLabel')}
-              </label>
+              <label className={FIELD_LABEL}>{t('clients.form.contactPersonLabel')}</label>
               <input
                 type="text"
                 value={contactPerson ?? ''}
                 onChange={(e) => setContactPerson(e.target.value)}
                 placeholder={t('clients.form.contactPersonPlaceholder')}
-                className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-                style={{
-                  background: 'var(--key)',
-                  borderColor: 'var(--line)',
-                  color: 'var(--ink)'
-                }}
+                className={INPUT}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label
-                className="text-xs font-medium uppercase tracking-wide"
-                style={{ color: 'var(--ink2)' }}
-              >
-                {t('clients.form.contactEmailLabel')}
-              </label>
+              <label className={FIELD_LABEL}>{t('clients.form.contactEmailLabel')}</label>
               <input
                 type="email"
                 value={contactEmail ?? ''}
                 onChange={(e) => setContactEmail(e.target.value)}
                 placeholder={t('clients.form.contactEmailPlaceholder')}
-                className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-                style={{
-                  background: 'var(--key)',
-                  borderColor: 'var(--line)',
-                  color: 'var(--ink)'
-                }}
+                className={INPUT}
               />
             </div>
           </>
@@ -1205,24 +1112,10 @@ function ClientFormModal({
 
         {/* Buttons */}
         <div className="flex gap-3 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 font-medium py-2.5 rounded-[var(--r-key)] transition-colors hover:opacity-90"
-            style={{
-              background: 'var(--key)',
-              border: '1px solid var(--line)',
-              color: 'var(--ink2)'
-            }}
-          >
+          <button type="button" onClick={onClose} className={`${KEY} flex-1`}>
             {t('common.cancel')}
           </button>
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="flex-1 bg-[var(--inv)] key-hover disabled:opacity-50
-                text-[var(--inv-ink)] font-medium py-2.5 rounded-[var(--r-key)] transition-colors"
-          >
+          <button type="submit" disabled={isSaving} className={`${KEY_INV} flex-1`}>
             {isSaving ? t('common.saving') : t('common.save')}
           </button>
         </div>
@@ -1346,14 +1239,8 @@ function ProjectFormModal({
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {/* Name */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
-            {t('projects.form.nameLabel')}
-          </label>
+          <label className={FIELD_LABEL}>{t('projects.form.nameLabel')}</label>
           <input
-            autoFocus
             type="text"
             value={name}
             onChange={(e) => {
@@ -1361,13 +1248,7 @@ function ProjectFormModal({
               setError('')
             }}
             placeholder={t('projects.form.namePlaceholder')}
-            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-              focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={INPUT}
           />
           {error && (
             <p className="text-xs" style={{ color: 'var(--danger)' }}>
@@ -1378,47 +1259,13 @@ function ProjectFormModal({
 
         {/* Color */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
-            {t('projects.form.colorLabel')}
-          </label>
-          <div className="flex gap-2 flex-wrap items-center">
-            <button
-              type="button"
-              title={t('projects.form.colorInherit')}
-              aria-label={t('projects.form.colorInherit')}
-              onClick={() => setColor('')}
-              className={`w-8 h-8 rounded-[var(--r-fine)] border-2 flex items-center justify-center transition-transform ${
-                color === ''
-                  ? 'scale-125 ring-2 ring-[var(--ink)] ring-offset-2 border-[var(--ink2)]'
-                  : 'hover:scale-110 border-[var(--key-edge)]'
-              }`}
-              style={{ background: 'var(--key)' }}
-            >
-              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
-                –
-              </span>
-            </button>
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                title={t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')}
-                aria-label={t('clients.form.colorAria', {
-                  color: t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')
-                })}
-                onClick={() => setColor(c)}
-                className={`w-8 h-8 rounded-[var(--r-fine)] transition-transform ${
-                  color === c
-                    ? 'scale-125 ring-2 ring-[var(--ink)] ring-offset-2'
-                    : 'hover:scale-110'
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
+          <label className={FIELD_LABEL}>{t('projects.form.colorLabel')}</label>
+          <ColorSwatches
+            value={color}
+            onChange={setColor}
+            inheritLabel={t('projects.form.colorInherit')}
+            groupLabel={t('projects.form.colorLabel')}
+          />
           {color === '' && (
             <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('projects.form.colorInherit')}
@@ -1428,11 +1275,7 @@ function ProjectFormModal({
 
         {/* Hourly rate override */}
         <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="project-rate"
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
+          <label htmlFor="project-rate" className={FIELD_LABEL}>
             {t('projects.form.rateLabel')}
           </label>
           <div className="relative">
@@ -1446,13 +1289,7 @@ function ProjectFormModal({
                 setRateError('')
               }}
               placeholder={t('projects.form.ratePlaceholder')}
-              className="rounded-[var(--r-key)] pl-3 pr-10 py-2.5 w-full border focus:outline-none
-                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink)'
-              }}
+              className={`${INPUT} w-full pr-10`}
             />
             <span
               className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm"
@@ -1478,27 +1315,19 @@ function ProjectFormModal({
 
         {/* Status */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
-            {t('projects.form.statusLabel')}
-          </label>
-          <div
-            className="flex rounded-[var(--r-key)] overflow-hidden border"
-            style={{ borderColor: 'var(--line)' }}
-          >
-            {STATUS_OPTIONS.map((opt, i) => (
+          <label className={FIELD_LABEL}>{t('projects.form.statusLabel')}</label>
+          <div className="flex gap-[3px] rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] p-[3px]">
+            {STATUS_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
                 onClick={() => setStatus(opt.value)}
-                className={`flex-1 py-2 text-sm font-medium transition-colors ${i > 0 ? 'border-l' : ''}`}
-                style={{
-                  borderColor: 'var(--line)',
-                  background: status === opt.value ? 'var(--inv)' : 'var(--key)',
-                  color: status === opt.value ? 'var(--inv-ink)' : 'var(--ink2)'
-                }}
+                aria-pressed={status === opt.value}
+                className={`h-9 flex-1 rounded-[var(--r-fine)] text-sm font-semibold ${FOCUS} ${
+                  status === opt.value
+                    ? 'bg-[var(--inv)] text-[var(--inv-ink)]'
+                    : 'bg-transparent text-[var(--ink2)] hover:text-[var(--ink)]'
+                }`}
               >
                 {opt.label}
               </button>
@@ -1508,115 +1337,60 @@ function ProjectFormModal({
 
         {/* External project number */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
-            {t('projects.form.externalNumberLabel')}
-          </label>
+          <label className={FIELD_LABEL}>{t('projects.form.externalNumberLabel')}</label>
           <input
             type="text"
             value={externalNumber}
             onChange={(e) => setExternalNumber(e.target.value)}
             placeholder={t('projects.form.externalNumberPlaceholder')}
-            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-              focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={INPUT}
           />
         </div>
 
         {/* Contact person */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
-            {t('projects.form.contactPersonLabel')}
-          </label>
+          <label className={FIELD_LABEL}>{t('projects.form.contactPersonLabel')}</label>
           <input
             type="text"
             value={contactPerson}
             onChange={(e) => setContactPerson(e.target.value)}
             placeholder={t('projects.form.contactPersonPlaceholder')}
-            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-              focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={INPUT}
           />
         </div>
 
         {/* Date range */}
         <div className="flex gap-3">
           <div className="flex flex-col gap-1.5 flex-1">
-            <label
-              className="text-xs font-medium uppercase tracking-wide"
-              style={{ color: 'var(--ink2)' }}
-            >
-              {t('projects.form.startDateLabel')}
-            </label>
+            <label className={FIELD_LABEL}>{t('projects.form.startDateLabel')}</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink)'
-              }}
+              className={INPUT}
             />
           </div>
           <div className="flex flex-col gap-1.5 flex-1">
-            <label
-              className="text-xs font-medium uppercase tracking-wide"
-              style={{ color: 'var(--ink2)' }}
-            >
-              {t('projects.form.endDateLabel')}
-            </label>
+            <label className={FIELD_LABEL}>{t('projects.form.endDateLabel')}</label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-                focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink)'
-              }}
+              className={INPUT}
             />
           </div>
         </div>
 
         {/* Budget */}
         <div className="flex flex-col gap-1.5">
-          <label
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--ink2)' }}
-          >
-            {t('projects.form.budgetLabel')}
-          </label>
+          <label className={FIELD_LABEL}>{t('projects.form.budgetLabel')}</label>
           <input
             type="text"
             inputMode="decimal"
             value={budgetInput}
             onChange={(e) => setBudgetInput(e.target.value)}
             placeholder={t('projects.form.budgetPlaceholder')}
-            className="rounded-[var(--r-key)] px-3 py-2.5 border focus:outline-none
-              focus:ring-2 focus:ring-[var(--focus)] focus:border-transparent"
-            style={{
-              background: 'var(--key)',
-              borderColor: 'var(--line)',
-              color: 'var(--ink)'
-            }}
+            className={INPUT}
           />
           <p className="text-xs" style={{ color: 'var(--ink3)' }}>
             {t('projects.form.budgetHint')}
@@ -1625,24 +1399,10 @@ function ProjectFormModal({
 
         {/* Buttons */}
         <div className="flex gap-3 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 font-medium py-2.5 rounded-[var(--r-key)] transition-colors hover:opacity-90"
-            style={{
-              background: 'var(--key)',
-              border: '1px solid var(--line)',
-              color: 'var(--ink2)'
-            }}
-          >
+          <button type="button" onClick={onClose} className={`${KEY} flex-1`}>
             {t('common.cancel')}
           </button>
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="flex-1 bg-[var(--inv)] key-hover disabled:opacity-50
-              text-[var(--inv-ink)] font-medium py-2.5 rounded-[var(--r-key)] transition-colors"
-          >
+          <button type="submit" disabled={isSaving} className={`${KEY_INV} flex-1`}>
             {isSaving ? t('common.saving') : t('common.save')}
           </button>
         </div>

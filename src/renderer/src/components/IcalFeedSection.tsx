@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useT } from '../contexts/I18nContext'
 import { Toggle } from './Toggle'
+import { FIELD_LABEL, INPUT, KEY, READOUT } from './instrumentClasses'
 
 /**
  * Subscribable iCal feed (#169).
@@ -22,6 +23,7 @@ export function IcalFeedSection({
   onPortChange: (v: string) => void
 }): React.JSX.Element {
   const t = useT()
+  const labelId = useId()
   const [url, setUrl] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -44,61 +46,39 @@ export function IcalFeedSection({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 px-[18px] py-[13px]">
+    <div className="flex min-w-0 flex-col gap-3 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm" style={{ color: 'var(--ink)' }}>
+          <p id={labelId} className="text-sm" style={{ color: 'var(--ink)' }}>
             {t('settings.icalFeed.enable')}
           </p>
           <p className="text-xs" style={{ color: 'var(--ink3)' }}>
             {t('settings.icalFeed.enableHint')}
           </p>
         </div>
-        <Toggle checked={enabled} onChange={onEnabledChange} />
+        <Toggle checked={enabled} onChange={onEnabledChange} labelledBy={labelId} />
       </div>
 
       {enabled && (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <pre
-              className="min-w-0 flex-1 overflow-x-auto rounded px-3 py-2 text-xs"
-              style={{ background: 'var(--key)', color: 'var(--ink2)' }}
-            >
-              {url}
-            </pre>
-            <button
-              type="button"
-              onClick={() => void onCopy()}
-              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
-            >
+            <pre className={`${READOUT} min-w-0 flex-[1_1_16rem] overflow-x-auto`}>{url}</pre>
+            <button type="button" onClick={() => void onCopy()} className={KEY}>
               {copied ? t('settings.icalFeed.copied') : t('settings.icalFeed.copy')}
             </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs" style={{ color: 'var(--ink3)' }}>
-              {t('settings.icalFeed.port')}
-            </label>
+            <label className={FIELD_LABEL}>{t('settings.icalFeed.port')}</label>
             <input
               type="text"
               value={port}
               onChange={(e) => onPortChange(e.target.value)}
               placeholder={t('settings.icalFeed.portPlaceholder')}
               inputMode="numeric"
-              className="w-24 rounded-[var(--r-key)] border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{
-                background: 'var(--key)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink)'
-              }}
+              className={`${INPUT} font-num w-24`}
             />
-            <button
-              type="button"
-              onClick={() => void onRegenerate()}
-              className="rounded-[var(--r-key)] border px-3 py-1.5 text-xs font-medium hover:bg-[var(--key)] focus:outline-none focus:ring-2 focus:ring-[var(--focus)]"
-              style={{ borderColor: 'var(--line)', color: 'var(--ink)' }}
-            >
+            <button type="button" onClick={() => void onRegenerate()} className={KEY}>
               {t('settings.icalFeed.regenerate')}
             </button>
           </div>

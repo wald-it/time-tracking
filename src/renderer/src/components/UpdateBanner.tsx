@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useUpdateStore } from '../store/updateStore'
 import { useT } from '../contexts/I18nContext'
+import { FOCUS } from './instrumentClasses'
 
 /**
  * v1.5 PR B — slim banner above the main app surface.
@@ -8,7 +9,8 @@ import { useT } from '../contexts/I18nContext'
  * Visible only for non-idle states. Display style (HANDOFF §5: `--disp`,
  * `--disp-ink`) for every state; errors are NOT red — we don't want to alarm
  * users. Info and warn currently share one look: the text carries the
- * meaning, not the colour (Messinstrument rule 6).
+ * meaning, not the colour (Messinstrument rule 6). A full-width strip, so
+ * it has no radius; its keys use radius 4 (`--r-key`).
  *
  * `idle` and `not-available` collapse the banner entirely.
  */
@@ -24,7 +26,6 @@ export function UpdateBanner(): React.JSX.Element | null {
   if (status.status === 'ready' && dismissed) return null
 
   let content: React.ReactNode = null
-  let tone: 'info' | 'warn' = 'info'
 
   switch (status.status) {
     case 'checking':
@@ -55,14 +56,14 @@ export function UpdateBanner(): React.JSX.Element | null {
             <button
               type="button"
               onClick={() => void installNow()}
-              className="rounded-[var(--r-key)] bg-[var(--disp-ink)] px-3 py-1.5 text-xs font-medium text-[var(--disp)] transition-colors key-hover"
+              className={`-my-1.5 min-h-11 rounded-[var(--r-key)] bg-[var(--disp-ink)] px-3 text-xs font-semibold text-[var(--disp)] key-hover ${FOCUS}`}
             >
               {t('update.ready.install')}
             </button>
             <button
               type="button"
               onClick={dismissReady}
-              className="rounded-[var(--r-key)] px-2 py-1 text-xs text-[var(--disp-ink)] transition-colors hover:bg-[var(--disp-line)]"
+              className={`-my-1.5 min-h-11 rounded-[var(--r-key)] px-2 text-xs text-[var(--disp-dim)] hover:bg-[var(--disp-line)] hover:text-[var(--disp-ink)] ${FOCUS}`}
               aria-label={t('update.ready.dismiss')}
             >
               {t('update.ready.dismiss')}
@@ -72,32 +73,22 @@ export function UpdateBanner(): React.JSX.Element | null {
       )
       break
     case 'error':
-      tone = 'warn'
       content = (
         <span className="text-sm">
           {t('update.error.text', { message: status.message ?? '' })}
           {' — '}
-          <span className="text-xs opacity-80">{t('update.error.details')}</span>
+          <span className="text-xs text-[var(--disp-dim)]">{t('update.error.details')}</span>
         </span>
       )
       break
   }
 
-  const toneStyle =
-    tone === 'warn'
-      ? {
-          background: 'var(--disp)',
-          color: 'var(--disp-ink)',
-          borderColor: 'var(--disp-line)'
-        }
-      : {
-          background: 'var(--disp)',
-          color: 'var(--disp-ink)',
-          borderColor: 'var(--disp-line)'
-        }
-
+  // One look for every state — the text carries the meaning, not the colour.
   return (
-    <div role="status" className="flex items-center px-4 py-2 border-b" style={toneStyle}>
+    <div
+      role="status"
+      className="flex items-center border-b border-[var(--disp-line)] bg-[var(--disp)] px-4 py-2 text-[var(--disp-ink)]"
+    >
       {content}
     </div>
   )

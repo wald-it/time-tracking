@@ -163,4 +163,27 @@ describe('ExportModal pref persistence (DB-backed, v1.13.2)', () => {
     // The failed write must not remove the legacy key — next mount retries.
     expect(localStorage.getItem(LS_PREFS_KEY)).not.toBeNull()
   })
+
+  it('the tab keys say which one is chosen (aria-pressed)', async () => {
+    const { container, rerender } = setup({})
+    await openModal(rerender)
+    const csv = Array.from(container.ownerDocument.querySelectorAll('button')).find(
+      (b) => b.textContent === 'CSV — Tabelle'
+    )
+    await act(async () => {
+      fireEvent.click(csv!)
+    })
+    // The tab bar is the first group of segments in the dialog.
+    const pressed = Array.from(container.ownerDocument.querySelectorAll('[aria-pressed]'))
+      .slice(0, 3)
+      .map((b) => [b.textContent, b.getAttribute('aria-pressed')])
+    expect(pressed).toEqual([
+      ['PDF — Stundennachweis', 'false'],
+      ['CSV — Tabelle', 'true'],
+      ['iCal — Kalender', 'false']
+    ])
+    // The CSV format choices are labels of at least 44 px (HANDOFF §8).
+    const radio = container.ownerDocument.querySelector('input[name="csvFormat"]')
+    expect(radio?.closest('label')?.className).toContain('min-h-11')
+  })
 })
