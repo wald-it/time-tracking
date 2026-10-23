@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { IpcHooks } from './ipc'
+import type { HotkeyChange } from './hotkeySlot'
 import type { IpcResult } from '../shared/types'
 
 /**
@@ -65,6 +66,36 @@ function fail(error: unknown): IpcResult<never> {
   return { ok: false, error: String(error) }
 }
 
+/**
+ * #292: a hotkey is stored only once it is registered, so the setting and the
+ * active shortcut agree. Refused, the previous one stays in both.
+ *
+ * Accepted gap: if storing fails after the new one was registered (a locked
+ * database), the OS holds the new hotkey while the setting keeps the old one,
+ * which comes back at the next start. The error is reported and logged; no
+ * rollback, because undoing the registration has its own failure cases.
+ */
+function writeHotkey(
+  db: Database.Database,
+  hooks: IpcHooks,
+  key: 'hotkey_toggle' | 'mini_hotkey',
+  value: string
+): IpcResult<void> {
+  const change: HotkeyChange =
+    key === 'hotkey_toggle' ? hooks.setHotkey(value) : hooks.setMiniHotkey(value)
+  if (!change.ok) {
+    const lost = change.previousKept ? '' : ' Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
+    return fail(`Hotkey "${value}" konnte nicht registriert werden.${lost}`)
+  }
+  try {
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
+  } catch (e) {
+    console.error(`[settings] ${key} "${value}" is registered but could not be stored:`, e)
+    return fail(e)
+  }
+  return ok(undefined)
+}
+
 /** `settings:set`: store a renderer-written setting and apply its side effect. */
 export function writeSettingFromRenderer(
   db: Database.Database,
@@ -77,6 +108,7 @@ export function writeSettingFromRenderer(
   }
   if (typeof value !== 'string') return fail(`Ungültiger Wert für ${key}`)
   try {
+    if (key === 'hotkey_toggle' || key === 'mini_hotkey') return writeHotkey(db, hooks, key, value)
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
     // Apply side-effects for known keys.
     if (key === 'idle_threshold_minutes') {
@@ -84,14 +116,8 @@ export function writeSettingFromRenderer(
       if (Number.isFinite(n)) hooks.setIdleThreshold(n)
     } else if (key === 'auto_start') {
       hooks.setAutoStart(value === '1')
-    } else if (key === 'hotkey_toggle') {
-      const okHotkey = hooks.setHotkey(value)
-      if (!okHotkey) return fail(`Hotkey "${value}" konnte nicht registriert werden`)
     } else if (key === 'mini_enabled') {
       hooks.setMiniEnabled(value === '1')
-    } else if (key === 'mini_hotkey') {
-      const okHotkey = hooks.setMiniHotkey(value)
-      if (!okHotkey) return fail(`Hotkey "${value}" konnte nicht registriert werden`)
     } else if (key === 'mcp_write_enabled') {
       hooks.setMcpWriteEnabled(value === '1')
     } else if (key === 'controller_enabled') {

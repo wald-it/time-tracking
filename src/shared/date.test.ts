@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { isSameLocalDay, parseTimeToDate, formatTimeHHMM } from './date'
+import {
+  endsAtNextMidnight,
+  isSameLocalDay,
+  parseStopToDate,
+  parseTimeToDate,
+  formatTimeHHMM
+} from './date'
 
 describe('isSameLocalDay', () => {
   it('returns true for two times on the same local day', () => {
@@ -72,5 +78,23 @@ describe('formatTimeHHMM', () => {
   it('accepts ISO strings', () => {
     const d = new Date(2026, 3, 24, 14, 30)
     expect(formatTimeHHMM(d.toISOString())).toBe('14:30')
+  })
+})
+
+describe('parseStopToDate / endsAtNextMidnight (#334)', () => {
+  it('00:00 on an entry that ends at the next midnight is that midnight', () => {
+    expect(parseStopToDate('2026-06-10', '00:00', true)).toEqual(new Date(2026, 5, 11))
+  })
+
+  it('without that, and for any other stop, the stop stays on the same day', () => {
+    expect(parseStopToDate('2026-06-10', '00:00', false)).toEqual(new Date(2026, 5, 10))
+    expect(parseStopToDate('2026-06-10', '23:30', true)).toEqual(new Date(2026, 5, 10, 23, 30))
+  })
+
+  it('endsAtNextMidnight is true only for exactly the next local midnight', () => {
+    expect(endsAtNextMidnight(new Date(2026, 5, 10, 20), new Date(2026, 5, 11))).toBe(true)
+    expect(endsAtNextMidnight(new Date(2026, 5, 10, 0), new Date(2026, 5, 11))).toBe(true)
+    expect(endsAtNextMidnight(new Date(2026, 5, 10, 20), new Date(2026, 5, 10, 23))).toBe(false)
+    expect(endsAtNextMidnight(new Date(2026, 5, 10, 20), new Date(2026, 5, 12))).toBe(false)
   })
 })

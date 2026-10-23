@@ -21,6 +21,7 @@ import {
   hasScope
 } from '../shared/graphAuth'
 import type { AccountInfo, StoredTokens } from '../shared/graphAuth'
+import { resolve as resolvePath } from 'node:path'
 import { refreshTokens } from './graphAuth'
 import type { GraphAuthConfig, GraphAuthDeps } from './graphAuth'
 import { connectAccount } from './graphConnect'
@@ -139,6 +140,8 @@ export function disconnect(deps: GraphAccountDeps): AccountStatus {
  * On `invalid_grant` the stored connection is dropped: the grant is gone for
  * good (revoked, password changed, unused too long), and keeping a dead blob
  * around would make the settings page claim a connection that cannot work.
+ * Only if the store still holds the refused refresh token, though (#341): a
+ * different one is used instead, an empty or unreadable store is kept.
  * With a feature scope in the request, that holds for the calendar-only
  * retry (#308): a refused feature scope can arrive as `invalid_grant` too.
  */
@@ -149,11 +152,51 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   const now = deps.auth?.now?.() ?? Date.now()
   if (!needsRefresh(tokens, now)) return tokens.accessToken
 
+  // #341: one refresh per token store at a time. The presence pokes and the
+  // calendar import can ask at the same moment; a second refresh with the
+  // same refresh token is sent with a spent token once Entra has rotated it.
+  const key = storeKey(deps)
+  const running = inFlight.get(key)
+  if (running) return running
+  const refresh = refreshAndStore(deps, tokens).finally(() => inFlight.delete(key))
+
+  inFlight.set(key, refresh)
+  return refresh
+}
+
+/** Refreshes in progress, per token-store directory (#341). */
+const inFlight = new Map<string, Promise<string | null>>()
+
+/** One key per directory, however the path was spelled. */
+function storeKey(deps: GraphAccountDeps): string {
+  const dir = resolvePath(deps.store.dir)
+  return process.platform === 'win32' ? dir.toLowerCase() : dir
+}
+
+async function refreshAndStore(
+  deps: GraphAccountDeps,
+  tokens: StoredTokens,
+  /** One more refresh from a grant someone else stored meanwhile, not more. */
+  mayFollow = true
+): Promise<string | null> {
   let refreshed: StoredTokens
   try {
     refreshed = await refreshWithFallback(configOf(deps), tokens, deps)
   } catch (err) {
     if (err instanceof GraphAuthError && err.code === 'invalid_grant') {
+      // #341: the connection is gone only if the store still holds the very
+      // refresh token that was refused. A different one means someone else
+      // refreshed or reconnected meanwhile; an empty or unreadable store is
+      // nothing to delete.
+      const current = loadTokens(deps.store)
+      if (!current) return null
+      if (current.refreshToken !== tokens.refreshToken) {
+        deps.log?.('graph account: refresh token already replaced, using the stored one')
+        const now = deps.auth?.now?.() ?? Date.now()
+        return needsRefresh(current, now) && mayFollow
+          ? refreshAndStore(deps, current, false)
+          : current.accessToken
+      }
       deps.log?.('graph account: grant no longer valid, connection dropped')
       clearTokens(deps.store)
       return null
@@ -165,7 +208,6 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   saveTokens(refreshed, deps.store)
   return refreshed.accessToken
 }
-
 /**
  * #308: Entra refreshes only scopes "equivalent to or a subset of" those
  * granted. With a feature switched on whose scope is not consented yet (Teams
