@@ -181,7 +181,8 @@ describe('no dialog text is written into a call site', () => {
 
   it('titles, messages, buttons and filter names come from the locale files', () => {
     const literal =
-      /\b(title|message|detail|checkboxLabel):\s*['"`]|buttons:\s*\[\s*['"`]|showErrorBox\(\s*['"`]/
+      // A literal, or a constant in CAPS (how #288 first passed its restore title).
+      /\b(title|message|detail|checkboxLabel):\s*(['"`]|[A-Z][A-Z0-9_]+\b)|buttons:\s*\[\s*(['"`]|[A-Z][A-Z0-9_]+\b)|showErrorBox\(\s*(['"`]|[A-Z][A-Z0-9_]+\b)/
     for (const [file, src] of sources()) {
       if (!/dialog\.show\w+\(|showSaveDialog/.test(src)) continue
       expect(literal.exec(src)?.[0], file).toBeUndefined()

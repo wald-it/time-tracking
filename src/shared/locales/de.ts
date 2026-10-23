@@ -907,6 +907,8 @@ export const de = {
   'mainDialog.restore.inUse':
     'Wiederherstellung nicht durchgeführt — die Datenbank ist noch in einem anderen Programm geöffnet (z. B. ein MCP-Client wie Claude Desktop). Programm beenden und erneut versuchen.',
   'mainDialog.restore.failed': 'Wiederherstellung nicht durchgeführt: {cause}',
+  'mainDialog.restore.unknown':
+    'Wiederherstellung nicht durchgeführt — diese Backup-Datei steht nicht in der Backup-Liste.',
   'mainDialog.backupPath.title': 'Backup-Pfad wählen',
   'mainDialog.exportJson.title': 'Datenexport speichern',
   'mainDialog.pdf.saveTitle': 'Stundennachweis speichern',

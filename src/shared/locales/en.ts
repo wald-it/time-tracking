@@ -892,6 +892,7 @@ export const en: Record<TranslationKey, string> = {
   'mainDialog.restore.inUse':
     'Backup not restored: the database is still open in another program (for example an MCP client such as Claude Desktop). Quit that program and try again.',
   'mainDialog.restore.failed': 'Backup not restored: {cause}',
+  'mainDialog.restore.unknown': 'Backup not restored: this backup file is not in the backup list.',
   'mainDialog.backupPath.title': 'Choose backup folder',
   'mainDialog.exportJson.title': 'Save data export',
   'mainDialog.pdf.saveTitle': 'Save timesheet',

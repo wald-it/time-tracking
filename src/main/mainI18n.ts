@@ -8,6 +8,9 @@
  * for those.
  */
 import type Database from 'better-sqlite3'
+// A type import, not the global `Electron` namespace: renderer tests reach this
+// module through src/test/bridgeKit.ts, and the web project has no such global.
+import type { MessageBoxOptions } from 'electron'
 import { translateLiteral, type Locale } from '../shared/i18n'
 import type { TranslationKey } from '../shared/locales/de'
 import { LOCALE_STRINGS } from '../shared/locales'
@@ -49,7 +52,7 @@ export function readLanguageOr(db: Database.Database, fallback: () => Locale): L
 export function mcpConfirmDialog(
   locale: Locale,
   summary: string
-): Electron.MessageBoxOptions & { buttons: string[] } {
+): MessageBoxOptions & { buttons: string[] } {
   const t = dialogT(locale)
   return {
     type: 'question',
