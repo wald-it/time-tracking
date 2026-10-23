@@ -16,7 +16,7 @@ import {
 } from './pdfMergeValidation'
 import type { IpcResult, Settings } from '../shared/types'
 import type { Locale } from '../shared/i18n'
-import { dialogT } from './mainI18n'
+import { cancelledResult, dialogT, mergedFileName } from './mainI18n'
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024 // 50 MB
 
@@ -43,9 +43,10 @@ export interface FsDeps {
 export interface DialogDeps {
   showSaveDialog: (opts: Electron.SaveDialogOptions) => Promise<Electron.SaveDialogReturnValue>
   /**
-   * The language of the dialog title (#270). Asked only when the fallback
-   * dialog opens, inside the handler's try, so a failing settings read
-   * cannot break a merge that needs no dialog.
+   * The language of the merged file's name (#296) and of the fallback
+   * dialog's title (#270). Asked on every merge, so it must not throw:
+   * ipc.ts passes mainI18n.appLocale, which falls back instead. (A throwing
+   * getter would end a merge that needs no dialog as an error result.)
    */
   locale: () => Locale
 }
@@ -158,10 +159,11 @@ export async function mergeOnlyHandler(
 
     // Derive output path next to the invoice. Append timestamp if file already exists.
     const { dir, name } = parse(resolvedInv)
-    let outputPath = join(dir, `${name}_inkl_Stundennachweis.pdf`)
+    const locale = dialogDeps.locale()
+    let outputPath = join(dir, mergedFileName(locale, name))
     if (fsDeps.existsSync(outputPath)) {
       const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
-      outputPath = join(dir, `${name}_inkl_Stundennachweis_${ts}.pdf`)
+      outputPath = join(dir, mergedFileName(locale, name, ts))
     }
 
     try {
@@ -171,12 +173,12 @@ export async function mergeOnlyHandler(
       // Target directory is read-only — fall back to a user-chosen path.
       if (isErrnoException(writeErr) && (writeErr.code === 'EPERM' || writeErr.code === 'EACCES')) {
         const fallback = await dialogDeps.showSaveDialog({
-          title: dialogT(dialogDeps.locale())('mainDialog.pdf.mergeSaveTitle'),
-          defaultPath: `${name}_inkl_Stundennachweis.pdf`,
+          title: dialogT(locale)('mainDialog.pdf.mergeSaveTitle'),
+          defaultPath: mergedFileName(locale, name),
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
         if (fallback.canceled || !fallback.filePath) {
-          return { ok: false, error: 'Speichern abgebrochen' }
+          return cancelledResult(locale, 'mainError.saveCancelled')
         }
         fsDeps.writeFileSync(fallback.filePath, merged)
         return { ok: true, data: { path: fallback.filePath } }
@@ -307,10 +309,11 @@ export async function mergeExportHandler(
     })
 
     const { dir, name } = parse(resolvedInvoice)
-    let outputPath = join(dir, `${name}_inkl_Stundennachweis.pdf`)
+    const locale = dialogDeps.locale()
+    let outputPath = join(dir, mergedFileName(locale, name))
     if (fsDeps.existsSync(outputPath)) {
       const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
-      outputPath = join(dir, `${name}_inkl_Stundennachweis_${ts}.pdf`)
+      outputPath = join(dir, mergedFileName(locale, name, ts))
     }
 
     try {
@@ -320,12 +323,12 @@ export async function mergeExportHandler(
       // Target directory is read-only — fall back to a user-chosen path.
       if (isErrnoException(writeErr) && (writeErr.code === 'EPERM' || writeErr.code === 'EACCES')) {
         const fallback = await dialogDeps.showSaveDialog({
-          title: dialogT(dialogDeps.locale())('mainDialog.pdf.mergeSaveTitle'),
-          defaultPath: `${name}_inkl_Stundennachweis.pdf`,
+          title: dialogT(locale)('mainDialog.pdf.mergeSaveTitle'),
+          defaultPath: mergedFileName(locale, name),
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
         if (fallback.canceled || !fallback.filePath) {
-          return { ok: false, error: 'Speichern abgebrochen' }
+          return cancelledResult(locale, 'mainError.saveCancelled')
         }
         fsDeps.writeFileSync(fallback.filePath, merged)
         return { ok: true, data: { path: fallback.filePath } }

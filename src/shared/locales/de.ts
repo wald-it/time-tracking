@@ -27,6 +27,10 @@ export const de = {
   'update.ready.text': 'Version {version} bereit — App neu starten?',
   'update.ready.install': 'Jetzt neu starten',
   'update.ready.dismiss': 'Nicht jetzt',
+  // System notification after a download (main process, #309). {button} is 'update.ready.install'.
+  'mainNotification.update.title': 'Ein neues Update kann installiert werden',
+  'mainNotification.update.body':
+    'TimeTrack {version} wurde heruntergeladen. Zum Installieren klicke oben im TimeTrack-Fenster auf "{button}".',
   'update.error.text': 'Update-Fehler: {message}',
   'update.error.details': 'Details in Einstellungen',
 
@@ -688,7 +692,9 @@ export const de = {
   'settings.mcp.confirmMode': 'Bestätigung',
   'settings.mcp.confirmModeHint': 'Wie eine Schreibaktion in der App bestätigt wird.',
   'settings.mcp.confirmPerWrite': 'Bei jeder Änderung nachfragen',
-  'settings.mcp.confirmSession': 'Einmal pro Sitzung',
+  'settings.mcp.confirmSession': 'Start und Stopp für 30 Minuten freigeben',
+  'settings.mcp.confirmSessionHint':
+    'Nachtragen und Ändern fragen immer. Nach 30 Minuten oder 20 Schreibaktionen fragt TimeTrack wieder.',
   'settings.mcp.confirmSilent': 'Nicht nachfragen',
   'settings.mcp.auditLog': 'Audit-Log',
   'settings.mcp.auditLogHint':
@@ -864,7 +870,7 @@ export const de = {
   'tags.manageLink': 'Tags verwalten →',
 
   // ── Native dialogs of the main process (#270) ─────────────────────────────
-  // Filled with translateLiteral. The MCP texts are the owner's guard against
+  // Filled in one pass (translate). The MCP texts are the owner's guard against
   // writes from MCP clients: the German wording is pinned byte for byte, the
   // summary lines in mcpBridgeLocalTime.test.ts, the dialog frame in
   // mainI18n.test.ts. `mainDialog.mcp.offsetHint` in German is also the text
@@ -873,7 +879,7 @@ export const de = {
   'mainDialog.mcp.message': 'Claude möchte eine Änderung in TimeTrack vornehmen:',
   'mainDialog.mcp.deny': 'Ablehnen',
   'mainDialog.mcp.allow': 'Erlauben',
-  'mainDialog.mcp.remember': 'Für diese Session merken (nicht mehr fragen)',
+  'mainDialog.mcp.remember': 'Start und Stopp 30 Minuten lang ohne Nachfrage erlauben',
   'mainDialog.mcp.create': 'Eintrag nachtragen — Kunde {client}, {span} ({minutes} min)',
   'mainDialog.mcp.update': 'Eintrag #{id} ändern — vorher {before}, nachher {after}',
   'mainDialog.mcp.start': 'Timer starten — Kunde {client}, {from}{ends}',
@@ -897,6 +903,29 @@ export const de = {
   'mainDialog.mcp.no': 'nein',
   'mainDialog.mcp.offsetHint':
     'Hinweis: {offset} weicht von der Ortszeit am {day} ab ({local}) — wird als {time} Ortszeit gespeichert.',
+  // #272 (A3): native confirmation before a setting widens access to the data.
+  'mainDialog.settingConfirm.title': 'TimeTrack — Einstellung bestätigen',
+  'mainDialog.settingConfirm.cancel': 'Abbrechen',
+  'mainDialog.settingConfirm.mcpWrite.message': 'MCP-Schreibzugriff einschalten?',
+  'mainDialog.settingConfirm.mcpWrite.detail':
+    'Ein KI-Programm mit Zugang zu TimeTrack kann dann Einträge nachtragen und ändern sowie Timer starten und stoppen. Wie oft TimeTrack nachfragt, stellst du unter „Bestätigung“ ein.',
+  'mainDialog.settingConfirm.mcpWrite.confirm': 'Einschalten',
+  'mainDialog.settingConfirm.controller.message': 'Hardware-Tasten erlauben?',
+  'mainDialog.settingConfirm.controller.detail':
+    'Stream Deck und ähnliche Geräte können dann Timer starten, stoppen und wechseln. Ein Tastendruck gilt als Bestätigung, TimeTrack fragt dabei nicht nach.',
+  'mainDialog.settingConfirm.controller.confirm': 'Erlauben',
+  'mainDialog.settingConfirm.silent.message': 'Schreibaktionen ohne Nachfrage erlauben?',
+  'mainDialog.settingConfirm.silent.detail':
+    'Ein KI-Programm mit Zugang zu TimeTrack kann dann Einträge nachtragen, ändern und Timer steuern, ohne dass TimeTrack fragt.',
+  'mainDialog.settingConfirm.silent.confirm': 'Ohne Nachfrage erlauben',
+  'mainDialog.settingConfirm.webhook.message': 'Webhook-Ziel speichern?',
+  'mainDialog.settingConfirm.webhook.detail':
+    'TimeTrack schickt dann bei jedem Start und Stopp eines Timers und bei jedem nachgetragenen oder geänderten Eintrag, je nach den gewählten Ereignissen, die Daten des Eintrags an:\n{urls}\nDazu gehören Kunde, Projekt, Zeiten, Beschreibung, Tags und Referenz, der Stundensatz und die interne Notiz nur, wenn du sie unter „Integrationen“ freigegeben hast.\nNur speichern, wenn du dieser Adresse vertraust.',
+  'mainDialog.settingConfirm.webhook.confirm': 'Speichern',
+  'mainDialog.settingConfirm.graphClientId.message': 'Andere App-Registrierung verwenden?',
+  'mainDialog.settingConfirm.graphClientId.detail':
+    'Die Microsoft-Anmeldung läuft dann über die App-ID {id} statt über die von TimeTrack. Ändere das nur, wenn deine IT es vorgibt.',
+  'mainDialog.settingConfirm.graphClientId.confirm': 'Verwenden',
   'mainDialog.hotkey.title': 'TimeTrack — Hotkey-Konflikt',
   'mainDialog.hotkey.message': 'Der Mini-Widget-Hotkey "{hotkey}" konnte nicht registriert werden.',
   'mainDialog.hotkey.detail':
@@ -921,7 +950,28 @@ export const de = {
   'mainDialog.logo.title': 'Logo auswählen',
   'mainDialog.logo.filter': 'Bilder',
   'mainDialog.csv.title': 'CSV speichern',
-  'mainDialog.ical.title': 'iCal speichern'
+  'mainDialog.ical.title': 'iCal speichern',
+
+  // ── Main process: tray, default file names, cancel results (#296) ─────────
+  // The German file names are the ones the app always wrote: archive folders
+  // may rely on them, so they stay byte for byte.
+  'mainTray.idle': 'Kein Timer aktiv',
+  'mainTray.stop': 'Stop',
+  'mainTray.quickStart': 'Quick-Start',
+  'mainTray.noClients': 'Keine aktiven Kunden',
+  'mainTray.showWindow': 'Fenster anzeigen',
+  'mainTray.quit': 'Beenden',
+  'mainTray.tooltipRunning': '● {label} · Heute {today}',
+  'mainTray.tooltipIdle': 'TimeTrack — Heute {today}',
+  'mainFile.pdf': 'Stundennachweis-{client}{project}-{month}.pdf',
+  'mainFile.csv': 'Zeiterfassung-{client}{project}-{month}.csv',
+  'mainFile.ical': 'Zeiterfassung-{client}{project}-{month}.ics',
+  'mainFile.merged': '{name}_inkl_Stundennachweis.pdf',
+  'mainFile.mergedStamped': '{name}_inkl_Stundennachweis_{stamp}.pdf',
+  'mainFile.fallbackClient': 'Kunde',
+  'mainError.exportCancelled': 'Export abgebrochen',
+  'mainError.selectionCancelled': 'Auswahl abgebrochen',
+  'mainError.saveCancelled': 'Speichern abgebrochen'
 } as const
 
 export type TranslationKey = keyof typeof de

@@ -20,10 +20,14 @@ import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
 import {
   dbErrorDialog,
   hotkeyConflictDialog,
-  localeFromSetting,
   localeFromSystem,
-  migrationErrorDialog
+  migrationErrorDialog,
+  appLocale,
+  sensitiveSettingDialog,
+  trayLabels,
+  trayTooltip
 } from './mainI18n'
+import type { Locale } from '../shared/i18n'
 import {
   assertSmokeUserDataIsolated,
   parseSmokeOutPath,
@@ -50,9 +54,18 @@ import {
   clearWriteToken,
   generateControllerToken,
   clearControllerToken,
+  forgetMcpApproval,
   type BridgeDeps
 } from './mcpBridge'
 import { initAutoUpdater } from './updater'
+import {
+  changeHotkey,
+  hotkeySlot,
+  resumeHotkeys,
+  suspendHotkeys,
+  type HotkeyChange,
+  type HotkeySlot
+} from './hotkeySlot'
 import { readRunning } from './mcpBridgeCore'
 import { reconcilePresence, type PresenceDeps } from './graphPresence'
 import { graphAccountDepsFor } from './graphHandlers'
@@ -169,8 +182,10 @@ if (isSecondInstance) {
 // ── Hotkey registration state ────────────────────────────────────
 // Tracked per-slot so `registerHotkey` and `registerMiniHotkey` can update
 // independently without clobbering each other (no more `unregisterAll`).
-let currentToggleHotkey = ''
-let currentMiniHotkey = ''
+const toggleSlot: HotkeySlot = hotkeySlot(() => {
+  mainWindow?.webContents.send('timer:hotkey-toggle')
+})
+const miniSlot: HotkeySlot = hotkeySlot(() => toggleMini())
 
 // ── State for tray quick-start ──────────────────────────────────
 let cachedActiveClients: Client[] = []
@@ -199,18 +214,29 @@ function refreshActiveClients(): void {
   }
 }
 
-function buildTrayMenu(): Menu {
+/**
+ * The app language for everything index.ts shows: tray, start-up dialogs, the
+ * update notification (#296). The shared rule that never throws and keeps the
+ * last language while the handle is closed after a restore attempt
+ * (mainI18n.appLocale), the same answer the IPC dialogs get.
+ */
+function appLanguage(): Locale {
+  return appLocale(getDb, () => app.getPreferredSystemLanguages())
+}
+
+function buildTrayMenu(locale: Locale = appLanguage()): Menu {
   const items: MenuItemConstructorOptions[] = []
+  const text = trayLabels(locale)
 
   items.push({
-    label: isTimerRunning ? `● ${runningLabel}` : 'Kein Timer aktiv',
+    label: isTimerRunning ? `● ${runningLabel}` : text.idle,
     enabled: false
   })
   items.push({ type: 'separator' })
 
   if (isTimerRunning) {
     items.push({
-      label: 'Stop',
+      label: text.stop,
       click: () => mainWindow?.webContents.send('timer:tray-stop')
     })
   } else if (cachedActiveClients.length > 0) {
@@ -220,15 +246,15 @@ function buildTrayMenu(): Menu {
         label: `▶ ${c.name}`,
         click: () => mainWindow?.webContents.send('timer:tray-quick-start', c.id)
       }))
-    items.push({ label: 'Quick-Start', enabled: false })
+    items.push({ label: text.quickStart, enabled: false })
     items.push(...quickStart)
   } else {
-    items.push({ label: 'Keine aktiven Kunden', enabled: false })
+    items.push({ label: text.noClients, enabled: false })
   }
 
   items.push({ type: 'separator' })
   items.push({
-    label: 'Fenster anzeigen',
+    label: text.showWindow,
     click: () => {
       mainWindow?.show()
       mainWindow?.focus()
@@ -236,7 +262,7 @@ function buildTrayMenu(): Menu {
   })
   items.push({ type: 'separator' })
   items.push({
-    label: 'Beenden',
+    label: text.quit,
     click: () => {
       isQuitting = true
       app.quit()
@@ -255,38 +281,31 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   // grey clock when idle. Both files live in resources/ and are bundled by
   // electron-vite's `?asset` resolver.
   tray.setImage(running ? trayRunningIcon : trayStoppedIcon)
-  // Tooltip format (v1.2 #31):
-  //   running: `● {client} · {HH:MM} · Heute {HH:MM}`
+  // Tooltip format (v1.2 #31), in the app language since #296:
+  //   running: `● {client} · Heute {HH:MM}`
   //   idle:    `TimeTrack — Heute {HH:MM}`
-  // (i18n in tooltip deferred to v1.4 — see DESIGN.md known limitations.)
-  tray.setToolTip(
-    running
-      ? `● ${label} · Heute ${fmtHHMM(todaySeconds)}`
-      : `TimeTrack — Heute ${fmtHHMM(todaySeconds)}`
-  )
-  tray.setContextMenu(buildTrayMenu())
+  const locale = appLanguage()
+  tray.setToolTip(trayTooltip(locale, running, label, fmtHHMM(todaySeconds)))
+  tray.setContextMenu(buildTrayMenu(locale))
 }
 
-function registerHotkey(accelerator: string): boolean {
-  // Cross-slot collision check (v1.4 PR B). Without this, suspending
-  // shortcuts during capture would let the user silently steal the
-  // mini-widget's accelerator, since the OS-level register call would
-  // succeed while the other slot is paused.
-  if (accelerator && accelerator === currentMiniHotkey) {
-    console.warn(`[hotkey] ${accelerator} is already bound to mini_hotkey`)
-    return false
+/** Log a refused change; the slot itself is left as `changeHotkey` says. */
+function logHotkeyChange(tag: string, accelerator: string, change: HotkeyChange): HotkeyChange {
+  if (!change.ok) {
+    console.warn(
+      `[${tag}] ${accelerator} not registered (${change.reason}); ` +
+        (change.previousKept ? 'previous kept' : 'previous lost as well')
+    )
   }
-  if (currentToggleHotkey) {
-    globalShortcut.unregister(currentToggleHotkey)
-    currentToggleHotkey = ''
-  }
-  if (!accelerator) return false
-  const ok = globalShortcut.register(accelerator, () => {
-    mainWindow?.webContents.send('timer:hotkey-toggle')
-  })
-  if (ok) currentToggleHotkey = accelerator
-  else console.warn(`[hotkey] Could not register ${accelerator}`)
-  return ok
+  return change
+}
+
+function registerHotkey(accelerator: string): HotkeyChange {
+  return logHotkeyChange(
+    'hotkey',
+    accelerator,
+    changeHotkey(globalShortcut, toggleSlot, accelerator, miniSlot.current)
+  )
 }
 
 /**
@@ -294,22 +313,12 @@ function registerHotkey(accelerator: string): boolean {
  * enabled in Settings). Tracked separately from `hotkey_toggle` so changing
  * one doesn't clobber the other (we used to call `unregisterAll`).
  */
-function registerMiniHotkey(accelerator: string): boolean {
-  if (accelerator && accelerator === currentToggleHotkey) {
-    console.warn(`[mini-hotkey] ${accelerator} is already bound to hotkey_toggle`)
-    return false
-  }
-  if (currentMiniHotkey) {
-    globalShortcut.unregister(currentMiniHotkey)
-    currentMiniHotkey = ''
-  }
-  if (!accelerator) return false
-  const ok = globalShortcut.register(accelerator, () => {
-    toggleMini()
-  })
-  if (ok) currentMiniHotkey = accelerator
-  else console.warn(`[mini-hotkey] Could not register ${accelerator}`)
-  return ok
+function registerMiniHotkey(accelerator: string): HotkeyChange {
+  return logHotkeyChange(
+    'mini-hotkey',
+    accelerator,
+    changeHotkey(globalShortcut, miniSlot, accelerator, toggleSlot.current)
+  )
 }
 
 /**
@@ -319,20 +328,12 @@ function registerMiniHotkey(accelerator: string): boolean {
  * Restored via {@link resumeGlobalShortcuts}.
  */
 function suspendGlobalShortcuts(): void {
-  if (currentToggleHotkey) globalShortcut.unregister(currentToggleHotkey)
-  if (currentMiniHotkey) globalShortcut.unregister(currentMiniHotkey)
+  suspendHotkeys(globalShortcut, [toggleSlot, miniSlot])
 }
 
 function resumeGlobalShortcuts(): void {
-  if (currentToggleHotkey) {
-    globalShortcut.register(currentToggleHotkey, () => {
-      mainWindow?.webContents.send('timer:hotkey-toggle')
-    })
-  }
-  if (currentMiniHotkey) {
-    globalShortcut.register(currentMiniHotkey, () => {
-      toggleMini()
-    })
+  for (const accelerator of resumeHotkeys(globalShortcut, [toggleSlot, miniSlot])) {
+    console.warn(`[hotkey] ${accelerator} could not be registered again after capture`)
   }
 }
 
@@ -367,14 +368,14 @@ function loadStartupSettings(): void {
     applyAutoStart(auto)
     // v1.4 PR B — mini-widget hotkey + restore visibility from last session.
     const miniHotkey = map.mini_hotkey ?? 'Alt+Shift+M'
-    const miniHotkeyOk = registerMiniHotkey(miniHotkey)
+    const miniHotkeyOk = registerMiniHotkey(miniHotkey).ok
     if (!miniHotkeyOk && map.mini_enabled === '1') {
       // Surface the conflict at startup so the user knows their hotkey
       // is silently dead. Non-blocking dialog — the app continues to work,
       // toggling via Settings still works.
       dialog.showMessageBox({
         type: 'warning',
-        ...hotkeyConflictDialog(localeFromSetting(map.language), miniHotkey)
+        ...hotkeyConflictDialog(appLanguage(), miniHotkey)
       })
     }
     if (map.mini_enabled === '1') applyMiniEnabled(true)
@@ -700,6 +701,9 @@ app.whenReady().then(async () => {
       refreshActiveClients()
       tray?.setContextMenu(buildTrayMenu())
     },
+    // #296: menu and tooltip in the new language right away, not at the next
+    // timer event.
+    refreshTrayLanguage: () => updateTray(isTimerRunning, runningLabel, lastTodaySeconds),
     setHotkey: (accelerator) => registerHotkey(accelerator),
     setAutoStart: (enabled) => applyAutoStart(enabled),
     setIdleThreshold: (minutes) => setIdleThresholdMinutes(minutes),
@@ -711,6 +715,9 @@ app.whenReady().then(async () => {
         startMcpBridge(mcpBridgeDeps())
       } else {
         clearWriteToken()
+        // #301: switching write access off ends any approval, also while the
+        // controller keeps the bridge running.
+        forgetMcpApproval()
         // The bridge socket stays up while the controller scope needs it.
         if (mcpBridgeDeps().getSetting('controller_enabled') !== '1') stopMcpBridge()
       }
@@ -737,6 +744,14 @@ app.whenReady().then(async () => {
       if (icalFeedDeps().getSetting('ical_feed_enabled') === '1') {
         restartFeedServer(icalFeedDeps())
       }
+    },
+    forgetMcpApproval,
+    // #272 (A3): the native confirmation for a setting that widens access.
+    confirmSensitiveSetting: async (change) => {
+      const opts = sensitiveSettingDialog(appLanguage(), change)
+      const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+      const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+      return res.response === 1
     }
   })
   createWindow()
@@ -775,7 +790,9 @@ app.whenReady().then(async () => {
   initAutoUpdater({
     isDev: is.dev,
     getEndpointDir: () => dirname(getDbPath()),
-    getSetting: (key) => mcpBridgeDeps().getSetting(key)
+    getSetting: (key) => mcpBridgeDeps().getSetting(key),
+    // #296: the same never-throwing app language as tray and dialogs.
+    getLocale: appLanguage
   })
 
   refreshActiveClients()

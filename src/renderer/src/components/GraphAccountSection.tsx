@@ -3,9 +3,7 @@ import { useT } from '../contexts/I18nContext'
 import { Toggle } from './Toggle'
 import { FIELD_LABEL, FOCUS, INPUT_FRAME, KEY, KEY_INV } from './instrumentClasses'
 import type { AccountStatus } from '../../../main/graphAccount'
-
-/** Delegated scope required for presence mirroring (#132); must match shared/graphAuth. */
-const PRESENCE_SCOPE = 'Presence.ReadWrite'
+import { hasScope, PRESENCE_SCOPE } from '../../../shared/graphAuth'
 
 /**
  * "Connect a Microsoft account" (#130).
@@ -109,7 +107,19 @@ export function GraphAccountSection(): React.JSX.Element {
   }
 
   async function onSaveClientId(): Promise<void> {
-    await window.api.settings.set('graph_client_id', clientId.trim())
+    const res = await window.api.settings.set('graph_client_id', clientId.trim())
+    // A new app id asks natively first (#272); declined, nothing was saved,
+    // so the field shows the stored id again.
+    if (!res.ok) {
+      if (res.code !== 'cancelled') {
+        // A failure keeps what the user typed, so they can try again.
+        setError(res.error)
+        return
+      }
+      const stored = await window.api.settings.getAll()
+      if (stored.ok) setClientId(stored.data.graph_client_id ?? '')
+      return
+    }
     setClientIdSaved(true)
     await refresh()
   }
@@ -175,9 +185,7 @@ export function GraphAccountSection(): React.JSX.Element {
               </div>
               {presenceEnabled && (
                 <>
-                  {!status?.grantedScopes.some(
-                    (s) => s.toLowerCase() === PRESENCE_SCOPE.toLowerCase()
-                  ) && (
+                  {!hasScope(status?.grantedScopes ?? [], PRESENCE_SCOPE) && (
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-xs text-[var(--ink)]">
                         {t('settings.presence.reconnectHint')}
