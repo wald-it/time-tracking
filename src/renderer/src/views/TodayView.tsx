@@ -134,6 +134,9 @@ export default function TodayView(): React.JSX.Element {
     const res = await window.api.entries.delete(entry.id)
     if (!res.ok) {
       showToast(t('common.entryDeleteFailed', { error: res.error }))
+      // A refused delete means the row is no longer live (a confirm that
+      // fired twice, for example): reload so the list shows what is stored.
+      useEntriesStore.getState().bumpVersion()
       return
     }
     useEntriesStore.getState().bumpVersion()
@@ -346,5 +349,7 @@ function buildDeleteMessage(entry: Entry, client: Client | undefined, t: TFuncti
   const date = new Date(entry.started_at)
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   const name = client?.name ?? t('common.unknown')
-  return t('common.deleteEntryMessage', { client: name, date: dateStr, duration: dur })
+  // One half of an entry across midnight: the delete takes both days (#323).
+  const key = entry.link_id ? 'common.deleteEntryMessageLinked' : 'common.deleteEntryMessage'
+  return t(key, { client: name, date: dateStr, duration: dur })
 }

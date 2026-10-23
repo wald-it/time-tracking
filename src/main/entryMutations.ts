@@ -499,3 +499,55 @@ export function stopRunningTimer(db: Db): IpcResult<Entry | null> {
   const res = stopEntry(db, running.id)
   return res.ok ? ok(res.data) : res
 }
+
+/**
+ * Soft-delete an entry. Mirrors `entries:delete`.
+ *
+ * An entry across midnight is two rows sharing a `link_id`; deleting either
+ * half deletes the whole entry (#323). A half that is already in the trash
+ * keeps its own `deleted_at`, so `undeleteEntry` can tell the rows this
+ * delete removed from ones removed earlier.
+ */
+export function deleteEntry(db: Db, id: number): IpcResult<void> {
+  const row = db.prepare(`SELECT link_id, deleted_at FROM entries WHERE id = ?`).get(id) as
+    | { link_id: string | null; deleted_at: string | null }
+    | undefined
+  // A row already in the trash (a view that has not refreshed) is not deleted
+  // again: its sibling would get a new time and undo would restore the wrong
+  // rows. The answer is the same as MCP `update_entry_fields` gives for a
+  // trashed entry.
+  if (!row || row.deleted_at !== null) return fail('Eintrag existiert nicht')
+  const now = new Date().toISOString()
+  if (row.link_id) {
+    db.prepare(`UPDATE entries SET deleted_at = ? WHERE link_id = ? AND deleted_at IS NULL`).run(
+      now,
+      row.link_id
+    )
+  } else {
+    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(now, id)
+  }
+  return ok(undefined)
+}
+
+/**
+ * Restore a soft-deleted entry. Mirrors `entries:undelete` (the toast's undo).
+ *
+ * For an entry across midnight it restores the halves that the same delete
+ * removed, i.e. those with the same `deleted_at` (#323). A half deleted at
+ * another time stays in the trash.
+ */
+export function undeleteEntry(db: Db, id: number): IpcResult<Entry> {
+  const row = db.prepare(`SELECT link_id, deleted_at FROM entries WHERE id = ?`).get(id) as
+    | { link_id: string | null; deleted_at: string | null }
+    | undefined
+  if (!row) return fail('Eintrag existiert nicht')
+  if (row.link_id && row.deleted_at) {
+    db.prepare(`UPDATE entries SET deleted_at = NULL WHERE link_id = ? AND deleted_at = ?`).run(
+      row.link_id,
+      row.deleted_at
+    )
+  } else {
+    db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(id)
+  }
+  return ok(db.prepare(`SELECT * FROM entries WHERE id = ?`).get(id) as Entry)
+}
