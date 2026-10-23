@@ -131,8 +131,7 @@ const api = {
       ipcRenderer.invoke('entries:create', input),
     update: (input: UpdateEntryInput): Promise<IpcResult<Entry>> =>
       ipcRenderer.invoke('entries:update', input),
-    delete: (id: number, cascadeLinked = false): Promise<IpcResult<void>> =>
-      ipcRenderer.invoke('entries:delete', id, cascadeLinked),
+    delete: (id: number): Promise<IpcResult<void>> => ipcRenderer.invoke('entries:delete', id),
     undelete: (id: number): Promise<IpcResult<Entry>> => ipcRenderer.invoke('entries:undelete', id)
   },
   // Settings
