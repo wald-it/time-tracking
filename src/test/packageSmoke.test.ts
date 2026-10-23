@@ -70,7 +70,8 @@ rl.on('close', () => process.exit(0))
 
 /**
  * Upper bound for one probe run: its own deadline, two process starts, and the
- * probe's 5 s kill fallback plus its 2 s drain grace at the end.
+ * probe's 5 s kill fallback plus its 2 s drain grace at the end. Both runners
+ * below kill the probe at this point.
  */
 const PROBE_LIMIT_MS = 90_000
 
@@ -127,45 +128,78 @@ function probe(
 }
 
 /**
- * Like `probe`, but also returns how long the probe took to reach its verdict
- * after the fake server was up: from the relayed `[fake] up` line to the
- * probe's final `ERROR:` line (#328). That leaves out what the probe does not
- * control: the start of two Electron processes before the line, and the end
- * of the probe's own process after it, which under load Windows can stretch
- * by tens of seconds (#264, #286).
+ * Like `probe`, but times the probe from the moment the fake server was up,
+ * that is from the relayed `[fake] up` line (#328):
+ * - `verdictMs`: until the probe's final `ERROR:` line;
+ * - `exitMs`: until the probe process's 'exit' event.
+ * Neither counts the start of the two Electron processes before that line.
+ * `exitMs` does count the end of the probe's own process, which Windows can
+ * stretch by tens of seconds under load (#264, #286); see the orphan test for
+ * where it is used.
  */
-function probeTimed(
+async function probeTimed(
   mode: string,
   tools: string[]
-): Promise<{ status: number | null; output: string; verdictMs: number | null }> {
+): Promise<{
+  status: number | null
+  output: string
+  verdictMs: number | null
+  exitMs: number | null
+}> {
   const dir = mkdtempSync(join(tmpdir(), 'package-smoke-test-'))
-  const { args, env } = probeCommand(dir, mode, tools, {})
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, args, { env })
-    let output = ''
-    let upAt: number | null = null
-    let verdictAt: number | null = null
-    let partial = ''
-    const read = (chunk: Buffer): void => {
-      const text = partial + chunk.toString('utf8')
-      const lines = text.split(/\r?\n/)
-      partial = lines.pop() ?? ''
-      for (const line of lines) {
-        output += line + '\n'
-        if (upAt === null && line.includes('[stderr] [fake] up')) upAt = Date.now()
-        if (verdictAt === null && line.startsWith('ERROR:')) verdictAt = Date.now()
+  try {
+    const { args, env } = probeCommand(dir, mode, tools, {})
+    return await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, args, { env })
+      let output = ''
+      let upAt: number | null = null
+      let verdictAt: number | null = null
+      let exitAt: number | null = null
+      // One line buffer per stream: the relayed server lines arrive on stdout,
+      // the verdict on stderr, and a line cut at a chunk end must not be glued
+      // to the other stream.
+      const reader = (stream: NodeJS.ReadableStream): void => {
+        let partial = ''
+        stream.setEncoding('utf8')
+        stream.on('data', (chunk: string) => {
+          const lines = (partial + chunk).split(/\r?\n/)
+          partial = lines.pop() ?? ''
+          for (const line of lines) {
+            output += line + '\n'
+            if (upAt === null && line.includes('[stderr] [fake] up')) upAt = Date.now()
+            if (verdictAt === null && line.startsWith('ERROR:')) verdictAt = Date.now()
+          }
+        })
+        stream.on('end', () => {
+          if (partial) output += partial + '\n'
+        })
       }
-    }
-    child.stdout.on('data', read)
-    child.stderr.on('data', read)
-    child.on('error', reject)
-    child.on('close', (status) => {
-      output += partial
-      rmSync(dir, { recursive: true, force: true })
-      const verdictMs = upAt !== null && verdictAt !== null ? verdictAt - upAt : null
-      resolve({ status, output, verdictMs })
+      reader(child.stdout)
+      reader(child.stderr)
+      // A probe that hangs is killed like spawnSync's timeout does, so the
+      // test fails with the probe's output instead of a bare test timeout.
+      const killer = setTimeout(() => child.kill('SIGKILL'), PROBE_LIMIT_MS)
+      child.on('error', (e) => {
+        clearTimeout(killer)
+        reject(e)
+      })
+      child.on('exit', () => {
+        exitAt = Date.now()
+      })
+      child.on('close', (status) => {
+        clearTimeout(killer)
+        const since = (at: number | null): number | null =>
+          upAt !== null && at !== null ? at - upAt : null
+        resolve({ status, output, verdictMs: since(verdictAt), exitMs: since(exitAt) })
+      })
     })
-  })
+  } finally {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    } catch {
+      // A temp dir a stray handle still holds is not the test's result.
+    }
+  }
 }
 
 const TOOLS = ['list_clients', 'get_dashboard']
@@ -210,13 +244,21 @@ describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => 
   // green there with or without the pipe release; it guards on the macOS job.
   it('ends when the server is gone even if a descendant keeps its pipes open', async () => {
     const r = await probeTimed('orphan', TOOLS)
-    // 45 s is how long the descendant lives; the probe must not wait for it.
-    // Measured from the server's first line to the verdict, not as wall time
-    // around the probe process (#328).
-    expect(r.verdictMs).not.toBeNull()
-    expect(r.verdictMs!).toBeLessThan(40_000)
     expect(r.status).toBe(1)
     expect(r.output).toContain('before answering initialize')
+    // 45 s is how long the descendant lives; the probe must neither wait for
+    // it before its verdict nor stay alive for it afterwards (the pipe release
+    // in giveUpOnPipes). Timed from the server's first line, not around the
+    // whole probe process (#328).
+    expect(r.verdictMs).not.toBeNull()
+    expect(r.verdictMs!).toBeLessThan(40_000)
+    // The probe's lifetime can only hang on the pipes on POSIX (see above). On
+    // Windows its 'exit' event also waits for the OS to tear the process down,
+    // which took up to 90 s under load, so it is not asserted there.
+    if (process.platform !== 'win32') {
+      expect(r.exitMs).not.toBeNull()
+      expect(r.exitMs!).toBeLessThan(40_000)
+    }
   })
 
   it('fails with a plain message when the binary is not where the job expects it', () => {
