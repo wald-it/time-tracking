@@ -57,6 +57,8 @@ function served(content: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/🔴/g, '&#x1F534;')
+    .replace(/—/g, '&mdash;')
+    .replace(/ü/g, '&uuml;')
     .replace(/ /g, '&nbsp;')
   return `<p>${escaped}</p>`
 }
@@ -243,11 +245,13 @@ describe('reconcilePresence', () => {
 
   it('clears with empty content on stop — but only after having set something', async () => {
     const { deps, calls } = makeDeps()
-    // Idle, never set → must not change Teams. Since #317 the first poke of a
-    // run may READ the presence (to withdraw a status a crash left behind),
-    // but it writes nothing.
+    // Idle, never set → must not touch the user's status. Since #317 the first
+    // poke of a run reads the presence (to withdraw a status a crash left
+    // behind), and since #331 it ends our own Busy session once, because an
+    // availability the user set can hide it. No status message is written.
     await reconcilePresence(deps, null)
-    expect(writes(calls)).toHaveLength(0)
+    expect(statusCalls(calls)).toHaveLength(0)
+    expect(writes(calls).map((c) => c.url.split('/presence/')[1])).toEqual(['clearPresence'])
     await reconcilePresence(deps, RUNNING)
     await reconcilePresence(deps, null)
     const set = statusCalls(calls)
@@ -434,6 +438,73 @@ describe('reconcilePresence', () => {
     }
     await expect(reconcilePresence(deps, RUNNING)).resolves.toBeUndefined()
     expect(logs.some((l) => l.includes('reconcile failed'))).toBe(true)
+  })
+
+  it('a set whose Busy failed is retried at the next poke, even when its text was applied before (#331)', async () => {
+    const t0 = 1_750_000_000_000
+    // Client shown, so the switch to Beta is a different text.
+    const at = (min: number): ReturnType<typeof makeDeps>['deps'] => {
+      const d = makeDeps({ now: t0 + min * 60 * 1000, showClient: true }).deps
+      d.fetchFn = fetchFn
+      return d
+    }
+    const base = makeDeps({ now: t0, showClient: true })
+    let failSet = false
+    let failPresence = false
+    const inner = base.deps.fetchFn!
+    const fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (failSet && u.endsWith('/setStatusMessage')) return new Response('', { status: 503 })
+      if (failPresence && u.endsWith('/setPresence')) return new Response('', { status: 503 })
+      return inner(url, init)
+    }) as typeof fetch
+    base.deps.fetchFn = fetchFn
+
+    await reconcilePresence(base.deps, RUNNING) // Acme + Busy, confirmed
+    failSet = true
+    await reconcilePresence(at(1), { ...RUNNING, client_name: 'Beta' }) // lost before Teams
+    failSet = false
+    teams.availability = 'Available' // our Busy session expired meanwhile
+    failPresence = true
+    await reconcilePresence(at(2), RUNNING) // message confirmed again, Busy fails
+    failPresence = false
+    await reconcilePresence(at(3), RUNNING) // within 25 minutes of the first set
+    expect(teams.availability).toBe('Busy')
+  })
+
+  it('an HTML-returned message with named entities is still recognised as ours (#331)', async () => {
+    teams.html = true
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, { ...RUNNING, client_name: 'Müller' })
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('a text dropped from the remembered ones is still withdrawn, by its form (#331)', async () => {
+    // Nine client switches on a bad line: the first text reaches Teams, the
+    // next eight never do. Only eight texts are remembered exactly, so the
+    // one Teams shows is no longer among them.
+    const { deps } = makeDeps({ showClient: true })
+    const inner = deps.fetchFn!
+    let sends = 0
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/setStatusMessage')) {
+        sends++
+        if (sends === 1) {
+          await inner(url, init) // lands…
+          throw new Error('TimeoutError') // …answer lost
+        }
+        return new Response('', { status: 503 }) // never reaches Teams
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    for (let i = 1; i <= 9; i++) {
+      await reconcilePresence(deps, { ...RUNNING, client_name: `Client ${i}` })
+    }
+    expect(teams.content).toBe('🔴 Fokus: Client 1 — Rollout')
+    deps.fetchFn = inner
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
   })
 
   it('a throwing token refresh is logged, not rejected', async () => {
