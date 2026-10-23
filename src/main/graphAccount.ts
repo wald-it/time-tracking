@@ -121,10 +121,12 @@ export async function connect(
     ...deps.auth
   }
   const tokens = await connectAccount(configOf(deps), connectDeps, signal)
-  // Bump and store in one synchronous step, with nothing awaited between:
+  // Store, then bump, in one synchronous step with nothing awaited between:
   // a refresh finishing in a gap would otherwise write the old account back.
-  connectionChanged(deps)
+  // Bumped only after a successful save — if the save throws, the old
+  // connection is still the one stored and its refresh must still land.
   saveTokens(tokens, deps.store)
+  connectionChanged(deps)
   deps.log?.('graph account: connected')
   return getStatus(deps)
 }
@@ -165,7 +167,7 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   const refresh: Promise<string | null> = refreshAndStore(
     deps,
     tokens,
-    generations.get(key) ?? 0
+    currentGeneration(key)
   ).finally(() => {
     // Only its own entry: connect or disconnect may have released it and a
     // refresh for the new connection taken its place (#348).
@@ -187,14 +189,18 @@ const generations = new Map<string, number>()
 
 function connectionChanged(deps: GraphAccountDeps): void {
   const key = storeKey(deps)
-  generations.set(key, (generations.get(key) ?? 0) + 1)
+  generations.set(key, currentGeneration(key) + 1)
   // A refresh of the old connection is no longer anyone's to join.
   inFlight.delete(key)
 }
 
+function currentGeneration(key: string): number {
+  return generations.get(key) ?? 0
+}
+
 /** Whether connect or disconnect ran since generation was noted. */
 function connectionMoved(deps: GraphAccountDeps, generation: number): boolean {
-  return (generations.get(storeKey(deps)) ?? 0) !== generation
+  return currentGeneration(storeKey(deps)) !== generation
 }
 
 /** Refreshes in progress, per token-store directory (#341). */
@@ -218,9 +224,10 @@ async function refreshAndStore(
   try {
     refreshed = await refreshWithFallback(configOf(deps), tokens, deps)
   } catch (err) {
+    // #348: the connection changed meanwhile — whatever went wrong with the old
+    // one is not the current connection's error; ask for that one instead.
+    if (connectionMoved(deps, generation)) return getAccessToken(deps)
     if (err instanceof GraphAuthError && err.code === 'invalid_grant') {
-      // #348: the connection changed meanwhile — decide nothing about it here.
-      if (connectionMoved(deps, generation)) return getAccessToken(deps)
       // #341: the connection is gone only if the store still holds the very
       // refresh token that was refused. A different one means someone else
       // refreshed or reconnected meanwhile; an empty or unreadable store is
