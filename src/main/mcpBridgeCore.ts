@@ -35,6 +35,7 @@ import {
   zonedTimestampError
 } from '../shared/zonedTimestamp'
 import { roundDuration } from '../shared/duration'
+import { deserializeTags } from '../shared/tags'
 
 type Db = Database.Database
 
@@ -165,6 +166,60 @@ function durationMin(started_at: string, stopped_at: string): number {
   return Math.round((Date.parse(stopped_at) - Date.parse(started_at)) / 60000)
 }
 
+// ── field display for the confirmation (owner decision 2026-10-23) ─────────
+// Everything a write commits is named in the dialog, so nothing changes
+// unseen. The dialog is shown only to the owner, so it shows the private note
+// too; the preview goes to the MCP client and shows the note's text only when
+// the owner exposes private notes to MCP.
+
+function clientName(db: Db, id: number): string {
+  const row = db.prepare(`SELECT name FROM clients WHERE id = ?`).get(id) as
+    | { name: string }
+    | undefined
+  return row?.name ?? `#${id}`
+}
+
+function projectName(db: Db, id: number | null): string | null {
+  if (id == null) return null
+  const row = db.prepare(`SELECT name FROM projects WHERE id = ?`).get(id) as
+    | { name: string }
+    | undefined
+  return row?.name ?? `#${id}`
+}
+
+function showProject(name: string | null): string {
+  return name ?? 'Kein Projekt'
+}
+
+function showTags(serialized: string): string {
+  const tags = deserializeTags(serialized)
+  return tags.length ? tags.join(', ') : '(leer)'
+}
+
+function showText(v: string): string {
+  return v === '' ? '(leer)' : `"${v}"`
+}
+
+function yesNo(billable: number): string {
+  return billable ? 'ja' : 'nein'
+}
+
+/**
+ * The stored "expose private notes" setting (Einstellungen → Integrationen),
+ * the same switch that gates `private_note` on the read tools. The MCP
+ * server's environment override is not visible in this process.
+ */
+function exposePrivateNotes(db: Db): boolean {
+  const row = db
+    .prepare(`SELECT value FROM settings WHERE key = 'mcp_expose_private_notes'`)
+    .get() as { value: string } | undefined
+  return row?.value === '1'
+}
+
+function withLines(summary: string, lines: string[]): string {
+  return lines.length ? `${summary}\n${lines.join('\n')}` : summary
+}
+
 // ── op planning ──────────────────────────────────────────────────────────
 
 interface Plan {
@@ -209,20 +264,41 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
       const vErr = validateManualEntry(db, input)
       if (vErr) return { error: vErr }
+      const client = clientName(db, input.client_id)
+      const project = projectName(db, input.project_id ?? null)
+      const billable = input.billable ?? 1
+      const hasNote = (input.private_note ?? '') !== ''
+      // Only what departs from an empty entry gets a line.
+      const lines: string[] = []
+      if (project !== null) lines.push(`Projekt: ${project}`)
+      if (!billable) lines.push('abrechenbar: nein')
+      if (input.tags) lines.push(`Tags: ${showTags(input.tags)}`)
+      if (input.reference) lines.push(`Referenz: ${showText(input.reference)}`)
+      if (hasNote) lines.push(`interne Notiz: ${showText(input.private_note ?? '')}`)
       return {
         summary: withHints(
-          `Eintrag nachtragen — Kunde ${input.client_id}, ${formatLocalSpan(input.started_at, input.stopped_at)} (${durationMin(input.started_at, input.stopped_at)} min): "${input.description}"`,
+          withLines(
+            `Eintrag nachtragen — Kunde ${client}, ${formatLocalSpan(input.started_at, input.stopped_at)} (${durationMin(input.started_at, input.stopped_at)} min): "${input.description}"`,
+            lines
+          ),
           hints
         ),
         preview: {
           action: 'create_manual_entry',
           client_id: input.client_id,
+          client_name: client,
           started_at: input.started_at,
           stopped_at: input.stopped_at,
           started_local: toLocalIso(input.started_at),
           stopped_local: toLocalIso(input.stopped_at),
           duration_min: durationMin(input.started_at, input.stopped_at),
           project_id: input.project_id,
+          project_name: project,
+          billable: billable === 1,
+          tags: input.tags,
+          reference: input.reference,
+          has_private_note: hasNote,
+          ...(hasNote && exposePrivateNotes(db) ? { private_note: input.private_note } : {}),
           ...hintPreview(hints)
         },
         hints,
@@ -290,10 +366,75 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
       const vErr = validateManualEntry(db, input, id, existing.link_id ?? undefined)
       if (vErr) return { error: vErr }
+      // Every field the commit actually changes, before → after: one line in
+      // the dialog each, and the same set under `changes` in the preview.
+      // Times stay in the first line as before (local, with offsets).
+      const lines: string[] = []
+      const changes: Record<string, { before: unknown; after: unknown } | { changed: true }> = {}
+      if (input.started_at !== existing.started_at) {
+        changes.started_at = { before: existing.started_at, after: input.started_at }
+      }
+      if (input.stopped_at !== existing.stopped_at) {
+        changes.stopped_at = { before: existing.stopped_at, after: input.stopped_at }
+      }
+      if (input.description !== existing.description) {
+        lines.push(
+          `Beschreibung: ${showText(existing.description)} → ${showText(input.description)}`
+        )
+        changes.description = { before: existing.description, after: input.description }
+      }
+      if (input.client_id !== existing.client_id) {
+        const before = clientName(db, existing.client_id)
+        const after = clientName(db, input.client_id)
+        lines.push(`Kunde: ${before} → ${after}`)
+        changes.client_id = {
+          before: { id: existing.client_id, name: before },
+          after: { id: input.client_id, name: after }
+        }
+      }
+      const projectBefore = existing.project_id ?? null
+      const projectAfter = input.project_id ?? null
+      if (projectAfter !== projectBefore) {
+        const before = projectName(db, projectBefore)
+        const after = projectName(db, projectAfter)
+        lines.push(`Projekt: ${showProject(before)} → ${showProject(after)}`)
+        changes.project_id = {
+          before: projectBefore === null ? null : { id: projectBefore, name: before },
+          after: projectAfter === null ? null : { id: projectAfter, name: after }
+        }
+      }
+      const billableAfter = input.billable ?? 1
+      if (billableAfter !== existing.billable) {
+        lines.push(`abrechenbar: ${yesNo(existing.billable)} → ${yesNo(billableAfter)}`)
+        changes.billable = { before: existing.billable === 1, after: billableAfter === 1 }
+      }
+      const tagsAfter = input.tags ?? ''
+      if (tagsAfter !== existing.tags) {
+        lines.push(`Tags: ${showTags(existing.tags)} → ${showTags(tagsAfter)}`)
+        changes.tags = { before: existing.tags, after: tagsAfter }
+      }
+      const referenceAfter = input.reference ?? ''
+      if (referenceAfter !== existing.reference) {
+        lines.push(`Referenz: ${showText(existing.reference)} → ${showText(referenceAfter)}`)
+        changes.reference = { before: existing.reference, after: referenceAfter }
+      }
+      const noteBefore = existing.private_note ?? ''
+      const noteAfter = input.private_note ?? ''
+      if (noteAfter !== noteBefore) {
+        // The dialog is local to the owner and shows the text. The preview
+        // goes to the MCP client and follows the read-side privacy setting.
+        lines.push(`interne Notiz: ${showText(noteBefore)} → ${showText(noteAfter)}`)
+        changes.private_note = exposePrivateNotes(db)
+          ? { before: noteBefore, after: noteAfter }
+          : { changed: true as const }
+      }
       return {
         summary: withHints(
-          `Eintrag #${id} ändern — vorher ${formatLocalSpan(existing.started_at, existing.stopped_at)}, ` +
-            `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}: "${input.description}"`,
+          withLines(
+            `Eintrag #${id} ändern — vorher ${formatLocalSpan(existing.started_at, existing.stopped_at)}, ` +
+              `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}: "${input.description}"`,
+            lines
+          ),
           hints
         ),
         preview: {
@@ -321,6 +462,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
             billable: input.billable,
             project_id: input.project_id
           },
+          changes,
           ...hintPreview(hints)
         },
         hints,

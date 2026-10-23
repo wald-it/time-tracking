@@ -64,7 +64,7 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     const { ctx, asked } = recording()
     await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
     expect(asked).toEqual([
-      'Eintrag nachtragen — Kunde 1, Di 28.10.2025 09:00–12:00 (180 min): "Workshop"'
+      'Eintrag nachtragen — Kunde Acme, Di 28.10.2025 09:00–12:00 (180 min): "Workshop"'
     ])
   })
 
@@ -86,7 +86,7 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     }
     await handleRequest(ctx, create('2025-10-28T09:00:00+02:00', '2025-10-28T12:00:00+01:00'))
     expect(asked[0]).toBe(
-      `Eintrag nachtragen — Kunde 1, Di 28.10.2025 08:00–12:00 (240 min): "Workshop"\nStart: ${HINT}`
+      `Eintrag nachtragen — Kunde Acme, Di 28.10.2025 08:00–12:00 (240 min): "Workshop"\nStart: ${HINT}`
     )
   })
 
@@ -325,5 +325,191 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
       args: { client_id: 2, started_at: '2025-10-28T09:00:00+01:00' }
     })
     expect(asked[1]).toMatch(/; beendet #\d+ \(Acme\) um Di 28\.10\.2025 09:00$/)
+  })
+
+  // Owner decision 2026-10-23: the dialog and the preview name every field the
+  // write commits, before → after; unchanged fields stay out, and the private
+  // note is only ever "geändert", never its text.
+  describe('every committed field is visible', () => {
+    const NOTE = 'Notiztext-neu-4711'
+    const OLD_NOTE = 'Notiztext-alt-0815'
+
+    /** update_entry_fields re-inserts the entry, so its id moves on. */
+    function latestId(): number {
+      return (
+        db.prepare(`SELECT MAX(id) AS id FROM entries WHERE deleted_at IS NULL`).get() as {
+          id: number
+        }
+      ).id
+    }
+
+    function update(id: number, args: Record<string, unknown>, preview = false): BridgeRequest {
+      return { v: 1, token: 'secret', op: 'update_entry_fields', args: { id, ...args }, preview }
+    }
+
+    async function seeded(ctx: BridgeCtx): Promise<number> {
+      await handleRequest(ctx, {
+        ...create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'),
+        args: {
+          client_id: 1,
+          project_id: 10,
+          description: 'Workshop',
+          started_at: '2025-10-28T09:00:00+01:00',
+          stopped_at: '2025-10-28T12:00:00+01:00'
+        }
+      })
+      return (db.prepare(`SELECT id FROM entries`).get() as { id: number }).id
+    }
+
+    it('update: client, project and billable change show by name, before → after', async () => {
+      const { ctx, asked } = recording()
+      const id = await seeded(ctx)
+      const args = { client_id: 2, project_id: 20, billable: false }
+      const prev = await handleRequest(ctx, update(id, args, true))
+      expect(prev.ok).toBe(true)
+      if (prev.ok) {
+        expect((prev.data as { changes: unknown }).changes).toEqual({
+          client_id: { before: { id: 1, name: 'Acme' }, after: { id: 2, name: 'Beta' } },
+          project_id: { before: { id: 10, name: 'Rollout' }, after: { id: 20, name: 'Audit' } },
+          billable: { before: true, after: false }
+        })
+      }
+      await handleRequest(ctx, update(id, args))
+      expect(asked[1]).toBe(
+        `Eintrag #${id} ändern — vorher Di 28.10.2025 09:00–12:00, nachher Di 28.10.2025 09:00–12:00: "Workshop"\n` +
+          'Kunde: Acme → Beta\nProjekt: Rollout → Audit\nabrechenbar: ja → nein'
+      )
+    })
+
+    it('update: removing the project reads "Kein Projekt"; tags and reference before → after', async () => {
+      const { ctx, asked } = recording()
+      const id = await seeded(ctx)
+      const args = { project_id: null, tags: ',bug,ux,', reference: 'JIRA-7' }
+      const prev = await handleRequest(ctx, update(id, args, true))
+      if (prev.ok) {
+        expect((prev.data as { changes: unknown }).changes).toEqual({
+          project_id: { before: { id: 10, name: 'Rollout' }, after: null },
+          tags: { before: '', after: ',bug,ux,' },
+          reference: { before: '', after: 'JIRA-7' }
+        })
+      }
+      await handleRequest(ctx, update(id, args))
+      expect(asked[1].split('\n').slice(1)).toEqual([
+        'Projekt: Rollout → Kein Projekt',
+        'Tags: (leer) → bug, ux',
+        'Referenz: (leer) → "JIRA-7"'
+      ])
+    })
+
+    it('update: the dialog shows the private note before → after; preview and audit never the text', async () => {
+      const { ctx, asked } = recording()
+      const audited: unknown[] = []
+      ctx.audit = (e) => {
+        audited.push(e)
+      }
+      const id = await seeded(ctx)
+      await handleRequest(ctx, update(id, { private_note: OLD_NOTE }))
+      const id2 = latestId()
+      const prev = await handleRequest(ctx, update(id2, { private_note: NOTE }, true))
+      expect(prev.ok).toBe(true)
+      if (prev.ok) {
+        // privacy setting off (default): only that the note changes
+        expect(JSON.stringify(prev.data)).not.toContain(OLD_NOTE)
+        expect(JSON.stringify(prev.data)).not.toContain(NOTE)
+        expect((prev.data as { changes: unknown }).changes).toEqual({
+          private_note: { changed: true }
+        })
+      }
+      await handleRequest(ctx, update(id2, { private_note: NOTE }))
+      expect(asked[2]).toBe(
+        `Eintrag #${id2} ändern — vorher Di 28.10.2025 09:00–12:00, nachher Di 28.10.2025 09:00–12:00: "Workshop"
+` + `interne Notiz: "${OLD_NOTE}" → "${NOTE}"`
+      )
+      expect(JSON.stringify(audited)).not.toContain(OLD_NOTE)
+      expect(JSON.stringify(audited)).not.toContain(NOTE)
+      expect(audited.at(-1)).toMatchObject({ hasPrivateNote: true })
+      const row = db.prepare(`SELECT private_note FROM entries WHERE id = ?`).get(latestId())
+      expect(row).toEqual({ private_note: NOTE })
+    })
+
+    it('update: with private notes exposed to MCP the preview carries before and after', async () => {
+      const { ctx } = recording()
+      db.prepare(`UPDATE settings SET value = '1' WHERE key = 'mcp_expose_private_notes'`).run()
+      const id = await seeded(ctx)
+      const prev = await handleRequest(ctx, update(id, { private_note: NOTE }, true))
+      if (prev.ok) {
+        expect((prev.data as { changes: unknown }).changes).toEqual({
+          private_note: { before: '', after: NOTE }
+        })
+      }
+    })
+
+    it('update: fields passed with their stored value are not listed', async () => {
+      const { ctx, asked } = recording()
+      const id = await seeded(ctx)
+      const args = {
+        client_id: 1,
+        project_id: 10,
+        billable: true,
+        tags: '',
+        reference: '',
+        private_note: '',
+        description: 'Workshop',
+        stopped_at: '2025-10-28T13:00:00+01:00'
+      }
+      const prev = await handleRequest(ctx, update(id, args, true))
+      if (prev.ok) {
+        expect((prev.data as { changes: unknown }).changes).toEqual({
+          stopped_at: { before: '2025-10-28T11:00:00.000Z', after: '2025-10-28T12:00:00.000Z' }
+        })
+      }
+      await handleRequest(ctx, update(id, args))
+      expect(asked[1]).toBe(
+        `Eintrag #${id} ändern — vorher Di 28.10.2025 09:00–12:00, nachher Di 28.10.2025 09:00–13:00: "Workshop"`
+      )
+    })
+
+    it('update: only the description — the line of today plus the old text', async () => {
+      const { ctx, asked } = recording()
+      const id = await seeded(ctx)
+      await handleRequest(ctx, update(id, { description: 'Review' }))
+      expect(asked[1]).toBe(
+        `Eintrag #${id} ändern — vorher Di 28.10.2025 09:00–12:00, nachher Di 28.10.2025 09:00–12:00: "Review"\n` +
+          'Beschreibung: "Workshop" → "Review"'
+      )
+    })
+
+    it('create: the dialog names client, project, billable, tags, reference and the note; the preview hides the note', async () => {
+      const { ctx, asked } = recording()
+      const req: BridgeRequest = {
+        ...create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'),
+        args: {
+          client_id: 1,
+          project_id: 10,
+          billable: false,
+          tags: ',bug,',
+          reference: 'PO-9',
+          private_note: NOTE,
+          description: 'Workshop',
+          started_at: '2025-10-28T09:00:00+01:00',
+          stopped_at: '2025-10-28T12:00:00+01:00'
+        }
+      }
+      const prev = await handleRequest(ctx, { ...req, preview: true })
+      if (prev.ok) {
+        expect(prev.data).toMatchObject({
+          client_name: 'Acme',
+          project_name: 'Rollout',
+          billable: false,
+          has_private_note: true
+        })
+        expect(JSON.stringify(prev.data)).not.toContain(NOTE)
+      }
+      await handleRequest(ctx, req)
+      expect(asked[0]).toBe(
+        'Eintrag nachtragen — Kunde Acme, Di 28.10.2025 09:00–12:00 (180 min): "Workshop"\n' +
+          `Projekt: Rollout\nabrechenbar: nein\nTags: bug\nReferenz: "PO-9"\ninterne Notiz: "${NOTE}"`
+      )
+    })
   })
 })
