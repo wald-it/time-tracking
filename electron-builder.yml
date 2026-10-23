@@ -1,5 +1,8 @@
 appId: com.timetrack.app
 productName: TimeTrack
+# The copyright holder from LICENSE. Without this key electron-builder writes
+# "Copyright © <year> ${author}" (wald-it, the publisher) into the exe.
+copyright: Copyright (c) 2026 Robin Wald
 directories:
   buildResources: build
 # Positive list (release 1.22): only what the app reads at runtime goes into
