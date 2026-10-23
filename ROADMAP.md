@@ -34,7 +34,7 @@ closed loop. No tabs, no browsers, no second program needed.
 
 ## v1.2 — Calendar & Edit ✅ shipped v1.2.0 (2026-04-24)
 
-📂 [Issues with label `v1.2`](https://github.com/skoedr/time-tracking/labels/v1.2)
+📂 [Issues with label `v1.2`](https://github.com/wald-it/time-tracking/labels/v1.2)
 
 **Theme:** What happened, when did it happen, and can I correct it?
 
@@ -54,7 +54,7 @@ closed loop. No tabs, no browsers, no second program needed.
 
 ## v1.3 — PDF Export & Reporting ✅ shipped v1.3.0 (2026-04-25)
 
-📂 [Issues with label `v1.3`](https://github.com/skoedr/time-tracking/labels/v1.3)
+📂 [Issues with label `v1.3`](https://github.com/wald-it/time-tracking/labels/v1.3)
 
 **Theme:** Data → a finished invoice attachment in 30 seconds.
 
@@ -81,7 +81,7 @@ closed loop. No tabs, no browsers, no second program needed.
 
 ## v1.4 — Flow & Less Friction ✅ shipped v1.4.0–v1.4.1 (2026-04-25)
 
-📂 [Issues with label `v1.4`](https://github.com/skoedr/time-tracking/labels/v1.4)
+📂 [Issues with label `v1.4`](https://github.com/wald-it/time-tracking/labels/v1.4)
 📋 [Plan & Multi-Angle Review](.github/plan-v1.4.md)
 
 **Theme:** The app should disappear into the workflow, not disturb it. Plus the CI homework
@@ -106,7 +106,7 @@ main window to see "is my timer running?". ✅
 
 ## v1.5 — Trust at Scale & Data Portability ✅ shipped v1.5.0–v1.5.2 (2026-04-25)
 
-📂 [Issues with label `v1.5`](https://github.com/skoedr/time-tracking/labels/v1.5)
+📂 [Issues with label `v1.5`](https://github.com/wald-it/time-tracking/labels/v1.5)
 📋 [Plan & Multi-Angle Review](.github/plan-v1.5.md)
 
 **Theme:** When someone other than you uses the tool, it should not be embarrassing.
@@ -194,7 +194,7 @@ freelancer can clone, understand, and contribute to".
   deliberately out of scope.
 - **Privacy statement** as `PRIVACY.md` (1-pager): all data local in
   `%AppData%\TimeTrack\`. The only outbound call = auto-update against
-  `api.github.com/repos/skoedr/time-tracking/releases`. No telemetry,
+  `api.github.com/repos/wald-it/time-tracking/releases`. No telemetry,
   no analytics, no crash reporter to third parties. Logs stay local.
 - **`SECURITY.md`** — how security issues are reported (private GitHub
   Security Advisory preferred, email as fallback).
@@ -234,7 +234,7 @@ A test freelancer with a Lexware PDF can reproduce it in under 30 s.
 The exact order is determined by issues — this list is the
 starting point, not dogma.
 
-📂 [Milestone v1.8](https://github.com/skoedr/time-tracking/milestone/2)
+📂 [Milestone v1.8](https://github.com/wald-it/time-tracking/milestone/2)
 
 - ✅ **Full i18n DE/EN** — all views, components, and the mini widget migrated. `scripts/find-untranslated.mjs` shows 0 hits. From v1.8 on: every new user-visible string must be entered in `de.ts` **and** `en.ts` — a review blocker if not satisfied.
 - **PDF: merge overlapping entries of the same client** — configurable tolerance window (default 5 min), only with rounding enabled, purely PDF output (the calendar stays granular).
@@ -258,7 +258,7 @@ starting point, not dogma.
 **Theme:** The two biggest architecture decisions before v2.0: a real project hierarchy
 and clean machine migration.
 
-📂 [Milestone v1.9](https://github.com/skoedr/time-tracking/milestone/3)
+📂 [Milestone v1.9](https://github.com/wald-it/time-tracking/milestone/3)
 
 - **Projects per client** (#75) — a real hierarchy `Client → Project → Entries`.
   A project = its own DB entity with its own hourly rate, optional runtime.
@@ -352,7 +352,7 @@ address block. In two minutes you clean up five outdated tags.
 
 ## v1.13 — Export Flexibility ✅ shipped v1.13.0 (2026-05-29)
 
-📂 [Issues](https://github.com/skoedr/time-tracking/issues?q=is%3Aissue+milestone%3Av1.13)
+📂 [Issues](https://github.com/wald-it/time-tracking/issues?q=is%3Aissue+milestone%3Av1.13)
 
 **Theme:** Four friction points that appear when invoicing with multiple clients
 or projects — export options, multi-timesheet merge,

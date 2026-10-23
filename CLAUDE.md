@@ -32,7 +32,7 @@ und **kein** Kommando meldet einen Fehler. Der Marker lügt.
   bitte nicht als überflüssig wegkürzen.
 
 Hintergrund und Fehlersuche: CONTRIBUTING.md → „Tests und die native SQLite-ABI"
-([#151](https://github.com/skoedr/time-tracking/issues/151)).
+([#151](https://github.com/wald-it/time-tracking/issues/151)).
 
 ## Owner-Karte (Zeiger)
 

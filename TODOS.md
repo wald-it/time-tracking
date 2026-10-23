@@ -28,7 +28,7 @@ Deferred items from plan reviews. Items here have explicit decisions — they ar
 
 ### Design-Gespräche ausstehend
 
-~~- **Merge modal Nav-Trigger**~~ → Entschieden und umgesetzt in v1.16.0 ([#153](https://github.com/skoedr/time-tracking/issues/153)). Nicht als „zweiter Einstiegspunkt": beide Modals hingen an der Kalenderansicht, ohne kalenderspezifisch zu sein, also ist die ganze Toolbar in einen eigenen `Export`-Tab gezogen. Der Kalender ist jetzt nur noch Kalender.
+~~- **Merge modal Nav-Trigger**~~ → Entschieden und umgesetzt in v1.16.0 ([#153](https://github.com/wald-it/time-tracking/issues/153)). Nicht als „zweiter Einstiegspunkt": beide Modals hingen an der Kalenderansicht, ohne kalenderspezifisch zu sein, also ist die ganze Toolbar in einen eigenen `Export`-Tab gezogen. Der Kalender ist jetzt nur noch Kalender.
 
 - **Competitive positioning** — README + App-Beschreibung auf LocalFirst / Datenschutz / Kein-Abo schärfen. Kein Code, nur Text. Gespräch ausstehend.
 
@@ -83,6 +83,6 @@ Deferred items from plan reviews. Items here have explicit decisions — they ar
 - ~~**Preview before merge**~~ — Included in v1.7 via `pdf:pdf-info` handler + page count row in `PdfMergeModal`. Removed from backlog.
 - ~~**Full i18n DE/EN pass**~~ — Shipped in v1.8.0. All views, components and mini-widget migrated.
 - ~~**Competitive positioning**~~ → Kein Issue, Gespräch ausstehend (siehe oben).
-- ~~**Merge modal: Nav sidebar trigger**~~ → Erledigt in v1.16.0 über den eigenen `Export`-Reiter ([#153](https://github.com/skoedr/time-tracking/issues/153), siehe oben).
+- ~~**Merge modal: Nav sidebar trigger**~~ → Erledigt in v1.16.0 über den eigenen `Export`-Reiter ([#153](https://github.com/wald-it/time-tracking/issues/153), siehe oben).
 - **Handler extraction: pdf:merge-export** → Verschoben in »Nächster Hotfix« (siehe oben).
 - **Type guard hygiene: `filePath` input in PDF handlers** (Low) — `pdfInfoHandler` und `mergeOnlyHandler` casten `r.filePath as string` ohne expliziten `typeof`-Check. Beide fallen sicher. → v1.9 candidate.
