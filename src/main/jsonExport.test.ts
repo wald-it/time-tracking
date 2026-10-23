@@ -96,6 +96,68 @@ describe('buildJsonExportPayload', () => {
     expect(payload.entries[0].deleted_at).toBe('2026-04-24T10:00:00.000Z')
   })
 
+  describe('secrets are left out', () => {
+    const setSetting = (key: string, value: string): void => {
+      db.prepare(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      ).run(key, value)
+    }
+    const settingValue = (
+      payload: ReturnType<typeof buildJsonExportPayload>,
+      key: string
+    ): string | undefined => payload.settings.find((s) => s.key === key)?.value
+
+    it('omits the iCal feed token', () => {
+      setSetting('ical_feed_token', 'feed-token-abc123')
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      expect(settingValue(payload, 'ical_feed_token')).toBeUndefined()
+      expect(JSON.stringify(payload)).not.toContain('feed-token-abc123')
+      // Neighbouring feed settings stay.
+      expect(settingValue(payload, 'ical_feed_enabled')).toBeDefined()
+    })
+
+    it('keeps webhook targets but drops each secret', () => {
+      const targets = [
+        {
+          id: 'a',
+          url: 'https://example.com/hook',
+          secret: 'hmac-secret-one',
+          events: ['timer.started'],
+          enabled: true
+        },
+        { id: 'b', url: 'https://example.org/x', secret: '', events: [], enabled: false }
+      ]
+      setSetting('webhook_targets', JSON.stringify(targets))
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      const exported = JSON.parse(settingValue(payload, 'webhook_targets')!) as Array<
+        Record<string, unknown>
+      >
+      expect(exported).toHaveLength(2)
+      expect(exported[0]).toEqual({
+        id: 'a',
+        url: 'https://example.com/hook',
+        events: ['timer.started'],
+        enabled: true
+      })
+      expect(exported.every((t) => !('secret' in t))).toBe(true)
+      expect(JSON.stringify(payload)).not.toContain('hmac-secret-one')
+    })
+
+    it('leaves out a webhook blob that is not valid JSON', () => {
+      setSetting('webhook_targets', '[{"secret":"hmac-secret-two", broken')
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      expect(settingValue(payload, 'webhook_targets')).toBeUndefined()
+      expect(JSON.stringify(payload)).not.toContain('hmac-secret-two')
+    })
+
+    it('keeps the other settings unchanged', () => {
+      setSetting('company_name', 'wald-it')
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      expect(settingValue(payload, 'company_name')).toBe('wald-it')
+    })
+  })
+
   it('serialises to stable, indented JSON (2-space)', () => {
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     const payload = buildJsonExportPayload(db, '1.3.0')

@@ -15,6 +15,9 @@
  *   rate over client rate, minutes ceiled and rounded up to the step, fee
  *   rounded per entry. Empty when no rate applies; a goodwill project (rate 0)
  *   shows 0,00. Decimal uses chosen separator.
+ * - Text cells (Kunde, Beschreibung, Tags, Referenz) that start with =, +, -,
+ *   @, Tab or CR get a leading ' so spreadsheet apps keep them as text.
+ *   Numeric cells are never prefixed.
  * - Line endings: \r\n (Windows / Excel DE friendly).
  * - Midnight-split entries stored as 2 separate rows in DB → 2 CSV rows (no special handling needed).
  */
@@ -69,11 +72,29 @@ const HEADER = [
 ]
 
 /** Wrap a field value in quotes if it contains the separator, quote char, or newline. */
-function escapeField(value: string, sep: string): string {
+export function escapeField(value: string, sep: string): string {
   if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return '"' + value.replace(/"/g, '""') + '"'
   }
   return value
+}
+
+/**
+ * Characters that make Excel, LibreOffice and Google Sheets read a cell as a
+ * formula instead of text.
+ */
+const FORMULA_START = ['=', '+', '-', '@', '\t', '\r']
+
+/**
+ * Escape a free-text cell (client, description, tags, reference, group
+ * labels). A text that starts with a formula character gets a leading `'`, so
+ * spreadsheet apps show it as typed instead of evaluating it. Numeric cells
+ * (dates, times, durations, rates, amounts) go through `escapeField` only —
+ * a negative amount like `-12,50` must stay a number.
+ */
+export function escapeTextField(value: string, sep: string): string {
+  const guarded = FORMULA_START.some((c) => value.startsWith(c)) ? "'" + value : value
+  return escapeField(guarded, sep)
 }
 
 /** Format a fractional number using the chosen decimal separator, 2 decimal places. */
@@ -145,19 +166,25 @@ function buildEntryRow(
   const reference = entry.reference ?? ''
 
   return [
-    formatDate(start),
-    formatTimeHHMM(start),
-    formatTimeHHMM(stop),
-    formatDuration(durationSec),
-    clientName,
-    entry.description,
-    tags,
-    reference,
-    rateStr,
-    betragStr
-  ]
-    .map((f) => escapeField(f, sep))
-    .join(sep)
+    escapeField(formatDate(start), sep),
+    escapeField(formatTimeHHMM(start), sep),
+    escapeField(formatTimeHHMM(stop), sep),
+    escapeField(formatDuration(durationSec), sep),
+    escapeTextField(clientName, sep),
+    escapeTextField(entry.description, sep),
+    escapeTextField(tags, sep),
+    escapeTextField(reference, sep),
+    escapeField(rateStr, sep),
+    escapeField(betragStr, sep)
+  ].join(sep)
+}
+
+/** Column indexes holding free text: Kunde, Beschreibung, Tags, Referenz. */
+const TEXT_COLUMNS = new Set([4, 5, 6, 7])
+
+/** Escape a cell of a group/total row by its column: text guard for text columns only. */
+function escapeCell(value: string, column: number, sep: string): string {
+  return TEXT_COLUMNS.has(column) ? escapeTextField(value, sep) : escapeField(value, sep)
 }
 
 /**
@@ -203,7 +230,7 @@ function appendGroupedRows(
     // Group header row: tag name in Beschreibung column, all others empty.
     const headerFields = Array<string>(HEADER.length).fill('')
     headerFields[5] = `[${tagLabel}]` // Beschreibung column
-    rows.push(headerFields.map((f) => escapeField(f, sep)).join(sep))
+    rows.push(headerFields.map((f, i) => escapeCell(f, i, sep)).join(sep))
 
     let groupDurSec = 0
     let groupAmountCent = 0
@@ -235,7 +262,7 @@ function appendGroupedRows(
     subtotalFields[3] = formatDuration(groupDurSec) // Dauer
     subtotalFields[5] = `${tagLabel} Σ` // Beschreibung
     if (groupHasRate) subtotalFields[9] = formatDecimal(groupAmountCent / 100, dec) // Betrag
-    rows.push(subtotalFields.map((f) => escapeField(f, sep)).join(sep))
+    rows.push(subtotalFields.map((f, i) => escapeCell(f, i, sep)).join(sep))
   }
 
   // Grand total row.
@@ -243,7 +270,7 @@ function appendGroupedRows(
   totalFields[3] = formatDuration(grandDurSec)
   totalFields[5] = 'Σ Gesamt'
   if (grandHasRate) totalFields[9] = formatDecimal(grandAmountCent / 100, dec)
-  rows.push(totalFields.map((f) => escapeField(f, sep)).join(sep))
+  rows.push(totalFields.map((f, i) => escapeCell(f, i, sep)).join(sep))
 }
 
 /** Format a Date as dd.MM.yyyy in local timezone. */

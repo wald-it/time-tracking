@@ -32,6 +32,10 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
+- **CSV export keeps text cells as text in spreadsheet apps** — A client name, description, tag or reference that starts with `=`, `+`, `-`, `@`, a tab or a carriage return now gets a leading `'`, so Excel, LibreOffice and Google Sheets show it as typed instead of reading it as a formula. The same applies to the tag labels of grouped exports. Dates, times, durations, rates and amounts are never prefixed. Both the DE and the US format behave the same.
+
+- **JSON export leaves out stored secrets** — The settings in the JSON export no longer contain the iCal feed token, and webhook targets are exported without their HMAC secret (URL, events and the enabled flag stay). A webhook list that cannot be read is left out as a whole. Tokens for Microsoft 365, MCP and the Stream Deck were never part of it, they live in separate files. The SQLite backup is unchanged and still holds everything.
+
 - **The description you type after stopping no longer drops the entry's project** — The prompt that asks for a description when a timer stops without one saved only the text and silently reset everything else: the project went back to "Kein Projekt", a non-billable entry became billable, and the reference and internal note were cleared. It now keeps all of them. The quick-start switch makes this prompt common, which is how it surfaced.
 
 - **The weekday average in the Auswertung shows hours per day** — "Ø h/Tag · 90 Tage" averaged the length of single entries, so four two-hour entries on a Monday read 2:00 instead of 8:00. It now divides each weekday's worked time in the last 90 completed days (up to yesterday) by how often that weekday occurs in the span, days off included; the seven values add up to the average week.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCsv } from './csv'
+import { escapeField, escapeTextField, formatCsv } from './csv'
 import type { Entry, Client } from './types'
 
 const BASE_CLIENT: Client = {
@@ -315,5 +315,89 @@ describe('formatCsv — amounts follow the invoice rule', () => {
     const entry = makeEntry({ project_id: 5 })
     const csv = formatCsv([entry], CLIENT_MAP, { projectRates: new Map([[5, null]]) })
     expect(lastTwo(csv)).toEqual(['75,00', '112,50'])
+  })
+})
+
+describe('formatCsv — text cells that start with a formula character', () => {
+  const FORMULA_CHARS = ['=', '+', '-', '@', '\t', '\r']
+  // A CR inside a cell forces quoting; every other test value needs none.
+  const quotedIfCr = (v: string): string => (v.includes('\r') ? `"${v}"` : v)
+  const dataFields = (csv: string, sep = ';'): string[] =>
+    csv.replace('\uFEFF', '').split('\r\n')[1].split(sep)
+
+  for (const c of FORMULA_CHARS) {
+    const label = JSON.stringify(c)
+
+    it(`prefixes description starting with ${label} (DE)`, () => {
+      const csv = formatCsv([makeEntry({ description: `${c}1+1` })], CLIENT_MAP)
+      expect(csv).toContain(`;${quotedIfCr(`'${c}1+1`)};`)
+    })
+
+    it(`prefixes description starting with ${label} (US)`, () => {
+      const csv = formatCsv([makeEntry({ description: `${c}1+1` })], CLIENT_MAP, {
+        fieldSeparator: ',',
+        decimalSeparator: '.'
+      })
+      expect(csv).toContain(`,${quotedIfCr(`'${c}1+1`)},`)
+    })
+
+    it(`escapeTextField prefixes ${label}, escapeField does not`, () => {
+      expect(escapeTextField(`${c}x`, ';')).toBe(quotedIfCr(`'${c}x`))
+      expect(escapeField(`${c}x`, ';').startsWith("'")).toBe(false)
+    })
+  }
+
+  it('prefixes client name, tags and reference', () => {
+    const client: Client = { ...BASE_CLIENT, name: '=Acme' }
+    const entry = makeEntry({ tags: ',@tag,', reference: '+49 123' })
+    const fields = dataFields(formatCsv([entry], new Map([[1, client]])))
+    expect(fields[4]).toBe("'=Acme")
+    expect(fields[6]).toBe("'@tag")
+    expect(fields[7]).toBe("'+49 123")
+  })
+
+  it('prefixed text is still quoted when it contains the separator, quotes or newlines', () => {
+    const entry = makeEntry({ description: '=A;B "x"\nnext' })
+    const csv = formatCsv([entry], CLIENT_MAP)
+    expect(csv).toContain(`;"'=A;B ""x""\nnext";`)
+    const us = formatCsv([makeEntry({ description: '-a,b' })], CLIENT_MAP, {
+      fieldSeparator: ',',
+      decimalSeparator: '.'
+    })
+    expect(us).toContain(`,"'-a,b",`)
+  })
+
+  it('a value starting with CR is prefixed and quoted', () => {
+    expect(escapeTextField('\rx', ';')).toBe(`"'\rx"`)
+  })
+
+  it('leaves normal text unchanged', () => {
+    const entry = makeEntry({ description: 'Meeting - Planung = gut', reference: 'PO 4711' })
+    const fields = dataFields(formatCsv([entry], CLIENT_MAP))
+    expect(fields[5]).toBe('Meeting - Planung = gut')
+    expect(fields[7]).toBe('PO 4711')
+  })
+
+  it('numeric cells with a leading minus stay unchanged', () => {
+    expect(escapeField('-12,50', ';')).toBe('-12,50')
+    expect(escapeField('-12.50', ',')).toBe('-12.50')
+    expect(escapeField('-00:15:00', ';')).toBe('-00:15:00')
+  })
+
+  it('numeric columns of a data row are never prefixed', () => {
+    const fields = dataFields(formatCsv([makeEntry({ description: '-x' })], CLIENT_MAP))
+    for (const i of [0, 1, 2, 3, 8, 9]) expect(fields[i].startsWith("'")).toBe(false)
+    expect(fields[5]).toBe("'-x")
+  })
+
+  it('group subtotal label from a tag is prefixed, duration and amount are not', () => {
+    const entry = makeEntry({ tags: ',=SUM,' })
+    const csv = formatCsv([entry], CLIENT_MAP, { groupByTag: true })
+    const lines = csv.replace('\uFEFF', '').split('\r\n').filter(Boolean)
+    const subtotal = lines.find((l) => l.split(';')[5] === "'=SUM Σ")
+    expect(subtotal).toBeDefined()
+    const fields = subtotal!.split(';')
+    expect(fields[3]).toBe('01:30:00')
+    expect(fields[9]).toBe('112,50')
   })
 })
