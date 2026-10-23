@@ -886,10 +886,10 @@ export const en: Record<TranslationKey, string> = {
     'Migration #{version} ({name}) failed:\n\n{cause}\n\nYour database was restored from the pre-migration backup:\n{backupPath}\n\nThe app will now quit. Please report this error.',
   'mainDialog.dbError.title': 'TimeTrack — Database error',
   'mainDialog.dbError.message': 'The database could not be opened:\n\n{cause}',
-  'mainDialog.restore.title': 'TimeTrack — Restore not done',
+  'mainDialog.restore.title': 'TimeTrack — Backup not restored',
   'mainDialog.restore.inUse':
-    'Restore not done: the database is still open in another program (for example an MCP client such as Claude Desktop). Quit that program and try again.',
-  'mainDialog.restore.failed': 'Restore not done: {cause}',
+    'Backup not restored: the database is still open in another program (for example an MCP client such as Claude Desktop). Quit that program and try again.',
+  'mainDialog.restore.failed': 'Backup not restored: {cause}',
   'mainDialog.backupPath.title': 'Choose backup folder',
   'mainDialog.exportJson.title': 'Save data export',
   'mainDialog.pdf.saveTitle': 'Save timesheet',

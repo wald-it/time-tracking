@@ -255,8 +255,8 @@ describe('restoreBackup', () => {
     )
     expect(res.ok).toBe(false)
     expect(reports).toHaveLength(1)
-    expect(reports[0][0]).toBe('TimeTrack — Restore not done')
-    expect(reports[0][1]).toMatch(/^Restore not done: /)
+    expect(reports[0][0]).toBe('TimeTrack — Backup not restored')
+    expect(reports[0][1]).toMatch(/^Backup not restored: /)
     db.close()
   })
 

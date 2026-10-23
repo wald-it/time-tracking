@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Native dialogs follow the app language** ([#270](https://github.com/wald-it/time-tracking/issues/270)). With the app set to English, the dialogs the app opens itself are now English too: the MCP write confirmation (title, buttons, every line; dates there as `Tue 2026-10-27`), the restore error, the hotkey conflict at start, and the titles of the save and open dialogs (CSV, iCal, PDF, merged PDF, data export, backup folder, logo). The migration and database errors at start come up before the setting can be read, so they follow the system language. The German texts are unchanged. Replies to MCP clients (preview, `zeit_hinweise`, error messages) stay German.
+
 ## [1.22.0] — 2026-10-23
 
 ### Breaking for MCP clients and integrations
