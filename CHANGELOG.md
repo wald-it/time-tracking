@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [1.23.0] — 2026-10-24
+
 ### Breaking for MCP clients and integrations
 
 If you call TimeTrack's MCP tools from your own scripts or agents, or receive its webhooks, check these before updating.
