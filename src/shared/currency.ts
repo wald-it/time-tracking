@@ -106,7 +106,8 @@ export function feeCentSql(step: number): string {
  * `used_minutes` (#285): what the invoice bills — completed, live, billable
  * entries, each rounded by `billedMinutes` — over all time. Computed from the
  * timestamps, not the stored `rounded_min`, which the timer never writes.
- * Every budget reader (start toast, project list, MCP) uses this one query.
+ * Every budget reader (projects:getAll, projects:getBudgetStatus, MCP
+ * list_projects) uses this one query.
  */
 export function budgetUsedMinutesSql(step: number): string {
   return `SELECT e.project_id AS project_id,

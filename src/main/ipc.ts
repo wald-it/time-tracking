@@ -31,6 +31,7 @@ import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
+  readRoundMinutes,
   readTodayEntries,
   readTopClients30d,
   readTotals,
@@ -381,10 +382,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     (_e, req?: { clientId?: number | null }): IpcResult<Project[]> => {
       try {
         // Budget use counts like the invoice (#285), same step as the PDF.
-        const roundSetting = db
-          .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-          .get() as { value: string } | undefined
-        const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
+        const roundStep = readRoundMinutes(db)
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,

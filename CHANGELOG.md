@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Breaking for MCP clients and integrations
+
+- **`list_projects` `used_minutes` counts like the invoice.** It now holds the billed minutes of the project's billable entries, rounded per entry with the app's rounding setting, and includes time recorded with the timer. Non-billable entries no longer count. Details in the entry under Changed.
+
 ### Added
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).

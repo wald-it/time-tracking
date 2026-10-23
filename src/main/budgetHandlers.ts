@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import type { BudgetStatus, IpcResult } from '../shared/types'
 import { budgetUsedMinutesSql } from '../shared/currency'
+import { readRoundMinutes } from './dashboardTotals'
 
 export type { BudgetStatus }
 
@@ -37,13 +38,10 @@ export function buildBudgetStatus(
     }
 
     // Same rounding step as the PDF pipeline.
-    const roundSetting = db
-      .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-      .get() as { value: string } | undefined
-    const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
-
     const usedRow = db
-      .prepare(`SELECT used_minutes FROM (${budgetUsedMinutesSql(roundStep)}) WHERE project_id = ?`)
+      .prepare(
+        `SELECT used_minutes FROM (${budgetUsedMinutesSql(readRoundMinutes(db))}) WHERE project_id = ?`
+      )
       .get(projectId) as { used_minutes: number } | undefined
 
     return ok({
