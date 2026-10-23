@@ -24,20 +24,30 @@ let root: string
 function cleanerOutcome(cleaner: ChildProcess): Promise<string> {
   return new Promise((resolve, reject) => {
     let out = ''
+    let err = ''
     cleaner.stdout!.on('data', (chunk) => {
       out += chunk
       if (out.includes('\n')) resolve(out.split('\n')[0].trim())
     })
+    cleaner.stderr!.on('data', (chunk) => (err += chunk))
     cleaner.once('error', reject)
-    // Printed nothing: fail on the assertion instead of the test timeout.
-    cleaner.once('exit', (code) => resolve(out.trim() || `exit ${code} without outcome`))
+    // Printed nothing (a broken script): report it with its stderr. This path
+    // does wait for the teardown, so under load it may still hit the timeout.
+    cleaner.once('exit', (code) =>
+      resolve(out.trim() || `exit ${code} without outcome: ${err.trim()}`)
+    )
   })
 }
 
-/** Same liveness check as the cleaner's own. */
-function isAlive(pid: number): boolean {
+/**
+ * Whether `child` still runs, by the cleaner's own check. Asked only while
+ * Node has not seen its exit: until then Node holds the process handle, so
+ * Windows cannot hand the PID to another process.
+ */
+function isRunning(child: ChildProcess): boolean {
+  if (child.exitCode !== null || child.signalCode !== null) return false
   try {
-    process.kill(pid, 0)
+    process.kill(child.pid!, 0)
     return true
   } catch {
     return false
@@ -140,7 +150,7 @@ describe('smoke userData isolation', () => {
     const { command, args, env } = buildCleanerCommand(process.execPath, victim, 999999)
     const cleaner = spawn(command, args, {
       env: { ...process.env, ...env },
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'pipe']
     })
     expect(await cleanerOutcome(cleaner)).toBe('skipped')
     expect(existsSync(victim)).toBe(true)
@@ -209,7 +219,7 @@ describe('smoke userData isolation', () => {
     const { command, args, env } = buildCleanerCommand(process.execPath, dir, holder.pid!)
     const cleaner = spawn(command, args, {
       env: { ...process.env, ...env },
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'pipe']
     })
     const outcome = cleanerOutcome(cleaner)
 
@@ -219,7 +229,7 @@ describe('smoke userData isolation', () => {
     expect(await outcome).toBe('removed')
     expect(existsSync(dir)).toBe(false)
     // The removal came after the holder ended, however late the cleaner started.
-    expect(isAlive(holder.pid!)).toBe(false)
+    expect(isRunning(holder)).toBe(false)
   }, 15_000)
 
   it('removes the temp directory with its contents', () => {

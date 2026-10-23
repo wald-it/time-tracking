@@ -141,12 +141,9 @@ const deadline = Date.now() + 60000
 const alive = () => { try { process.kill(pid, 0); return true } catch { return false } }
 const tick = () => {
   if (alive() && Date.now() < deadline) return setTimeout(tick, 200)
-  try {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
-    process.stdout.write('removed\\n')
-  } catch {
-    process.stdout.write('failed\\n')
-  }
+  let outcome = 'removed'
+  try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch { outcome = 'failed' }
+  process.stdout.write(outcome + '\\n')
 }
 if (!dir || !basename(dir).startsWith('timetrack-smoke-')) process.stdout.write('skipped\\n')
 else tick()
