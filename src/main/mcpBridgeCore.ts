@@ -66,6 +66,14 @@ export const CONTROLLER_OPS = [
 ] as const
 export type ControllerOp = (typeof CONTROLLER_OPS)[number]
 
+/**
+ * The bridge protocol version this app speaks (Q31, docs/integration-contract.md).
+ * Every request names the version it was written for in `v`; every response
+ * carries the app's version in `v`. A request for another version gets the
+ * code `unsupported_version` instead of being guessed at.
+ */
+export const BRIDGE_PROTOCOL_VERSION = 1
+
 export interface BridgeRequest {
   v?: number
   token?: string
@@ -80,6 +88,7 @@ export type BridgeResponse =
 
 export type BridgeErrorCode =
   | 'invalid'
+  | 'unsupported_version'
   | 'bad_token'
   | 'write_disabled'
   | 'not_allowed'
@@ -115,6 +124,11 @@ export interface BridgeCtx {
 
 function err(code: BridgeErrorCode, error: string): BridgeResponse {
   return { ok: false, error, code }
+}
+
+/** One response line on the wire: the response with the app's protocol version. */
+export function encodeResponse(res: BridgeResponse): string {
+  return JSON.stringify({ v: BRIDGE_PROTOCOL_VERSION, ...res }) + '\n'
 }
 
 // ── arg coercion ───────────────────────────────────────────────────────────
@@ -948,7 +962,15 @@ async function handleControllerRequest(
  * token check; the two token scopes never unlock each other's ops.
  */
 export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise<BridgeResponse> {
-  if (!req || req.v !== 1 || typeof req.op !== 'string') {
+  // A client written for another protocol version gets told so, not a
+  // generic "invalid": the version is the one field a client can act on.
+  if (req && typeof req.v === 'number' && req.v !== BRIDGE_PROTOCOL_VERSION) {
+    return err(
+      'unsupported_version',
+      `Protokollversion ${req.v} wird nicht unterstützt; diese TimeTrack-Version spricht Version ${BRIDGE_PROTOCOL_VERSION}`
+    )
+  }
+  if (!req || req.v !== BRIDGE_PROTOCOL_VERSION || typeof req.op !== 'string') {
     return err('invalid', 'Ungültige Anfrage')
   }
   const mcpAuth = !!ctx.token && req.token === ctx.token

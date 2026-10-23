@@ -21,7 +21,14 @@ import type Database from 'better-sqlite3'
 import { getDbPath } from './db'
 import { createBackup } from './backup'
 import { auditWrite } from './mcpAudit'
-import { handleRequest, type BridgeCtx, type BridgeRequest, type WriteOp } from './mcpBridgeCore'
+import {
+  encodeResponse,
+  handleRequest,
+  type BridgeCtx,
+  type BridgeRequest,
+  type BridgeResponse,
+  type WriteOp
+} from './mcpBridgeCore'
 import { APPROVABLE_OPS, ApprovalWindow } from './mcpApproval'
 import { emitWebhooks, eventForWriteOp } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
@@ -218,9 +225,9 @@ async function processLine(line: string, conn: net.Socket): Promise<void> {
   }
 }
 
-function writeLine(conn: net.Socket, obj: unknown): void {
+function writeLine(conn: net.Socket, obj: BridgeResponse): void {
   try {
-    conn.write(JSON.stringify(obj) + '\n')
+    conn.write(encodeResponse(obj))
   } catch {
     // socket closed mid-flight
   }
