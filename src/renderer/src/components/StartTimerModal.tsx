@@ -4,6 +4,7 @@ import { useT } from '../contexts/I18nContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useTimerStore } from '../store/timerStore'
 import { useToastStore } from '../store/toastStore'
+import type { StartPrefill } from '../store/startTimerModalStore'
 import * as Icons from './Icons'
 import { Dialog } from './Dialog'
 import { FIELD_LABEL, INPUT, KEY_INV } from './instrumentClasses'
@@ -15,9 +16,11 @@ interface StartTimerModalProps {
   /**
    * Preselect a client and project when the modal opens (B6: the START key
    * offers the last used pair, so Enter starts it). Omitted ⇒ the current
-   * selection stays as it is.
+   * selection stays as it is. `projectId` null ⇒ explicitly "no project";
+   * left out ⇒ the client only, its project chosen as if the user had just
+   * picked that client (#297: the last project is archived).
    */
-  prefill?: { clientId: number; projectId: number | null } | null
+  prefill?: StartPrefill | null
 }
 
 export function StartTimerModal({
@@ -53,7 +56,7 @@ export function StartTimerModal({
   useEffect(() => {
     if (!open || !prefill) return
     explicitNoProjectFor.current = prefill.projectId === null ? prefill.clientId : null
-    useTimerStore.getState().setSelectedProjectId(prefill.projectId)
+    useTimerStore.getState().setSelectedProjectId(prefill.projectId ?? null)
     useTimerStore.getState().setSelectedClientId(prefill.clientId)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on opening; a new prefill object per render must not reset the user's choice
   }, [open])

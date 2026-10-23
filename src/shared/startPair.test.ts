@@ -30,15 +30,24 @@ describe('lastStartPair', () => {
     })
   })
 
-  it('drops an archived project, keeps the client', () => {
-    expect(lastStartPair({ client_id: 2, project_id: 21 }, CLIENTS, PROJECTS)).toEqual({
+  it('drops an archived project, keeps the client, and says so', () => {
+    expect(lastStartPair({ client_id: 2, project_id: 21 }, CLIENTS, PROJECTS)).toStrictEqual({
       clientId: 2,
-      projectId: null
+      projectId: null,
+      droppedProject: true
     })
   })
 
-  it('drops a project it does not know, keeps the client', () => {
-    expect(lastStartPair({ client_id: 2, project_id: 99 }, CLIENTS, PROJECTS)).toEqual({
+  it('drops a project it does not know, keeps the client, and says so', () => {
+    expect(lastStartPair({ client_id: 2, project_id: 99 }, CLIENTS, PROJECTS)).toStrictEqual({
+      clientId: 2,
+      projectId: null,
+      droppedProject: true
+    })
+  })
+
+  it('an entry without a project is not a dropped project', () => {
+    expect(lastStartPair({ client_id: 2, project_id: null }, CLIENTS, PROJECTS)).toStrictEqual({
       clientId: 2,
       projectId: null
     })

@@ -2,7 +2,15 @@ import { create } from 'zustand'
 import { useTimerStore } from './timerStore'
 import { lastStartPair, type StartPair } from '../../../shared/startPair'
 
-export type StartPrefill = StartPair
+/**
+ * What the START dialog preselects. `projectId` left out (undefined): pick
+ * the client and let the dialog choose its project as if the user had just
+ * picked that client; `null`: explicitly "no project".
+ */
+export interface StartPrefill {
+  clientId: number
+  projectId?: number | null
+}
 
 /**
  * The pair a start without a selection uses and the dialog's prefill (#297,
@@ -40,7 +48,15 @@ export const useStartTimerModalStore = create<StartTimerModalState>((set) => ({
   open: false,
   prefill: null,
   openStart: async () => {
-    set({ open: true, prefill: await readLastStartPair() })
+    const pair = await readLastStartPair()
+    // An archived last project is left out, not replaced by "no project", so
+    // a client with a single active project still gets it preselected.
+    const prefill: StartPrefill | null = !pair
+      ? null
+      : pair.droppedProject
+        ? { clientId: pair.clientId }
+        : { clientId: pair.clientId, projectId: pair.projectId }
+    set({ open: true, prefill })
   },
   close: () => set({ open: false })
 }))
