@@ -11,7 +11,7 @@
  * offline app start. Errors triggered by an explicit user "check now"
  * are surfaced (so the Settings UI can show "no connection").
  */
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import log from 'electron-log/main'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
@@ -23,7 +23,39 @@ export type { UpdateStatus }
 
 let lastStatus: UpdateStatus = { status: 'idle' }
 let lastCheckIso: string | null = null
-let suppressNextError = false // for offline-tolerant initial check
+/**
+ * The silent start-up check while it runs (#284). Its `error` events are held
+ * here instead of broadcast, and decided when the check settles: only the error
+ * that is the check's own rejection stays quiet (offline start); any other —
+ * such as an early failure of the download the check started — goes out.
+ * A one-shot "swallow the next error" flag got this wrong: left set after a
+ * successful check, it ate the next unrelated error.
+ */
+interface StartupCheck {
+  held: Error[]
+  /** "Check now" joined it; from then on its errors are the user's. */
+  joined: boolean
+}
+let startupCheck: StartupCheck | null = null
+
+function broadcastError(err: Error): void {
+  broadcast(reduceUpdateStatus(lastStatus, { type: 'error', message: err.message }))
+}
+
+function settleStartupCheck(run: StartupCheck, rejection: Error | null): void {
+  if (startupCheck === run) startupCheck = null
+  for (const err of run.held) {
+    if (err === rejection) {
+      log.warn('Update check failed (suppressed, likely offline):', err.message)
+      broadcast({ status: 'idle' })
+    } else {
+      broadcastError(err)
+    }
+  }
+  if (rejection && !run.joined && !run.held.includes(rejection)) {
+    log.warn('Initial update check failed:', rejection.message)
+  }
+}
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -226,25 +258,28 @@ export function initAutoUpdater(opts: {
   })
 
   autoUpdater.on('error', (err: Error) => {
-    if (suppressNextError) {
-      suppressNextError = false
-      log.warn('Update check failed (suppressed, likely offline):', err.message)
-      broadcast({ status: 'idle' })
+    if (startupCheck) {
+      startupCheck.held.push(err)
       return
     }
-    broadcast(reduceUpdateStatus(lastStatus, { type: 'error', message: err.message }))
+    broadcastError(err)
   })
 
   // ── IPC handlers ───────────────────────────────────────────
   ipcMain.handle('update:getStatus', (): IpcResult<UpdateStatus> => ok(lastStatus))
   ipcMain.handle('update:getLastCheck', (): IpcResult<string | null> => ok(lastCheckIso))
-  ipcMain.handle('update:getVersion', (): IpcResult<string> => ok(app.getVersion()))
 
   ipcMain.handle('update:check', async (): Promise<IpcResult<void>> => {
     if (opts.isDev) {
       return fail('Update-Check ist im Entwicklungsmodus deaktiviert.')
     }
     try {
+      // An explicit check surfaces its errors, also when it joins a start-up
+      // check that is still running (electron-updater shares one promise).
+      if (startupCheck) {
+        startupCheck.joined = true
+        startupCheck = null
+      }
       lastCheckIso = new Date().toISOString()
       await autoUpdater.checkForUpdates()
       return ok(undefined)
@@ -273,10 +308,15 @@ export function initAutoUpdater(opts: {
   // Don't surface errors here — offline app starts shouldn't show a banner.
   // Switched off (#273): no request to GitHub at start, so nothing to download.
   if (!opts.isDev && startupCheckEnabled(opts.getSetting)) {
-    suppressNextError = true
+    const run: StartupCheck = { held: [], joined: false }
+    startupCheck = run
     lastCheckIso = new Date().toISOString()
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      log.warn('Initial update check failed:', err.message)
-    })
+    // electron-updater emits `error` and then rejects with the same object
+    // (AppUpdater.checkForUpdates), which is how the offline case is told
+    // apart from everything else that fails meanwhile.
+    autoUpdater.checkForUpdatesAndNotify().then(
+      () => settleStartupCheck(run, null),
+      (err: Error) => settleStartupCheck(run, err)
+    )
   }
 }

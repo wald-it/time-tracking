@@ -169,3 +169,133 @@ jobs:
           name: timetrack-streamdeck-plugin-${{ github.sha }}
           path: streamdeck-plugin/dist/*.streamDeckPlugin
           if-no-files-found: error
+
+  # #263: the Heute totals and the weekday average cut days with SQLite's
+  # 'localtime', which reads the zone the process starts in and ignores a
+  # process.env.TZ set later (on Windows it does not take an IANA zone from TZ
+  # the way JS does). They can only be tested in Europe/Berlin when the whole
+  # job runs there: Linux, with TZ on the job. vitest.config.ts registers the
+  # `berlin` project only in that zone, which is why the UTC jobs above never
+  # see it. The rest of the suite runs here too, so every test also runs once
+  # with JS and SQLite in Berlin.
+  #
+  # No licences, lint or Stream Deck steps: those are platform-independent or
+  # Windows-only by design (see the test job above), and Linux is not a release
+  # platform. The forced rebuild is not optional here either (#151).
+  berlin-zone:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TZ: Europe/Berlin
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Ensure better-sqlite3 matches the Electron ABI (forced)
+        run: pnpm exec electron-rebuild -f -w better-sqlite3
+
+      # Its own step, named: if the zone did not reach the config and the
+      # project is not registered, Vitest fails here ("no projects matched")
+      # instead of the job passing with the Berlin tests silently left out.
+      - name: Test the berlin project (Europe/Berlin)
+        id: berlin
+        run: pnpm test --project berlin
+
+      # Also after a red berlin step, so one run reports both — but not after a
+      # failed install or rebuild, where every test would fail for that reason.
+      - name: Test everything else (Europe/Berlin)
+        if: ${{ success() || steps.berlin.outcome == 'failure' }}
+        run: pnpm test --project '!berlin'
+
+  # #269: the packaged app, on every PR. Until now only release.yml packaged
+  # anything, so a change that breaks the package (an Electron upgrade, fuses,
+  # the renderer sandbox, an NSIS script error) first failed after the tag was
+  # pushed. This job builds the package the release builds, checks what it
+  # contains, runs the app's --smoke-test, and starts the bundled MCP server
+  # from it (scripts/package-smoke.mjs).
+  #
+  # Windows builds the real NSIS installer, so build/installer.nsh is compiled
+  # on every PR; the installer is built, not executed. The smoke runs on the
+  # win-unpacked app the same build leaves behind. macOS builds the app bundle
+  # only (--dir): DMG and ZIP add packaging time and no runtime path.
+  #
+  # Self-contained on purpose (no needs:, no shared steps), so other jobs in
+  # this file can change without touching it.
+  package-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            builder-args: --win nsis
+            exe: dist/win-unpacked/TimeTrack.exe
+            resources: dist/win-unpacked/resources
+          - os: macos-latest
+            builder-args: --mac --dir
+            exe: dist/mac-arm64/TimeTrack.app/Contents/MacOS/TimeTrack
+            resources: dist/mac-arm64/TimeTrack.app/Contents/Resources
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    # Matrix values reach the scripts as variables, never as pasted text (the
+    # rule src/test/releaseWorkflow.test.ts enforces for every workflow).
+    env:
+      BUILDER_ARGS: ${{ matrix.builder-args }}
+      APP_EXE: ${{ matrix.exe }}
+      APP_RESOURCES: ${{ matrix.resources }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Same reason as in the test job above (#151).
+      - name: Ensure better-sqlite3 matches the Electron ABI (forced)
+        run: pnpm exec electron-rebuild -f -w better-sqlite3
+
+      - name: Build package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: |
+          set -euo pipefail
+          pnpm run build
+          # Word splitting on purpose: BUILDER_ARGS holds several arguments.
+          # shellcheck disable=SC2086
+          pnpm exec electron-builder $BUILDER_ARGS --publish never
+
+      - name: Check package contents (only runtime files in app.asar)
+        run: node scripts/check-package-contents.mjs "$APP_RESOURCES/app.asar"
+
+      - name: Smoke test packaged app (DB + migrations + PDF)
+        run: node scripts/package-smoke.mjs smoke --exe "$APP_EXE"
+
+      - name: MCP server from the package (initialize, tools/list, tools/call)
+        run: |
+          node scripts/package-smoke.mjs mcp \
+            --exe "$APP_EXE" \
+            --entry "$APP_RESOURCES/app.asar/out/mcp/mcp/server.js" \
+            --server-source src/mcp/server.ts
