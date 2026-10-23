@@ -100,7 +100,9 @@ const DRAIN_GRACE_MS = 2000
  * caller checks. `child.ended` resolves
  * with `{ code, signal, error }` once the process is gone and its output is
  * drained — or, if a grandchild keeps the pipes open so that 'close' never
- * comes, DRAIN_GRACE_MS after 'exit'. It never waits on 'close' alone.
+ * comes, DRAIN_GRACE_MS after 'exit'. It never waits on 'close' alone. When
+ * the grace runs out, the pipes are destroyed: their open handles would
+ * otherwise keep this script's own process alive until the grandchild exits.
  */
 function start(exe, args, options) {
   if (!existsSync(exe)) throw new ProbeError(`binary not found at ${exe}`)
@@ -119,18 +121,22 @@ function start(exe, args, options) {
       clearTimeout(grace)
       resolve(result)
     }
+    const giveUpOnPipes = () => {
+      for (const stream of [child.stdin, child.stdout, child.stderr]) stream?.destroy()
+      finish()
+    }
     // An error before the process got a pid is a spawn failure. Errors after
     // that (a failed kill()) are not the run's result; the listener stays for
     // the lifetime of the child so that they cannot go unhandled either.
     child.on('error', (error) => {
       if (result || child.pid !== undefined) return
       result = { code: null, signal: null, error }
-      grace = setTimeout(finish, DRAIN_GRACE_MS)
+      grace = setTimeout(giveUpOnPipes, DRAIN_GRACE_MS)
     })
     child.on('exit', (code, signal) => {
       if (!result) result = { code, signal, error: null }
       clearTimeout(grace)
-      grace = setTimeout(finish, DRAIN_GRACE_MS)
+      grace = setTimeout(giveUpOnPipes, DRAIN_GRACE_MS)
     })
     child.on('close', (code, signal) => {
       if (!result) result = { code, signal, error: null }

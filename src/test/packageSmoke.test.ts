@@ -26,6 +26,15 @@ const { existsSync } = require('fs')
 const mode = process.env.FAKE_MODE
 const tools = process.env.FAKE_TOOLS.split(',')
 process.stderr.write('[fake] up\\n')
+if (mode === 'orphan') {
+  // Dies at start but leaves a descendant holding its stdout and stderr, the
+  // way a helper process of a packaged app can. It outlives the probe's own
+  // deadline, so only a probe that lets go of the pipes ends in time.
+  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 45000)'], {
+    stdio: ['ignore', 'inherit', 'inherit']
+  })
+  process.exit(1)
+}
 if (mode === 'crash') {
   // No final newline: the probe must flush the unterminated last line.
   process.stderr.write('[fake] Fatal: boom')
@@ -142,6 +151,19 @@ describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => 
     const r = probe('crash', TOOLS)
     expect(r.status).toBe(1)
     expect(r.output).toContain('[stderr] [fake] Fatal: boom')
+    expect(r.output).toContain('before answering initialize')
+  })
+
+  // A POSIX case: there the descendant holds the inherited pipe descriptors and
+  // 'close' waits for it. On Windows 'close' follows 'exit' at once even then
+  // (measured 2026-10-23: 18 ms with the descendant alive), so this test is
+  // green there with or without the pipe release; it guards on the macOS job.
+  it('ends when the server is gone even if a descendant keeps its pipes open', () => {
+    const started = Date.now()
+    const r = probe('orphan', TOOLS)
+    // 45 s is how long the descendant lives; the probe must not wait for it.
+    expect(Date.now() - started).toBeLessThan(40_000)
+    expect(r.status).toBe(1)
     expect(r.output).toContain('before answering initialize')
   })
 
