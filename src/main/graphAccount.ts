@@ -149,6 +149,28 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   const now = deps.auth?.now?.() ?? Date.now()
   if (!needsRefresh(tokens, now)) return tokens.accessToken
 
+  // #341: one refresh per token store at a time. The presence pokes and the
+  // calendar import can ask at the same moment; a second refresh with the
+  // same refresh token is sent with a spent token once Entra has rotated it,
+  // gets invalid_grant, and would delete the connection.
+  const running = inFlight.get(deps.store.dir)
+  if (running) return running
+  const refresh = refreshAndStore(deps, tokens)
+  inFlight.set(deps.store.dir, refresh)
+  try {
+    return await refresh
+  } finally {
+    inFlight.delete(deps.store.dir)
+  }
+}
+
+/** Refreshes in progress, per token-store directory (#341). */
+const inFlight = new Map<string, Promise<string | null>>()
+
+async function refreshAndStore(
+  deps: GraphAccountDeps,
+  tokens: StoredTokens
+): Promise<string | null> {
   let refreshed: StoredTokens
   try {
     refreshed = await refreshWithFallback(configOf(deps), tokens, deps)

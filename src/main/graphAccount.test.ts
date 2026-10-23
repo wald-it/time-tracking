@@ -356,3 +356,59 @@ describe('a refused refresh with feature scopes falls back to the calendar scope
     })
   }
 })
+
+// #341: the presence pokes and the calendar import can ask for a token at the
+// same moment. Without a guard both refresh with the same refresh token;
+// Entra rotates it on the first refresh, and the second, sent with the spent
+// token, gets invalid_grant — which deletes the whole stored connection.
+describe('concurrent token requests share one refresh (#341)', () => {
+  /** A token endpoint that rotates the refresh token and refuses a spent one. */
+  function rotatingServer(): { requests: () => number; fetchFn: typeof fetch } {
+    let valid = 'refresh-1'
+    let n = 0
+    const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+      n++
+      const sent = new URLSearchParams(String(init?.body ?? '')).get('refresh_token')
+      // Let the other caller start before this one answers.
+      await new Promise((r) => setTimeout(r, 10))
+      if (sent !== valid) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant', error_description: 'AADSTS70000 spent' })
+        } as unknown as Response
+      }
+      valid = `refresh-${n + 1}`
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: `access-${n + 1}`,
+          refresh_token: valid,
+          expires_in: 3600
+        })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    return { requests: () => n, fetchFn }
+  }
+
+  it('two callers at once: one refresh, both get the token, the connection stays', async () => {
+    const s = rotatingServer()
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    const [a, b] = await Promise.all([getAccessToken(d), getAccessToken(d)])
+    expect([a, b]).toEqual(['access-2', 'access-2'])
+    expect(s.requests()).toBe(1)
+    expect(loadTokens(d.store)?.refreshToken).toBe('refresh-2')
+  })
+
+  it('a later call after the shared refresh refreshes again only when needed', async () => {
+    const s = rotatingServer()
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await Promise.all([getAccessToken(d), getAccessToken(d)])
+    // The new token is fresh: no further request.
+    await expect(getAccessToken(d)).resolves.toBe('access-2')
+    expect(s.requests()).toBe(1)
+  })
+})
