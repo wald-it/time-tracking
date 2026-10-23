@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
-import { existsSync, copyFileSync } from 'fs'
+import { existsSync } from 'fs'
 import { executeMigration, migrations, type Migration } from './index'
-import { createBackupSync } from '../backup'
+import { createBackupSync, replaceDbFile } from '../backup'
 
 const SCHEMA_VERSION_TABLE = `
   CREATE TABLE IF NOT EXISTS schema_version (
@@ -21,10 +21,13 @@ export interface MigrationResult {
  *
  * - Creates `schema_version` if missing.
  * - Determines current version (MAX(version) or 0).
- * - If pending migrations exist: writes a pre-migration backup.
- * - Each migration runs in its own transaction. On failure: rollback,
- *   restore backup, rethrow. The app must NOT continue with a partially
- *   migrated database.
+ * - If pending migrations exist: writes a pre-migration backup — a consistent
+ *   snapshot through the connection (`VACUUM INTO`), so commits still in the
+ *   WAL are in it.
+ * - Each migration runs in its own transaction. On failure: rollback, close
+ *   the database, restore the backup (WAL/SHM removed first), rethrow. The
+ *   app must NOT continue with a partially migrated database; `db` is closed
+ *   when a MigrationError is thrown.
  */
 export function runMigrations(db: Database.Database, dbPath: string): MigrationResult {
   db.exec(SCHEMA_VERSION_TABLE)
@@ -36,7 +39,12 @@ export function runMigrations(db: Database.Database, dbPath: string): MigrationR
     return { applied: [], backupPath: null }
   }
 
-  const backupPath = createBackupSync(dbPath, 'pre-migration', currentVersion) ?? ''
+  // A brand-new database has nothing to protect: no snapshot of an empty file
+  // on every fresh install. Only `schema_version` (created above) counts as
+  // empty — a legacy database without it but with data is still backed up.
+  const backupPath = hasUserTables(db)
+    ? createBackupSync(db, 'pre-migration', currentVersion)
+    : null
   const applied: number[] = []
 
   for (const migration of pending) {
@@ -46,12 +54,22 @@ export function runMigrations(db: Database.Database, dbPath: string): MigrationR
       console.log(`[migrations] Applied #${migration.version} (${migration.name})`)
     } catch (err) {
       console.error(`[migrations] FAILED #${migration.version} (${migration.name}):`, err)
-      restoreBackup(backupPath, dbPath)
-      throw new MigrationError(migration, err as Error, backupPath)
+      restoreAfterFailedMigration(db, backupPath, dbPath)
+      throw new MigrationError(migration, err as Error, backupPath ?? '')
     }
   }
 
   return { applied, backupPath }
+}
+
+function hasUserTables(db: Database.Database): boolean {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_version'`
+    )
+    .get() as { n: number }
+  return row.n > 0
 }
 
 function getCurrentVersion(db: Database.Database): number {
@@ -112,13 +130,20 @@ function assertNoNegativeRoundedMin(db: Database.Database): void {
   }
 }
 
-function restoreBackup(backupPath: string, dbPath: string): void {
+function restoreAfterFailedMigration(
+  db: Database.Database,
+  backupPath: string | null,
+  dbPath: string
+): void {
+  // Earlier migrations of this run are committed; only the backup brings the
+  // pre-run state back. The file is replaced only with the connection closed.
+  db.close()
   if (!backupPath || !existsSync(backupPath)) {
-    console.warn('[migrations] No backup to restore (likely fresh install).')
+    console.warn('[migrations] No backup to restore.')
     return
   }
   try {
-    copyFileSync(backupPath, dbPath)
+    replaceDbFile(backupPath, dbPath)
     console.log(`[migrations] Restored DB from backup: ${backupPath}`)
   } catch (err) {
     console.error('[migrations] Backup restore FAILED:', err)

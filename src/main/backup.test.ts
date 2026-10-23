@@ -1,10 +1,33 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, statSync, readFileSync } from 'fs'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, copyFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import type Database from 'better-sqlite3'
+import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
+
+let DatabaseImpl: DatabaseCtor
+beforeAll(async () => {
+  DatabaseImpl = await loadSqlite()
+})
 
 // Mock electron's `app.getPath('userData')` so backup.ts works in node tests.
 let userDataDir: string
+
+// A side file (`-wal` / `-shm`) that cannot be removed — on Windows the case
+// when another process (the MCP server) still holds the database open.
+let lockedSuffix: string | null = null
+vi.mock('fs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('fs')>()
+  return {
+    ...real,
+    unlinkSync: (path: import('fs').PathLike) => {
+      if (lockedSuffix && String(path).endsWith(lockedSuffix)) {
+        throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' })
+      }
+      return real.unlinkSync(path)
+    }
+  }
+})
 
 vi.mock('electron', () => ({
   app: {
@@ -17,6 +40,7 @@ vi.mock('electron', () => ({
 
 beforeEach(() => {
   userDataDir = mkdtempSync(join(tmpdir(), 'tt-backup-'))
+  lockedSuffix = null
 })
 
 afterEach(() => {
@@ -33,22 +57,55 @@ function makeFile(path: string, content = 'x'): void {
   writeFileSync(path, content)
 }
 
+/**
+ * A WAL database whose last commit is still only in the `-wal` file — the
+ * state after a crash or a killed process. Auto-checkpointing is off, so the
+ * main file does not have the row until a checkpoint runs.
+ */
+function walDb(path: string, value: string): Database.Database {
+  const db = new DatabaseImpl(path)
+  db.pragma('journal_mode = WAL')
+  db.pragma('wal_autocheckpoint = 0')
+  db.exec('CREATE TABLE t (v TEXT)')
+  db.prepare('INSERT INTO t (v) VALUES (?)').run(value)
+  return db
+}
+
+function readValues(path: string): string[] {
+  const db = new DatabaseImpl(path)
+  try {
+    return (db.prepare('SELECT v FROM t ORDER BY rowid').all() as Array<{ v: string }>).map(
+      (r) => r.v
+    )
+  } finally {
+    db.close()
+  }
+}
+
 describe('createBackupSync', () => {
-  it('returns null when source DB does not exist', async () => {
-    const { createBackupSync } = await loadBackup()
-    const missing = join(userDataDir, 'nope.sqlite')
-    expect(createBackupSync(missing, 'pre-migration', 0)).toBeNull()
+  it('writes a pre-migration snapshot into the backups dir', async () => {
+    const { createBackupSync, getBackupsDir } = await loadBackup()
+    const db = walDb(join(userDataDir, 'src.sqlite'), 'data')
+    const target = createBackupSync(db, 'pre-migration', 3)
+    db.close()
+    expect(existsSync(target)).toBe(true)
+    expect(target).toContain('backup-pre-migration-v3-')
+    expect(target.startsWith(getBackupsDir())).toBe(true)
   })
 
-  it('copies file to backups dir with pre-migration naming', async () => {
-    const { createBackupSync, getBackupsDir } = await loadBackup()
+  // Owner review (release 1.22): a plain copy of the main file loses every
+  // commit that still sits in the WAL after a crash.
+  it('includes commits that are still only in the WAL', async () => {
+    const { createBackupSync } = await loadBackup()
     const src = join(userDataDir, 'src.sqlite')
-    makeFile(src, 'data')
-    const target = createBackupSync(src, 'pre-migration', 3)
-    expect(target).not.toBeNull()
-    expect(existsSync(target!)).toBe(true)
-    expect(target!).toContain('backup-pre-migration-v3-')
-    expect(target!.startsWith(getBackupsDir())).toBe(true)
+    const db = walDb(src, 'only-in-wal')
+    // Precondition: the main file alone does not have the row yet.
+    const plain = join(userDataDir, 'plain-copy.sqlite')
+    copyFileSync(src, plain)
+    expect(() => readValues(plain)).toThrow()
+    const target = createBackupSync(db, 'pre-migration', 3)
+    db.close()
+    expect(readValues(target)).toEqual(['only-in-wal'])
   })
 })
 
@@ -122,35 +179,79 @@ describe('rotateDailyBackups', () => {
 describe('restoreBackup', () => {
   it('throws when backup file does not exist', async () => {
     const { restoreBackup } = await loadBackup()
+    const db = walDb(join(userDataDir, 'db.sqlite'), 'x')
     expect(() =>
-      restoreBackup(join(userDataDir, 'missing.sqlite'), join(userDataDir, 'db.sqlite'))
+      restoreBackup(db, join(userDataDir, 'missing.sqlite'), join(userDataDir, 'db.sqlite'))
     ).toThrow(/not found/i)
+    db.close()
   })
 
-  it('overwrites current DB and creates a safety copy', async () => {
+  it('replaces the open WAL database consistently and keeps a safety snapshot', async () => {
     const { restoreBackup, listBackups } = await loadBackup()
     const currentDb = join(userDataDir, 'current.sqlite')
+    const backupSrc = walDb(join(userDataDir, 'backup.sqlite'), 'BACKUP')
+    backupSrc.close()
     const backup = join(userDataDir, 'backup.sqlite')
-    makeFile(currentDb, 'CURRENT')
-    makeFile(backup, 'BACKUP')
+    // The current DB holds its last commit only in the WAL.
+    const db = walDb(currentDb, 'CURRENT')
 
-    const { safetyBackupPath } = restoreBackup(backup, currentDb)
+    const { safetyBackupPath } = restoreBackup(db, backup, currentDb)
 
-    expect(existsSync(safetyBackupPath)).toBe(true)
+    expect(db.open).toBe(false)
     expect(safetyBackupPath).toContain('backup-pre-restore-')
-    // Current DB now holds backup contents
-    const current = readFileSync(currentDb, 'utf-8')
-    expect(current).toBe('BACKUP')
-    // Safety copy holds the prior contents
-    const safety = readFileSync(safetyBackupPath, 'utf-8')
-    expect(safety).toBe('CURRENT')
-    // Safety is listed (mtime-based, not classified as daily)
-    const list = listBackups()
-    expect(list.some((b) => b.filename.startsWith('backup-pre-restore-'))).toBe(false)
-    // Note: 'pre-restore' isn't classified by our listBackups schema, that's
-    // intentional — pre-restore safety copies are diagnostic, not user-facing.
-    // We just sanity-check the file size > 0.
-    expect(statSync(safetyBackupPath).size).toBeGreaterThan(0)
+    // The safety snapshot has the WAL-only commit.
+    expect(readValues(safetyBackupPath)).toEqual(['CURRENT'])
+    // No WAL of the old database is left to be replayed over the restored file.
+    expect(existsSync(currentDb + '-wal')).toBe(false)
+    expect(existsSync(currentDb + '-shm')).toBe(false)
+    expect(readValues(currentDb)).toEqual(['BACKUP'])
+    // pre-restore safety copies are diagnostic, not listed for the user.
+    expect(listBackups().some((b) => b.filename.startsWith('backup-pre-restore-'))).toBe(false)
+  })
+
+  // Owner review #253: with the database still open elsewhere the restore
+  // must not happen, must leave the file untouched, and must say so.
+  it('a side file that cannot be removed leaves the database file untouched and reports it', async () => {
+    const { restoreBackupOrReport, DbInUseError, replaceDbFile, RESTORE_IN_USE_MESSAGE } =
+      await loadBackup()
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const backupSrc = walDb(join(userDataDir, 'backup.sqlite'), 'BACKUP')
+    backupSrc.close()
+    const backup = join(userDataDir, 'backup.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    // A second connection that has read keeps -wal/-shm alive after our close,
+    // like a running MCP server.
+    const other = new DatabaseImpl(currentDb)
+    other.prepare('SELECT COUNT(*) FROM t').get()
+    lockedSuffix = '-wal'
+
+    expect(() => replaceDbFile(backup, currentDb)).toThrow(DbInUseError)
+
+    const reports: Array<[string, string]> = []
+    const res = restoreBackupOrReport(db, backup, currentDb, (title, message) =>
+      reports.push([title, message])
+    )
+    expect(res).toEqual({ ok: false, error: RESTORE_IN_USE_MESSAGE })
+    expect(reports).toHaveLength(1)
+    expect(reports[0][1]).toMatch(/anderen Programm geöffnet/)
+    other.close()
+    lockedSuffix = null
+    expect(readValues(currentDb)).toEqual(['CURRENT'])
+  })
+
+  it('a successful restore reports nothing', async () => {
+    const { restoreBackupOrReport } = await loadBackup()
+    const backupSrc = walDb(join(userDataDir, 'backup.sqlite'), 'BACKUP')
+    backupSrc.close()
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreBackupOrReport(db, join(userDataDir, 'backup.sqlite'), currentDb, (t) =>
+      reports.push(t)
+    )
+    expect(res.ok).toBe(true)
+    expect(reports).toEqual([])
+    expect(readValues(currentDb)).toEqual(['BACKUP'])
   })
 })
 

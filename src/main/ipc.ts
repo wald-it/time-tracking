@@ -6,7 +6,7 @@ import { dirname, join, normalize, resolve, sep } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
-import { createBackup, listBackups, restoreBackup as restoreBackupFile } from './backup'
+import { createBackup, listBackups, restoreBackupOrReport } from './backup'
 import {
   createManualEntry,
   updateManualEntry,
@@ -721,10 +721,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         if (!resolved.startsWith(defaultDir + sep) && !resolved.startsWith(configuredDir + sep)) {
           return fail('Ungültiger Backup-Pfad')
         }
-        const dbPath = getDbPath()
-        db.close()
-        const result = restoreBackupFile(filePath, dbPath)
-        return ok(result)
+        // Snapshots the current DB, closes it, then replaces the file. A
+        // failure is shown as a native dialog here: the renderer relaunches
+        // right after, and its own message would vanish with the window.
+        return restoreBackupOrReport(db, filePath, getDbPath(), (title, message) =>
+          dialog.showErrorBox(title, message)
+        )
       } catch (e) {
         return fail(e)
       }

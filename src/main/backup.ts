@@ -87,24 +87,67 @@ export async function createBackup(
 }
 
 /**
- * Synchronous backup variant for the migration runner, which runs before the
- * better-sqlite3 backup API can be used safely (we want a hard file copy of
- * the on-disk state, not a live snapshot).
+ * Write a consistent copy of the OPEN database to `targetPath` (`VACUUM INTO`).
+ *
+ * The database runs in WAL mode: commits can still sit in the `-wal` file,
+ * not yet checkpointed into the main file — always after a crash or a killed
+ * process. A plain file copy of the main file would miss them; `VACUUM INTO`
+ * reads through the connection and so includes them.
+ */
+export function snapshotSync(db: Database.Database, targetPath: string): void {
+  db.prepare('VACUUM INTO ?').run(targetPath)
+}
+
+/**
+ * Synchronous backup for the migration runner: a consistent snapshot of the
+ * open database before any migration touches it.
  */
 export function createBackupSync(
-  dbPath: string,
+  db: Database.Database,
   reason: BackupReason,
   fromVersion?: number
-): string | null {
-  if (!existsSync(dbPath)) return null
+): string {
   // Always use the default dir — called from the migration runner before
   // DB settings are available, so backup_path cannot be read yet.
   const dir = getDefaultBackupsDir()
   mkdirSync(dir, { recursive: true })
   const targetPath = join(dir, buildFilename(reason, fromVersion))
-  copyFileSync(dbPath, targetPath)
+  snapshotSync(db, targetPath)
   console.log(`[backup] Created sync (${reason}): ${targetPath}`)
   return targetPath
+}
+
+/** The database file cannot be replaced: another process still has it open. */
+export class DbInUseError extends Error {
+  constructor(cause: unknown) {
+    super('Database is still open in another process', { cause })
+    this.name = 'DbInUseError'
+  }
+}
+
+/**
+ * Put `sourcePath` in place of the database file. The database must be
+ * CLOSED. Its `-wal` / `-shm` files go first: SQLite would otherwise replay a
+ * leftover WAL over the restored file on the next open. If one of them cannot
+ * be removed — on Windows another process (e.g. the MCP server) still holds
+ * the database open — this throws `DbInUseError` before the database file is
+ * touched. (macOS/Linux let the files go even under an open reader; that
+ * reader then sees an inconsistent state until it restarts, which is why the
+ * restore confirmation asks to quit MCP clients first.)
+ */
+export function replaceDbFile(sourcePath: string, dbPath: string): void {
+  for (const suffix of ['-wal', '-shm']) {
+    const side = dbPath + suffix
+    if (!existsSync(side)) continue
+    try {
+      unlinkSync(side)
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'EBUSY' || code === 'EPERM' || code === 'EACCES') throw new DbInUseError(err)
+      throw err
+    }
+  }
+  copyFileSync(sourcePath, dbPath)
 }
 
 export function listBackups(backupPathOverride?: string): BackupInfo[] {
@@ -188,14 +231,15 @@ export function readBackupPathSetting(db: Database.Database): string | undefined
 }
 
 /**
- * Restore a backup file over the current DB. Caller is responsible for closing
- * the existing DB handle and prompting the user to restart the app.
+ * Restore a backup file over the current DB. The caller passes the OPEN
+ * handle; this closes it. The caller then prompts the user to restart.
  *
- * Before overwriting, a safety copy of the current DB is created so the user
- * can roll back if the chosen backup turns out to be worse than the current
- * state.
+ * Before overwriting, a safety snapshot of the current DB is taken (through
+ * the connection, so it includes what still sits in the WAL) so the user can
+ * roll back if the chosen backup turns out to be worse than the current state.
  */
 export function restoreBackup(
+  db: Database.Database,
   backupPath: string,
   currentDbPath: string
 ): { safetyBackupPath: string } {
@@ -207,10 +251,40 @@ export function restoreBackup(
   mkdirSync(dir, { recursive: true })
   const safetyName = `backup-pre-restore-${isoTimestamp()}.sqlite`
   const safetyBackupPath = join(dir, safetyName)
-  if (existsSync(currentDbPath)) {
-    copyFileSync(currentDbPath, safetyBackupPath)
-  }
-  copyFileSync(backupPath, currentDbPath)
+  snapshotSync(db, safetyBackupPath)
+  db.close()
+  replaceDbFile(backupPath, currentDbPath)
   console.log(`[backup] Restored ${backupPath} -> ${currentDbPath}`)
   return { safetyBackupPath }
+}
+
+/** What the user is told when a restore did not happen. */
+export const RESTORE_FAILED_TITLE = 'TimeTrack — Wiederherstellung nicht durchgeführt'
+export const RESTORE_IN_USE_MESSAGE =
+  'Wiederherstellung nicht durchgeführt — die Datenbank ist noch in einem anderen Programm ' +
+  'geöffnet (z. B. ein MCP-Client wie Claude Desktop). Programm beenden und erneut versuchen.'
+
+/**
+ * `restoreBackup` for the IPC handler: a failure is reported through
+ * `report` (a native dialog in the app) before the result goes back. The
+ * renderer relaunches the app after every restore attempt, so a message shown
+ * only in the renderer would vanish with the window and the user would take
+ * the relaunch for a successful restore.
+ */
+export function restoreBackupOrReport(
+  db: Database.Database,
+  backupPath: string,
+  currentDbPath: string,
+  report: (title: string, message: string) => void
+): { ok: true; data: { safetyBackupPath: string } } | { ok: false; error: string } {
+  try {
+    return { ok: true, data: restoreBackup(db, backupPath, currentDbPath) }
+  } catch (err) {
+    const message =
+      err instanceof DbInUseError
+        ? RESTORE_IN_USE_MESSAGE
+        : `Wiederherstellung nicht durchgeführt: ${(err as Error).message}`
+    report(RESTORE_FAILED_TITLE, message)
+    return { ok: false, error: message }
+  }
 }

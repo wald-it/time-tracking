@@ -86,7 +86,7 @@ export const de = {
   // Step 4 — Backup wiederherstellen
   'onboarding.restore.title': 'Daten wiederherstellen?',
   'onboarding.restore.body':
-    'Es wurde ein Backup gefunden. Möchtest du deine früheren Daten jetzt wiederherstellen?',
+    'Es wurde ein Backup gefunden. Möchtest du deine früheren Daten jetzt wiederherstellen? Beende vorher Programme, die TimeTrack über MCP nutzen (z. B. Claude Desktop).',
   'onboarding.restore.latestLabel': 'Neuestes Backup:',
   'onboarding.restore.restoreBtn': 'Wiederherstellen',
   'onboarding.restore.skip': 'Ohne Wiederherstellung starten',
@@ -552,7 +552,7 @@ export const de = {
   'settings.data.restoreBtn': 'Wiederherstellen …',
   'settings.data.restoreConfirmTitle': 'Backup wiederherstellen?',
   'settings.data.restoreConfirmBody':
-    'Alle aktuellen Daten werden durch das gewählte Backup ersetzt. Eine Sicherungskopie des aktuellen Stands wird vorher angelegt.',
+    'Alle aktuellen Daten werden durch das gewählte Backup ersetzt. Eine Sicherungskopie des aktuellen Stands wird vorher angelegt. Beende vorher Programme, die TimeTrack über MCP nutzen (z. B. Claude Desktop) — sonst kann die Wiederherstellung nicht durchgeführt werden.',
   'settings.data.restoreConfirmOk': 'Jetzt wiederherstellen',
   'settings.data.restoring': 'Wiederherstellung läuft …',
   'settings.data.noBackupToRestore': 'Keine Backups vorhanden',
