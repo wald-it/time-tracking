@@ -75,16 +75,17 @@ import type {
   LicenseEntry
 } from '../shared/types'
 import { monthEntries } from './entryRanges'
+import type { HotkeyChange } from './hotkeySlot'
 
 export interface IpcHooks {
   refreshTrayClients(): void
   /** Rebuild tray menu and tooltip after the app language changed (#296). */
   refreshTrayLanguage(): void
-  setHotkey(accelerator: string): boolean
+  setHotkey(accelerator: string): HotkeyChange
   setAutoStart(enabled: boolean): void
   setIdleThreshold(minutes: number): void
   setMiniEnabled(enabled: boolean): void
-  setMiniHotkey(accelerator: string): boolean
+  setMiniHotkey(accelerator: string): HotkeyChange
   setMcpWriteEnabled(enabled: boolean): void
   setControllerEnabled(enabled: boolean): void
   /** Re-run the presence reconciler (#132) after a relevant settings change. */
