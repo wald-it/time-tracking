@@ -32,7 +32,7 @@ const REQUIRED = [
 
 const asarPath = process.argv[2]
 if (!asarPath) {
-  console.error('usage: check-package-contents.mjs <app.asar>')
+  console.error('usage: check-package-contents.mjs <app.asar> [<platform>-<arch>]')
   process.exit(2)
 }
 
