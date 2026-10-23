@@ -308,8 +308,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, branch naming, and PR guid
 ## Privacy
 
 All data stays local. In basic operation the only network request is the update
-check against GitHub; the integrations (Microsoft 365, MCP, webhooks, iCal feed,
-Stream Deck) send data only when you switch them on. No telemetry, no account.
+check against GitHub, which you can turn off under Settings → About → Updates;
+the integrations (Microsoft 365, MCP, webhooks, iCal feed, Stream Deck) send
+data only when you switch them on. No telemetry, no account.
 Details: [PRIVACY.md](PRIVACY.md).
 
 ## License

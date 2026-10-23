@@ -1,7 +1,17 @@
 import type Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join, normalize } from 'path'
-import { mkdirSync, existsSync, copyFileSync, readdirSync, statSync, unlinkSync } from 'fs'
+import {
+  mkdirSync,
+  existsSync,
+  copyFileSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  openSync,
+  readSync,
+  closeSync
+} from 'fs'
 
 export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
 
@@ -178,6 +188,34 @@ export function listBackups(backupPathOverride?: string): BackupInfo[] {
   return result.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
 }
 
+const SQLITE_HEADER = Buffer.from('SQLite format 3\0', 'latin1')
+
+/**
+ * True when the file starts with the 16-byte SQLite database header. A missing
+ * file is false; any other read error (locked, access denied) is thrown with
+ * its own cause, so a busy backup is not reported as "not a database".
+ */
+export function hasSqliteHeader(path: string): boolean {
+  let fd: number | undefined
+  try {
+    fd = openSync(path, 'r')
+    const buf = Buffer.alloc(SQLITE_HEADER.length)
+    const read = readSync(fd, buf, 0, buf.length, 0)
+    return read === buf.length && buf.equals(SQLITE_HEADER)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw err
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd)
+      } catch {
+        // Never let a failing close replace the read result or its error.
+      }
+    }
+  }
+}
+
 /**
  * Keep only the last N daily backups. Manual + pre-migration are never deleted.
  */
@@ -246,6 +284,10 @@ export function restoreBackup(
   if (!existsSync(backupPath)) {
     throw new Error(`Backup file not found: ${backupPath}`)
   }
+  // #272: never put something other than a database in place of the DB file.
+  if (!hasSqliteHeader(backupPath)) {
+    throw new Error(`Not a SQLite database: ${backupPath}`)
+  }
   // Safety copy always goes to the default dir — never depends on network paths.
   const dir = getDefaultBackupsDir()
   mkdirSync(dir, { recursive: true })
@@ -287,4 +329,39 @@ export function restoreBackupOrReport(
     report(RESTORE_FAILED_TITLE, message)
     return { ok: false, error: message }
   }
+}
+
+export const RESTORE_UNKNOWN_MESSAGE =
+  'Wiederherstellung nicht durchgeführt — diese Backup-Datei steht nicht in der Backup-Liste.'
+
+/**
+ * #272 — `backup:restore` takes the file NAME of a backup that `listBackups`
+ * shows for the current backup folder, never a path. Anything else is refused
+ * before the open database is touched.
+ */
+export function restoreListedBackupOrReport(
+  db: Database.Database,
+  filename: unknown,
+  backupPathOverride: string | undefined,
+  currentDbPath: string,
+  report: (title: string, message: string) => void
+): { ok: true; data: { safetyBackupPath: string } } | { ok: false; error: string } {
+  let listed: BackupInfo | undefined
+  try {
+    listed =
+      typeof filename === 'string'
+        ? listBackups(backupPathOverride).find((b) => b.filename === filename)
+        : undefined
+  } catch (err) {
+    // The folder is unreachable (an offline network share): say so here, the
+    // renderer relaunches right after and would swallow its own message.
+    const message = `Wiederherstellung nicht durchgeführt: ${(err as Error).message}`
+    report(RESTORE_FAILED_TITLE, message)
+    return { ok: false, error: message }
+  }
+  if (!listed) {
+    report(RESTORE_FAILED_TITLE, RESTORE_UNKNOWN_MESSAGE)
+    return { ok: false, error: RESTORE_UNKNOWN_MESSAGE }
+  }
+  return restoreBackupOrReport(db, listed.fullPath, currentDbPath, report)
 }

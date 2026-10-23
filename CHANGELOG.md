@@ -7,10 +7,23 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
+
 ### Fixed
 
 - **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).
 - **The About dialog shows the app's actual licence** — Its licence text was a separate copy that named a different copyright holder than the `LICENSE` file. The dialog now takes the text from `LICENSE` when the app is built, so the two can no longer differ ([#276](https://github.com/wald-it/time-tracking/issues/276)).
+- **Smoke cleaner tests no longer time out under load** — The two tests of the smoke userData cleaner waited for Node's `exit` event of the processes they spawn. Under load, Windows can take many seconds to finish tearing down an exited process, and the event waits for that, so the tests ran into their 15 s timeout (4 of 10 runs on a busy machine). The cleaner now prints its outcome (`skipped`, `removed` or `failed`), and the tests wait for that line instead. The app starts the cleaner with its output discarded, so nothing changes there ([#264](https://github.com/wald-it/time-tracking/issues/264)).
+
+### Internal
+
+- **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job runs the whole test suite on Linux with `TZ=Europe/Berlin`, so JS and SQLite both run in Berlin. New tests there check, for 25 October 2026, that today's total (also the rounded one), today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. They sit in their own Vitest project, `berlin`, which is only registered when the process runs in Europe/Berlin; elsewhere `pnpm test` leaves it out.
+
+### Security
+
+- **Narrower IPC surface, part 1 (#272).** The app window now gets only TimeTrack's own API. The generic `window.electron` object (raw IPC access and `process.env`) is gone. The main process saves only the settings the app's own screens write. The backup folder, the PDF logo path, the window position and the iCal feed token can no longer be set from the window. The theme is now the only setting the window can read synchronously. A backup restore now takes the file name of a backup from the backup list instead of a path, and refuses a file that is not a SQLite database before the open database is touched. The unused `update:getVersion` channel is gone as well (#281).
 
 ## [1.22.0] — 2026-10-23
 
