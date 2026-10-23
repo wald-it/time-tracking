@@ -22,6 +22,10 @@ All notable changes to TimeTrack are documented here.
 - **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job runs the whole test suite on Linux with `TZ=Europe/Berlin`, so JS and SQLite both run in Berlin. New tests there check, for 25 October 2026, that today's total (also the rounded one), today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. They sit in their own Vitest project, `berlin`, which is only registered when the process runs in Europe/Berlin; elsewhere `pnpm test` leaves it out.
 - **Every pull request now builds and tests the packaged app (#269).** A new `package-smoke` job in the test workflow packages the app on Windows and macOS, checks what the package contains, runs the app's `--smoke-test` and starts the bundled MCP server from it (initialize, `tools/list`, one tool call that has to reach SQLite). On Windows it builds the real NSIS installer, so `build/installer.nsh` is compiled on every PR; the installer is built, not run. Until now only the release workflow packaged anything, so a broken package first showed up after the tag was pushed.
 
+### Security
+
+- **Narrower IPC surface, part 1 (#272).** The app window now gets only TimeTrack's own API. The generic `window.electron` object (raw IPC access and `process.env`) is gone. The main process saves only the settings the app's own screens write. The backup folder, the PDF logo path, the window position and the iCal feed token can no longer be set from the window. The theme is now the only setting the window can read synchronously. A backup restore now takes the file name of a backup from the backup list instead of a path, and refuses a file that is not a SQLite database before the open database is touched. The unused `update:getVersion` channel is gone as well (#281).
+
 ## [1.22.0] — 2026-10-23
 
 ### Breaking for MCP clients and integrations
