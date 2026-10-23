@@ -212,8 +212,7 @@ describe('restoreBackup', () => {
   // Owner review #253: with the database still open elsewhere the restore
   // must not happen, must leave the file untouched, and must say so.
   it('a side file that cannot be removed leaves the database file untouched and reports it', async () => {
-    const { restoreBackupOrReport, DbInUseError, replaceDbFile, RESTORE_IN_USE_MESSAGE } =
-      await loadBackup()
+    const { restoreBackupOrReport, DbInUseError, replaceDbFile } = await loadBackup()
     const currentDb = join(userDataDir, 'current.sqlite')
     const backupSrc = walDb(join(userDataDir, 'backup.sqlite'), 'BACKUP')
     backupSrc.close()
@@ -228,15 +227,37 @@ describe('restoreBackup', () => {
     expect(() => replaceDbFile(backup, currentDb)).toThrow(DbInUseError)
 
     const reports: Array<[string, string]> = []
-    const res = restoreBackupOrReport(db, backup, currentDb, (title, message) =>
+    const res = restoreBackupOrReport(db, backup, currentDb, 'de', (title, message) =>
       reports.push([title, message])
     )
-    expect(res).toEqual({ ok: false, error: RESTORE_IN_USE_MESSAGE })
-    expect(reports).toHaveLength(1)
-    expect(reports[0][1]).toMatch(/anderen Programm geöffnet/)
+    const inUse =
+      'Wiederherstellung nicht durchgeführt — die Datenbank ist noch in einem anderen Programm ' +
+      'geöffnet (z. B. ein MCP-Client wie Claude Desktop). Programm beenden und erneut versuchen.'
+    expect(res).toEqual({ ok: false, error: inUse })
+    expect(reports).toEqual([['TimeTrack — Wiederherstellung nicht durchgeführt', inUse]])
     other.close()
     lockedSuffix = null
     expect(readValues(currentDb)).toEqual(['CURRENT'])
+  })
+
+  // #270: the same failure in English.
+  it('reports a failed restore in the language it is given', async () => {
+    const { restoreBackupOrReport } = await loadBackup()
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: Array<[string, string]> = []
+    const res = restoreBackupOrReport(
+      db,
+      join(userDataDir, 'missing.sqlite'),
+      currentDb,
+      'en',
+      (title, message) => reports.push([title, message])
+    )
+    expect(res.ok).toBe(false)
+    expect(reports).toHaveLength(1)
+    expect(reports[0][0]).toBe('TimeTrack — Restore not done')
+    expect(reports[0][1]).toMatch(/^Restore not done: /)
+    db.close()
   })
 
   it('a successful restore reports nothing', async () => {
@@ -246,8 +267,12 @@ describe('restoreBackup', () => {
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: string[] = []
-    const res = restoreBackupOrReport(db, join(userDataDir, 'backup.sqlite'), currentDb, (t) =>
-      reports.push(t)
+    const res = restoreBackupOrReport(
+      db,
+      join(userDataDir, 'backup.sqlite'),
+      currentDb,
+      'de',
+      (t) => reports.push(t)
     )
     expect(res.ok).toBe(true)
     expect(reports).toEqual([])

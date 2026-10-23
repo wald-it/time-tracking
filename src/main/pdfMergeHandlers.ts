@@ -15,6 +15,8 @@ import {
   validatePdfPath
 } from './pdfMergeValidation'
 import type { IpcResult, Settings } from '../shared/types'
+import type { Locale } from '../shared/i18n'
+import { dialogT } from './mainI18n'
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024 // 50 MB
 
@@ -40,10 +42,18 @@ export interface FsDeps {
 
 export interface DialogDeps {
   showSaveDialog: (opts: Electron.SaveDialogOptions) => Promise<Electron.SaveDialogReturnValue>
+  /** The language of the dialog title (#270). */
+  locale: Locale
+}
+
+/** The native save dialog in the app language; ipc.ts passes one per request. */
+export function saveDialogIn(locale: Locale): DialogDeps {
+  return { showSaveDialog: (o) => dialog.showSaveDialog(o), locale }
 }
 
 const realFsDeps: FsDeps = { existsSync, statSync, readFileSync, writeFileSync }
-const realDialogDeps: DialogDeps = { showSaveDialog: (o) => dialog.showSaveDialog(o) }
+// Only reached by a caller that passes no dialog; ipc.ts always does.
+const realDialogDeps: DialogDeps = saveDialogIn('de')
 
 // ── pdf:merge-only handler ────────────────────────────────────────────────────
 
@@ -159,7 +169,7 @@ export async function mergeOnlyHandler(
       // Target directory is read-only — fall back to a user-chosen path.
       if (isErrnoException(writeErr) && (writeErr.code === 'EPERM' || writeErr.code === 'EACCES')) {
         const fallback = await dialogDeps.showSaveDialog({
-          title: 'Zusammengeführte PDF speichern',
+          title: dialogT(dialogDeps.locale)('mainDialog.pdf.mergeSaveTitle'),
           defaultPath: `${name}_inkl_Stundennachweis.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
@@ -308,7 +318,7 @@ export async function mergeExportHandler(
       // Target directory is read-only — fall back to a user-chosen path.
       if (isErrnoException(writeErr) && (writeErr.code === 'EPERM' || writeErr.code === 'EACCES')) {
         const fallback = await dialogDeps.showSaveDialog({
-          title: 'Zusammengeführte PDF speichern',
+          title: dialogT(dialogDeps.locale)('mainDialog.pdf.mergeSaveTitle'),
           defaultPath: `${name}_inkl_Stundennachweis.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })

@@ -25,6 +25,7 @@ import { handleRequest, type BridgeCtx, type BridgeRequest } from './mcpBridgeCo
 import { emitWebhooks, eventForWriteOp } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { socketPathForDir, tokenPathForDir, controllerTokenPathForDir } from '../mcp/socketPath'
+import { localeFromSetting, mcpConfirmDialog } from './mainI18n'
 
 export interface BridgeDeps {
   getDb: () => Database.Database
@@ -121,18 +122,7 @@ async function confirm(summary: string): Promise<boolean> {
     if (!win.isVisible()) win.show()
     win.focus()
   }
-  const opts: Electron.MessageBoxOptions = {
-    type: 'question',
-    buttons: ['Ablehnen', 'Erlauben'],
-    defaultId: 1,
-    cancelId: 0,
-    noLink: true,
-    title: 'TimeTrack — MCP-Schreibzugriff',
-    message: 'Claude möchte eine Änderung in TimeTrack vornehmen:',
-    detail: summary,
-    checkboxLabel: 'Für diese Session merken (nicht mehr fragen)',
-    checkboxChecked: false
-  }
+  const opts = mcpConfirmDialog(localeFromSetting(deps?.getSetting('language')), summary)
   const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
   const approved = res.response === 1
   if (approved && (mode === 'session' || res.checkboxChecked)) sessionApproved = true

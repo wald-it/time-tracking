@@ -2,6 +2,8 @@ import type Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join, normalize } from 'path'
 import { mkdirSync, existsSync, copyFileSync, readdirSync, statSync, unlinkSync } from 'fs'
+import type { Locale } from '../shared/i18n'
+import { dialogT } from './mainI18n'
 
 export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
 
@@ -258,33 +260,32 @@ export function restoreBackup(
   return { safetyBackupPath }
 }
 
-/** What the user is told when a restore did not happen. */
-export const RESTORE_FAILED_TITLE = 'TimeTrack — Wiederherstellung nicht durchgeführt'
-export const RESTORE_IN_USE_MESSAGE =
-  'Wiederherstellung nicht durchgeführt — die Datenbank ist noch in einem anderen Programm ' +
-  'geöffnet (z. B. ein MCP-Client wie Claude Desktop). Programm beenden und erneut versuchen.'
-
 /**
  * `restoreBackup` for the IPC handler: a failure is reported through
  * `report` (a native dialog in the app) before the result goes back. The
  * renderer relaunches the app after every restore attempt, so a message shown
  * only in the renderer would vanish with the window and the user would take
  * the relaunch for a successful restore.
+ *
+ * The caller reads the language before the restore starts: by the time a
+ * failure is reported, the database handle may already be closed (#270).
  */
 export function restoreBackupOrReport(
   db: Database.Database,
   backupPath: string,
   currentDbPath: string,
+  locale: Locale,
   report: (title: string, message: string) => void
 ): { ok: true; data: { safetyBackupPath: string } } | { ok: false; error: string } {
+  const t = dialogT(locale)
   try {
     return { ok: true, data: restoreBackup(db, backupPath, currentDbPath) }
   } catch (err) {
     const message =
       err instanceof DbInUseError
-        ? RESTORE_IN_USE_MESSAGE
-        : `Wiederherstellung nicht durchgeführt: ${(err as Error).message}`
-    report(RESTORE_FAILED_TITLE, message)
+        ? t('mainDialog.restore.inUse')
+        : t('mainDialog.restore.failed', { cause: (err as Error).message })
+    report(t('mainDialog.restore.title'), message)
     return { ok: false, error: message }
   }
 }

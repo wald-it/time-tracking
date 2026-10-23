@@ -61,7 +61,8 @@ function mockFs(files: Record<string, Buffer | 'EBUSY' | 'EPERM'>): FsDeps {
 
 const noDialog: DialogDeps = {
   // Electron liefert bei Abbruch einen leeren `filePath` (nicht undefined).
-  showSaveDialog: async () => ({ canceled: true, filePath: '' })
+  showSaveDialog: async () => ({ canceled: true, filePath: '' }),
+  locale: 'de'
 }
 
 // ── mergeOnlyHandler tests ────────────────────────────────────────────────────
@@ -201,7 +202,8 @@ describe('mergeOnlyHandler', () => {
       }
     }
     const mockDialog: DialogDeps = {
-      showSaveDialog: async () => ({ canceled: false, filePath: 'C:/fallback_merged.pdf' })
+      showSaveDialog: async () => ({ canceled: false, filePath: 'C:/fallback_merged.pdf' }),
+      locale: 'de'
     }
     const res = await mergeOnlyHandler(
       { stundennachweisPath: 'C:/sn.pdf', invoicePath: 'C:/inv.pdf' },
@@ -579,8 +581,14 @@ describe('mergeExportHandler — successful merge', () => {
         }
       }
     }
+    // #270: the fallback dialog speaks the language it is given.
+    const titles: Array<string | undefined> = []
     const dialogDeps: DialogDeps = {
-      showSaveDialog: async () => ({ canceled: false, filePath: fallbackPath })
+      showSaveDialog: async (o) => {
+        titles.push(o.title)
+        return { canceled: false, filePath: fallbackPath }
+      },
+      locale: 'en'
     }
     const res = await mergeExportHandler(
       mockDb(),
@@ -591,6 +599,7 @@ describe('mergeExportHandler — successful merge', () => {
     )
     expect(res.ok).toBe(true)
     expect(unwrapData(res).path).toBe(fallbackPath)
+    expect(titles).toEqual(['Save merged PDF'])
   })
 
   it('returns error when dialog is canceled after EPERM', async () => {

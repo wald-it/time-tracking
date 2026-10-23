@@ -855,7 +855,63 @@ export const de = {
 
   // ── TagInput — closed system (v1.12 #107) ──────────────────────────────────
   'tags.createOption': "+ '{tag}' erstellen",
-  'tags.manageLink': 'Tags verwalten →'
+  'tags.manageLink': 'Tags verwalten →',
+
+  // ── Native dialogs of the main process (#270) ─────────────────────────────
+  // Filled with translateLiteral. The MCP texts are the owner's guard against
+  // writes from MCP clients: the German wording is pinned byte for byte in
+  // mcpBridgeLocalTime.test.ts.
+  'mainDialog.mcp.title': 'TimeTrack — MCP-Schreibzugriff',
+  'mainDialog.mcp.message': 'Claude möchte eine Änderung in TimeTrack vornehmen:',
+  'mainDialog.mcp.deny': 'Ablehnen',
+  'mainDialog.mcp.allow': 'Erlauben',
+  'mainDialog.mcp.remember': 'Für diese Session merken (nicht mehr fragen)',
+  'mainDialog.mcp.create': 'Eintrag nachtragen — Kunde {client}, {span} ({minutes} min)',
+  'mainDialog.mcp.update': 'Eintrag #{id} ändern — vorher {before}, nachher {after}',
+  'mainDialog.mcp.start': 'Timer starten — Kunde {client}, {from}{ends}',
+  'mainDialog.mcp.startFrom': 'ab {moment}',
+  'mainDialog.mcp.startNow': 'ab jetzt',
+  'mainDialog.mcp.startEnds': '; beendet #{id} ({client}) um {time}',
+  'mainDialog.mcp.stop': 'Laufenden Timer stoppen (Eintrag #{id})',
+  'mainDialog.mcp.stopNone': 'Laufenden Timer stoppen (keiner aktiv)',
+  'mainDialog.mcp.field.start': 'Start',
+  'mainDialog.mcp.field.end': 'Ende',
+  'mainDialog.mcp.field.client': 'Kunde',
+  'mainDialog.mcp.field.project': 'Projekt',
+  'mainDialog.mcp.field.billable': 'abrechenbar',
+  'mainDialog.mcp.field.description': 'Beschreibung',
+  'mainDialog.mcp.field.tags': 'Tags',
+  'mainDialog.mcp.field.reference': 'Referenz',
+  'mainDialog.mcp.field.privateNote': 'interne Notiz',
+  'mainDialog.mcp.noProject': 'Kein Projekt',
+  'mainDialog.mcp.empty': '(leer)',
+  'mainDialog.mcp.yes': 'ja',
+  'mainDialog.mcp.no': 'nein',
+  'mainDialog.mcp.offsetHint':
+    'Hinweis: {offset} weicht von der Ortszeit am {day} ab ({local}) — wird als {time} Ortszeit gespeichert.',
+  'mainDialog.hotkey.title': 'TimeTrack — Hotkey-Konflikt',
+  'mainDialog.hotkey.message': 'Der Mini-Widget-Hotkey "{hotkey}" konnte nicht registriert werden.',
+  'mainDialog.hotkey.detail':
+    'Eine andere Anwendung verwendet diese Tastenkombination bereits.\n\nDu kannst in den Einstellungen einen anderen Hotkey wählen.',
+  'mainDialog.ok': 'OK',
+  'mainDialog.migration.title': 'TimeTrack — Datenbank-Migration fehlgeschlagen',
+  'mainDialog.migration.message':
+    'Migration #{version} ({name}) ist fehlgeschlagen:\n\n{cause}\n\nDeine Datenbank wurde aus dem Pre-Migration-Backup wiederhergestellt:\n{backupPath}\n\nDie App wird jetzt beendet. Bitte melde diesen Fehler.',
+  'mainDialog.dbError.title': 'TimeTrack — Datenbankfehler',
+  'mainDialog.dbError.message': 'Datenbank konnte nicht geöffnet werden:\n\n{cause}',
+  'mainDialog.restore.title': 'TimeTrack — Wiederherstellung nicht durchgeführt',
+  'mainDialog.restore.inUse':
+    'Wiederherstellung nicht durchgeführt — die Datenbank ist noch in einem anderen Programm geöffnet (z. B. ein MCP-Client wie Claude Desktop). Programm beenden und erneut versuchen.',
+  'mainDialog.restore.failed': 'Wiederherstellung nicht durchgeführt: {cause}',
+  'mainDialog.backupPath.title': 'Backup-Pfad wählen',
+  'mainDialog.exportJson.title': 'Datenexport speichern',
+  'mainDialog.pdf.saveTitle': 'Stundennachweis speichern',
+  'mainDialog.pdf.openTitle': 'PDF auswählen',
+  'mainDialog.pdf.mergeSaveTitle': 'Zusammengeführte PDF speichern',
+  'mainDialog.logo.title': 'Logo auswählen',
+  'mainDialog.logo.filter': 'Bilder',
+  'mainDialog.csv.title': 'CSV speichern',
+  'mainDialog.ical.title': 'iCal speichern'
 } as const
 
 export type TranslationKey = keyof typeof de

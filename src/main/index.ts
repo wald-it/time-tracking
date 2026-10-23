@@ -18,6 +18,13 @@ import trayRunningIcon from '../../resources/tray-running.png?asset'
 import trayStoppedIcon from '../../resources/tray-stopped.png?asset'
 import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
 import {
+  dbErrorDialog,
+  hotkeyConflictDialog,
+  localeFromSetting,
+  localeFromSystem,
+  migrationErrorDialog
+} from './mainI18n'
+import {
   assertSmokeUserDataIsolated,
   parseSmokeOutPath,
   removeSmokeUserDataDir,
@@ -367,12 +374,7 @@ function loadStartupSettings(): void {
       // toggling via Settings still works.
       dialog.showMessageBox({
         type: 'warning',
-        title: 'TimeTrack — Hotkey-Konflikt',
-        message: `Der Mini-Widget-Hotkey "${miniHotkey}" konnte nicht registriert werden.`,
-        detail:
-          'Eine andere Anwendung verwendet diese Tastenkombination bereits.\n\n' +
-          'Du kannst in den Einstellungen einen anderen Hotkey wählen.',
-        buttons: ['OK']
+        ...hotkeyConflictDialog(localeFromSetting(map.language), miniHotkey)
       })
     }
     if (map.mini_enabled === '1') applyMiniEnabled(true)
@@ -675,20 +677,19 @@ app.whenReady().then(async () => {
   try {
     getDb()
   } catch (err) {
-    if (err instanceof MigrationError) {
-      dialog.showErrorBox(
-        'TimeTrack — Datenbank-Migration fehlgeschlagen',
-        `Migration #${err.migration.version} (${err.migration.name}) ist fehlgeschlagen:\n\n` +
-          `${err.cause.message}\n\n` +
-          `Deine Datenbank wurde aus dem Pre-Migration-Backup wiederhergestellt:\n${err.backupPath}\n\n` +
-          `Die App wird jetzt beendet. Bitte melde diesen Fehler.`
-      )
-    } else {
-      dialog.showErrorBox(
-        'TimeTrack — Datenbankfehler',
-        `Datenbank konnte nicht geöffnet werden:\n\n${(err as Error).message}`
-      )
-    }
+    // The language setting lives in the database that just failed to open,
+    // so these two follow the system language (#270).
+    const locale = localeFromSystem(app.getPreferredSystemLanguages())
+    const box =
+      err instanceof MigrationError
+        ? migrationErrorDialog(locale, {
+            version: err.migration.version,
+            name: err.migration.name,
+            cause: err.cause.message,
+            backupPath: err.backupPath
+          })
+        : dbErrorDialog(locale, (err as Error).message)
+    dialog.showErrorBox(box.title, box.message)
     isQuitting = true
     app.quit()
     return
