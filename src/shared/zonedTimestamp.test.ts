@@ -3,7 +3,7 @@ import {
   formatLocalMoment,
   formatLocalSpan,
   formatOffset,
-  offsetHint,
+  offsetHintParts,
   parseZonedTimestamp,
   toLocalIso,
   zonedTimestampError,
@@ -132,11 +132,11 @@ describe('local time for confirmation and preview (Europe/Berlin)', () => {
 
   it('names weekday, date and times; a span past midnight names both days', () => {
     zone()
-    expect(formatLocalMoment('2026-10-27T08:00:00.000Z')).toBe('Di 27.10.2026 09:00')
-    expect(formatLocalSpan('2026-10-27T08:00:00.000Z', '2026-10-27T11:00:00.000Z')).toBe(
+    expect(formatLocalMoment('2026-10-27T08:00:00.000Z', 'de')).toBe('Di 27.10.2026 09:00')
+    expect(formatLocalSpan('2026-10-27T08:00:00.000Z', '2026-10-27T11:00:00.000Z', 'de')).toBe(
       'Di 27.10.2026 09:00–12:00'
     )
-    expect(formatLocalSpan('2026-10-27T22:00:00.000Z', '2026-10-28T00:30:00.000Z')).toBe(
+    expect(formatLocalSpan('2026-10-27T22:00:00.000Z', '2026-10-28T00:30:00.000Z', 'de')).toBe(
       'Di 27.10.2026 23:00 – Mi 28.10.2026 01:30'
     )
   })
@@ -144,25 +144,43 @@ describe('local time for confirmation and preview (Europe/Berlin)', () => {
   it('on a clock-change day every time carries its offset (the hour that exists twice)', () => {
     zone()
     // 02:15 summer time → 03:15 winter time: two hours
-    expect(formatLocalSpan('2025-10-26T00:15:00.000Z', '2025-10-26T02:15:00.000Z')).toBe(
+    expect(formatLocalSpan('2025-10-26T00:15:00.000Z', '2025-10-26T02:15:00.000Z', 'de')).toBe(
       'So 26.10.2025 02:15 (+02:00)–03:15 (+01:00)'
     )
     // 02:15 winter time → 03:15 winter time: one hour, now told apart
-    expect(formatLocalSpan('2025-10-26T01:15:00.000Z', '2025-10-26T02:15:00.000Z')).toBe(
+    expect(formatLocalSpan('2025-10-26T01:15:00.000Z', '2025-10-26T02:15:00.000Z', 'de')).toBe(
       'So 26.10.2025 02:15 (+01:00)–03:15 (+01:00)'
     )
-    expect(formatLocalMoment('2025-03-30T01:30:00.000Z')).toBe('So 30.03.2025 03:30 (+02:00)')
+    expect(formatLocalMoment('2025-03-30T01:30:00.000Z', 'de')).toBe('So 30.03.2025 03:30 (+02:00)')
     // the day after: no offsets
-    expect(formatLocalMoment('2025-10-27T08:00:00.000Z')).toBe('Mo 27.10.2025 09:00')
+    expect(formatLocalMoment('2025-10-27T08:00:00.000Z', 'de')).toBe('Mo 27.10.2025 09:00')
   })
 
   it('notes a written offset that is not the local one on that day', () => {
     zone()
     const p = parseZonedTimestamp('2026-10-27T09:00:00+02:00')
     if (!p.ok) throw new Error('should parse')
-    expect(offsetHint(p.iso, p.offsetMin)).toBe(
-      'Hinweis: +02:00 weicht von der Ortszeit am 27.10. ab (+01:00) — wird als 08:00 Ortszeit gespeichert.'
+    expect(offsetHintParts(p.iso, p.offsetMin, 'de')).toEqual({
+      offset: '+02:00',
+      day: '27.10.',
+      local: '+01:00',
+      time: '08:00'
+    })
+  })
+
+  // #270: the confirmation follows the app language; English writes an ISO date.
+  it('in English: weekday, ISO date and the same times and offsets', () => {
+    zone()
+    expect(formatLocalMoment('2026-10-27T08:00:00.000Z', 'en')).toBe('Tue 2026-10-27 09:00')
+    expect(formatLocalSpan('2026-10-27T22:00:00.000Z', '2026-10-28T00:30:00.000Z', 'en')).toBe(
+      'Tue 2026-10-27 23:00 – Wed 2026-10-28 01:30'
     )
+    expect(formatLocalSpan('2025-10-26T00:15:00.000Z', '2025-10-26T02:15:00.000Z', 'en')).toBe(
+      'Sun 2025-10-26 02:15 (+02:00)–03:15 (+01:00)'
+    )
+    const p = parseZonedTimestamp('2026-10-27T09:00:00+02:00')
+    if (!p.ok) throw new Error('should parse')
+    expect(offsetHintParts(p.iso, p.offsetMin, 'en')).toMatchObject({ day: '2026-10-27' })
   })
 
   it('has no note for the matching offset or for Z', () => {
@@ -170,7 +188,7 @@ describe('local time for confirmation and preview (Europe/Berlin)', () => {
     for (const v of ['2026-10-27T09:00:00+01:00', '2026-10-27T09:00:00Z']) {
       const p = parseZonedTimestamp(v)
       if (!p.ok) throw new Error('should parse')
-      expect(offsetHint(p.iso, p.offsetMin), v).toBeNull()
+      expect(offsetHintParts(p.iso, p.offsetMin, 'de'), v).toBeNull()
     }
   })
 })

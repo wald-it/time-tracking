@@ -30,3 +30,19 @@ export function translate(
   }
   return s
 }
+
+/**
+ * `translate` for texts that carry outside data (client names, MCP free text,
+ * error messages): every `{name}` slot is filled in one pass, so a value that
+ * itself contains `{…}` stays as written instead of being filled in turn.
+ * An unknown slot stays as written too.
+ */
+export function translateLiteral(
+  strings: Record<string, string>,
+  key: string,
+  vars: Record<string, string | number> = {}
+): string {
+  return (strings[key] ?? key).replace(/\{(\w+)\}/g, (slot, name: string) =>
+    Object.hasOwn(vars, name) ? String(vars[name]) : slot
+  )
+}

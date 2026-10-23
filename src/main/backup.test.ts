@@ -212,8 +212,7 @@ describe('restoreBackup', () => {
   // Owner review #253: with the database still open elsewhere the restore
   // must not happen, must leave the file untouched, and must say so.
   it('a side file that cannot be removed leaves the database file untouched and reports it', async () => {
-    const { restoreBackupOrReport, DbInUseError, replaceDbFile, RESTORE_IN_USE_MESSAGE } =
-      await loadBackup()
+    const { restoreBackupOrReport, DbInUseError, replaceDbFile } = await loadBackup()
     const currentDb = join(userDataDir, 'current.sqlite')
     const backupSrc = walDb(join(userDataDir, 'backup.sqlite'), 'BACKUP')
     backupSrc.close()
@@ -228,15 +227,37 @@ describe('restoreBackup', () => {
     expect(() => replaceDbFile(backup, currentDb)).toThrow(DbInUseError)
 
     const reports: Array<[string, string]> = []
-    const res = restoreBackupOrReport(db, backup, currentDb, (title, message) =>
+    const res = restoreBackupOrReport(db, backup, currentDb, 'de', (title, message) =>
       reports.push([title, message])
     )
-    expect(res).toEqual({ ok: false, error: RESTORE_IN_USE_MESSAGE })
-    expect(reports).toHaveLength(1)
-    expect(reports[0][1]).toMatch(/anderen Programm geöffnet/)
+    const inUse =
+      'Wiederherstellung nicht durchgeführt — die Datenbank ist noch in einem anderen Programm ' +
+      'geöffnet (z. B. ein MCP-Client wie Claude Desktop). Programm beenden und erneut versuchen.'
+    expect(res).toEqual({ ok: false, error: inUse })
+    expect(reports).toEqual([['TimeTrack — Wiederherstellung nicht durchgeführt', inUse]])
     other.close()
     lockedSuffix = null
     expect(readValues(currentDb)).toEqual(['CURRENT'])
+  })
+
+  // #270: the same failure in English.
+  it('reports a failed restore in the language it is given', async () => {
+    const { restoreBackupOrReport } = await loadBackup()
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: Array<[string, string]> = []
+    const res = restoreBackupOrReport(
+      db,
+      join(userDataDir, 'missing.sqlite'),
+      currentDb,
+      'en',
+      (title, message) => reports.push([title, message])
+    )
+    expect(res.ok).toBe(false)
+    expect(reports).toHaveLength(1)
+    expect(reports[0][0]).toBe('TimeTrack — Backup not restored')
+    expect(reports[0][1]).toMatch(/^Backup not restored: /)
+    db.close()
   })
 
   it('a successful restore reports nothing', async () => {
@@ -246,8 +267,12 @@ describe('restoreBackup', () => {
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: string[] = []
-    const res = restoreBackupOrReport(db, join(userDataDir, 'backup.sqlite'), currentDb, (t) =>
-      reports.push(t)
+    const res = restoreBackupOrReport(
+      db,
+      join(userDataDir, 'backup.sqlite'),
+      currentDb,
+      'de',
+      (t) => reports.push(t)
     )
     expect(res.ok).toBe(true)
     expect(reports).toEqual([])
@@ -318,7 +343,9 @@ describe('restoreListedBackupOrReport', () => {
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: string[] = []
-    const res = restoreListedBackupOrReport(db, NAME, undefined, currentDb, (t) => reports.push(t))
+    const res = restoreListedBackupOrReport(db, NAME, undefined, currentDb, 'de', (t) =>
+      reports.push(t)
+    )
     expect(res.ok).toBe(true)
     expect(reports).toEqual([])
     expect(readValues(currentDb)).toEqual(['BACKUP'])
@@ -330,18 +357,37 @@ describe('restoreListedBackupOrReport', () => {
     ['a name that is not listed', () => 'backup-manual-unknown.sqlite'],
     ['a value that is not a string', () => ({ filename: NAME })]
   ])('refuses %s and leaves the database open and unchanged', async (_label, value) => {
-    const { restoreListedBackupOrReport, getBackupsDir, RESTORE_UNKNOWN_MESSAGE } =
-      await loadBackup()
+    const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
     const dir = getBackupsDir()
     listedBackup(dir)
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: string[] = []
-    const res = restoreListedBackupOrReport(db, value(dir), undefined, currentDb, (_t, m) =>
+    const res = restoreListedBackupOrReport(db, value(dir), undefined, currentDb, 'de', (_t, m) =>
       reports.push(m)
     )
-    expect(res).toEqual({ ok: false, error: RESTORE_UNKNOWN_MESSAGE })
-    expect(reports).toEqual([RESTORE_UNKNOWN_MESSAGE])
+    const unknown =
+      'Wiederherstellung nicht durchgeführt — diese Backup-Datei steht nicht in der Backup-Liste.'
+    expect(res).toEqual({ ok: false, error: unknown })
+    expect(reports).toEqual([unknown])
+    expect(db.open).toBe(true)
+    db.close()
+    expect(readValues(currentDb)).toEqual(['CURRENT'])
+  })
+
+  // #270: the refusal speaks the app language.
+  it('refuses an unlisted name in the language it is given', async () => {
+    const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
+    listedBackup(getBackupsDir())
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: Array<[string, string]> = []
+    const res = restoreListedBackupOrReport(db, 'nope.sqlite', undefined, currentDb, 'en', (t, m) =>
+      reports.push([t, m])
+    )
+    const message = 'Backup not restored: this backup file is not in the backup list.'
+    expect(res).toEqual({ ok: false, error: message })
+    expect(reports).toEqual([['TimeTrack — Backup not restored', message]])
     expect(db.open).toBe(true)
     db.close()
     expect(readValues(currentDb)).toEqual(['CURRENT'])
@@ -355,7 +401,7 @@ describe('restoreListedBackupOrReport', () => {
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: string[] = []
-    const res = restoreListedBackupOrReport(db, NAME, blocked, currentDb, (_t, m) =>
+    const res = restoreListedBackupOrReport(db, NAME, blocked, currentDb, 'de', (_t, m) =>
       reports.push(m)
     )
     expect(res.ok).toBe(false)
@@ -370,7 +416,7 @@ describe('restoreListedBackupOrReport', () => {
     const customDir = getBackupsDir(join(userDataDir, 'custom'))
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
-    const res = restoreListedBackupOrReport(db, NAME, customDir, currentDb, () => {})
+    const res = restoreListedBackupOrReport(db, NAME, customDir, currentDb, 'de', () => {})
     expect(res.ok).toBe(false)
     expect(db.open).toBe(true)
     db.close()
@@ -382,7 +428,7 @@ describe('restoreListedBackupOrReport', () => {
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: string[] = []
-    const res = restoreListedBackupOrReport(db, NAME, undefined, currentDb, (_t, m) =>
+    const res = restoreListedBackupOrReport(db, NAME, undefined, currentDb, 'de', (_t, m) =>
       reports.push(m)
     )
     expect(res.ok).toBe(false)

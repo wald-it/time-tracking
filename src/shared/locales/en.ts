@@ -848,5 +848,60 @@ export const en: Record<TranslationKey, string> = {
 
   // ── TagInput — closed system (v1.12 #107) ─────────────────────────────────
   'tags.createOption': "+ Create '{tag}'",
-  'tags.manageLink': 'Manage tags →'
+  'tags.manageLink': 'Manage tags →',
+
+  // ── Native dialogs of the main process (#270) ─────────────────────────────
+  // Same meaning as the German texts, which are the owner's wording.
+  'mainDialog.mcp.title': 'TimeTrack — MCP write access',
+  'mainDialog.mcp.message': 'Claude wants to make a change in TimeTrack:',
+  'mainDialog.mcp.deny': 'Deny',
+  'mainDialog.mcp.allow': 'Allow',
+  'mainDialog.mcp.remember': 'Remember for this session (stop asking)',
+  'mainDialog.mcp.create': 'Add entry — client {client}, {span} ({minutes} min)',
+  'mainDialog.mcp.update': 'Change entry #{id} — before {before}, after {after}',
+  'mainDialog.mcp.start': 'Start timer — client {client}, {from}{ends}',
+  'mainDialog.mcp.startFrom': 'from {moment}',
+  'mainDialog.mcp.startNow': 'from now',
+  'mainDialog.mcp.startEnds': '; ends #{id} ({client}) at {time}',
+  'mainDialog.mcp.stop': 'Stop the running timer (entry #{id})',
+  'mainDialog.mcp.stopNone': 'Stop the running timer (none running)',
+  'mainDialog.mcp.field.start': 'Start',
+  'mainDialog.mcp.field.end': 'End',
+  'mainDialog.mcp.field.client': 'Client',
+  'mainDialog.mcp.field.project': 'Project',
+  'mainDialog.mcp.field.billable': 'billable',
+  'mainDialog.mcp.field.description': 'Description',
+  'mainDialog.mcp.field.tags': 'Tags',
+  'mainDialog.mcp.field.reference': 'Reference',
+  'mainDialog.mcp.field.privateNote': 'private note',
+  'mainDialog.mcp.noProject': 'No project',
+  'mainDialog.mcp.empty': '(empty)',
+  'mainDialog.mcp.yes': 'yes',
+  'mainDialog.mcp.no': 'no',
+  'mainDialog.mcp.offsetHint':
+    'Note: {offset} is not the local offset on {day} ({local}). Saved as {time} local time.',
+  'mainDialog.hotkey.title': 'TimeTrack — Hotkey conflict',
+  'mainDialog.hotkey.message': 'The mini widget hotkey "{hotkey}" could not be registered.',
+  'mainDialog.hotkey.detail':
+    'Another application already uses this key combination.\n\nYou can choose a different hotkey in Settings.',
+  'mainDialog.ok': 'OK',
+  'mainDialog.migration.title': 'TimeTrack — Database migration failed',
+  'mainDialog.migration.message':
+    'Migration #{version} ({name}) failed:\n\n{cause}\n\nYour database was restored from the pre-migration backup:\n{backupPath}\n\nThe app will now quit. Please report this error.',
+  'mainDialog.dbError.title': 'TimeTrack — Database error',
+  'mainDialog.dbError.message': 'The database could not be opened:\n\n{cause}',
+  'mainDialog.restore.title': 'TimeTrack — Backup not restored',
+  'mainDialog.restore.inUse':
+    'Backup not restored: the database is still open in another program (for example an MCP client such as Claude Desktop). Quit that program and try again.',
+  'mainDialog.restore.failed': 'Backup not restored: {cause}',
+  'mainDialog.restore.unknown': 'Backup not restored: this backup file is not in the backup list.',
+  'mainDialog.backupPath.title': 'Choose backup folder',
+  'mainDialog.exportJson.title': 'Save data export',
+  'mainDialog.pdf.saveTitle': 'Save timesheet',
+  'mainDialog.pdf.openTitle': 'Choose PDF',
+  'mainDialog.pdf.mergeSaveTitle': 'Save merged PDF',
+  'mainDialog.logo.title': 'Choose logo',
+  'mainDialog.logo.filter': 'Images',
+  'mainDialog.csv.title': 'Save CSV',
+  'mainDialog.ical.title': 'Save iCal'
 } as const satisfies Record<TranslationKey, string>

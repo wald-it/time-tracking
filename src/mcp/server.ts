@@ -74,6 +74,40 @@ function errorResult(e: unknown): {
   return { content: [{ type: 'text', text: `Fehler: ${String(e)}` }], isError: true }
 }
 
+/**
+ * MCP tool annotations (#300), so a client can tell read tools from write
+ * tools without parsing descriptions. Hints only: the app's write guards
+ * (opt-in, token, confirmation) stay the enforcement, so each hint states the
+ * tool's real effect rather than a reassuring default.
+ *
+ * Reads only open the local database: openWorldHint false. Every write can
+ * fire the user's outbound webhooks to URLs of their choosing, so writes are
+ * openWorldHint true.
+ */
+const READ_TOOL_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const
+
+/**
+ * idempotentHint stays false for every write, so no client retries one on its
+ * own: create, start and stop act again on a repeat. update would fail on its
+ * now-stale id, but a client cannot tell that from the hint.
+ */
+const writeTool = (destructiveHint: boolean) =>
+  ({ readOnlyHint: false, destructiveHint, idempotentHint: false, openWorldHint: true }) as const
+
+const WRITE_TOOL_ANNOTATIONS = {
+  /** Only adds: a new, finished entry. */
+  create_manual_entry: writeTool(false),
+  /** Deletes the entry's rows (every linked midnight segment) and inserts the
+   * edited range under a new id; the old id is gone afterwards. */
+  update_entry_fields: writeTool(true),
+  /** Ends every entry still without a stop time at the new start, which may
+   * lie in the past or up to a minute ahead. */
+  start_timer: writeTool(true),
+  /** Ends the entry that is running when the write executes, after any
+   * confirmation. It takes no id, so this need not be the one shown. */
+  stop_running_timer: writeTool(true)
+} as const
+
 export function buildServer(): McpServer {
   const server = new McpServer(
     { name: 'timetrack', version: '0.1.0' },
@@ -92,6 +126,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'list_clients',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Kunden auflisten',
       description:
         'Alle Kunden (Name, Farbe, USt-ID, Ansprechpartner). Standardmäßig nur aktive; ' +
@@ -123,6 +158,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'list_projects',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Projekte auflisten',
       description:
         'Projekte inkl. Status, Budget, verbrauchten Minuten und Eintragszahl. ' +
@@ -166,6 +202,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'list_entries',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Zeiteinträge auflisten',
       description:
         'Zeiteinträge in einem Zeitraum — entweder per year+month (lokaler Kalendermonat, ' +
@@ -239,6 +276,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'get_running_timer',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Laufenden Timer abfragen',
       description: 'Gibt den aktuell laufenden Eintrag zurück, oder null wenn kein Timer läuft.',
       inputSchema: {}
@@ -256,6 +294,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'get_dashboard',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Dashboard-Übersicht',
       description:
         'Heutige und wöchentliche Gesamtdauer (Sekunden), die letzten 5 Einträge und die ' +
@@ -275,6 +314,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'get_analytics',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Monatsauswertung',
       description:
         'Monatliche Auswertung: Gesamt-/abrechenbare Sekunden, distinct_client_count sowie ' +
@@ -346,6 +386,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'create_manual_entry',
     {
+      annotations: WRITE_TOOL_ANNOTATIONS.create_manual_entry,
       title: 'Eintrag nachtragen',
       description: `Legt einen abgeschlossenen Zeiteintrag an (Start + Ende). ${WRITE_HINT}`,
       inputSchema: {
@@ -388,6 +429,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'update_entry_fields',
     {
+      annotations: WRITE_TOOL_ANNOTATIONS.update_entry_fields,
       title: 'Eintrag bearbeiten',
       description: `Ändert Felder eines bestehenden Eintrags (nur angegebene Felder). Laufende Timer sind ausgenommen. ${WRITE_HINT}`,
       inputSchema: {
@@ -432,6 +474,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'start_timer',
     {
+      annotations: WRITE_TOOL_ANNOTATIONS.start_timer,
       title: 'Timer starten',
       description: `Startet einen laufenden Timer für einen Kunden. Ein laufender Timer endet zur Startzeit des neuen; die Startzeit darf nicht vor seinem Beginn und höchstens eine Minute in der Zukunft liegen. ${WRITE_HINT}`,
       inputSchema: {
@@ -461,6 +504,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'stop_running_timer',
     {
+      annotations: WRITE_TOOL_ANNOTATIONS.stop_running_timer,
       title: 'Laufenden Timer stoppen',
       description: `Stoppt den aktuell laufenden Timer (falls einer läuft). ${WRITE_HINT}`,
       inputSchema: {
