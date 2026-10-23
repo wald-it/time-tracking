@@ -725,8 +725,11 @@ describe('reconcilePresence', () => {
     expect(logs.some((l) => /read-back .*statusMessage=matches/.test(l))).toBe(true)
   })
 
-  it('the injected app language reaches the Teams text: English gives "🔴 Focus" (#347)', async () => {
-    const { deps } = makeDeps({ language: 'en', showClient: true })
+  it('the injected app language, not the setting, decides the Teams text (#347)', async () => {
+    // The setting says German, the injected locale English: only a module that
+    // takes the language from getLocale writes "Focus".
+    const { deps } = makeDeps({ language: 'de', showClient: true })
+    deps.getLocale = () => 'en'
     await reconcilePresence(deps, RUNNING)
     expect(teams.content).toBe('🔴 Focus: Acme — Rollout')
   })

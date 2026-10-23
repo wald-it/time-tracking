@@ -267,8 +267,7 @@ describe('#296 — one way to the app language in the main process', () => {
   // Tray, dialogs, file names and the update notification (#309) all go
   // through appLocale, so they answer alike, also with the handle closed.
   // graphPresence.ts (the Teams status text) and updater.ts get the language
-  // injected as `getLocale`; index.ts passes its appLanguage wrapper around
-  // appLocale (#347).
+  // injected as `getLocale`; index.ts passes wrappers around appLocale (#347).
   // Allowed exceptions:
   // - mainI18n.ts: defines the rule.
   // - mcpBridgeCore.ts: Electron-free, reads the open database of the MCP
@@ -276,8 +275,9 @@ describe('#296 — one way to the app language in the main process', () => {
   // A text heuristic over the files directly under src/main: it sees these
   // calls by name, not a hand-written `=== 'en'`, a raw SELECT or an alias.
   // That index.ts wires appLocale into the updater and into graphPresence is
-  // not tested (no harness for index.ts); each module's own tests check that
-  // the injected language reaches its text.
+  // not tested (no harness for index.ts). graphPresence.test.ts checks that
+  // the injected language, not the setting, decides the Teams text; a setting
+  // read under another name than these would still slip past this heuristic.
   it('no other main-process source reads the language itself', () => {
     const allowed = new Set(['mainI18n.ts', 'mcpBridgeCore.ts'])
     const hits = readdirSync(__dirname)
