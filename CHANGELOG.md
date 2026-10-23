@@ -15,6 +15,7 @@ All notable changes to TimeTrack are documented here.
 
 - **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).
 - **The About dialog shows the app's actual licence** — Its licence text was a separate copy that named a different copyright holder than the `LICENSE` file. The dialog now takes the text from `LICENSE` when the app is built, so the two can no longer differ ([#276](https://github.com/wald-it/time-tracking/issues/276)).
+- **A failed update download shows as an error.** After a successful update check at start, TimeTrack ignored the next update error. If the download of a found update then failed, Settings → About → Updates showed "Ready" instead of the error. A check at start that fails because the computer is offline still stays quiet ([#284](https://github.com/wald-it/time-tracking/issues/284)).
 
 ## [1.22.0] — 2026-10-23
 

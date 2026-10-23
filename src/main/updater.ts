@@ -23,7 +23,9 @@ export type { UpdateStatus }
 
 let lastStatus: UpdateStatus = { status: 'idle' }
 let lastCheckIso: string | null = null
-let suppressNextError = false // for offline-tolerant initial check
+// For the offline-tolerant initial check only: set when it starts, cleared when
+// it settles (#284). Left set, it would swallow the next unrelated error.
+let suppressNextError = false
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -275,8 +277,17 @@ export function initAutoUpdater(opts: {
   if (!opts.isDev && startupCheckEnabled(opts.getSetting)) {
     suppressNextError = true
     lastCheckIso = new Date().toISOString()
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      log.warn('Initial update check failed:', err.message)
-    })
+    // electron-updater emits `error` before it rejects, so an offline start is
+    // already consumed by the handler above when this settles. A successful
+    // check never emits one: clear the flag here, or it swallows the error of
+    // the next manual check or of the background download (#284).
+    autoUpdater
+      .checkForUpdatesAndNotify()
+      .catch((err) => {
+        log.warn('Initial update check failed:', err.message)
+      })
+      .finally(() => {
+        suppressNextError = false
+      })
   }
 }
