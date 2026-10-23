@@ -166,6 +166,20 @@ export async function performUpdateInstall(deps: {
 }
 
 /**
+ * The switch as stored (#273). A failed read must not take the rest of the
+ * startup down with it (initAutoUpdater runs in the middle of whenReady), so
+ * it falls back to the default, which is on.
+ */
+function startupCheckEnabled(getSetting: (key: string) => string | undefined): boolean {
+  try {
+    return isUpdateCheckEnabled(getSetting(UPDATE_CHECK_SETTING_KEY))
+  } catch (err) {
+    log.warn('[updater] could not read the update-check setting, using the default:', err)
+    return isUpdateCheckEnabled(undefined)
+  }
+}
+
+/**
  * Initialize the updater. Must be called after `app.whenReady()`.
  *
  * In dev mode (no packaged app) this is a no-op except for IPC handler
@@ -257,7 +271,7 @@ export function initAutoUpdater(opts: {
   // ── Initial silent check ──────────────────────────────────
   // Don't surface errors here — offline app starts shouldn't show a banner.
   // Switched off (#273): no request to GitHub at start, so nothing to download.
-  if (!opts.isDev && isUpdateCheckEnabled(opts.getSetting(UPDATE_CHECK_SETTING_KEY))) {
+  if (!opts.isDev && startupCheckEnabled(opts.getSetting)) {
     suppressNextError = true
     lastCheckIso = new Date().toISOString()
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {

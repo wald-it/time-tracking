@@ -32,8 +32,12 @@ vi.mock('electron-log/main', () => ({
 }))
 vi.mock('electron-updater', () => ({ default: { autoUpdater: updater } }))
 
-import { initAutoUpdater } from './updater'
 import { UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
+
+// updater.ts keeps module-level state (last status, last check, the
+// suppressed first error), and the app calls initAutoUpdater once per run —
+// so every test gets a fresh copy of the module.
+let initAutoUpdater: typeof import('./updater').initAutoUpdater
 
 function init(stored: string | undefined, isDev = false): void {
   initAutoUpdater({
@@ -42,7 +46,9 @@ function init(stored: string | undefined, isDev = false): void {
   })
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules()
+  ;({ initAutoUpdater } = await import('./updater'))
   handlers.clear()
   updater.checkForUpdates.mockClear()
   updater.checkForUpdatesAndNotify.mockClear()
@@ -73,6 +79,19 @@ describe('update check at start (#273)', () => {
   it('never set (existing installations): checks at start', () => {
     init(undefined)
     expect(updater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed settings read does not abort startup and falls back to the default (on)', () => {
+    expect(() =>
+      initAutoUpdater({
+        isDev: false,
+        getSetting: () => {
+          throw new Error('database is locked')
+        }
+      })
+    ).not.toThrow()
+    expect(updater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1)
+    expect(handlers.has('update:check')).toBe(true)
   })
 
   it('dev mode: no check at start even when switched on', () => {

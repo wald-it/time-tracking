@@ -1290,10 +1290,7 @@ function UpdatesSection({
       <Row label={t('settings.update.autoCheck')} hint={t('settings.update.autoCheckHint')}>
         <Toggle checked={autoCheck} onChange={onAutoCheckChange} />
       </Row>
-      <Row
-        label={t('settings.update.actions')}
-        hint={t(autoCheck ? 'settings.update.autoInfo' : 'settings.update.manualInfo')}
-      >
+      <Row label={t('settings.update.actions')} hint={t('settings.update.autoInfo')}>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"

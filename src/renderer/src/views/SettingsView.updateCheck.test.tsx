@@ -82,11 +82,10 @@ describe('Settings → Updates: automatic check switch (#273)', () => {
     expect(autoCheckSwitch().getAttribute('aria-checked')).toBe('false')
   })
 
-  it('stored off: shows off, explains the manual check, and "Check now" still checks', async () => {
+  it('stored off: shows off, and "Check now" still checks', async () => {
     const { set, check } = mockApi({ update_check_enabled: '0' })
     await openUpdates()
     expect(autoCheckSwitch().getAttribute('aria-checked')).toBe('false')
-    expect(screen.getByText(de['settings.update.manualInfo'])).toBeTruthy()
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: de['settings.update.checkNow'] }))

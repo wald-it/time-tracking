@@ -41,10 +41,11 @@ The request carries no user identifier, no device data and no time entries —
 GitHub sees the usual request data (IP address, user agent).
 
 You can turn this off under **Settings → About → Updates** with **Check for
-updates automatically**. When it is off, the app makes no request at start and
-downloads nothing on its own. It contacts GitHub only when you click **Check for
-updates now**; if that check finds a new version, the app downloads it in the
-background as above. The switch applies from the next start.
+updates automatically**. The switch applies from the next start: a check that
+already ran in the current session, and a download it started, are not undone.
+From then on the app makes no request at start and downloads nothing on its own.
+It contacts GitHub only when you click **Check for updates now**; if that check
+finds a new version, the app downloads it in the background as above.
 
 ## Optional integrations (all off until you set them up)
 
