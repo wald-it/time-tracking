@@ -243,11 +243,13 @@ describe('reconcilePresence', () => {
 
   it('clears with empty content on stop — but only after having set something', async () => {
     const { deps, calls } = makeDeps()
-    // Idle, never set → must not change Teams. Since #317 the first poke of a
-    // run may READ the presence (to withdraw a status a crash left behind),
-    // but it writes nothing.
+    // Idle, never set → must not touch the user's status. Since #317 the first
+    // poke of a run reads the presence (to withdraw a status a crash left
+    // behind), and since #331 it ends our own Busy session once, because an
+    // availability the user set can hide it. No status message is written.
     await reconcilePresence(deps, null)
-    expect(writes(calls)).toHaveLength(0)
+    expect(statusCalls(calls)).toHaveLength(0)
+    expect(writes(calls).map((c) => c.url.split('/presence/')[1])).toEqual(['clearPresence'])
     await reconcilePresence(deps, RUNNING)
     await reconcilePresence(deps, null)
     const set = statusCalls(calls)

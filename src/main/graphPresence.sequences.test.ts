@@ -12,6 +12,37 @@
  * availability the user set (which hides the Busy). Every request can
  * succeed, be lost before Teams sees it, or reach Teams and lose its answer.
  *
+ * Its semantics, against Microsoft Graph v1.0 (learn.microsoft.com, pages
+ * updated 2025-08/09, read 2026-10-23):
+ *  - setPresence: "Provide the ID of the application as sessionId"; sets that
+ *    application's presence session (presence-setpresence).
+ *  - clearPresence: "Clear the application's presence session for a user";
+ *    "If the presence session doesn't exist, this method returns a 404
+ *    NotFound" (presence-clearpresence). So it touches only our session.
+ *  - setUserPreferredPresence: "If the preferred presence of a user is set,
+ *    the user's presence shows as the preferred status" — the user's own
+ *    availability hides our Busy (presence-setuserpreferredpresence).
+ *  - setStatusMessage: "An optional expiration date and time can be
+ *    supplied"; without one the message stays (presence-setstatusmessage).
+ *    The fake does not model expiry at all, which only makes it stricter.
+ * Simplifications and guesses, not from the docs:
+ *  - Clearing with empty content is community practice, not documented.
+ *  - After clearPresence the fake shows "Available"; Graph shows
+ *    "Offline/Offline" when it was the only session. No check here depends
+ *    on that value, only on "Busy" and the user's own availability.
+ *  - Writes are atomic and the next GET sees them ("lost answer" means the
+ *    write took effect, nothing in between). Graph documents no consistency
+ *    window; a delayed write is not modelled.
+ *
+ * The generator also signs the account out and loses the token at times:
+ * (iv) then no request at all goes out, and a token is not even asked for
+ * while signed out. Every poke stays a single pass (at most five requests).
+ *
+ * Known exception, named instead of hidden: the user types a message in
+ * TimeTrack's exact form ("🔴 Fokus…"). Recognising a leftover by shape
+ * (#317) cannot tell it apart, so TimeTrack may clear it. Counted and
+ * reported, not a violation — and only that one case.
+ *
  * Invariants, checked after a calm phase (network healthy, timer stopped,
  * a few pokes) with the feature switch as the sequence left it:
  *  (i)   No message TimeTrack sent is left in Teams if the current run knows
@@ -56,6 +87,10 @@ type Outcome = 'ok' | 'lostBefore' | 'lostAfter'
 
 const CLIENTS = ['Acme', 'Beta', 'Gamma']
 const USER_TEXTS = ['Back at 3', 'Out until Monday', '<OOO>', 'In a workshop']
+/** Messages a user could type that are exactly in TimeTrack's form. */
+const USER_TEXTS_IN_OUR_FORM = ['🔴 Fokus', '🔴 Fokus: Acme — Rollout']
+const OUR_FORM = /^🔴 (Fokus|Focus)(: .+)?$/u
+const MAX_REQUESTS_PER_POKE = 5
 
 function running(client: string): RunningStatus {
   return {
@@ -80,11 +115,18 @@ interface World {
   userText: string | null
   overwrittenSince: boolean
   violations: string[]
+  /** User messages in TimeTrack's form that TimeTrack cleared (accepted, #317). */
+  exceptions: number
   log: string[]
   network: () => Outcome
   readFails: () => boolean
   enabled: boolean
   showClient: boolean
+  connected: boolean
+  hasToken: boolean
+  /** Requests and token requests during the current poke. */
+  requests: number
+  tokenAsks: number
   now: number
 }
 
@@ -92,6 +134,7 @@ function makeDeps(w: World): PresenceDeps {
   const fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url)
     const method = init?.method ?? 'GET'
+    w.requests++
     if (u.includes('/me?$select=id')) {
       return new Response(JSON.stringify({ id: 'user-1' }), { status: 200 })
     }
@@ -127,7 +170,14 @@ function makeDeps(w: World): PresenceDeps {
         const content: string = body.statusMessage.message.content
         if (content === '') {
           if (w.teams.author === 'user' && !w.overwrittenSince) {
-            w.violations.push(`(ii) cleared the user's message ${JSON.stringify(w.teams.content)}`)
+            if (w.teams.content !== null && OUR_FORM.test(w.teams.content)) {
+              w.exceptions++
+              w.log.push('  (accepted: the user had typed TimeTrack’s form)')
+            } else {
+              w.violations.push(
+                `(ii) cleared the user's message ${JSON.stringify(w.teams.content)}`
+              )
+            }
           }
           w.teams.content = null
           w.teams.author = null
@@ -169,11 +219,14 @@ function makeDeps(w: World): PresenceDeps {
             ? 'de'
             : undefined,
     getAccountStatus: () => ({
-      connected: true,
+      connected: w.connected,
       personalAccount: false,
       grantedScopes: ['Presence.ReadWrite']
     }),
-    getAccessToken: async () => 'tok',
+    getAccessToken: async () => {
+      w.tokenAsks++
+      return w.hasToken ? 'tok' : null
+    },
     getClientId: () => 'app-client-id',
     fetchFn,
     now: () => w.now,
@@ -185,7 +238,9 @@ function makeDeps(w: World): PresenceDeps {
 const STEPS = 25
 const CALM_POKES = 3
 
-async function runSequence(seed: number): Promise<{ violations: string[]; log: string[] }> {
+async function runSequence(
+  seed: number
+): Promise<{ violations: string[]; exceptions: number; log: string[] }> {
   const rnd = mulberry32(seed)
   const pick = <T>(xs: T[]): T => xs[Math.floor(rnd() * xs.length)]
   let failRate = 0.3
@@ -197,6 +252,7 @@ async function runSequence(seed: number): Promise<{ violations: string[]; log: s
     userText: null,
     overwrittenSince: false,
     violations: [],
+    exceptions: 0,
     log: [],
     network: () => {
       const r = rnd()
@@ -205,7 +261,26 @@ async function runSequence(seed: number): Promise<{ violations: string[]; log: s
     readFails: () => rnd() < failRate / 2,
     enabled: true,
     showClient: rnd() < 0.5,
+    connected: true,
+    hasToken: true,
+    requests: 0,
+    tokenAsks: 0,
     now: 1_750_000_000_000
+  }
+  /** One poke, with the per-poke invariants (iv). */
+  const poke = async (step: string): Promise<void> => {
+    w.requests = 0
+    w.tokenAsks = 0
+    await reconcilePresence(deps, timer)
+    if (!w.connected && (w.requests > 0 || w.tokenAsks > 0)) {
+      w.violations.push(
+        `(iv) ${step}: signed out, yet ${w.requests} requests, ${w.tokenAsks} token asks`
+      )
+    } else if (!w.hasToken && w.requests > 0) {
+      w.violations.push(`(iv) ${step}: no token, yet ${w.requests} requests`)
+    } else if (w.requests > MAX_REQUESTS_PER_POKE) {
+      w.violations.push(`(iv) ${step}: ${w.requests} requests in one poke`)
+    }
   }
   resetPresenceStateForTests()
   const deps = makeDeps(w)
@@ -221,38 +296,47 @@ async function runSequence(seed: number): Promise<{ violations: string[]; log: s
       timer = null
       w.log.push(`step ${step}: stop`)
     } else if (r < 0.6) {
-      const text = pick(USER_TEXTS)
+      // Rarely, the user types TimeTrack's exact form (the #317 limit).
+      const text = rnd() < 0.05 ? pick(USER_TEXTS_IN_OUR_FORM) : pick(USER_TEXTS)
       w.teams.content = text
       w.teams.author = 'user'
       w.userText = text
       w.overwrittenSince = false
       w.log.push(`step ${step}: user writes ${JSON.stringify(text)}`)
-    } else if (r < 0.68) {
+    } else if (r < 0.66) {
       w.teams.userAvailability = pick([null, 'DoNotDisturb', 'Away'])
       w.log.push(`step ${step}: user availability ${w.teams.userAvailability}`)
-    } else if (r < 0.76) {
+    } else if (r < 0.72) {
       w.enabled = !w.enabled
       w.log.push(`step ${step}: feature ${w.enabled ? 'on' : 'off'}`)
-    } else if (r < 0.84) {
+    } else if (r < 0.78) {
       // Crash or quit: the module forgets, Teams keeps everything.
       resetPresenceStateForTests()
       w.knownTexts = new Set()
       w.knownSession = false
       timer = null
       w.log.push(`step ${step}: restart`)
+    } else if (r < 0.83) {
+      w.connected = !w.connected
+      w.log.push(`step ${step}: ${w.connected ? 'signed in' : 'signed out'}`)
+    } else if (r < 0.88) {
+      w.hasToken = !w.hasToken
+      w.log.push(`step ${step}: token ${w.hasToken ? 'back' : 'lost'}`)
     } else {
       w.log.push(`step ${step}: poke`)
     }
-    await reconcilePresence(deps, timer)
+    await poke(`step ${step}`)
   }
 
-  // Calm phase: healthy network, timer stopped, a few pokes.
+  // Calm phase: healthy network, signed in, timer stopped, a few pokes.
   failRate = 0
+  w.connected = true
+  w.hasToken = true
   timer = null
-  w.log.push('calm: timer stopped, network healthy')
+  w.log.push('calm: timer stopped, signed in, network healthy')
   for (let i = 0; i < CALM_POKES; i++) {
     w.now += 60 * 1000
-    await reconcilePresence(deps, timer)
+    await poke(`calm ${i}`)
   }
 
   const left = w.teams.content
@@ -266,7 +350,7 @@ async function runSequence(seed: number): Promise<{ violations: string[]; log: s
   if (w.teams.session && (w.enabled || w.knownSession)) {
     w.violations.push(`(iii) Busy session left (feature ${w.enabled ? 'on' : 'off'})`)
   }
-  return { violations: w.violations, log: w.log }
+  return { violations: w.violations, exceptions: w.exceptions, log: w.log }
 }
 
 describe('presence under random failure sequences (#331)', () => {
@@ -277,12 +361,21 @@ describe('presence under random failure sequences (#331)', () => {
 
   it(`holds the invariants over ${seeds.length} seeded sequences`, async () => {
     const failures: Array<{ head: string; log: string }> = []
+    let exceptions = 0
     for (const seed of seeds) {
-      const { violations, log } = await runSequence(seed)
-      if (violations.length > 0) {
-        failures.push({ head: `seed ${seed}: ${violations.join('; ')}`, log: log.join('\n') })
+      const result = await runSequence(seed)
+      exceptions += result.exceptions
+      if (result.violations.length > 0) {
+        failures.push({
+          head: `seed ${seed}: ${result.violations.join('; ')}`,
+          log: result.log.join('\n')
+        })
       }
     }
+    // The accepted #317 exception, reported rather than hidden.
+    console.info(
+      `#331: ${exceptions} user message(s) in TimeTrack's exact form cleared over ${seeds.length} seeds (accepted, shape not identity)`
+    )
     expect(
       failures.length,
       failures.length > 0
@@ -291,5 +384,11 @@ describe('presence under random failure sequences (#331)', () => {
             `\n\nStep log of the first:\n${failures[0].log}`
         : ''
     ).toBe(0)
+    // The generator must actually reach the accepted exception, or the
+    // oracle is blind to it (12 of 400 seeds at the time of writing). Only
+    // with all seeds: a single PRESENCE_SEED rarely contains it.
+    if (!only) {
+      expect(exceptions, 'no user message in TimeTrack’s form was ever cleared').toBeGreaterThan(0)
+    }
   }, 120_000)
 })

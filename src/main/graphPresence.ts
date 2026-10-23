@@ -15,8 +15,18 @@
  * text is gone, it recognises a leftover by the shape desiredMessage produces
  * (#317). Our Busy session (sessionId = our client id) is always ours.
  *
+ * Intents (#331): what this run may own or still owes in Teams is recorded
+ * BEFORE the request that could create it and dropped only on a confirmed
+ * result. A request can reach Teams and lose its answer; treating that as
+ * "nothing happened" left messages and Busy sessions behind in every order
+ * the reviews of #316–#318 found. graphPresence.sequences.test.ts drives
+ * random failure sequences against these rules.
+ *
+ * One pass per poke, never a retry loop: whatever is still owed waits for the
+ * next poke. Signed out, without the scope or without a token, nothing is
+ * sent at all — a clean-up never asks for a sign-in.
+ *
  * Failures are logged and swallowed — presence must never affect the timer.
- * The applied state is only updated on success, so the next poke retries.
  *
  * Docs (verified 2026-07-29): POST /users/{id}/presence/setStatusMessage,
  * delegated scope Presence.ReadWrite, v1.0; personal Microsoft accounts are
@@ -54,49 +64,63 @@ const EXPIRY_MS = 12 * 60 * 60 * 1000
  */
 const SESSION_DURATION = 'PT1H'
 const REFRESH_AFTER_MS = 25 * 60 * 1000
+/**
+ * How many unconfirmed texts are remembered as possibly ours. Dropping the
+ * oldest costs this: if that very text is what Teams shows, a stop no longer
+ * recognises it and it stays until its 12-hour expiry. It takes this many
+ * sends in a row without one confirmed set or one successful read to get
+ * there.
+ */
+const MAX_POSSIBLY_OURS = 8
 
-interface AppliedState {
-  /** The message content last successfully applied; '' after a clear; null = never touched. */
-  message: string | null
+interface Intents {
+  /**
+   * The full status (message + Busy) last confirmed for a running timer, so an
+   * unchanged state is not re-sent; null when none is confirmed. Never the
+   * basis for clearing: that is `possiblyOurs`.
+   */
+  applied: string | null
   at: number
   userId: string | null
   /**
-   * Whether this run has looked for a status a previous run left behind
-   * (#317). The applied state lives in memory only, so after a crash or quit
-   * nothing else would ever withdraw it.
+   * Every text sent with setStatusMessage since the last confirmed state,
+   * whatever the answer: each may be in Teams now. Added before the request,
+   * narrowed by a confirmed set, emptied once a read shows none of them left.
    */
-  swept: boolean
+  possiblyOurs: Set<string>
   /**
-   * The last message Teams accepted from us, even when the Busy session in
-   * the same set then failed: it is in Teams and ours, but `message` still
-   * holds the previous text.
+   * The start-up read found a message in our shape, left by a previous run
+   * (#317): withdraw it, recognised by shape since its exact text is gone.
    */
-  sent: string | null
+  shapeOwed: boolean
   /**
-   * The sweep withdrew a leftover message but ending the old Busy session
-   * failed: the next sweep must end it even though the message, its only
-   * trace, is gone and a manual availability may hide the Busy.
+   * Our Busy session may exist: set before every setPresence and when the
+   * start-up read shows Busy; dropped only when clearPresence is confirmed.
    */
-  sessionPending: boolean
+  sessionOwed: boolean
+  /** Whether this run has done its start-up read (#317). */
+  checked: boolean
 }
 
-const state: AppliedState = {
-  message: null,
+const state: Intents = {
+  applied: null,
   at: 0,
   userId: null,
-  swept: false,
-  sent: null,
-  sessionPending: false
+  possiblyOurs: new Set(),
+  shapeOwed: false,
+  sessionOwed: false,
+  checked: false
 }
 
-/** Test-only: forget everything this module has applied. */
+/** Test-only: forget everything — what a crash or quit does to this module. */
 export function resetPresenceStateForTests(): void {
-  state.message = null
+  state.applied = null
   state.at = 0
   state.userId = null
-  state.swept = false
-  state.sent = null
-  state.sessionPending = false
+  state.possiblyOurs = new Set()
+  state.shapeOwed = false
+  state.sessionOwed = false
+  state.checked = false
   queue = Promise.resolve()
   latest = 0
 }
@@ -149,6 +173,16 @@ function looksOurs(text: string): boolean {
   return OWN_MESSAGE.test(text)
 }
 
+/** Remember a text as possibly ours, before the request that sends it. */
+function rememberSent(text: string): void {
+  state.possiblyOurs.delete(text) // re-insert as the newest
+  state.possiblyOurs.add(text)
+  while (state.possiblyOurs.size > MAX_POSSIBLY_OURS) {
+    const oldest = state.possiblyOurs.values().next().value as string
+    state.possiblyOurs.delete(oldest)
+  }
+}
+
 function scopeGranted(view: PresenceAccountView): boolean {
   return view.grantedScopes.some((s) => s.toLowerCase() === 'presence.readwrite')
 }
@@ -197,7 +231,7 @@ async function resolveUserId(
 
 /**
  * Pokes are fire-and-forget (index.ts), and one reconcile awaits several
- * requests. Without a queue a start-up sweep still reading could clear the
+ * requests. Without a queue a start-up read still running could clear the
  * message a parallel poke had just set; so every reconcile waits for the one
  * before it. Only the newest poke's snapshot is worth applying: a queued one
  * that has been overtaken returns at once, so a slow network neither builds
@@ -230,19 +264,35 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   const log = deps.log ?? ((): void => {})
   const now = deps.now?.() ?? Date.now()
   const enabled = deps.getSetting('presence_enabled') === '1'
-  // First poke of a run with the feature on and nothing applied yet: look for
-  // a status a crashed or quit run left behind (#317).
-  const sweepDue = enabled && !state.swept && state.message === null
+  // Our status is wanted only with the feature on and a timer running.
+  // Everything else is a clean-up, which also runs with the feature off:
+  // withdrawing our own message and ending our own session is never
+  // unasked-for.
+  const want = enabled && running !== null
+  // The first poke of a run with the feature on looks for a status a crashed
+  // or quit run left behind (#317).
+  const checkDue = enabled && !state.checked
+  const owes = state.possiblyOurs.size > 0 || state.shapeOwed || state.sessionOwed
 
-  // Feature off: leave Teams alone — except to withdraw our own last message.
-  const wantsClear = !enabled || running === null
-  if (
-    wantsClear &&
-    (state.message === null || state.message === '') &&
-    !sweepDue &&
-    !state.sessionPending
-  ) {
-    return
+  const message = want
+    ? desiredMessage(
+        running,
+        deps.getSetting('presence_show_client') === '1',
+        deps.getSetting('language') ?? 'de'
+      )
+    : ''
+  if (!checkDue) {
+    if (!want && !owes) return
+    if (
+      want &&
+      state.applied === message &&
+      now - state.at < REFRESH_AFTER_MS &&
+      !state.shapeOwed &&
+      state.possiblyOurs.size === 1 &&
+      state.possiblyOurs.has(message)
+    ) {
+      return
+    }
   }
 
   const view = deps.getAccountStatus()
@@ -251,17 +301,6 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
     log('presence: Presence.ReadWrite not granted — reconnect required')
     return
   }
-
-  const message = wantsClear
-    ? ''
-    : desiredMessage(
-        running,
-        deps.getSetting('presence_show_client') === '1',
-        deps.getSetting('language') ?? 'de'
-      )
-  const unchanged = state.message === message
-  const fresh = now - state.at < REFRESH_AFTER_MS
-  if (unchanged && (message === '' || fresh) && !state.sessionPending) return
 
   const fetchFn = deps.fetchFn ?? fetch
   // The caller fires and forgets (index.ts): a refresh that throws (offline)
@@ -298,104 +337,89 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
       return false
     }
   }
-
   const sessionId = deps.getClientId()
-  const clearMessage = (): Promise<boolean> =>
-    post('setStatusMessage', { statusMessage: { message: { content: '', contentType: 'text' } } })
 
-  // Intents are recorded BEFORE the request they belong to, and dropped only
-  // on confirmed success: a request can reach Teams and still fail on the way
-  // back (timeout), and a failed one must stay due.
-  if (state.sessionPending && !enabled) {
-    // A session end the sweep still owes. Ending our own session is never
-    // unasked-for, so it runs with the feature switched off, too.
-    if (await post('clearPresence', { sessionId })) state.sessionPending = false
-    return
-  }
-
-  if (sweepDue && running === null) {
-    // Nothing applied in this run, no timer: only a leftover can need
-    // withdrawing. The message is recognised by its shape, since its exact
-    // text is gone with the previous run; a message the user wrote is left
-    // alone. Our Busy session ends whenever Teams shows Busy, too: the user may
-    // have replaced the message, or a previous clear may have stopped
-    // half-way. (Ending our own session cannot touch anyone else's Busy.)
-    const current = await readPresence(fetchFn, token, userId, log)
+  let current: PresenceView | null = null
+  if (checkDue) {
+    current = await readPresence(fetchFn, token, userId, log)
     if (!current) return // retried at the next poke
-    const leftover = current.text !== null && looksOurs(current.text)
-    if (leftover || current.availability === 'Busy') state.sessionPending = true
-    if (leftover) {
-      if (!(await clearMessage())) return
-      log('presence: withdrew a status message left from a previous run')
-    }
-    if (state.sessionPending) {
-      if (!(await post('clearPresence', { sessionId }))) return
-      state.sessionPending = false
-    }
-    state.swept = true
-    return
+    state.checked = true
+    // A message in our shape may be a previous run's: owe its withdrawal (a
+    // set below replaces it anyway). A previous run's Busy session cannot be
+    // read reliably: any availability the user sets (Away, Do not disturb,
+    // even a manual Available) hides it. So every run ends our own session
+    // once — one request per start, answered 404 when there is none.
+    if (current.text !== null && looksOurs(current.text)) state.shapeOwed = true
+    state.sessionOwed = true
   }
 
-  let ok: boolean
-  if (message === '') {
-    // Clear only a message that is still ours (#316): the user may have
-    // written their own in Teams while the timer ran. Our Busy session is
-    // ours by definition and always ends.
-    const current = await readPresence(fetchFn, token, userId, log)
-    if (!current) {
-      // The message waits for a successful read (erring toward keeping the
-      // user's text) and is retried at the next poke; Busy ends now. The
-      // session is gone, so the next set must not count as a fresh repeat.
-      if (await post('clearPresence', { sessionId })) {
-        state.at = 0
-        log('presence: ended the session; the status message waits for a read')
-      }
-      return
-    }
-    const ours =
-      current.text !== null &&
-      [state.message, state.sent].some((own) => !!own && isMessage(current.text!, own))
-    if (current.text !== null && !ours) {
-      log('presence: status message was changed in Teams — left as is')
-    }
-    ok = (!ours || (await clearMessage())) && (await post('clearPresence', { sessionId }))
-  } else {
-    // Busy/InACall is the only plain-"red" combination setPresence accepts;
-    // DoNotDisturb/Presenting would suppress the user's notifications.
-    // Ours from the moment it is sent: a write whose answer is lost may well
-    // have reached Teams. An unsent candidate only widens the "is it ours"
-    // match at stop, which is harmless.
-    state.sent = message
+  if (want) {
+    rememberSent(message)
     const accepted = await post('setStatusMessage', {
       statusMessage: {
         message: { content: message, contentType: 'text' },
         expiryDateTime: expiryAt(now)
       }
     })
-    ok =
-      accepted &&
-      (await post('setPresence', {
-        sessionId,
-        availability: 'Busy',
-        activity: 'InACall',
-        expirationDuration: SESSION_DURATION
-      }))
-  }
-  if (!ok) return
-  state.message = message
-  state.at = now
-  // Our session was just replaced (set) or ended (clear): nothing owed.
-  state.sessionPending = false
-  // Only now: a set that failed must leave a crash leftover to the sweep.
-  state.swept = true
-  if (message === '') {
-    state.sent = null
-    // The read before the clear already showed what Teams held.
-    log('presence: cleared (session, message if ours)')
+    if (!accepted) return
+    // Confirmed: Teams now shows this text, whatever was there before.
+    state.possiblyOurs = new Set([message])
+    state.shapeOwed = false
+    // Busy/InACall is the only plain-"red" combination setPresence accepts;
+    // DoNotDisturb/Presenting would suppress the user's notifications.
+    state.sessionOwed = true
+    const busy = await post('setPresence', {
+      sessionId,
+      availability: 'Busy',
+      activity: 'InACall',
+      expirationDuration: SESSION_DURATION
+    })
+    if (!busy) return
+    state.applied = message
+    state.at = now
+    log('presence: set (message + Busy)')
+    await readBack(fetchFn, token, userId, message, log)
     return
   }
-  log('presence: set (message + Busy)')
-  await readBack(fetchFn, token, userId, message, log)
+
+  // Clean-up: withdraw what may be ours, keep what the user wrote (#316).
+  state.applied = null
+  if (state.possiblyOurs.size > 0 || state.shapeOwed) {
+    current ??= await readPresence(fetchFn, token, userId, log)
+    if (!current) {
+      // The message waits for a read (erring toward keeping the user's text);
+      // our session can end now.
+      if (state.sessionOwed && (await post('clearPresence', { sessionId }))) {
+        state.sessionOwed = false
+        log('presence: ended the session; the status message waits for a read')
+      }
+      return
+    }
+    const text = current.text
+    const ours =
+      text !== null &&
+      ([...state.possiblyOurs].some((own) => isMessage(text, own)) ||
+        (state.shapeOwed && looksOurs(text)))
+    if (ours) {
+      const cleared = await post('setStatusMessage', {
+        statusMessage: { message: { content: '', contentType: 'text' } }
+      })
+      if (!cleared) return
+      if (state.shapeOwed && ![...state.possiblyOurs].some((own) => isMessage(text, own))) {
+        log('presence: withdrew a status message left from a previous run')
+      }
+    } else if (text !== null) {
+      log('presence: status message was changed in Teams — left as is')
+    }
+    // Teams holds nothing of ours now: cleared, or what it shows is not ours.
+    state.possiblyOurs = new Set()
+    state.shapeOwed = false
+  }
+  if (state.sessionOwed) {
+    if (!(await post('clearPresence', { sessionId }))) return
+    state.sessionOwed = false
+    log('presence: cleared (session, message if ours)')
+  }
 }
 
 interface PresenceView {
