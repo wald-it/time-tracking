@@ -96,6 +96,67 @@ describe('buildJsonExportPayload', () => {
     expect(payload.entries[0].deleted_at).toBe('2026-04-24T10:00:00.000Z')
   })
 
+  describe('secrets are left out', () => {
+    const setSetting = (key: string, value: string): void => {
+      db.prepare(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      ).run(key, value)
+    }
+    const settingValue = (
+      payload: ReturnType<typeof buildJsonExportPayload>,
+      key: string
+    ): string | undefined => payload.settings.find((s) => s.key === key)?.value
+
+    it('omits the iCal feed token', () => {
+      setSetting('ical_feed_token', 'feed-token-abc123')
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      expect(settingValue(payload, 'ical_feed_token')).toBeUndefined()
+      expect(JSON.stringify(payload)).not.toContain('feed-token-abc123')
+      // Neighbouring feed settings stay.
+      expect(settingValue(payload, 'ical_feed_enabled')).toBeDefined()
+    })
+
+    // Owner review #254: the URL of a chat webhook carries its token.
+    it('leaves out the webhook targets as a whole, URL included', () => {
+      const slack = 'https://hooks.slack.com/services/T000/B000/XXXXSECRETXXXX'
+      setSetting(
+        'webhook_targets',
+        JSON.stringify([
+          {
+            id: 'a',
+            url: slack,
+            secret: 'hmac-secret-one',
+            events: ['timer.started'],
+            enabled: true
+          }
+        ])
+      )
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      expect(settingValue(payload, 'webhook_targets')).toBeUndefined()
+      const json = JSON.stringify(payload)
+      expect(json).not.toContain('hooks.slack.com')
+      expect(json).not.toContain('XXXXSECRETXXXX')
+      expect(json).not.toContain('hmac-secret-one')
+    })
+
+    it('leaves out any key that names a token, secret or password', () => {
+      setSetting('future_api_token', 'tok-1')
+      setSetting('smtp_Password', 'pw-2')
+      setSetting('graph_client_secret', 'sec-3')
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      const json = JSON.stringify(payload)
+      for (const v of ['tok-1', 'pw-2', 'sec-3']) expect(json).not.toContain(v)
+      expect(payload.settings.some((s) => /token|secret|password/i.test(s.key))).toBe(false)
+    })
+
+    it('keeps the other settings unchanged', () => {
+      setSetting('company_name', 'wald-it')
+      const payload = buildJsonExportPayload(db, '1.3.0')
+      expect(settingValue(payload, 'company_name')).toBe('wald-it')
+    })
+  })
+
   it('serialises to stable, indented JSON (2-space)', () => {
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     const payload = buildJsonExportPayload(db, '1.3.0')

@@ -9,12 +9,40 @@ export interface JsonExportPayload {
 }
 
 /**
+ * Settings rows left out of the export: they hold a secret. `webhook_targets`
+ * goes as a whole — besides the HMAC secret, a webhook URL is often a secret
+ * itself (Slack, Discord, Teams, Zapier and n8n put the token in the path or
+ * query), and with no importer for this file the targets are of no use in it.
+ */
+const OMITTED_SETTING_KEYS = new Set(['ical_feed_token', 'webhook_targets'])
+
+/**
+ * Any key that names a secret is left out too, so a secret stored later under
+ * a new key (settings:set takes any key) does not leak into the export
+ * unnoticed.
+ */
+const SECRET_KEY = /token|secret|password/i
+
+function exportableSettings(
+  rows: Array<{ key: string; value: string }>
+): Array<{ key: string; value: string }> {
+  return rows.filter((row) => !OMITTED_SETTING_KEYS.has(row.key) && !SECRET_KEY.test(row.key))
+}
+
+/**
  * Build the JSON export payload from a live DB handle. Pure function —
  * extracted from ipc.ts so unit tests can call it without booting Electron.
  *
- * Output is a verbatim dump (no field renames, no PII filtering, soft-deleted
- * rows included) so users can verify their data byte-for-byte and future
- * CSV/PDF tooling can build on top of the snapshot.
+ * Output is a verbatim dump of clients and entries (no field renames, no PII
+ * filtering, soft-deleted rows included) so users can verify their data and
+ * future CSV/PDF tooling can build on top of the snapshot.
+ *
+ * Settings are dumped verbatim except for secrets: the iCal feed token, the
+ * webhook targets (URLs and HMAC secrets) and every key that matches
+ * /token|secret|password/i are left out. The Graph tokens and the MCP/controller tokens
+ * live in files, not in the database, so they never reach this export. There
+ * is no importer for this file; a full restore goes through the SQLite backup
+ * (backup.ts), which keeps everything.
  */
 export function buildJsonExportPayload(
   db: Database.Database,
@@ -39,6 +67,6 @@ export function buildJsonExportPayload(
     },
     clients,
     entries,
-    settings
+    settings: exportableSettings(settings)
   }
 }
