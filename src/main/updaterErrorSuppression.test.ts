@@ -116,6 +116,48 @@ describe('start-up error suppression is scoped to the start-up check (#284)', ()
     expect(lastStatus()).toEqual({ status: 'error', message: 'download interrupted' })
   })
 
+  it('the start-up check finds an update and its background download fails: broadcast as an error', async () => {
+    updater.checkForUpdatesAndNotify.mockImplementation(async () => {
+      emit('update-available', { version: '9.9.9' })
+      return { downloadPromise: Promise.resolve([]) }
+    })
+    await start(undefined)
+    expect(lastStatus()).toEqual({ status: 'available', version: '9.9.9' })
+
+    emit('error', new Error('download interrupted'))
+    expect(lastStatus()).toEqual({ status: 'error', message: 'download interrupted' })
+  })
+
+  it('"Check now" while the start-up check is still running surfaces its error', async () => {
+    let failStartup: (err: Error) => void = () => undefined
+    updater.checkForUpdatesAndNotify.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          failStartup = (err) => {
+            emit('error', err)
+            reject(err)
+          }
+        })
+    )
+    await start(undefined)
+    // electron-updater hands the explicit check the start-up check's promise.
+    updater.checkForUpdates.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          const prev = failStartup
+          failStartup = (err) => {
+            prev(err)
+            reject(err)
+          }
+        })
+    )
+
+    const pending = ipcHandlers.get('update:check')!()
+    failStartup(new Error('offline'))
+    expect(await pending).toMatchObject({ ok: false })
+    expect(lastStatus()).toEqual({ status: 'error', message: 'offline' })
+  })
+
   it('switched off: no start-up check, so nothing is suppressed — a failing "Check now" is an error', async () => {
     await start('0')
     expect(updater.checkForUpdatesAndNotify).not.toHaveBeenCalled()

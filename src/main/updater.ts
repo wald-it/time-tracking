@@ -247,6 +247,9 @@ export function initAutoUpdater(opts: {
       return fail('Update-Check ist im Entwicklungsmodus deaktiviert.')
     }
     try {
+      // An explicit check surfaces its errors, also when it joins a start-up
+      // check that is still running (electron-updater shares one promise).
+      suppressNextError = false
       lastCheckIso = new Date().toISOString()
       await autoUpdater.checkForUpdates()
       return ok(undefined)
