@@ -1,0 +1,116 @@
+/**
+ * #311: editing one half of an entry split at midnight must not delete the
+ * other half.
+ *
+ * An entry across midnight is stored as two rows sharing a `link_id`. An edit
+ * is saved by deleting the entry's rows and inserting them anew — and it used
+ * to delete the WHOLE group while reinserting only the range it was given.
+ * Both callers hand over the range of one half: MCP `update_entry_fields`
+ * fills unchanged times from the row it was called on, and the calendar
+ * drawer (EntryEditForm) sends the date and times of the half it opened. The
+ * other half was hard-deleted.
+ */
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import type Database from 'better-sqlite3'
+import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { makeCtx, seed } from '../test/bridgeKit'
+import { handleRequest } from './mcpBridgeCore'
+import { createManualEntry, updateManualEntry } from './entryMutations'
+
+let DatabaseImpl: DatabaseCtor
+
+beforeAll(async () => {
+  DatabaseImpl = await loadSqlite()
+})
+
+/** Local wall-clock time on June 2026 — splitAtMidnight cuts at local midnight. */
+const local = (d: number, h: number, m = 0): string => new Date(2026, 5, d, h, m).toISOString()
+
+interface Row {
+  id: number
+  description: string
+  started_at: string
+  stopped_at: string
+  link_id: string | null
+}
+
+describe('editing one half of a split entry (#311)', () => {
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+    // 20:00 on the 10th to 04:00 on the 11th: eight hours, two halves.
+    const made = createManualEntry(db, {
+      client_id: 1,
+      description: 'Nachtschicht',
+      started_at: local(10, 20),
+      stopped_at: local(11, 4)
+    })
+    if (!made.ok) throw new Error(made.error)
+  })
+
+  const rows = (): Row[] =>
+    db
+      .prepare(
+        `SELECT id, description, started_at, stopped_at, link_id FROM entries
+          WHERE deleted_at IS NULL ORDER BY started_at`
+      )
+      .all() as Row[]
+  const totalHours = (): number =>
+    rows().reduce((s, r) => s + Date.parse(r.stopped_at) - Date.parse(r.started_at), 0) / 3_600_000
+
+  it('the setup is a pair of eight hours', () => {
+    expect(rows()).toHaveLength(2)
+    expect(totalHours()).toBe(8)
+  })
+
+  for (const half of [0, 1] as const) {
+    it(`MCP update_entry_fields on half ${half + 1} with only a description keeps both halves`, async () => {
+      const { ctx } = makeCtx(db)
+      const res = await handleRequest(ctx, {
+        v: 1,
+        token: 'secret',
+        op: 'update_entry_fields',
+        args: { id: rows()[half].id, description: 'Nachtschicht (Wartung)' }
+      })
+      expect(res.ok).toBe(true)
+      expect(rows().map((r) => r.description)).toEqual([
+        'Nachtschicht (Wartung)',
+        'Nachtschicht (Wartung)'
+      ])
+      expect(totalHours()).toBe(8)
+    })
+  }
+
+  it('the drawer saving the second half unchanged keeps the first', () => {
+    // What EntryEditForm sends for the half from 00:00 to 04:00.
+    const second = rows()[1]
+    const res = updateManualEntry(db, {
+      id: second.id,
+      client_id: 1,
+      description: 'Nachtschicht (Wartung)',
+      started_at: second.started_at,
+      stopped_at: second.stopped_at
+    })
+    expect(res.ok).toBe(true)
+    expect(totalHours()).toBe(8)
+    expect(rows().map((r) => r.started_at)).toEqual([local(10, 20), local(11, 0)])
+  })
+
+  it('the drawer moving the end of the second half moves the end of the entry', () => {
+    const second = rows()[1]
+    const res = updateManualEntry(db, {
+      id: second.id,
+      client_id: 1,
+      description: 'Nachtschicht',
+      started_at: second.started_at,
+      stopped_at: local(11, 5)
+    })
+    expect(res.ok).toBe(true)
+    expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([
+      [local(10, 20), local(11, 0)],
+      [local(11, 0), local(11, 5)]
+    ])
+  })
+})

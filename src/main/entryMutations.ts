@@ -204,13 +204,67 @@ export function createManualEntry(db: Db, input: CreateManualEntryInput): IpcRes
   return ok(row)
 }
 
+/**
+ * Message when an edit of one half of a split entry moves the time at the
+ * midnight cut — that edge belongs to the entry, not to the half (#311).
+ */
+export const SPLIT_EDGE_ERROR =
+  'Dieser Eintrag ist um Mitternacht geteilt. Den Beginn an der ersten Hälfte ändern, das Ende an der zweiten.'
+
+/**
+ * #311: callers hand over the range of the half they were called on — MCP
+ * `update_entry_fields` fills unchanged times from that row, the calendar
+ * drawer sends the times of the half it opened. The edit replaces the whole
+ * entry, so that range is mapped onto the entry first: the half's outer edge
+ * (the entry's start on the first half, its end on the last) takes the
+ * input's value; an edge at a midnight cut keeps the entry's own edge and may
+ * not move. Before this, the other half was simply deleted.
+ */
+function rangeOfEntry(
+  half: { started_at: string; stopped_at: string },
+  group: Array<{ started_at: string; stopped_at: string }>,
+  input: { started_at: string; stopped_at: string }
+): { started_at: string; stopped_at: string } | null {
+  const same = (a: string, b: string): boolean => Date.parse(a) === Date.parse(b)
+  const entryStart = group[0].started_at
+  const entryStop = group[group.length - 1].stopped_at
+  const atStart = same(half.started_at, entryStart)
+  const atStop = same(half.stopped_at, entryStop)
+  if (!atStart && !same(input.started_at, half.started_at)) return null
+  if (!atStop && !same(input.stopped_at, half.stopped_at)) return null
+  return {
+    started_at: atStart ? input.started_at : entryStart,
+    stopped_at: atStop ? input.stopped_at : entryStop
+  }
+}
+
 /** Update an entry (delete-and-reinsert with cross-midnight bookkeeping). Mirrors `entries:update`. */
-export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<Entry> {
-  const existing = db.prepare(`SELECT link_id FROM entries WHERE id = ?`).get(input.id) as
-    | { link_id: string | null }
+export function updateManualEntry(db: Db, given: UpdateEntryInput): IpcResult<Entry> {
+  const existing = db
+    .prepare(
+      `SELECT link_id, started_at, stopped_at FROM entries WHERE id = ? AND deleted_at IS NULL`
+    )
+    .get(given.id) as
+    | { link_id: string | null; started_at: string; stopped_at: string | null }
     | undefined
   if (!existing) return fail('Eintrag existiert nicht')
   const existingLinkId = existing.link_id ?? undefined
+  let input = given
+  if (existingLinkId && existing.stopped_at) {
+    const group = db
+      .prepare(
+        `SELECT started_at, stopped_at FROM entries
+          WHERE link_id = ? AND deleted_at IS NULL ORDER BY started_at`
+      )
+      .all(existingLinkId) as Array<{ started_at: string; stopped_at: string }>
+    const range = rangeOfEntry(
+      { started_at: existing.started_at, stopped_at: existing.stopped_at },
+      group,
+      given
+    )
+    if (!range) return fail(SPLIT_EDGE_ERROR)
+    input = { ...given, ...range }
+  }
   const err = validateManualEntry(db, input, input.id, existingLinkId)
   if (err) return fail(err)
   const segments = splitAtMidnight(new Date(input.started_at), new Date(input.stopped_at))
@@ -220,10 +274,11 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
     // calendar import anchor (otherwise the next preview offers the meeting
     // again) and the time the entry was first written. Of a midnight-split
     // pair, the anchor sits on one half and the earliest created_at counts.
-    // One predicate for what is read and what is deleted. A trashed half is
-    // read too: the reinsert below writes the whole range back as live rows,
-    // so its time — and with it its meeting — is live again (#311).
-    const [where, key] = existingLinkId ? ['link_id = ?', existingLinkId] : ['id = ?', input.id]
+    // One predicate for what is read and what is deleted, live rows only: a
+    // half in the trash stays there and can still be restored (#311).
+    const [where, key] = existingLinkId
+      ? ['link_id = ? AND deleted_at IS NULL', existingLinkId]
+      : ['id = ?', input.id]
     const carried = db
       .prepare(
         `SELECT MAX(graph_event_id) AS graph_event_id, MIN(created_at) AS created_at
