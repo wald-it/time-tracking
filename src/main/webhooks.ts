@@ -20,7 +20,8 @@ import { createHmac } from 'crypto'
 import type Database from 'better-sqlite3'
 import { billedMinutes, effectiveRateCent, feeCent } from '../shared/currency'
 import { deserializeTags } from '../shared/tags'
-import { parseWebhookTargets, type WebhookEvent, type WebhookTarget } from '../shared/webhooks'
+import { type WebhookEvent, type WebhookTarget } from '../shared/webhooks'
+import { readWebhookTargets } from './secretSettings'
 import { resolvePrivacy } from '../mcp/privacy'
 import { readStoredPrivacy } from '../mcp/queries'
 import type { PrivacyConfig } from '../mcp/privacy'
@@ -281,13 +282,12 @@ export function emitWebhooks(
 ): void {
   try {
     if (!entry) return
-    const raw = db.prepare(`SELECT value FROM settings WHERE key = 'webhook_targets'`).get() as
-      | { value: string }
-      | undefined
-    const targets = parseWebhookTargets(raw?.value).filter(
-      (t) => t.enabled && t.events.includes(event)
-    )
-    if (targets.length === 0) return
+    // Q32: secrets from the encrypted store. A target whose stored secret
+    // cannot be read is not delivered — never unsigned instead.
+    const wanted = readWebhookTargets(db).filter((t) => t.enabled && t.events.includes(event))
+    const targets = wanted.filter((t) => !t.secretUnreadable)
+    const skipped = wanted.filter((t) => t.secretUnreadable)
+    if (targets.length === 0 && skipped.length === 0) return
 
     const privacy = resolvePrivacy(readStoredPrivacy(db))
     const now = deps.now ? deps.now() : Date.now()
@@ -295,6 +295,18 @@ export function emitWebhooks(
     // Logging is injected by the caller (webhookLog.ts). Kept out of this core
     // so the module stays free of electron-log and trivially unit-testable.
     const log = deps.log ?? ((): void => {})
+
+    for (const target of skipped) {
+      log({
+        delivery_id: newDeliveryId ? newDeliveryId() : freshId(),
+        event,
+        target_id: target.id,
+        host: safeHost(target.url),
+        ok: false,
+        attempts: 0,
+        error: 'secret_unreadable'
+      })
+    }
 
     for (const target of targets) {
       // Per-target so one bad target can't abort the others, and the whole

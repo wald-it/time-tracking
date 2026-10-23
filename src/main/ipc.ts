@@ -52,6 +52,13 @@ import { budgetUsedMinutesSql } from '../shared/currency'
 import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
+import {
+  readFeedToken,
+  readWebhookTargets,
+  secretStorageMode,
+  writeFeedToken
+} from './secretSettings'
+import { serializeWebhookTargets } from '../shared/webhooks'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
   readRecentEntries,
@@ -655,6 +662,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const settings = Object.fromEntries(
         rows.filter((r) => !MAIN_ONLY_SETTING_KEYS.has(r.key)).map((r) => [r.key, r.value])
       ) as unknown as Settings
+      // Q32: the secrets live in the encrypted store; the window edits them, so
+      // they are put back here, together with how they are kept (for the hint).
+      settings.ical_feed_token = readFeedToken(db)
+      settings.webhook_targets = serializeWebhookTargets(readWebhookTargets(db))
+      settings.secret_storage = secretStorageMode()
       return ok(settings)
     } catch (e) {
       return fail(e)
@@ -676,23 +688,24 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         | { value: string }
         | undefined
     )?.value
+  // Q32: the token from the secret store, everything else from the database.
+  const feedSetting = (key: string): string | undefined =>
+    key === 'ical_feed_token' ? readFeedToken(db) : readSetting(key)
 
   ipcMain.handle('icalFeed:url', (): IpcResult<string> => {
     try {
-      return ok(feedUrl(readSetting))
+      return ok(feedUrl(feedSetting))
     } catch (e) {
       return fail(e)
     }
   })
 
   // Regenerating invalidates every stored subscription URL — the UI says so.
-  ipcMain.handle('icalFeed:regenerate', (): IpcResult<string> => {
+  ipcMain.handle('icalFeed:regenerate', async (): Promise<IpcResult<string>> => {
     try {
-      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('ical_feed_token', ?)`).run(
-        generateFeedToken()
-      )
+      await writeFeedToken(db, generateFeedToken())
       hooks.restartIcalFeed()
-      return ok(feedUrl(readSetting))
+      return ok(feedUrl(feedSetting))
     } catch (e) {
       return fail(e)
     }

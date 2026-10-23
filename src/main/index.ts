@@ -17,6 +17,14 @@ import icon from '../../resources/icon.png?asset'
 import trayRunningIcon from '../../resources/tray-running.png?asset'
 import trayStoppedIcon from '../../resources/tray-stopped.png?asset'
 import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
+import { FEED_TOKEN_KEY, SecretStore } from './secretStore'
+import {
+  migrateSecrets,
+  readFeedToken,
+  secretStorageMode,
+  useSecretStore,
+  writeFeedToken
+} from './secretSettings'
 import {
   dbErrorDialog,
   hotkeyConflictDialog,
@@ -549,19 +557,33 @@ function pokePresence(): void {
 function icalFeedDeps(): FeedDeps {
   return {
     getDb,
-    getSetting: (key) => mcpBridgeDeps().getSetting(key),
+    getSetting: (key) =>
+      key === FEED_TOKEN_KEY ? readFeedToken(getDb()) : mcpBridgeDeps().getSetting(key),
     log: (m) => log.info(m)
   }
 }
 
-/** The token is persistent (subscribers store the URL) — mint it only once. */
-function ensureFeedToken(): void {
-  const current = icalFeedDeps().getSetting('ical_feed_token')
-  if (!current || current === '') {
-    getDb()
-      .prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('ical_feed_token', ?)`)
-      .run(generateFeedToken())
+/**
+ * The token is persistent (subscribers store the URL) — mint it only once.
+ * Not when the stored one is unreadable (Q32): the feed stays closed until the
+ * token is regenerated, and the settings say so.
+ */
+async function ensureFeedToken(): Promise<void> {
+  if (readFeedToken(getDb()) !== '' || secretStorageMode() === 'unreadable') return
+  await writeFeedToken(getDb(), generateFeedToken())
+}
+
+/** Q32: open the secret store and move plain secrets out of the database. */
+async function loadSecrets(): Promise<void> {
+  const dir = dirname(getDbPath())
+  const store = new SecretStore({ dir, log: (m) => log.info(m) })
+  try {
+    await store.load()
+    await migrateSecrets(getDb(), store, dir, (m) => log.info(m))
+  } catch (err) {
+    log.warn('[secrets] moving secrets out of the database failed, they stay there', err)
   }
+  useSecretStore(store)
 }
 
 /** Dependencies handed to the MCP write bridge (all resolved lazily at call time). */
@@ -726,6 +748,9 @@ app.whenReady().then(async () => {
     return
   }
   recoverZombieEntries()
+  // Q32: the secrets come from the encrypted store — loaded (and moved out of
+  // the database once) before IPC, the feed and the first webhook can ask.
+  await loadSecrets()
   registerIpcHandlers({
     refreshTrayClients: () => {
       refreshActiveClients()
@@ -764,8 +789,7 @@ app.whenReady().then(async () => {
     pokePresence,
     setIcalFeedEnabled: (enabled) => {
       if (enabled) {
-        ensureFeedToken()
-        startFeedServer(icalFeedDeps())
+        void ensureFeedToken().then(() => startFeedServer(icalFeedDeps()))
       } else {
         stopFeedServer()
       }
@@ -841,7 +865,7 @@ app.whenReady().then(async () => {
 
   // v1.17 #169 — local iCal feed, only while the app runs (like the bridge).
   if (mcpBridgeDeps().getSetting('ical_feed_enabled') === '1') {
-    ensureFeedToken()
+    await ensureFeedToken()
     startFeedServer(icalFeedDeps())
   }
 

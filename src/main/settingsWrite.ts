@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { prepareWebhookTargets } from './secretSettings'
 import type { IpcHooks } from './ipc'
 import type { HotkeyChange } from './hotkeySlot'
 import type { IpcResult } from '../shared/types'
@@ -194,7 +195,9 @@ async function writeOne(
     )?.value
     const change = sensitiveSettingChange(key, value, current)
     if (change && !(await hooks.confirmSensitiveSetting(change))) return cancelled()
-    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
+    // Q32: webhook secrets go to the encrypted store first; the row keeps none.
+    const stored = key === 'webhook_targets' ? await prepareWebhookTargets(value) : value
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, stored)
     // Apply side-effects for known keys.
     if (key === 'idle_threshold_minutes') {
       const n = parseInt(value, 10)

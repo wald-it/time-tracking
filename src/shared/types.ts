@@ -226,6 +226,13 @@ export interface Settings {
   ical_feed_enabled?: string
   ical_feed_port?: string
   ical_feed_token?: string
+  /**
+   * Q32: how the feed token and webhook secrets are kept — only in what
+   * settings:getAll returns, never a stored row. 'plain' = no system
+   * encryption here; 'unreadable' = stored secrets cannot be read on this
+   * machine (e.g. after a restore elsewhere).
+   */
+  secret_storage?: 'encrypted' | 'plain' | 'unreadable'
   // #273 — automatic update check at app start, '1'/'0'. No migration: absent
   // means on (see shared/updateCheck.ts). Manual "Check now" is unaffected.
   update_check_enabled?: string
