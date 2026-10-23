@@ -402,6 +402,15 @@ describe('release.yml provenance', () => {
     expect(prepare.slice(guard, prepare.indexOf('fi', guard))).toContain('exit 1')
   })
 
+  // Codex finding on 540e601: with `default: main` on the ref input, a run
+  // started from a tag with the field left empty built main and was refused.
+  it('a dispatch with no ref builds the commit it was started from', () => {
+    const inputs = text.slice(text.indexOf('workflow_dispatch:'), text.indexOf('\nenv:'))
+    expect(inputs).toContain('ref:')
+    expect(inputs).not.toContain('default:')
+    expect(jobs['prepare']).toContain('ref: ${{ inputs.ref || github.sha }}')
+  })
+
   it('every job after prepare checks out exactly that commit', () => {
     const others = Object.entries(jobs).filter(([id]) => id !== 'prepare')
     expect(others.length).toBeGreaterThan(0)

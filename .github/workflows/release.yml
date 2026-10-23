@@ -10,9 +10,8 @@ on:
         description: 'Tag to release (e.g. v1.1.0)'
         required: true
       ref:
-        description: 'Git ref to build and tag (branch, SHA or existing tag)'
+        description: 'Optional. Leave empty to build the ref selected under "Use workflow from". If set, it must resolve to that same commit (the provenance attestation names it).'
         required: false
-        default: main
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -59,12 +58,13 @@ jobs:
           fi
           echo "Tag $TAG is valid."
 
-      # A tag push builds the pushed tag, a dispatch builds inputs.ref. The
+      # A tag push builds the pushed tag; a dispatch builds the commit it was
+      # started from (or inputs.ref, which must resolve to it). The
       # commit this resolves to is fixed in the next step; no later job
       # resolves a name again.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Resolve tag and commit
         id: resolve
