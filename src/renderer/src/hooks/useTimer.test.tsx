@@ -790,12 +790,19 @@ describe('useTimer — idle transitions', () => {
       await hook.result.current.idleStopAtIdle()
     })
 
+    // The whole entry travels along: entries:update re-inserts the row and
+    // defaults every field it is not given (#313).
     expect(api.update).toHaveBeenCalledWith({
       id: entry.id,
       client_id: entry.client_id,
+      project_id: entry.project_id ?? null,
       description: entry.description,
       started_at: entry.started_at,
-      stopped_at: IDLE.idleSince
+      stopped_at: IDLE.idleSince,
+      billable: entry.billable,
+      tags: entry.tags,
+      reference: entry.reference,
+      private_note: entry.private_note
     })
     expect(hook.result.current.runningEntry).toBeNull()
     expect(hook.result.current.idleEvent).toBeNull()
@@ -858,5 +865,54 @@ describe('useTimer — idle transitions', () => {
 
     expect(hook.result.current.idleEvent).toBeNull()
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
+  })
+})
+
+// #313: the idle prompt stops the running entry through entries:update, which
+// defaults every field it is not sent. Today only the project of a running
+// entry can differ from the defaults; the other fields are sent along anyway,
+// and this pins that, so a later way to set them on a running entry is not
+// reset by the idle prompt.
+describe('useTimer — the idle prompt sends the whole running entry (#313)', () => {
+  const RUNNING = makeEntry({
+    id: 5,
+    project_id: 7,
+    billable: 0,
+    tags: ',ops,',
+    reference: 'JIRA-7',
+    private_note: 'intern'
+  })
+  const KEPT = {
+    id: 5,
+    project_id: 7,
+    billable: 0,
+    tags: ',ops,',
+    reference: 'JIRA-7',
+    private_note: 'intern',
+    stopped_at: IDLE.idleSince
+  }
+
+  it('idleStopAtIdle()', async () => {
+    const { api, hook } = await setup({ running: RUNNING })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(5))
+    act(() => api.listeners.idleDetected?.(IDLE))
+
+    await act(async () => {
+      await hook.result.current.idleStopAtIdle()
+    })
+
+    expect(api.update).toHaveBeenCalledWith(expect.objectContaining(KEPT))
+  })
+
+  it('idleMarkPause()', async () => {
+    const { api, hook } = await setup({ running: RUNNING })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(5))
+    act(() => api.listeners.idleDetected?.(IDLE))
+
+    await act(async () => {
+      await hook.result.current.idleMarkPause()
+    })
+
+    expect(api.update).toHaveBeenNthCalledWith(1, expect.objectContaining(KEPT))
   })
 })
