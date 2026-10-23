@@ -2,7 +2,7 @@
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "UUID": "com.timetrack.streamdeck",
   "Name": "TimeTrack",
-  "Version": "0.2.0.0",
+  "Version": "0.3.0.0",
   "Author": "wald-it",
   "Description": "Start and stop TimeTrack timers per client and project — with a key, or with the Stream Deck + dial. Requires the TimeTrack app with hardware keys enabled (Settings → Integrations).",
   "Category": "TimeTrack",
