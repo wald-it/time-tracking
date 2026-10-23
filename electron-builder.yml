@@ -2,16 +2,18 @@ appId: com.timetrack.app
 productName: TimeTrack
 directories:
   buildResources: build
+# Positive list (release 1.22): only what the app reads at runtime goes into
+# the package — the build output, the bundled resources (icons, licences),
+# package.json and the licence. Production dependencies under node_modules are
+# added by electron-builder in any case. Everything else in the checkout
+# (design material, docs, notes, local tool folders) stays out without having
+# to be excluded one by one. scripts/check-package-contents.mjs checks the
+# result after every build.
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,DESIGN.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-  - '!.design-review/**'
-  - '!.gstack/**'
-  - '!templates/**'
+  - out/**
+  - resources/**
+  - package.json
+  - LICENSE
 asarUnpack:
   - resources/**
   - '**/*.node'
