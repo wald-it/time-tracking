@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- **Electron 39.8.10, MCP SDK 1.32.1, electron-updater 6.8.11** — Patch updates within the current lines. Electron 39.8.10 carries Chromium security fixes that 39.8.9 lacked. Electron 39 itself no longer receives updates; the move to a supported line (Electron 44) follows in its own release shortly after this one. The MCP SDK advisories concern its HTTP transports, which TimeTrack does not use (its MCP server talks over stdio); the update keeps the shipped package current anyway. electron-updater brings builder-util-runtime 9.7.0.
+
 ### Added
 
 - **The main window opens where you left it** — Size, position and whether it was maximized are stored as you resize or move the window (once it has settled), when it hides to the tray and when the app quits, so a crash or a killed process loses at most the last half second. On the next start the window opens in that place, already maximized if it was, without a visible jump. A saved place that is no longer reachable — the monitor unplugged, the resolution lowered, a backup restored on another machine — falls back to the default size centred on the primary screen; a window that hangs partly off the edge is pulled back fully inside the screen it covers most, and the minimum size still applies. A damaged stored value is ignored and never stops the app from starting.
