@@ -867,3 +867,52 @@ describe('useTimer — idle transitions', () => {
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
   })
 })
+
+// #313: the idle prompt stops the running entry through entries:update, which
+// defaults every field it is not sent. Today only the project of a running
+// entry can differ from the defaults; the other fields are sent along anyway,
+// and this pins that, so a later way to set them on a running entry is not
+// reset by the idle prompt.
+describe('useTimer — the idle prompt sends the whole running entry (#313)', () => {
+  const RUNNING = makeEntry({
+    id: 5,
+    project_id: 7,
+    billable: 0,
+    tags: ',ops,',
+    reference: 'JIRA-7',
+    private_note: 'intern'
+  })
+  const KEPT = {
+    id: 5,
+    project_id: 7,
+    billable: 0,
+    tags: ',ops,',
+    reference: 'JIRA-7',
+    private_note: 'intern',
+    stopped_at: IDLE.idleSince
+  }
+
+  it('idleStopAtIdle()', async () => {
+    const { api, hook } = await setup({ running: RUNNING })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(5))
+    act(() => api.listeners.idleDetected?.(IDLE))
+
+    await act(async () => {
+      await hook.result.current.idleStopAtIdle()
+    })
+
+    expect(api.update).toHaveBeenCalledWith(expect.objectContaining(KEPT))
+  })
+
+  it('idleMarkPause()', async () => {
+    const { api, hook } = await setup({ running: RUNNING })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(5))
+    act(() => api.listeners.idleDetected?.(IDLE))
+
+    await act(async () => {
+      await hook.result.current.idleMarkPause()
+    })
+
+    expect(api.update).toHaveBeenNthCalledWith(1, expect.objectContaining(KEPT))
+  })
+})

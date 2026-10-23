@@ -148,10 +148,10 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
 
 // #313: stopping the running entry at idleSince goes through entries:update,
 // which re-inserts the row and defaults every field it is not given. Both idle
-// actions must keep the stopped entry as it was. A running entry differs from
-// the defaults only in its project (switchTimer sets nothing else), so the
-// seed is a running entry with a project; the other fields are checked to
-// stay at what the entry had.
+// actions must keep the stopped entry as it was. Of the optional fields, a
+// running entry only ever carries a project (switchTimer sets no other), so
+// the seed is a running entry with a project; the other fields are checked to
+// stay at what the entry had. useTimer.test.tsx pins that they are sent along.
 describe('idle prompt keeps the stopped entry as it was (#313)', () => {
   async function runIdle(action: 'idleStopAtIdle' | 'idleMarkPause'): Promise<{
     db: Database.Database
