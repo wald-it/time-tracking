@@ -35,6 +35,8 @@
 !define TT_RM_MAX_LISTED 8
 ; Bounds the walk if $INSTDIR is ever pointed at something much bigger than
 ; an app folder.
+; Overridable only so a probe build can exercise the cut
+; (makensis -DTT_RM_MAX_FILES=3); the installer build never sets it.
 !define /ifndef TT_RM_MAX_FILES 5000
 
 ; ${APP_EXECUTABLE_FILENAME} is defined in electron-builder's common.nsh,
@@ -48,7 +50,8 @@ Var TTRmSeen
 ; 1 when the walk refused a file because of TT_RM_MAX_FILES.
 Var TTRmCut
 Var TTRmFiles
-; 1 when the list holds a service or a system process.
+; 1 when a holder found is a service or a system process, listed or only
+; counted in the "(+N)" line.
 Var TTHolderService
 Var TTRmStatus
 ; Holders of the last pass, one per line; empty when there is nothing to report.
@@ -95,6 +98,8 @@ Function ttRmRegisterDir
   FindFirst $R1 $R2 "$INSTDIR$R0\*.*"
   loop:
     StrCmp $R2 "" done
+    ; Once a file has been left out, stop everywhere, directories included.
+    StrCmp $TTRmCut 1 done
     StrCmp $R2 "." next
     StrCmp $R2 ".." next
     IfFileExists "$INSTDIR$R0\$R2\*.*" 0 isFile
@@ -365,13 +370,13 @@ FunctionEnd
       ${If} $LANGUAGE == 1031
         StrCpy $TTHolderMsg "Diese Programme verwenden noch Dateien im Installationsordner:$\r$\n$\r$\n$TTForeignHolders$\r$\n$\r$\nSolange sie laufen, kann das Update von ${PRODUCT_NAME} fehlschlagen. Beende sie und klicke auf Wiederholen."
         ${If} $TTHolderService == 1
-          StrCpy $TTHolderMsg "$TTHolderMsg Einen Windows-Dienst hältst du in der Dienste-Verwaltung (services.msc) an. Einen Systemprozess kannst du nicht beenden; dann hilft Ignorieren oder ein Neustart von Windows."
+          StrCpy $TTHolderMsg "$TTHolderMsg Einen Windows-Dienst beendest du in der Dienste-Verwaltung (services.msc) mit Beenden. Einen Systemprozess kannst du nicht beenden."
         ${EndIf}
         StrCpy $TTHolderMsg "$TTHolderMsg$\r$\n$\r$\nMit Ignorieren läuft die Installation trotzdem weiter, mit Abbrechen endet sie."
       ${Else}
         StrCpy $TTHolderMsg "These programs are still using files in the install folder:$\r$\n$\r$\n$TTForeignHolders$\r$\n$\r$\nWhile they run, the ${PRODUCT_NAME} update can fail. Close them and click Retry."
         ${If} $TTHolderService == 1
-          StrCpy $TTHolderMsg "$TTHolderMsg You can stop a Windows service in the Services console (services.msc). A system process cannot be closed; Ignore or restarting Windows helps then."
+          StrCpy $TTHolderMsg "$TTHolderMsg You can stop a Windows service in the Services console (services.msc) with Stop. A system process cannot be stopped."
         ${EndIf}
         StrCpy $TTHolderMsg "$TTHolderMsg$\r$\n$\r$\nIgnore continues the installation anyway. Abort ends it."
       ${EndIf}
