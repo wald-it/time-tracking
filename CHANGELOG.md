@@ -10,6 +10,7 @@ All notable changes to TimeTrack are documented here.
 ### Added
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
+- **MCP tools say whether they read or write** — The ten MCP tools now carry tool annotations, so an AI client can tell the six read tools (`readOnlyHint`) from the four write tools without parsing their descriptions. Every tool is marked as staying on this machine (`openWorldHint: false`). The write tools are marked as neither destructive nor idempotent. These are hints for the client; write mode, the token and the confirmation in the app still decide ([#300](https://github.com/wald-it/time-tracking/issues/300)).
 
 ### Fixed
 

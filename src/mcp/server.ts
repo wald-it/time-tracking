@@ -74,6 +74,22 @@ function errorResult(e: unknown): {
   return { content: [{ type: 'text', text: `Fehler: ${String(e)}` }], isError: true }
 }
 
+/**
+ * MCP tool annotations (#300), so a client can tell read tools from write
+ * tools without parsing descriptions. Hints only: the app's write guards
+ * (opt-in, token, confirmation) stay the enforcement. Nothing here reaches
+ * outside the local machine, hence openWorldHint false throughout. Writes are
+ * not destructive (they add or change entries; nothing is deleted) and not
+ * idempotent (a repeated create adds a second entry).
+ */
+const READ_TOOL_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const
+const WRITE_TOOL_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false
+} as const
+
 export function buildServer(): McpServer {
   const server = new McpServer(
     { name: 'timetrack', version: '0.1.0' },
@@ -92,6 +108,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'list_clients',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Kunden auflisten',
       description:
         'Alle Kunden (Name, Farbe, USt-ID, Ansprechpartner). Standardmäßig nur aktive; ' +
@@ -123,6 +140,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'list_projects',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Projekte auflisten',
       description:
         'Projekte inkl. Status, Budget, verbrauchten Minuten und Eintragszahl. ' +
@@ -164,6 +182,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'list_entries',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Zeiteinträge auflisten',
       description:
         'Zeiteinträge in einem Zeitraum — entweder per year+month (lokaler Kalendermonat, ' +
@@ -237,6 +256,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'get_running_timer',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Laufenden Timer abfragen',
       description: 'Gibt den aktuell laufenden Eintrag zurück, oder null wenn kein Timer läuft.',
       inputSchema: {}
@@ -254,6 +274,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'get_dashboard',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Dashboard-Übersicht',
       description:
         'Heutige und wöchentliche Gesamtdauer (Sekunden), die letzten 5 Einträge und die ' +
@@ -273,6 +294,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'get_analytics',
     {
+      annotations: READ_TOOL_ANNOTATIONS,
       title: 'Monatsauswertung',
       description:
         'Monatliche Auswertung: Gesamt-/abrechenbare Sekunden, distinct_client_count sowie ' +
@@ -344,6 +366,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'create_manual_entry',
     {
+      annotations: WRITE_TOOL_ANNOTATIONS,
       title: 'Eintrag nachtragen',
       description: `Legt einen abgeschlossenen Zeiteintrag an (Start + Ende). ${WRITE_HINT}`,
       inputSchema: {
@@ -386,6 +409,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'update_entry_fields',
     {
+      annotations: WRITE_TOOL_ANNOTATIONS,
       title: 'Eintrag bearbeiten',
       description: `Ändert Felder eines bestehenden Eintrags (nur angegebene Felder). Laufende Timer sind ausgenommen. ${WRITE_HINT}`,
       inputSchema: {
@@ -430,6 +454,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'start_timer',
     {
+      annotations: WRITE_TOOL_ANNOTATIONS,
       title: 'Timer starten',
       description: `Startet einen laufenden Timer für einen Kunden. Ein laufender Timer endet zur Startzeit des neuen; die Startzeit darf nicht vor seinem Beginn und höchstens eine Minute in der Zukunft liegen. ${WRITE_HINT}`,
       inputSchema: {
@@ -459,6 +484,7 @@ export function buildServer(): McpServer {
   server.registerTool(
     'stop_running_timer',
     {
+      annotations: WRITE_TOOL_ANNOTATIONS,
       title: 'Laufenden Timer stoppen',
       description: `Stoppt den aktuell laufenden Timer (falls einer läuft). ${WRITE_HINT}`,
       inputSchema: {
