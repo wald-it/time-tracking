@@ -1,9 +1,9 @@
 {
   "name": "time-tracking",
   "version": "1.22.0",
-  "description": "Schlanker Desktop-Zeiterfasser für Windows — Toggl-Track-Style, lokal, ohne Cloud.",
+  "description": "Lean desktop time tracker for Windows and macOS — local, no cloud.",
   "main": "./out/main/index.js",
-  "author": "skoedr",
+  "author": "wald-it",
   "license": "MIT",
   "homepage": "https://github.com/wald-it/time-tracking",
   "repository": {
