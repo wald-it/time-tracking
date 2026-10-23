@@ -770,7 +770,12 @@ app.whenReady().then(async () => {
   // getEndpointDir anchors the MCP holder registry (#198) on the directory the
   // DB actually lives in — the same anchor mcpBridge.ts uses, so a custom
   // TIMETRACK_DB_PATH keeps app and MCP servers pointing at one place.
-  initAutoUpdater({ isDev: is.dev, getEndpointDir: () => dirname(getDbPath()) })
+  // getSetting carries the update-check switch (#273).
+  initAutoUpdater({
+    isDev: is.dev,
+    getEndpointDir: () => dirname(getDbPath()),
+    getSetting: (key) => mcpBridgeDeps().getSetting(key)
+  })
 
   refreshActiveClients()
   configureIdleWatcher({ getWindow: () => mainWindow })

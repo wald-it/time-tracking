@@ -173,6 +173,53 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     }
   }, [runningEntry, engine])
 
+  /**
+   * The switch path shared by switchTo() and start() while a timer runs
+   * (#271): stop the running entry and start (client, project) at ONE
+   * instant, in one main-process transaction (`entries:switch`). If that
+   * fails, the old entry keeps running.
+   *
+   * Unlike startWithClient this must NOT dismiss the quick-note prompt: when
+   * the stopped entry had no description, the prompt opens for it once the
+   * new entry runs — the same prompt a manual stop() shows. A pending idle
+   * event belongs to the stopped entry and is dropped, as in stop().
+   * `onSwitched` runs after a successful switch, before the new entry is set.
+   */
+  const switchToEntry = useCallback(
+    async (
+      clientId: number,
+      projectId: number | null,
+      newDescription: string,
+      onSwitched?: () => void
+    ) => {
+      // A double click would switch twice: the second call still sees the old
+      // running entry and leaves a zero-length entry with its own prompt.
+      if (useTimerStore.getState().isLoading) return
+      setIsLoading(true)
+      const res = await window.api.entries.switch({
+        client_id: clientId,
+        project_id: projectId,
+        description: newDescription,
+        started_at: new Date().toISOString()
+      })
+      setIsLoading(false)
+      if (!res.ok) return
+      const { entry, stopped } = res.data
+      onSwitched?.()
+      setRunningEntry(entry)
+      if (useTimerStore.getState().idleEvent) {
+        setIdleEvent(null)
+        window.api.idle.dismiss()
+      }
+      const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
+      await pushTrayUpdate(true, clientName)
+      if (stopped && stopped.description.trim() === '') setQuickNoteEntry(stopped)
+    },
+    // The store setters are stable; listed so this callback adds no lint
+    // warning (the older ones carry theirs in the baseline).
+    [clients, setIsLoading, setRunningEntry, setIdleEvent, setQuickNoteEntry]
+  )
+
   const start = useCallback(async () => {
     // Resolve which client to start. If the user hasn't picked one (e.g. the
     // hotkey fires from Today/Calendar where there is no selector at all),
@@ -192,25 +239,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     // prompt for the stopped entry if it had no description, and an open
     // prompt is NOT dismissed.
     if (useTimerStore.getState().runningEntry) {
-      if (useTimerStore.getState().isLoading) return
-      setIsLoading(true)
-      const sw = await window.api.entries.switch({
-        client_id: clientId,
-        project_id: projectId ?? null,
-        description,
-        started_at: new Date().toISOString()
-      })
-      setIsLoading(false)
-      if (!sw.ok) return
-      const { entry, stopped } = sw.data
-      setRunningEntry(entry)
-      if (useTimerStore.getState().idleEvent) {
-        setIdleEvent(null)
-        window.api.idle.dismiss()
-      }
-      const name = clients.find((c) => c.id === clientId)?.name ?? ''
-      await pushTrayUpdate(true, name)
-      if (stopped && stopped.description.trim() === '') setQuickNoteEntry(stopped)
+      await switchToEntry(clientId, projectId ?? null, description)
       return
     }
     setIsLoading(true)
@@ -228,7 +257,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
       await pushTrayUpdate(true, clientName)
     }
-  }, [selectedClientId, description, clients])
+  }, [selectedClientId, description, clients, switchToEntry])
 
   const stop = useCallback(async () => {
     if (!runningEntry) return
@@ -280,54 +309,20 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   )
 
   /**
-   * B1 — quick start while a timer runs: stop the running entry and start
-   * (client, project) at ONE instant, in one main-process transaction
-   * (`entries:switch`). If that fails, the old entry keeps running.
-   *
-   * Unlike startWithClient this must NOT dismiss the quick-note prompt: when
-   * the stopped entry had no description, the prompt opens for it once the
-   * new entry runs — the same prompt a manual stop() shows. A pending idle
-   * event belongs to the stopped entry and is dropped, as in stop().
+   * B1 — quick start while a timer runs, over the shared switch path (see
+   * switchToEntry). The key did not go through the selector, so a successful
+   * switch adopts its client and project as the selection and clears the
+   * description.
    */
   const switchTo = useCallback(
-    async (clientId: number, projectId: number | null) => {
-      // A double click would switch twice: the second call still sees the old
-      // running entry and leaves a zero-length entry with its own prompt.
-      if (useTimerStore.getState().isLoading) return
-      setIsLoading(true)
-      const res = await window.api.entries.switch({
-        client_id: clientId,
-        project_id: projectId,
-        description: '',
-        started_at: new Date().toISOString()
-      })
-      setIsLoading(false)
-      if (!res.ok) return
-      const { entry, stopped } = res.data
-      // Client and project together, as in startWithClient (global hotkey).
-      setSelectedClientId(clientId)
-      useTimerStore.getState().setSelectedProjectId(projectId)
-      setRunningEntry(entry)
-      setDescription('')
-      if (useTimerStore.getState().idleEvent) {
-        setIdleEvent(null)
-        window.api.idle.dismiss()
-      }
-      const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
-      await pushTrayUpdate(true, clientName)
-      if (stopped && stopped.description.trim() === '') setQuickNoteEntry(stopped)
-    },
-    // The store setters are stable; listed so this new callback adds no lint
-    // warning (the older ones above carry theirs in the baseline).
-    [
-      clients,
-      setIsLoading,
-      setSelectedClientId,
-      setRunningEntry,
-      setDescription,
-      setIdleEvent,
-      setQuickNoteEntry
-    ]
+    (clientId: number, projectId: number | null) =>
+      switchToEntry(clientId, projectId, '', () => {
+        // Client and project together, as in startWithClient (global hotkey).
+        setSelectedClientId(clientId)
+        useTimerStore.getState().setSelectedProjectId(projectId)
+        setDescription('')
+      }),
+    [switchToEntry, setSelectedClientId, setDescription]
   )
 
   const dismissIdle = useCallback(() => {

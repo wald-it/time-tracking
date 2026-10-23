@@ -7,9 +7,14 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
+
 ### Fixed
 
 - **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).
+- **The About dialog shows the app's actual licence** — Its licence text was a separate copy that named a different copyright holder than the `LICENSE` file. The dialog now takes the text from `LICENSE` when the app is built, so the two can no longer differ ([#276](https://github.com/wald-it/time-tracking/issues/276)).
 
 ### Internal
 
