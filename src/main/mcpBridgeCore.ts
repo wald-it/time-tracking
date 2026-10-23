@@ -187,17 +187,47 @@ function projectName(db: Db, id: number | null): string | null {
   return row?.name ?? `#${id}`
 }
 
+/** Longest free text shown in the dialog, in characters. */
+const DIALOG_TEXT_MAX = 120
+
+/**
+ * C0/C1 controls (line breaks are handled before) and the bidi marks,
+ * embeddings, overrides and isolates (U+061C, U+200E/F, U+202A–202E,
+ * U+2066–2069) that can make text read in another order than it is stored.
+ */
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const HIDDEN_CHARS =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
+
+/**
+ * Free text from the MCP client (or a name) as ONE line for the native
+ * confirmation dialog: line breaks become `⏎`, tabs a space, control and bidi
+ * characters go, and it is cut at DIALOG_TEXT_MAX with `…`. Otherwise a
+ * crafted text could forge lines, push the real change lines out of the
+ * visible area with blank lines, or reverse the reading order (owner review
+ * #255). Only the dialog text is cleaned; the preview carries the values as
+ * they are.
+ */
+export function dialogText(v: string): string {
+  const flat = v
+    .replace(/\r\n|\r|\n/g, ' ⏎ ')
+    .replace(/\t/g, ' ')
+    .replace(HIDDEN_CHARS, '')
+  const chars = [...flat]
+  return chars.length > DIALOG_TEXT_MAX ? chars.slice(0, DIALOG_TEXT_MAX - 1).join('') + '…' : flat
+}
+
 function showProject(name: string | null): string {
-  return name ?? 'Kein Projekt'
+  return name === null ? 'Kein Projekt' : dialogText(name)
 }
 
 function showTags(serialized: string): string {
   const tags = deserializeTags(serialized)
-  return tags.length ? tags.join(', ') : '(leer)'
+  return tags.length ? dialogText(tags.join(', ')) : '(leer)'
 }
 
 function showText(v: string): string {
-  return v === '' ? '(leer)' : `"${v}"`
+  return v === '' ? '(leer)' : `"${dialogText(v)}"`
 }
 
 function yesNo(billable: number): string {
@@ -218,6 +248,16 @@ function exposePrivateNotes(db: Db): boolean {
 
 function withLines(summary: string, lines: string[]): string {
   return lines.length ? `${summary}\n${lines.join('\n')}` : summary
+}
+
+/**
+ * The dialog text: the header, then the field lines (client, project,
+ * billable — values the client cannot shape), then the free-text lines
+ * (description, tags, reference, note). The field lines always come first, so
+ * no free text can stand above them.
+ */
+function dialogSummary(header: string, fieldLines: string[], textLines: string[]): string {
+  return withLines(header, [...fieldLines, ...textLines])
 }
 
 // ── op planning ──────────────────────────────────────────────────────────
@@ -269,17 +309,19 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       const billable = input.billable ?? 1
       const hasNote = (input.private_note ?? '') !== ''
       // Only what departs from an empty entry gets a line.
-      const lines: string[] = []
-      if (project !== null) lines.push(`Projekt: ${project}`)
-      if (!billable) lines.push('abrechenbar: nein')
-      if (input.tags) lines.push(`Tags: ${showTags(input.tags)}`)
-      if (input.reference) lines.push(`Referenz: ${showText(input.reference)}`)
-      if (hasNote) lines.push(`interne Notiz: ${showText(input.private_note ?? '')}`)
+      const fieldLines: string[] = []
+      if (project !== null) fieldLines.push(`Projekt: ${showProject(project)}`)
+      if (!billable) fieldLines.push('abrechenbar: nein')
+      const textLines: string[] = [`Beschreibung: ${showText(input.description)}`]
+      if (input.tags) textLines.push(`Tags: ${showTags(input.tags)}`)
+      if (input.reference) textLines.push(`Referenz: ${showText(input.reference)}`)
+      if (hasNote) textLines.push(`interne Notiz: ${showText(input.private_note ?? '')}`)
       return {
         summary: withHints(
-          withLines(
-            `Eintrag nachtragen — Kunde ${client}, ${formatLocalSpan(input.started_at, input.stopped_at)} (${durationMin(input.started_at, input.stopped_at)} min): "${input.description}"`,
-            lines
+          dialogSummary(
+            `Eintrag nachtragen — Kunde ${dialogText(client)}, ${formatLocalSpan(input.started_at, input.stopped_at)} (${durationMin(input.started_at, input.stopped_at)} min)`,
+            fieldLines,
+            textLines
           ),
           hints
         ),
@@ -369,7 +411,8 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       // Every field the commit actually changes, before → after: one line in
       // the dialog each, and the same set under `changes` in the preview.
       // Times stay in the first line as before (local, with offsets).
-      const lines: string[] = []
+      const fieldLines: string[] = []
+      const textLines: string[] = []
       const changes: Record<string, { before: unknown; after: unknown } | { changed: true }> = {}
       if (input.started_at !== existing.started_at) {
         changes.started_at = { before: existing.started_at, after: input.started_at }
@@ -377,16 +420,10 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       if (input.stopped_at !== existing.stopped_at) {
         changes.stopped_at = { before: existing.stopped_at, after: input.stopped_at }
       }
-      if (input.description !== existing.description) {
-        lines.push(
-          `Beschreibung: ${showText(existing.description)} → ${showText(input.description)}`
-        )
-        changes.description = { before: existing.description, after: input.description }
-      }
       if (input.client_id !== existing.client_id) {
         const before = clientName(db, existing.client_id)
         const after = clientName(db, input.client_id)
-        lines.push(`Kunde: ${before} → ${after}`)
+        fieldLines.push(`Kunde: ${dialogText(before)} → ${dialogText(after)}`)
         changes.client_id = {
           before: { id: existing.client_id, name: before },
           after: { id: input.client_id, name: after }
@@ -397,7 +434,7 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       if (projectAfter !== projectBefore) {
         const before = projectName(db, projectBefore)
         const after = projectName(db, projectAfter)
-        lines.push(`Projekt: ${showProject(before)} → ${showProject(after)}`)
+        fieldLines.push(`Projekt: ${showProject(before)} → ${showProject(after)}`)
         changes.project_id = {
           before: projectBefore === null ? null : { id: projectBefore, name: before },
           after: projectAfter === null ? null : { id: projectAfter, name: after }
@@ -405,17 +442,26 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       }
       const billableAfter = input.billable ?? 1
       if (billableAfter !== existing.billable) {
-        lines.push(`abrechenbar: ${yesNo(existing.billable)} → ${yesNo(billableAfter)}`)
+        fieldLines.push(`abrechenbar: ${yesNo(existing.billable)} → ${yesNo(billableAfter)}`)
         changes.billable = { before: existing.billable === 1, after: billableAfter === 1 }
+      }
+      if (input.description !== existing.description) {
+        textLines.push(
+          `Beschreibung: ${showText(existing.description)} → ${showText(input.description)}`
+        )
+        changes.description = { before: existing.description, after: input.description }
+      } else {
+        // Unchanged, but it names the entry the owner is asked about.
+        textLines.push(`Beschreibung: ${showText(input.description)}`)
       }
       const tagsAfter = input.tags ?? ''
       if (tagsAfter !== existing.tags) {
-        lines.push(`Tags: ${showTags(existing.tags)} → ${showTags(tagsAfter)}`)
+        textLines.push(`Tags: ${showTags(existing.tags)} → ${showTags(tagsAfter)}`)
         changes.tags = { before: existing.tags, after: tagsAfter }
       }
       const referenceAfter = input.reference ?? ''
       if (referenceAfter !== existing.reference) {
-        lines.push(`Referenz: ${showText(existing.reference)} → ${showText(referenceAfter)}`)
+        textLines.push(`Referenz: ${showText(existing.reference)} → ${showText(referenceAfter)}`)
         changes.reference = { before: existing.reference, after: referenceAfter }
       }
       const noteBefore = existing.private_note ?? ''
@@ -423,17 +469,18 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
       if (noteAfter !== noteBefore) {
         // The dialog is local to the owner and shows the text. The preview
         // goes to the MCP client and follows the read-side privacy setting.
-        lines.push(`interne Notiz: ${showText(noteBefore)} → ${showText(noteAfter)}`)
+        textLines.push(`interne Notiz: ${showText(noteBefore)} → ${showText(noteAfter)}`)
         changes.private_note = exposePrivateNotes(db)
           ? { before: noteBefore, after: noteAfter }
           : { changed: true as const }
       }
       return {
         summary: withHints(
-          withLines(
+          dialogSummary(
             `Eintrag #${id} ändern — vorher ${formatLocalSpan(existing.started_at, existing.stopped_at)}, ` +
-              `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}: "${input.description}"`,
-            lines
+              `nachher ${formatLocalSpan(input.started_at, input.stopped_at)}`,
+            fieldLines,
+            textLines
           ),
           hints
         ),
@@ -527,14 +574,18 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
         running &&
         new Date(running.started_at).toDateString() === new Date(input.started_at).toDateString()
       const ends = running
-        ? `; beendet #${running.id} (${running.client_name}) um ${
+        ? `; beendet #${running.id} (${dialogText(running.client_name)}) um ${
             sameDay ? formatLocalClock(input.started_at) : formatLocalMoment(input.started_at)
           }`
         : ''
       let stopped: Entry | null = null
       return {
         summary: withHints(
-          `Timer starten — Kunde ${input.client_id}, ${given ? `ab ${formatLocalMoment(input.started_at)}` : 'ab jetzt'}: "${input.description}"${ends}`,
+          dialogSummary(
+            `Timer starten — Kunde ${dialogText(clientName(db, input.client_id))}, ${given ? `ab ${formatLocalMoment(input.started_at)}` : 'ab jetzt'}${ends}`,
+            [],
+            [`Beschreibung: ${showText(input.description)}`]
+          ),
           hints
         ),
         preview: {
