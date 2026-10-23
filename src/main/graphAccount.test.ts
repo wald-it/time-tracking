@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { DEFAULT_CLIENT_ID, MSA_TENANT_ID, type StoredTokens } from '../shared/graphAuth'
 import {
   CLIENT_ID_SETTING,
+  connect,
   disconnect,
   effectiveClientId,
   getAccessToken,
@@ -506,5 +507,97 @@ describe('concurrent token requests share one refresh (#341)', () => {
     await expect(getAccessToken(d)).resolves.toBe('access-3')
     expect(sent).toEqual(['refresh-1', 'rt-new'])
     expect(loadTokens(store)?.refreshToken).toBe('rt-3')
+  })
+})
+
+// #348: a refresh that is still running when the user disconnects, or
+// connects another account, must not write its result over that. The signal
+// is a connection generation in memory, not a re-read of the token file — a
+// briefly unreadable file must not cost a rotated refresh token (#341).
+describe('a refresh does not undo a disconnect or a reconnect made while it ran (#348)', () => {
+  /**
+   * One fetch for both flows: the refresh of account A answers after
+   * `during` ran; the code exchange of a new connection answers with B.
+   */
+  function flows(during: () => Promise<void> | void): typeof fetch {
+    return (async (_url: unknown, init?: { body?: unknown }) => {
+      const body = new URLSearchParams(String(init?.body ?? ''))
+      if (body.get('grant_type') === 'authorization_code') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            access_token: 'access-B',
+            refresh_token: 'refresh-B',
+            expires_in: 3600,
+            scope: 'Calendars.Read offline_access'
+          })
+        } as unknown as Response
+      }
+      await during()
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'access-A2',
+          refresh_token: 'refresh-A2',
+          expires_in: 3600
+        })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+  }
+
+  /** Connect deps whose browser step answers at once with a matching callback. */
+  function browserThatSignsIn(): Record<string, unknown> {
+    let deliver: ((url: string) => void) | null = null
+    const result = new Promise((resolve) => {
+      deliver = (url) =>
+        resolve({ kind: 'code', code: 'code-B', state: new URL(url).searchParams.get('state') })
+    })
+    return {
+      startLoopbackFn: async () => ({
+        port: 51234,
+        redirectUri: 'http://localhost:51234/timetrack',
+        result,
+        close: () => {}
+      }),
+      openExternalForTest: (url: string) => deliver?.(url)
+    }
+  }
+
+  it('a disconnect during the refresh stays a disconnect', async () => {
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = flows(() => {
+      disconnect(holder.d!)
+    })
+    const d = deps({ auth: { now: () => NOW, fetchFn } })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(loadTokens(d.store)).toBeNull()
+  })
+
+  it('a reconnect with account B during the refresh keeps B', async () => {
+    const browser = browserThatSignsIn()
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = flows(async () => {
+      await connect(holder.d!)
+    })
+    const d = deps({
+      openExternal: browser.openExternalForTest as (url: string) => void,
+      auth: { now: () => NOW, fetchFn, ...browser } as GraphAccountDeps['auth']
+    })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    const got = await getAccessToken(d)
+    expect(loadTokens(d.store)?.refreshToken).toBe('refresh-B')
+    expect(got).toBe('access-B')
+  })
+
+  it('without a change in between the refresh is stored as before', async () => {
+    const d = deps({ auth: { now: () => NOW, fetchFn: flows(() => {}) } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBe('access-A2')
+    expect(loadTokens(d.store)?.refreshToken).toBe('refresh-A2')
   })
 })
