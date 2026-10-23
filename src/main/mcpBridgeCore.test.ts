@@ -123,10 +123,10 @@ describe('handleRequest', () => {
   it('update_entry_fields keeps the import anchor and created_at (#299)', async () => {
     const { ctx } = makeCtx(db)
     await handleRequest(ctx, CREATE)
-    db.prepare(
-      `UPDATE entries SET graph_event_id = 'EVT-9', created_at = '2026-01-02 08:00:00'`
-    ).run()
     const id = (db.prepare(`SELECT id FROM entries LIMIT 1`).get() as { id: number }).id
+    db.prepare(
+      `UPDATE entries SET graph_event_id = 'EVT-9', created_at = '2026-01-02 08:00:00' WHERE id = ?`
+    ).run(id)
     const res = await handleRequest(ctx, {
       v: 1,
       token: 'secret',
