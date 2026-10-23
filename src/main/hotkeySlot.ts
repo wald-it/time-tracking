@@ -32,11 +32,26 @@ export interface HotkeySlot {
    * leaves behind what it does (#292).
    */
   registered: boolean
+  /** Paused for hotkey capture: `current` is meant to be registered on resume. */
+  paused: boolean
   onPress: () => void
 }
 
 export function hotkeySlot(onPress: () => void): HotkeySlot {
-  return { current: '', registered: false, onPress }
+  return { current: '', registered: false, paused: false, onPress }
+}
+
+/** `register`, with a throw (Electron: an accelerator it cannot parse) as a refusal. */
+function tryRegister(
+  registry: ShortcutRegistry,
+  accelerator: string,
+  onPress: () => void
+): boolean {
+  try {
+    return registry.register(accelerator, onPress)
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -64,15 +79,16 @@ export function changeHotkey(
     registry.unregister(previous)
     slot.registered = false
   }
-  if (registry.register(next, slot.onPress)) {
+  if (tryRegister(registry, next, slot.onPress)) {
     slot.current = next
     slot.registered = true
     return { ok: true }
   }
-  // Refused. If the OS did not have the previous one (paused for capture),
-  // nothing was given up: it stays the slot's, and resuming registers it.
-  if (!hadPrevious) return { ok: false, reason: 'refused', previousKept: true }
-  if (registry.register(previous, slot.onPress)) {
+  // Refused, and the OS did not have the previous one: nothing was given up.
+  // Paused for capture, it stays the slot's and resuming registers it;
+  // otherwise it was not in force before either, and the result says so.
+  if (!hadPrevious) return { ok: false, reason: 'refused', previousKept: slot.paused }
+  if (tryRegister(registry, previous, slot.onPress)) {
     slot.registered = true
     return { ok: false, reason: 'refused', previousKept: true }
   }
@@ -83,6 +99,7 @@ export function changeHotkey(
 /** Pause the slots' shortcuts for hotkey capture; they keep their accelerators. */
 export function suspendHotkeys(registry: ShortcutRegistry, slots: HotkeySlot[]): void {
   for (const slot of slots) {
+    slot.paused = true
     if (!slot.registered) continue
     registry.unregister(slot.current)
     slot.registered = false
@@ -97,8 +114,9 @@ export function suspendHotkeys(registry: ShortcutRegistry, slots: HotkeySlot[]):
 export function resumeHotkeys(registry: ShortcutRegistry, slots: HotkeySlot[]): string[] {
   const refused: string[] = []
   for (const slot of slots) {
+    slot.paused = false
     if (!slot.current || slot.registered) continue
-    slot.registered = registry.register(slot.current, slot.onPress)
+    slot.registered = tryRegister(registry, slot.current, slot.onPress)
     if (!slot.registered) refused.push(slot.current)
   }
   return refused

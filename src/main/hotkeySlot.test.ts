@@ -78,6 +78,39 @@ describe('changing a hotkey slot (#292)', () => {
     expect(registry.active.size).toBe(0)
   })
 
+  it('an accelerator the OS cannot parse (register throws) counts as refused', () => {
+    const registry = fakeRegistry()
+    const slot = holding(registry, 'Alt+Shift+S')
+    const throwing: ShortcutRegistry = {
+      register: (accelerator, onPress) => {
+        if (accelerator === 'Foo+Bar') throw new Error('Failed to parse accelerator')
+        return registry.register(accelerator, onPress)
+      },
+      unregister: registry.unregister
+    }
+    expect(changeHotkey(throwing, slot, 'Foo+Bar', OTHER)).toEqual({
+      ok: false,
+      reason: 'refused',
+      previousKept: true
+    })
+    expect(slot).toMatchObject({ current: 'Alt+Shift+S', registered: true })
+    expect([...registry.active]).toEqual(['Alt+Shift+S'])
+  })
+
+  it('refused while the previous one was not in force anyway: says it is not kept', () => {
+    // Registering it failed earlier (e.g. after capture another app had it).
+    const registry = fakeRegistry()
+    const slot = holding(registry, 'Alt+Shift+S')
+    suspendHotkeys(registry, [slot])
+    registry.refused.push('Alt+Shift+S', 'Ctrl+Alt+Del')
+    expect(resumeHotkeys(registry, [slot])).toEqual(['Alt+Shift+S'])
+    expect(changeHotkey(registry, slot, 'Ctrl+Alt+Del', OTHER)).toEqual({
+      ok: false,
+      reason: 'refused',
+      previousKept: false
+    })
+  })
+
   it('taken by the other slot: nothing changes', () => {
     const registry = fakeRegistry()
     const slot = holding(registry, 'Alt+Shift+S')
