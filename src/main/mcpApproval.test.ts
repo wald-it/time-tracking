@@ -25,10 +25,15 @@ describe('mcpBridge.ts wiring', () => {
     expect(dialog).toBeGreaterThan(covers)
   })
 
-  it('grants only on an approved dialog with "remember" or in session mode', () => {
+  it('grants only for an approved start or stop, with "remember" or in session mode', () => {
+    expect(body).toMatch(/\n\s*const approvable = APPROVABLE_OPS\.has\(op\)/)
     expect(body).toMatch(
-      /\n\s*if \(approved && \(mode === 'session' \|\| res\.checkboxChecked\)\) approval\.grant\(mode\)/
+      /\n\s*if \(approved && approvable && \(mode === 'session' \|\| res\.checkboxChecked\)\) \{\s*approval\.grant\(mode\)/
     )
+  })
+
+  it('offers "remember" only on a start or stop dialog in per-write mode', () => {
+    expect(body).toMatch(/mcpConfirmDialog\(locale, summary, approvable && mode === 'per-write'\)/)
   })
 
   it('a bridge restart forgets the approval', () => {
@@ -48,20 +53,20 @@ function clock(start = 1_000_000): { now: () => number; advance: (ms: number) =>
 
 describe('ApprovalWindow', () => {
   it('covers nothing before it is granted', () => {
-    const w = new ApprovalWindow(clock().now)
+    const w = new ApprovalWindow(clock().now, clock().now)
     expect(w.covers('start_timer', 'session')).toBe(false)
     expect(w.covers('stop_running_timer', 'session')).toBe(false)
   })
 
   it('covers start and stop once granted', () => {
-    const w = new ApprovalWindow(clock().now)
+    const w = new ApprovalWindow(clock().now, clock().now)
     w.grant('session')
     expect(w.covers('start_timer', 'session')).toBe(true)
     expect(w.covers('stop_running_timer', 'session')).toBe(true)
   })
 
   it('never covers adding or changing an entry', () => {
-    const w = new ApprovalWindow(clock().now)
+    const w = new ApprovalWindow(clock().now, clock().now)
     w.grant('session')
     expect(w.covers('create_manual_entry', 'session')).toBe(false)
     expect(w.covers('update_entry_fields', 'session')).toBe(false)
@@ -69,7 +74,7 @@ describe('ApprovalWindow', () => {
 
   it('ends after the time window', () => {
     const c = clock()
-    const w = new ApprovalWindow(c.now)
+    const w = new ApprovalWindow(c.now, c.now)
     w.grant('session')
     c.advance(APPROVAL_WINDOW_MS - 1)
     expect(w.covers('start_timer', 'session')).toBe(true)
@@ -78,7 +83,7 @@ describe('ApprovalWindow', () => {
   })
 
   it('ends after the write budget', () => {
-    const w = new ApprovalWindow(clock().now)
+    const w = new ApprovalWindow(clock().now, clock().now)
     w.grant('session')
     for (let i = 0; i < APPROVAL_MAX_WRITES; i++)
       expect(w.covers('start_timer', 'session')).toBe(true)
@@ -87,7 +92,7 @@ describe('ApprovalWindow', () => {
   })
 
   it('a refused op does not use the budget', () => {
-    const w = new ApprovalWindow(clock().now)
+    const w = new ApprovalWindow(clock().now, clock().now)
     w.grant('session')
     for (let i = 0; i < 5; i++) w.covers('create_manual_entry', 'session')
     for (let i = 0; i < APPROVAL_MAX_WRITES; i++)
@@ -96,7 +101,7 @@ describe('ApprovalWindow', () => {
 
   it('a new grant starts a fresh window and budget; reset ends it', () => {
     const c = clock()
-    const w = new ApprovalWindow(c.now)
+    const w = new ApprovalWindow(c.now, c.now)
     w.grant('session')
     for (let i = 0; i < APPROVAL_MAX_WRITES; i++) w.covers('start_timer', 'session')
     c.advance(APPROVAL_WINDOW_MS)
@@ -109,22 +114,37 @@ describe('ApprovalWindow', () => {
 
 describe('ApprovalWindow and the confirm mode', () => {
   it('a mode change ends the approval at once', () => {
-    const w = new ApprovalWindow(clock().now)
+    const w = new ApprovalWindow(clock().now, clock().now)
     w.grant('session')
     expect(w.covers('start_timer', 'per-write')).toBe(false)
     expect(w.covers('start_timer', 'session')).toBe(true)
   })
 
   it('"remember" in per-write mode holds only while per-write stays', () => {
-    const w = new ApprovalWindow(clock().now)
+    const w = new ApprovalWindow(clock().now, clock().now)
     w.grant('per-write')
     expect(w.covers('stop_running_timer', 'per-write')).toBe(true)
     expect(w.covers('stop_running_timer', 'session')).toBe(false)
   })
 
-  it('runs on a monotonic clock by default', () => {
-    const src = readFileSync(join(__dirname, 'mcpApproval.ts'), 'utf8')
-    expect(src).toContain('performance.now()')
-    expect(src).not.toMatch(/=\s*Date\.now\b/)
+  // Review round 2: on macOS and Linux the monotonic clock stops while the
+  // machine sleeps, the wall clock does not; either one alone could be stretched.
+  it('ends when the wall clock passes the window, even if the monotonic one did not (sleep)', () => {
+    const wall = clock()
+    const mono = clock()
+    const w = new ApprovalWindow(wall.now, mono.now)
+    w.grant('session')
+    wall.advance(15 * 60 * 60 * 1000)
+    expect(w.covers('start_timer', 'session')).toBe(false)
+  })
+
+  it('ends when the monotonic clock passes the window, even if the wall clock was set back', () => {
+    const wall = clock()
+    const mono = clock()
+    const w = new ApprovalWindow(wall.now, mono.now)
+    w.grant('session')
+    wall.advance(-2 * 60 * 60 * 1000)
+    mono.advance(APPROVAL_WINDOW_MS)
+    expect(w.covers('start_timer', 'session')).toBe(false)
   })
 })

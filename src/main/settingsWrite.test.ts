@@ -46,6 +46,7 @@ function hooks(): IpcHooks {
     pokePresence: record('pokePresence'),
     setIcalFeedEnabled: record('setIcalFeedEnabled'),
     restartIcalFeed: record('restartIcalFeed'),
+    forgetMcpApproval: record('forgetMcpApproval'),
     confirmSensitiveSetting: async (change) => {
       asked.push(change)
       return answer
@@ -272,5 +273,23 @@ describe('sensitive settings: review round 1', () => {
     expect((await second).ok).toBe(true)
     expect(stored('webhook_targets')).toBe('[]')
     expect(asked).toHaveLength(1)
+  })
+})
+
+describe('#301: a confirm-mode change ends the approval', () => {
+  it('any change of the mode forgets the approval', async () => {
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES ('mcp_write_confirm_mode', 'session')"
+    ).run()
+    await writeSettingFromRenderer(db, hooks(), 'mcp_write_confirm_mode', 'per-write')
+    expect(calls).toEqual(['forgetMcpApproval()'])
+  })
+
+  it('writing the same mode again does not', async () => {
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES ('mcp_write_confirm_mode', 'session')"
+    ).run()
+    await writeSettingFromRenderer(db, hooks(), 'mcp_write_confirm_mode', 'session')
+    expect(calls).toEqual([])
   })
 })

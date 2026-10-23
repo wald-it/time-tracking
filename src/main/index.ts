@@ -744,6 +744,7 @@ app.whenReady().then(async () => {
         restartFeedServer(icalFeedDeps())
       }
     },
+    forgetMcpApproval,
     // #272 (A3): the native confirmation for a setting that widens access.
     confirmSensitiveSetting: async (change) => {
       const opts = sensitiveSettingDialog(readLanguage(getDb()), change)

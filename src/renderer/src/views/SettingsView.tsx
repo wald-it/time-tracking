@@ -1060,15 +1060,16 @@ export function WebhooksSection({
   const [saveError, setSaveError] = useState<string | null>(null)
 
   async function persist(next: WebhookTarget[]): Promise<void> {
-    const before = targets
     setTargets(next)
     setSaveError(null)
     const res = await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
     // A new address asks natively first (#272); declined or failed, the list
-    // goes back. Only a failure needs a message.
+    // shows what is stored, read back rather than restored from a snapshot
+    // (another save may have landed in between). Only a failure needs a message.
     if (!res.ok) {
-      setTargets(before)
       if (res.code !== 'cancelled') setSaveError(t('common.error', { error: res.error }))
+      const stored = await window.api.settings.getAll()
+      if (stored.ok) setTargets(parseWebhookTargets(stored.data.webhook_targets))
     }
   }
 
@@ -1149,6 +1150,7 @@ export function WebhooksSection({
                       // Keep the focus in the address field: its blur would save
                       // (and ask about) the address the user is removing.
                       onMouseDown={(e) => e.preventDefault()}
+                      data-webhook-remove={tg.id}
                       onClick={() => removeTarget(tg.id)}
                       className={btnSecondaryClass}
                     >
@@ -1167,7 +1169,13 @@ export function WebhooksSection({
                       const v = e.target.value
                       setUrlDrafts((d) => ({ ...d, [tg.id]: v }))
                     }}
-                    onBlur={() => commitUrl(tg.id)}
+                    onBlur={(e) => {
+                      // Focus moving to this target's Remove (Shift+Tab) must
+                      // not save the address that is about to go.
+                      const to = e.relatedTarget as HTMLElement | null
+                      if (to?.dataset.webhookRemove === tg.id) return
+                      commitUrl(tg.id)
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') e.currentTarget.blur()
                     }}

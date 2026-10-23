@@ -22,7 +22,7 @@ import { getDbPath } from './db'
 import { createBackup } from './backup'
 import { auditWrite } from './mcpAudit'
 import { handleRequest, type BridgeCtx, type BridgeRequest, type WriteOp } from './mcpBridgeCore'
-import { ApprovalWindow } from './mcpApproval'
+import { APPROVABLE_OPS, ApprovalWindow } from './mcpApproval'
 import { emitWebhooks, eventForWriteOp } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { socketPathForDir, tokenPathForDir, controllerTokenPathForDir } from '../mcp/socketPath'
@@ -130,14 +130,19 @@ async function confirm(summary: string, locale: Locale, op: WriteOp): Promise<bo
     if (!win.isVisible()) win.show()
     win.focus()
   }
-  const opts = mcpConfirmDialog(locale, summary)
+  // Only start and stop can be approved for a while: only their dialog
+  // offers "remember", and in session mode only their approval grants it.
+  const approvable = APPROVABLE_OPS.has(op)
+  const opts = mcpConfirmDialog(locale, summary, approvable && mode === 'per-write')
   const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
   const approved = res.response === 1
-  if (approved && (mode === 'session' || res.checkboxChecked)) approval.grant(mode)
+  if (approved && approvable && (mode === 'session' || res.checkboxChecked)) {
+    approval.grant(mode)
+  }
   return approved
 }
 
-/** #301: end any start/stop approval (write access switched off). */
+/** #301: end any start/stop approval (write access off, confirm mode changed). */
 export function forgetMcpApproval(): void {
   approval.reset()
 }

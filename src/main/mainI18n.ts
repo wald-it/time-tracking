@@ -83,7 +83,9 @@ export function readLanguageOr(db: Database.Database, fallback: () => Locale): L
  */
 export function mcpConfirmDialog(
   locale: Locale,
-  summary: string
+  summary: string,
+  // #301: the "allow start and stop for 30 minutes" box, only where it applies.
+  offerRemember = true
 ): MessageBoxOptions & { buttons: string[] } {
   const t = dialogT(locale)
   return {
@@ -95,8 +97,9 @@ export function mcpConfirmDialog(
     title: t('mainDialog.mcp.title'),
     message: t('mainDialog.mcp.message'),
     detail: summary,
-    checkboxLabel: t('mainDialog.mcp.remember'),
-    checkboxChecked: false
+    ...(offerRemember
+      ? { checkboxLabel: t('mainDialog.mcp.remember'), checkboxChecked: false }
+      : {})
   }
 }
 
@@ -115,9 +118,12 @@ export function sensitiveSettingDialog(
   // The values come from the renderer this dialog guards against: each URL is
   // shown as the parser reads it (tabs and newlines gone, IDN as punycode, as
   // delivery will use it), then flattened like every other dialog value.
+  // The host leads each line, never shortened: it is where the data goes, and
+  // a long address (or userinfo before an '@') must not push it out of view.
   const shownUrl = (u: string): string => {
     try {
-      return dialogText(new URL(u).href)
+      const parsed = new URL(u)
+      return `${parsed.host} — ${dialogText(parsed.href)}`
     } catch {
       return dialogText(u)
     }

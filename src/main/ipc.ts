@@ -98,6 +98,8 @@ export interface IpcHooks {
    * user's data (settingsWrite.ts → sensitiveSettingChange). True = go ahead.
    */
   confirmSensitiveSetting(change: SensitiveSettingChange): Promise<boolean>
+  /** #301: end any MCP start/stop approval (the confirm mode changed). */
+  forgetMcpApproval(): void
 }
 
 function ok<T>(data: T): IpcResult<T> {

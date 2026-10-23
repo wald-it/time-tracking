@@ -41,8 +41,7 @@ export const RENDERER_WRITABLE_SETTINGS: ReadonlySet<string> = new Set([
   'export_prefs',
   'mcp_expose_rates',
   'mcp_expose_private_notes',
-  // The two write-mode switches and the controller scope stay writable until
-  // the owner decides whether turning them on needs a native confirmation.
+  // Turning these on asks a native confirmation first (sensitiveSettingChange).
   'mcp_write_enabled',
   'mcp_write_confirm_mode',
   'controller_enabled',
@@ -182,6 +181,10 @@ async function writeOne(
       hooks.setMcpWriteEnabled(value === '1')
     } else if (key === 'controller_enabled') {
       hooks.setControllerEnabled(value === '1')
+    } else if (key === 'mcp_write_confirm_mode') {
+      // #301: any change of the confirm mode ends a start/stop approval, also
+      // a switch back to the mode it was granted in.
+      if (value !== current) hooks.forgetMcpApproval()
     } else if (key === 'presence_enabled' || key === 'presence_show_client' || key === 'language') {
       // Toggling mirroring off clears our own status message; the language
       // and privacy switches re-render it while a timer runs.

@@ -221,10 +221,6 @@ function runningEntry(db: Db): { id: number; client_id: number } | undefined {
     .get() as { id: number; client_id: number } | undefined
 }
 
-// dialogText lives in mainI18n (the settings confirmation needs it too);
-// re-exported here for the bridge's own callers and tests.
-export { dialogText }
-
 /** The dialog's language: its locale (for dates) and its text function. */
 interface Say {
   locale: Locale

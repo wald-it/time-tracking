@@ -13,9 +13,11 @@
  * nothing ran to stop) still uses one. That keeps the bound simple and errs
  * towards asking sooner.
  *
- * The window runs on a monotonic clock, so setting the system clock back
- * cannot stretch it. An approval also holds only for the confirm mode it was
- * granted under: switching to "ask on every change" ends it at once.
+ * The window must hold on two clocks at once: the wall clock (which keeps
+ * running while the machine sleeps) and a monotonic one (which setting the
+ * system clock back cannot rewind). Neither sleep nor a clock change can
+ * stretch it. An approval also holds only for the confirm mode it was
+ * granted under, and the bridge forgets it on any mode change.
  *
  * Electron-free and clock-injected, so the bounds are testable.
  */
@@ -26,29 +28,40 @@ export const APPROVAL_MAX_WRITES = 20
 export const APPROVABLE_OPS: ReadonlySet<string> = new Set(['start_timer', 'stop_running_timer'])
 
 export class ApprovalWindow {
-  private until = 0
+  private wallUntil = 0
+  private monoUntil = 0
   private writesLeft = 0
   private mode: string | null = null
 
-  constructor(private readonly now: () => number = () => performance.now()) {}
+  constructor(
+    private readonly wall: () => number = Date.now,
+    private readonly mono: () => number = () => performance.now()
+  ) {}
 
   /** Approve start and stop for the next window, under confirm mode `mode`. */
   grant(mode: string): void {
-    this.until = this.now() + APPROVAL_WINDOW_MS
+    this.wallUntil = this.wall() + APPROVAL_WINDOW_MS
+    this.monoUntil = this.mono() + APPROVAL_WINDOW_MS
     this.writesLeft = APPROVAL_MAX_WRITES
     this.mode = mode
   }
 
-  /** Forget the approval (bridge restart, write access switched off). */
+  /** Forget the approval (bridge restart, write access off, mode change). */
   reset(): void {
-    this.until = 0
+    this.wallUntil = 0
+    this.monoUntil = 0
     this.writesLeft = 0
     this.mode = null
   }
 
   /** Whether an approval is in force right now under confirm mode `mode`. */
   activeFor(mode: string): boolean {
-    return this.mode === mode && this.writesLeft > 0 && this.now() < this.until
+    return (
+      this.mode === mode &&
+      this.writesLeft > 0 &&
+      this.wall() < this.wallUntil &&
+      this.mono() < this.monoUntil
+    )
   }
 
   /**

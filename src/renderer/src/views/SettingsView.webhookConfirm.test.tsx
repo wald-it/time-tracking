@@ -23,7 +23,7 @@ function mockSet(
 ): ReturnType<typeof vi.fn<(key: string, value: string) => Promise<SetResult>>> {
   const set = vi.fn<(key: string, value: string) => Promise<SetResult>>(async () => result)
   ;(window as unknown as { api: unknown }).api = {
-    settings: { getAll: async () => ({ ok: true, data: {} }), set }
+    settings: { getAll: async () => ({ ok: true, data: { webhook_targets: existing } }), set }
   }
   return set
 }
@@ -101,5 +101,18 @@ describe('webhook address (#272 A3)', () => {
     })
     expect(set).toHaveBeenCalledTimes(1)
     expect(JSON.parse(set.mock.calls[0][1])).toEqual([])
+  })
+
+  it('Shift+Tab to Remove does not save the typed address', async () => {
+    const set = mockSet({ ok: true, data: undefined })
+    const input = await renderSection()
+    input.focus()
+    fireEvent.change(input, { target: { value: URL_A } })
+    const remove = screen.getByRole('button', { name: de['settings.webhooks.remove'] })
+    await act(async () => {
+      fireEvent.blur(input, { relatedTarget: remove })
+      fireEvent.focusOut(input, { relatedTarget: remove })
+    })
+    expect(set).not.toHaveBeenCalled()
   })
 })

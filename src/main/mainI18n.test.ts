@@ -122,7 +122,7 @@ describe('index.ts — the confirmation of a sensitive setting (#272 A3)', () =>
       kind: 'webhook',
       urls: ['https://a.example', 'https://b.example']
     })
-    expect(o.detail).toContain('\nhttps://a.example/\nhttps://b.example/\n')
+    expect(o.detail).toContain('\na.example — https://a.example/\nb.example — https://b.example/\n')
     expect(o.buttons[1]).toBe('Speichern')
   })
 
@@ -255,5 +255,22 @@ describe('sensitive setting values from the renderer are shown cleaned (#272 A3)
     })
     expect((o.detail ?? '').split('\n')).toHaveLength(1)
     expect(o.detail).toContain('⏎')
+  })
+})
+
+describe('#301: the "remember" box only where it applies', () => {
+  it('can be left out', () => {
+    const o = mcpConfirmDialog('de', 'S', false)
+    expect(o.checkboxLabel).toBeUndefined()
+    expect(o.buttons).toEqual(['Ablehnen', 'Erlauben'])
+  })
+})
+
+describe('the webhook host is never cut off (review round 2)', () => {
+  it('a long address with userinfo still names the real host first', () => {
+    const url = 'https://hooks.trusted-company.example.com.' + 'a'.repeat(110) + '@evil.example/'
+    const o = sensitiveSettingDialog('de', { kind: 'webhook', urls: [url] })
+    const line = (o.detail ?? '').split('\n').find((l) => l.includes('—')) ?? ''
+    expect(line.startsWith('evil.example — ')).toBe(true)
   })
 })
