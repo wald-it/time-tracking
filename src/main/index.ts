@@ -507,6 +507,15 @@ function pokePresence(): void {
       },
       getAccessToken: () => getAccessToken(account),
       getClientId: () => effectiveClientId(account),
+      // Over the same handle as the presence settings above (#347). If that
+      // handle is closed, getSetting fails before the language is asked for;
+      // appLocale's own fallbacks are not what keeps one reconcile on one
+      // database.
+      getLocale: () =>
+        appLocale(
+          () => db,
+          () => app.getPreferredSystemLanguages()
+        ),
       log: (m) => log.info(m)
     }
     void reconcilePresence(deps, readRunning(db))

@@ -99,7 +99,7 @@ type Outcome = 'ok' | 'lostBefore' | 'lostAfter'
 const CLIENTS = ['Acme', 'Beta', 'Müller']
 const USER_TEXTS = ['Back at 3', 'Out until Monday', '<OOO>', 'In a workshop']
 /** Messages a user could type that are exactly in TimeTrack's form. */
-const USER_TEXTS_IN_OUR_FORM = ['🔴 Fokus', '🔴 Fokus: Acme — Rollout']
+const USER_TEXTS_IN_OUR_FORM = ['🔴 Fokus', '🔴 Fokus: Acme — Rollout', '🔴 Focus']
 const OUR_FORM = /^🔴 (Fokus|Focus)(: .+)?$/u
 const MAX_REQUESTS_PER_POKE = 5
 
@@ -149,6 +149,8 @@ interface World {
   readFails: () => boolean
   enabled: boolean
   showClient: boolean
+  /** The app language for the whole sequence: German or English texts. */
+  locale: 'de' | 'en'
   connected: boolean
   hasToken: boolean
   /** Requests and token requests during the current poke. */
@@ -249,9 +251,7 @@ function makeDeps(w: World): PresenceDeps {
           ? w.showClient
             ? '1'
             : '0'
-          : k === 'language'
-            ? 'de'
-            : undefined,
+          : undefined,
     getAccountStatus: () => ({
       connected: w.connected,
       personalAccount: false,
@@ -262,6 +262,7 @@ function makeDeps(w: World): PresenceDeps {
       return w.hasToken ? 'tok' : null
     },
     getClientId: () => 'app-client-id',
+    getLocale: () => w.locale,
     fetchFn,
     now: () => w.now,
     log: (m) => w.log.push(`    log: ${m}`)
@@ -295,6 +296,7 @@ async function runSequence(
     readFails: () => rnd() < failRate / 2,
     enabled: true,
     showClient: rnd() < 0.5,
+    locale: rnd() < 0.3 ? 'en' : 'de',
     connected: true,
     hasToken: true,
     requests: 0,
@@ -374,7 +376,7 @@ async function runSequence(
     // clean-up check green.
     w.enabled = true
     timer = running(pick(CLIENTS))
-    const expected = desiredMessage(timer, w.showClient, 'de')
+    const expected = desiredMessage(timer, w.showClient, w.locale)
     w.log.push(
       `live: feature on, timer ${timer.client_name}, expect ${JSON.stringify(expected)} + Busy`
     )
