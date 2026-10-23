@@ -67,6 +67,9 @@ jobs:
       - name: Build the throw-away update (version only, not committed)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # electron-builder skips signing in a pull request; the release
+          # (tag) build signs ad hoc, and the update must be signed like it.
+          CSC_FOR_PULL_REQUEST: true
         run: |
           set -euo pipefail
           node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f,'utf8'));p.version=process.env.PROBE_VERSION;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
