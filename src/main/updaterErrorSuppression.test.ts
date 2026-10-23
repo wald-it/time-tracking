@@ -128,6 +128,17 @@ describe('start-up error suppression is scoped to the start-up check (#284)', ()
     expect(lastStatus()).toEqual({ status: 'error', message: 'download interrupted' })
   })
 
+  it('a download error raised before the start-up check has settled is broadcast, not swallowed', async () => {
+    updater.checkForUpdatesAndNotify.mockImplementation(async () => {
+      emit('update-available', { version: '9.9.9' })
+      // The download the check started fails at once, inside the check.
+      emit('error', new Error('cache dir not writable'))
+      return { downloadPromise: Promise.resolve([]) }
+    })
+    await start(undefined)
+    expect(lastStatus()).toEqual({ status: 'error', message: 'cache dir not writable' })
+  })
+
   it('"Check now" while the start-up check is still running surfaces its error', async () => {
     let failStartup: (err: Error) => void = () => undefined
     updater.checkForUpdatesAndNotify.mockImplementation(

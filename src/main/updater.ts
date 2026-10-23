@@ -23,9 +23,39 @@ export type { UpdateStatus }
 
 let lastStatus: UpdateStatus = { status: 'idle' }
 let lastCheckIso: string | null = null
-// For the offline-tolerant initial check only: set when it starts, cleared when
-// it settles (#284). Left set, it would swallow the next unrelated error.
-let suppressNextError = false
+/**
+ * The silent start-up check while it runs (#284). Its `error` events are held
+ * here instead of broadcast, and decided when the check settles: only the error
+ * that is the check's own rejection stays quiet (offline start); any other —
+ * such as an early failure of the download the check started — goes out.
+ * A one-shot "swallow the next error" flag got this wrong: left set after a
+ * successful check, it ate the next unrelated error.
+ */
+interface StartupCheck {
+  held: Error[]
+  /** "Check now" joined it; from then on its errors are the user's. */
+  joined: boolean
+}
+let startupCheck: StartupCheck | null = null
+
+function broadcastError(err: Error): void {
+  broadcast(reduceUpdateStatus(lastStatus, { type: 'error', message: err.message }))
+}
+
+function settleStartupCheck(run: StartupCheck, rejection: Error | null): void {
+  if (startupCheck === run) startupCheck = null
+  for (const err of run.held) {
+    if (err === rejection) {
+      log.warn('Update check failed (suppressed, likely offline):', err.message)
+      broadcast({ status: 'idle' })
+    } else {
+      broadcastError(err)
+    }
+  }
+  if (rejection && !run.joined && !run.held.includes(rejection)) {
+    log.warn('Initial update check failed:', rejection.message)
+  }
+}
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -228,13 +258,11 @@ export function initAutoUpdater(opts: {
   })
 
   autoUpdater.on('error', (err: Error) => {
-    if (suppressNextError) {
-      suppressNextError = false
-      log.warn('Update check failed (suppressed, likely offline):', err.message)
-      broadcast({ status: 'idle' })
+    if (startupCheck) {
+      startupCheck.held.push(err)
       return
     }
-    broadcast(reduceUpdateStatus(lastStatus, { type: 'error', message: err.message }))
+    broadcastError(err)
   })
 
   // ── IPC handlers ───────────────────────────────────────────
@@ -249,7 +277,10 @@ export function initAutoUpdater(opts: {
     try {
       // An explicit check surfaces its errors, also when it joins a start-up
       // check that is still running (electron-updater shares one promise).
-      suppressNextError = false
+      if (startupCheck) {
+        startupCheck.joined = true
+        startupCheck = null
+      }
       lastCheckIso = new Date().toISOString()
       await autoUpdater.checkForUpdates()
       return ok(undefined)
@@ -278,19 +309,15 @@ export function initAutoUpdater(opts: {
   // Don't surface errors here — offline app starts shouldn't show a banner.
   // Switched off (#273): no request to GitHub at start, so nothing to download.
   if (!opts.isDev && startupCheckEnabled(opts.getSetting)) {
-    suppressNextError = true
+    const run: StartupCheck = { held: [], joined: false }
+    startupCheck = run
     lastCheckIso = new Date().toISOString()
-    // electron-updater emits `error` before it rejects, so an offline start is
-    // already consumed by the handler above when this settles. A successful
-    // check never emits one: clear the flag here, or it swallows the error of
-    // the next manual check or of the background download (#284).
-    autoUpdater
-      .checkForUpdatesAndNotify()
-      .catch((err) => {
-        log.warn('Initial update check failed:', err.message)
-      })
-      .finally(() => {
-        suppressNextError = false
-      })
+    // electron-updater emits `error` and then rejects with the same object
+    // (AppUpdater.checkForUpdates), which is how the offline case is told
+    // apart from everything else that fails meanwhile.
+    autoUpdater.checkForUpdatesAndNotify().then(
+      () => settleStartupCheck(run, null),
+      (err: Error) => settleStartupCheck(run, err)
+    )
   }
 }
