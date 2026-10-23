@@ -736,4 +736,15 @@ describe('a refresh does not undo a disconnect or a reconnect made while it ran 
     await expect(getAccessToken(d)).resolves.toBe('access-A2')
     expect(loadTokens(store)?.refreshToken).toBe('refresh-A2')
   })
+  it('an error of the old refresh after a disconnect means: not connected', async () => {
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = oneFetch(() => {
+      disconnect(holder.d!)
+    }, 'network')
+    const d = deps({ auth: { now: () => NOW, fetchFn } })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(loadTokens(d.store)).toBeNull()
+  })
 })
