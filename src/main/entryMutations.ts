@@ -210,12 +210,24 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
   if (err) return fail(err)
   const segments = splitAtMidnight(new Date(input.started_at), new Date(input.stopped_at))
   const tx = db.transaction((): Entry => {
+    // #299: the reinsert gives the entry new rows, so what belongs to the
+    // entry rather than to this edit is read first and carried over — the
+    // calendar import anchor (otherwise the next preview offers the meeting
+    // again) and the time the entry was first written. Of a midnight-split
+    // pair, the anchor sits on one half and the earliest created_at counts.
+    const carried = db
+      .prepare(
+        `SELECT MAX(graph_event_id) AS graph_event_id, MIN(created_at) AS created_at
+           FROM entries
+          WHERE ${existingLinkId ? 'link_id = ?' : 'id = ?'}`
+      )
+      .get(existingLinkId ?? input.id) as { graph_event_id: string | null; created_at: string }
     if (existingLinkId) {
       db.prepare(`DELETE FROM entries WHERE link_id = ?`).run(existingLinkId)
     } else {
       db.prepare(`DELETE FROM entries WHERE id = ?`).run(input.id)
     }
-    return insertEntrySegments(
+    const row = insertEntrySegments(
       db,
       input,
       segments,
@@ -223,8 +235,14 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
       input.reference ?? '',
       input.billable ?? 1,
       input.private_note ?? '',
-      input.project_id ?? null
+      input.project_id ?? null,
+      carried.graph_event_id
     )
+    db.prepare(
+      `UPDATE entries SET created_at = ?
+        WHERE id = ? OR (link_id IS NOT NULL AND link_id = ?)`
+    ).run(carried.created_at, row.id, row.link_id)
+    return db.prepare(`SELECT * FROM entries WHERE id = ?`).get(row.id) as Entry
   })
   return ok(tx())
 }
