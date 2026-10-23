@@ -16,6 +16,7 @@ If you call TimeTrack's MCP tools from your own scripts or agents, check this be
 ### Added
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
+- **MCP tools say whether they read or write** — The ten MCP tools now carry tool annotations, so an AI client can tell the six read tools (`readOnlyHint`) from the four write tools without parsing their descriptions. The read tools only read the local database. The write tools are marked as reaching outside (`openWorldHint`), because they can trigger your webhooks. Only `create_manual_entry` is marked as purely adding. The other three are marked as destructive. `update_entry_fields` deletes the entry and saves the edited version under a new id. `start_timer` and `stop_running_timer` can end a running entry. No write tool is marked as safe to repeat. These are hints for the client; write mode, the token and the confirmation in the app still decide ([#300](https://github.com/wald-it/time-tracking/issues/300)).
 
 ### Changed
 
