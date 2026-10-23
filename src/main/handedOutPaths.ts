@@ -45,9 +45,27 @@ function readPicked(db: Database.Database): string[] {
   }
 }
 
+/**
+ * Picks of the running session, per database connection (one per app run).
+ * Never capped: the merge dialog's time-sheet list has no limit, so a long
+ * merge must not evict an input it still holds. Only the persisted list,
+ * which carries picks across a restart, is capped.
+ */
+const sessionPicks = new WeakMap<Database.Database, Set<string>>()
+
+function sessionPicksOf(db: Database.Database): Set<string> {
+  let picks = sessionPicks.get(db)
+  if (!picks) {
+    picks = new Set()
+    sessionPicks.set(db, picks)
+  }
+  return picks
+}
+
 /** Record (or refresh) a picked PDF: most recently used first, once each, capped. */
 export function rememberPickedPdf(db: Database.Database, path: string): void {
   const resolved = resolve(path)
+  sessionPicksOf(db).add(resolved)
   const current = readPicked(db)
   if (current[0] === resolved) return
   const next = [resolved, ...current.filter((p) => p !== resolved)].slice(0, MAX_PICKED_PDFS)
@@ -60,7 +78,8 @@ export function rememberPickedPdf(db: Database.Database, path: string): void {
 /** True when `path` is a PDF the user picked in the native dialog. */
 export function isPickedPdf(db: Database.Database, path: unknown): boolean {
   if (typeof path !== 'string' || path === '') return false
-  return readPicked(db).includes(resolve(path))
+  const resolved = resolve(path)
+  return sessionPicksOf(db).has(resolved) || readPicked(db).includes(resolved)
 }
 
 export const NOT_PICKED_MESSAGE =
@@ -104,7 +123,7 @@ export function pdfRequestPaths(req: unknown): string[] | null {
 export function unpickedPdfError(db: Database.Database, req: unknown): string | null {
   const paths = pdfRequestPaths(req)
   if (paths === null) return MALFORMED_PDF_REQUEST_MESSAGE
-  const picked = new Set(readPicked(db))
+  const picked = new Set([...sessionPicksOf(db), ...readPicked(db)])
   for (const p of paths) {
     if (!picked.has(resolve(p))) return NOT_PICKED_MESSAGE
   }

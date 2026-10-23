@@ -72,14 +72,44 @@ describe('picked PDFs', () => {
     expect(isPickedPdf(db, ROOT + sep + '.' + sep + 'Rechnung-2026-10.pdf')).toBe(true)
   })
 
-  it('keeps the newest picks, once each, up to the cap', () => {
+  it('persists the most recent picks, once each, up to the cap', () => {
     for (let i = 0; i < MAX_PICKED_PDFS + 5; i++) rememberPickedPdf(db, join(ROOT, `f${i}.pdf`))
     rememberPickedPdf(db, join(ROOT, 'f10.pdf'))
     const list = storedPicks()
     expect(list).toHaveLength(MAX_PICKED_PDFS)
     expect(list[0]).toBe(join(ROOT, 'f10.pdf'))
     expect(new Set(list).size).toBe(list.length)
-    expect(isPickedPdf(db, join(ROOT, 'f0.pdf'))).toBe(false) // dropped out
+    expect(list).not.toContain(join(ROOT, 'f0.pdf')) // dropped out of the persisted list
+  })
+
+  // Codex round 1: the time-sheet list has no limit, so a merge with more
+  // inputs than the cap must not lose an input it still holds.
+  it('keeps every pick of the running session, beyond the cap', () => {
+    const files = Array.from({ length: MAX_PICKED_PDFS + 5 }, (_, i) => join(ROOT, `s${i}.pdf`))
+    for (const f of files) rememberPickedPdf(db, f)
+    expect(
+      unpickedPdfError(db, { invoicePath: files[0], stundennachweisPaths: files.slice(1) })
+    ).toBeNull()
+  })
+
+  it('after a restart, knows only the persisted picks', () => {
+    for (let i = 0; i < MAX_PICKED_PDFS + 5; i++) rememberPickedPdf(db, join(ROOT, `f${i}.pdf`))
+    // A new connection to the same data is what the next app start sees.
+    const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{
+      key: string
+      value: string
+    }>
+    const restarted = new DatabaseImpl(':memory:')
+    restarted.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    for (const r of rows) {
+      restarted.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(r.key, r.value)
+    }
+    try {
+      expect(isPickedPdf(restarted, join(ROOT, `f${MAX_PICKED_PDFS + 4}.pdf`))).toBe(true)
+      expect(isPickedPdf(restarted, join(ROOT, 'f0.pdf'))).toBe(false)
+    } finally {
+      restarted.close()
+    }
   })
 
   it('treats an unreadable list as empty', () => {
