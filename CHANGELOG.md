@@ -13,6 +13,10 @@ If you call TimeTrack's MCP tools from your own scripts or agents, check this be
 
 - **`list_projects` `used_minutes` counts like the invoice.** It now holds the billed minutes of the project's billable entries, rounded per entry with the app's rounding setting, and includes finished entries recorded with the timer (a running timer counts once it stops). Non-billable entries no longer count, and the stored `rounded_min` of an entry is no longer its basis. Details in the entry under Changed ([#285](https://github.com/wald-it/time-tracking/issues/285)).
 
+### Known limitations
+
+- **On macOS, install this update by hand.** The app finds and downloads it, but macOS's updater (Squirrel.Mac) refuses to install it. It accepts an update only if it matches the code signature of the installed app, and the macOS build is signed ad hoc, so every new build has a different signature. This was measured for 1.22.0 to this release. Download the DMG or ZIP from the release page and replace TimeTrack in Applications; your data stays where it is. Windows updates install from the app as before ([#269](https://github.com/wald-it/time-tracking/issues/269)).
+
 ### Added
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
