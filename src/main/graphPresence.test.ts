@@ -521,6 +521,33 @@ describe('reconcilePresence', () => {
     expect(teams.availability).toBe('Available')
   })
 
+  it('a sweep whose session end failed still ends it next time, even behind Do not disturb', async () => {
+    teams.content = '🔴 Fokus: Old'
+    teams.availability = 'Busy'
+    const { deps } = makeDeps()
+    const inner = deps.fetchFn!
+    let sessionFails = true
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (sessionFails && String(url).endsWith('/clearPresence')) {
+        await inner(url, init)
+        return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null) // message withdrawn, session end fails
+    expect(teams.content).toBeNull()
+    teams.availability = 'DoNotDisturb' // the user's own override hides our Busy
+    sessionFails = false
+    const recorded: string[] = []
+    const tracked = deps.fetchFn
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      recorded.push(String(url))
+      return tracked(url, init)
+    }) as typeof fetch
+    await reconcilePresence(deps, null)
+    expect(recorded.some((u) => u.endsWith('/clearPresence'))).toBe(true)
+  })
+
   it('a failed set at the first poke leaves the leftover to the next poke', async () => {
     teams.content = '🔴 Fokus: Old — Leftover'
     teams.availability = 'Busy'

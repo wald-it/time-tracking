@@ -72,9 +72,22 @@ interface AppliedState {
    * holds the previous text.
    */
   sent: string | null
+  /**
+   * The sweep withdrew a leftover message but ending the old Busy session
+   * failed: the next sweep must end it even though the message, its only
+   * trace, is gone and a manual availability may hide the Busy.
+   */
+  sessionPending: boolean
 }
 
-const state: AppliedState = { message: null, at: 0, userId: null, swept: false, sent: null }
+const state: AppliedState = {
+  message: null,
+  at: 0,
+  userId: null,
+  swept: false,
+  sent: null,
+  sessionPending: false
+}
 
 /** Test-only: forget everything this module has applied. */
 export function resetPresenceStateForTests(): void {
@@ -83,6 +96,7 @@ export function resetPresenceStateForTests(): void {
   state.userId = null
   state.swept = false
   state.sent = null
+  state.sessionPending = false
   queue = Promise.resolve()
   latest = 0
 }
@@ -292,14 +306,15 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
     const current = await readPresence(fetchFn, token, userId, log)
     if (!current) return // retried at the next poke
     const leftover = current.text !== null && looksOurs(current.text)
-    if (leftover && !(await clearMessage())) return
-    if (
-      (leftover || current.availability === 'Busy') &&
-      !(await post('clearPresence', { sessionId }))
-    ) {
-      return
+    if (leftover) {
+      if (!(await clearMessage())) return
+      state.sessionPending = true
+      log('presence: withdrew a status message left from a previous run')
     }
-    if (leftover) log('presence: withdrew a status message left from a previous run')
+    if (state.sessionPending || current.availability === 'Busy') {
+      if (!(await post('clearPresence', { sessionId }))) return
+      state.sessionPending = false
+    }
     state.swept = true
     return
   }
