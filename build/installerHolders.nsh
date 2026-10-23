@@ -43,6 +43,8 @@
 ; end expands inside the install section, after common.nsh, and fills it.
 Var TTAppExe
 Var TTRmSession
+; Files visited, and of those registered with the Restart Manager.
+Var TTRmSeen
 Var TTRmFiles
 Var TTRmStatus
 ; Holders of the last pass, one per line; empty when there is nothing to report.
@@ -91,7 +93,9 @@ Function ttRmRegisterDir
     StrCmp $R2 "" done
     StrCmp $R2 "." next
     StrCmp $R2 ".." next
-    IntCmp $TTRmFiles ${TT_RM_MAX_FILES} done 0 done
+    ; Counts visits, not successes: if registration keeps failing, a cap on
+    ; successes would never bound the walk.
+    IntCmp $TTRmSeen ${TT_RM_MAX_FILES} done 0 done
 
     IfFileExists "$INSTDIR$R0\$R2\*.*" 0 isFile
       Push "$R0\$R2"
@@ -99,6 +103,7 @@ Function ttRmRegisterDir
       Goto next
 
     isFile:
+      IntOp $TTRmSeen $TTRmSeen + 1
       ; RmRegisterResources takes an array of string pointers. One file per
       ; call keeps that array at a single element; registrations add up
       ; within a session.
@@ -141,6 +146,7 @@ Function ttForeignHolderPass
   Push $R9
 
   StrCpy $TTForeignHolders ""
+  StrCpy $TTRmSeen 0
   StrCpy $TTRmFiles 0
   StrCpy $7 0
 
@@ -159,7 +165,6 @@ Function ttForeignHolderPass
   ${EndIf}
 
   ; First call asks for the count (ERROR_MORE_DATA = 234), second fetches.
-  ; Two spare entries absorb a holder that appears in between.
   System::Call 'rstrtmgr::RmGetList(i $TTRmSession, *i .r5, *i 0, p 0, *i .r6)i.r0'
   ${If} $0 == 0
     StrCpy $TTRmStatus "ok, $TTRmFiles files, no holders"
@@ -170,18 +175,32 @@ Function ttForeignHolderPass
     Goto endSession
   ${EndIf}
 
-  IntOp $5 $5 + 2
-  IntOp $R5 $5 * ${TT_RM_PROCESS_INFO_SIZE}
-  System::Alloc $R5
-  Pop $7
-  ${If} $7 == 0
-    StrCpy $TTRmStatus "out of memory"
-    Goto endSession
-  ${EndIf}
+  ; Two spare entries absorb a holder that appears in between. If more appear,
+  ; the fetch reports 234 again with the new count; take it and fetch again,
+  ; up to three times, rather than report nothing.
+  StrCpy $R8 0
+  fetch:
+    IntOp $R8 $R8 + 1
+    IntOp $5 $5 + 2
+    IntOp $R5 $5 * ${TT_RM_PROCESS_INFO_SIZE}
+    ${If} $7 != 0
+      System::Free $7
+    ${EndIf}
+    System::Alloc $R5
+    Pop $7
+    ${If} $7 == 0
+      StrCpy $TTRmStatus "out of memory"
+      Goto endSession
+    ${EndIf}
 
-  ; `*i r5 r6`: in from $5 (capacity), out to $6 (entries filled). A leading
-  ; dot would mean "no input" and pass 0.
-  System::Call 'rstrtmgr::RmGetList(i $TTRmSession, *i .r8, *i r5 r6, p r7, *i .r9)i.r0'
+    ; `*i r5 r6`: in from $5 (capacity), out to $6 (entries filled). A leading
+    ; dot would mean "no input" and pass 0.
+    System::Call 'rstrtmgr::RmGetList(i $TTRmSession, *i .r8, *i r5 r6, p r7, *i .r9)i.r0'
+    ${If} $0 == 234
+    ${AndIf} $R8 < 3
+      StrCpy $5 $8
+      Goto fetch
+    ${EndIf}
   ${If} $0 != 0
     StrCpy $TTRmStatus "RmGetList=$0"
     Goto endSession
@@ -194,7 +213,8 @@ Function ttForeignHolderPass
   ${DoWhile} $R6 < $6
     IntOp $R5 $R6 * ${TT_RM_PROCESS_INFO_SIZE}
     IntOp $R5 $7 + $R5
-    System::Call '*$R5(i .r2, i, i, &w256 .r3)'
+    ; PID, start time (skipped), strAppName, strServiceShortName, ApplicationType
+    System::Call '*$R5(i .r2, i, i, &w256 .r3, &w64 .r5, i .r1)'
     IntOp $R6 $R6 + 1
 
     ${If} $2 == $R9
@@ -226,11 +246,28 @@ Function ttForeignHolderPass
       StrCpy $4 $3
     ${EndIf}
 
+    ; A service or a critical system process is not something the user can
+    ; just close, so the line says what it is (RmService = 3, RmCritical = 1000).
+    StrCpy $0 "PID $2"
+    ${If} $1 == 3
+      ${If} $LANGUAGE == 1031
+        StrCpy $0 "$0, Windows-Dienst $5"
+      ${Else}
+        StrCpy $0 "$0, Windows service $5"
+      ${EndIf}
+    ${ElseIf} $1 == 1000
+      ${If} $LANGUAGE == 1031
+        StrCpy $0 "$0, Systemprozess"
+      ${Else}
+        StrCpy $0 "$0, system process"
+      ${EndIf}
+    ${EndIf}
+
     ${If} $R7 < ${TT_RM_MAX_LISTED}
       ${If} $TTForeignHolders == ""
-        StrCpy $TTForeignHolders "$4 (PID $2)"
+        StrCpy $TTForeignHolders "$4 ($0)"
       ${Else}
-        StrCpy $TTForeignHolders "$TTForeignHolders$\r$\n$4 (PID $2)"
+        StrCpy $TTForeignHolders "$TTForeignHolders$\r$\n$4 ($0)"
       ${EndIf}
       IntOp $R7 $R7 + 1
     ${Else}
@@ -247,6 +284,9 @@ Function ttForeignHolderPass
   System::Call 'rstrtmgr::RmEndSession(i $TTRmSession)'
   ${If} $7 != 0
     System::Free $7
+  ${EndIf}
+  ${If} $TTRmSeen >= ${TT_RM_MAX_FILES}
+    StrCpy $TTRmStatus "$TTRmStatus, walk stopped after ${TT_RM_MAX_FILES} files"
   ${EndIf}
 
   out:
@@ -267,12 +307,17 @@ Function ttLogHolderPass
   ClearErrors
   FileOpen $0 "$TEMP\TimeTrack-setup-holders.log" a
   ${IfNot} ${Errors}
-    FileSeek $0 0 END
+    ; UTF-16 with a BOM: FileWrite would write the ANSI code page, and a user
+    ; folder or a process name outside it would arrive as question marks.
+    FileSeek $0 0 END $1
+    ${If} $1 == 0
+      FileWriteWord $0 0xFEFF
+    ${EndIf}
     StrCpy $1 $TTForeignHolders
     ${If} $1 == ""
       StrCpy $1 "-"
     ${EndIf}
-    FileWrite $0 "$R0 | $INSTDIR | $TTRmStatus | holders: $1$\r$\n"
+    FileWriteUTF16LE $0 "$R0 | $INSTDIR | $TTRmStatus | holders: $1$\r$\n"
     FileClose $0
   ${EndIf}
   ClearErrors
@@ -300,6 +345,9 @@ FunctionEnd
       Call ttLogHolderPass
       StrCmp $TTForeignHolders "" ttHoldersDone
 
+      ; German or English, chosen at runtime. A LangString would have to be
+      ; defined for every language electron-builder bundles (about 30), or the
+      ; -WX build fails; the other languages get the English text.
       ${If} $LANGUAGE == 1031
         StrCpy $TTHolderMsg "Diese Programme verwenden noch Dateien im Installationsordner:$\r$\n$\r$\n$TTForeignHolders$\r$\n$\r$\nSolange sie laufen, kann das Update von ${PRODUCT_NAME} fehlschlagen. Beende sie und klicke auf Wiederholen.$\r$\n$\r$\nMit Ignorieren läuft die Installation trotzdem weiter, mit Abbrechen endet sie."
       ${Else}
