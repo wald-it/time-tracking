@@ -65,11 +65,10 @@ const EXPIRY_MS = 12 * 60 * 60 * 1000
 const SESSION_DURATION = 'PT1H'
 const REFRESH_AFTER_MS = 25 * 60 * 1000
 /**
- * How many unconfirmed texts are remembered as possibly ours. Dropping the
- * oldest costs this: if that very text is what Teams shows, a stop no longer
- * recognises it and it stays until its 12-hour expiry. It takes this many
- * sends in a row without one confirmed set or one successful read to get
- * there.
+ * How many unconfirmed texts are remembered exactly. Every text we send has
+ * our form, so dropping the oldest falls back to recognising it by shape
+ * (`shapeOwed`), like a leftover after a restart: the only cost is the one
+ * the shape already has, a message the user typed in exactly our form.
  */
 const MAX_POSSIBLY_OURS = 8
 
@@ -180,6 +179,7 @@ function rememberSent(text: string): void {
   while (state.possiblyOurs.size > MAX_POSSIBLY_OURS) {
     const oldest = state.possiblyOurs.values().next().value as string
     state.possiblyOurs.delete(oldest)
+    state.shapeOwed = true
   }
 }
 
@@ -354,6 +354,9 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
   }
 
   if (want) {
+    // Unconfirmed from here until both writes succeed: a set that fails
+    // half-way must not look like an unchanged state to the next poke.
+    state.applied = null
     rememberSent(message)
     const accepted = await post('setStatusMessage', {
       statusMessage: {
@@ -396,18 +399,14 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
       return
     }
     const text = current.text
-    const ours =
-      text !== null &&
-      ([...state.possiblyOurs].some((own) => isMessage(text, own)) ||
-        (state.shapeOwed && looksOurs(text)))
-    if (ours) {
+    const exact = text !== null && [...state.possiblyOurs].some((own) => isMessage(text, own))
+    const byShape = !exact && text !== null && state.shapeOwed && looksOurs(text)
+    if (exact || byShape) {
       const cleared = await post('setStatusMessage', {
         statusMessage: { message: { content: '', contentType: 'text' } }
       })
       if (!cleared) return
-      if (state.shapeOwed && ![...state.possiblyOurs].some((own) => isMessage(text, own))) {
-        log('presence: withdrew a status message left from a previous run')
-      }
+      if (byShape) log('presence: withdrew a status message left from a previous run')
     } else if (text !== null) {
       log('presence: status message was changed in Teams — left as is')
     }

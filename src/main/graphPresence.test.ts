@@ -438,6 +438,33 @@ describe('reconcilePresence', () => {
     expect(logs.some((l) => l.includes('reconcile failed'))).toBe(true)
   })
 
+  it('a text dropped from the remembered ones is still withdrawn, by its form (#331)', async () => {
+    // Nine client switches on a bad line: the first text reaches Teams, the
+    // next eight never do. Only eight texts are remembered exactly, so the
+    // one Teams shows is no longer among them.
+    const { deps } = makeDeps({ showClient: true })
+    const inner = deps.fetchFn!
+    let sends = 0
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/setStatusMessage')) {
+        sends++
+        if (sends === 1) {
+          await inner(url, init) // lands…
+          throw new Error('TimeoutError') // …answer lost
+        }
+        return new Response('', { status: 503 }) // never reaches Teams
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    for (let i = 1; i <= 9; i++) {
+      await reconcilePresence(deps, { ...RUNNING, client_name: `Client ${i}` })
+    }
+    expect(teams.content).toBe('🔴 Fokus: Client 1 — Rollout')
+    deps.fetchFn = inner
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
   it('a throwing token refresh is logged, not rejected', async () => {
     const { deps, logs } = makeDeps()
     deps.getAccessToken = async () => {

@@ -38,6 +38,7 @@ download. Download: [latest release](https://github.com/wald-it/time-tracking/re
 
 **Integrations** (all off until you set them up)
 - **Microsoft 365 calendar import** — take appointments over as entries; the client is suggested from the attendees' e-mail domains.
+- **Teams status** — while a timer runs, Teams shows you as Busy with a "🔴 Fokus" status message (work or school accounts). Use it on one device at a time: all devices signed in to the same account share one Teams session, so the device that last starts or stops a timer decides what Teams shows, and a device that starts up takes another device's live status for a leftover and clears it. Details in [PRIVACY.md](PRIVACY.md).
 - **MCP server** for AI clients such as Claude — read your entries, and (opt-in) create or edit them with a confirmation dialog in the app. See [MCP Integration](#mcp-integration).
 - **Webhooks** — HTTP calls on timer start/stop and entry changes, signed (HMAC) when the target has a secret.
 - **iCal feed** — a local `webcal://` feed of the last 90 days for your calendar app.

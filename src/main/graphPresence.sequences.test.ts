@@ -48,18 +48,28 @@
  *  (i)   No message TimeTrack sent is left in Teams if the current run knows
  *        it: it sent it, or read it back. With the feature on, no message
  *        TimeTrack ever sent (any run) is left.
- *  (ii)  A message the user wrote is never cleared by TimeTrack unless
- *        TimeTrack has written a message of its own over it since.
+ *  (ii)  A message the user wrote is never cleared by TimeTrack (once
+ *        TimeTrack writes over it, the message in Teams is TimeTrack's).
  *  (iii) TimeTrack's Busy session is not left behind if the current run knows
  *        it (it set it, or read Busy while it existed); with the feature on,
  *        not at all.
+ *  (v)   Liveness, checked after that: with the feature on and a timer
+ *        running, a few healthy pokes end with TimeTrack's message and Busy.
+ *  (vi)  At any step: with the feature off, nothing is ever set, only
+ *        withdrawn.
+ * The fake returns messages as set or, for some seeds, HTML-wrapped.
  * "Known" is the issue's "no in-flight request's effect is forgotten": a
  * request that may have reached Teams counts as known to the run that sent it.
  * Leftovers of an earlier run that the current run never saw, with the
  * feature off, may stay until Teams lets them expire — by design (#317).
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { reconcilePresence, resetPresenceStateForTests, type PresenceDeps } from './graphPresence'
+import {
+  desiredMessage,
+  reconcilePresence,
+  resetPresenceStateForTests,
+  type PresenceDeps
+} from './graphPresence'
 import type { RunningStatus } from './mcpBridgeCore'
 
 // ── seeded randomness ──────────────────────────────────────────────────────
@@ -92,6 +102,17 @@ const USER_TEXTS_IN_OUR_FORM = ['🔴 Fokus', '🔴 Fokus: Acme — Rollout']
 const OUR_FORM = /^🔴 (Fokus|Focus)(: .+)?$/u
 const MAX_REQUESTS_PER_POKE = 5
 
+/** A stored message the way an HTML-returning Graph might hand it back. */
+function asHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/🔴/g, '&#x1F534;')
+    .replace(/ /g, '&nbsp;')
+  return `<p>${escaped}</p>`
+}
+
 function running(client: string): RunningStatus {
   return {
     id: 1,
@@ -111,9 +132,12 @@ interface World {
   /** What the current run knows it owns or owes. */
   knownTexts: Set<string>
   knownSession: boolean
-  /** A user message and whether TimeTrack has written over it since. */
-  userText: string | null
-  overwrittenSince: boolean
+  /**
+   * Whether this Teams returns messages as HTML (`<p>…</p>`, `&nbsp;`,
+   * entities, contentType "html") instead of as set. Which form the real
+   * Graph uses has not been observed, so both are driven.
+   */
+  html: boolean
   violations: string[]
   /** User messages in TimeTrack's form that TimeTrack cleared (accepted, #317). */
   exceptions: number
@@ -154,7 +178,11 @@ function makeDeps(w: World): PresenceDeps {
           statusMessage:
             w.teams.content === null
               ? null
-              : { message: { content: w.teams.content, contentType: 'text' } }
+              : {
+                  message: w.html
+                    ? { content: asHtml(w.teams.content), contentType: 'html' }
+                    : { content: w.teams.content, contentType: 'text' }
+                }
         }),
         { status: 200 }
       )
@@ -165,11 +193,18 @@ function makeDeps(w: World): PresenceDeps {
     w.log.push(
       `  POST ${action} ${JSON.stringify(body?.statusMessage?.message?.content ?? '')} → ${outcome}`
     )
+    // (vi) With the feature off, TimeTrack only ever withdraws, never sets.
+    const sets =
+      action === 'setPresence' ||
+      (action === 'setStatusMessage' && body.statusMessage.message.content !== '')
+    if (sets && !w.enabled) w.violations.push(`(vi) ${action} sent with the feature off`)
     if (outcome !== 'lostBefore') {
       if (action === 'setStatusMessage') {
         const content: string = body.statusMessage.message.content
         if (content === '') {
-          if (w.teams.author === 'user' && !w.overwrittenSince) {
+          // A message TimeTrack wrote over a user's has author 'tt', so a
+          // clear that meets author 'user' meets one TimeTrack never touched.
+          if (w.teams.author === 'user') {
             if (w.teams.content !== null && OUR_FORM.test(w.teams.content)) {
               w.exceptions++
               w.log.push('  (accepted: the user had typed TimeTrack’s form)')
@@ -184,7 +219,6 @@ function makeDeps(w: World): PresenceDeps {
         } else {
           w.everSent.add(content)
           w.knownTexts.add(content)
-          if (w.userText !== null) w.overwrittenSince = true
           w.teams.content = content
           w.teams.author = 'tt'
         }
@@ -196,9 +230,6 @@ function makeDeps(w: World): PresenceDeps {
         w.teams.session = false
         if (!had && outcome === 'ok') return new Response('', { status: 404 })
       }
-    } else if (action === 'setStatusMessage' && body.statusMessage.message.content !== '') {
-      // Sent but lost before Teams: it never got there, but TimeTrack cannot
-      // know that — it may count it as possibly ours (harmless).
     }
     if (outcome === 'ok') return new Response('', { status: 200 })
     if (outcome === 'lostAfter' && w.network() === 'ok') throw new Error('TimeoutError')
@@ -249,8 +280,7 @@ async function runSequence(
     everSent: new Set(),
     knownTexts: new Set(),
     knownSession: false,
-    userText: null,
-    overwrittenSince: false,
+    html: rnd() < 0.3,
     violations: [],
     exceptions: 0,
     log: [],
@@ -300,8 +330,6 @@ async function runSequence(
       const text = rnd() < 0.05 ? pick(USER_TEXTS_IN_OUR_FORM) : pick(USER_TEXTS)
       w.teams.content = text
       w.teams.author = 'user'
-      w.userText = text
-      w.overwrittenSince = false
       w.log.push(`step ${step}: user writes ${JSON.stringify(text)}`)
     } else if (r < 0.66) {
       w.teams.userAvailability = pick([null, 'DoNotDisturb', 'Away'])
@@ -349,6 +377,25 @@ async function runSequence(
   }
   if (w.teams.session && (w.enabled || w.knownSession)) {
     w.violations.push(`(iii) Busy session left (feature ${w.enabled ? 'on' : 'off'})`)
+  }
+
+  // (v) Liveness: whatever the sequence did, with the feature on and a timer
+  // running TimeTrack ends up showing its status. A guard that skips too
+  // eagerly, or a set that loses its Busy, keeps every other check green.
+  w.enabled = true
+  timer = running(pick(CLIENTS))
+  const expected = desiredMessage(timer, w.showClient, 'de')
+  w.log.push(
+    `live: feature on, timer ${timer.client_name}, expect ${JSON.stringify(expected)} + Busy`
+  )
+  for (let i = 0; i < CALM_POKES; i++) {
+    w.now += 60 * 1000
+    await poke(`live ${i}`)
+  }
+  if (w.teams.content !== expected || w.teams.author !== 'tt' || !w.teams.session) {
+    w.violations.push(
+      `(v) live status missing: message ${JSON.stringify(w.teams.content)}, Busy ${w.teams.session}`
+    )
   }
   return { violations: w.violations, exceptions: w.exceptions, log: w.log }
 }
