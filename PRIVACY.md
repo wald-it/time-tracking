@@ -64,8 +64,14 @@ finds a new version, the app downloads it in the background as above.
   free/busy status, organizer, attendees and your response. Attendee e-mail
   domains are used locally to suggest the client; the domain-to-client mappings
   you confirm are stored in the database.
-- **What is sent to Microsoft:** nothing from your time entries. With presence
-  mirroring on, your Teams presence is set while a timer runs.
+- **What is sent to Microsoft:** the calendar import sends nothing. With Teams
+  presence mirroring on, TimeTrack sets your Teams presence to Busy while a timer
+  runs and adds a status message: "🔴 Focus" ("🔴 Fokus" when the app is in
+  German). If you also switch on **Show client name in the status**, the message
+  names the client of the running entry and its project, if it has one ("🔴
+  Focus: client — project"). Your colleagues see this message in Teams. Descriptions, notes,
+  tags, times and rates are never sent. When the timer stops, TimeTrack removes
+  the message and the Busy status.
 - **Tokens:** stored in a separate file in the data folder, encrypted by the
   operating system (DPAPI / Keychain), not part of backups or exports.
   **Disconnect** deletes that file; revoking the app's access in your Microsoft
