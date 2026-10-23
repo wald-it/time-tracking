@@ -125,8 +125,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   const dialogLocale = (): Locale => readLanguageOr(db, systemLocale)
   const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
   // A restore failure must reach the user whatever the database says: this
-  // never throws. Read once, before the restore can close the handle; if the
-  // system language cannot be read either, the answer for an empty list.
+  // never throws. Read once, before the restore can close the handle. If the
+  // system language cannot be read either: German, the app's default
+  // (migration 002, localeFromSetting).
   const restoreLocale = (): Locale => {
     try {
       return dialogLocale()
@@ -134,7 +135,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       try {
         return systemLocale()
       } catch {
-        return localeFromSystem([])
+        return 'de'
       }
     }
   }

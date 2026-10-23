@@ -3,12 +3,12 @@
  *
  * The German texts are pinned word for word: they are the wording the app
  * shipped with, and moving them into the locale files must not change them.
- * The last block scans the files directly under src/main that show a dialog
- * (where every dialog lives today): a `title:` / `message:` / `detail:` /
- * `checkboxLabel:` / `buttons:` key or a `showErrorBox(` argument with a
- * literal or CAPS-constant value fails it, anywhere in such a file; a quoted
- * filter name must be a format name (CSV, PDF …). Texts handed to a dialog
- * through a callback or a variable stay outside its view.
+ * The last block is a text heuristic over the files directly under src/main
+ * that mention `dialog.show…(` or `showSaveDialog`: it catches the usual ways
+ * a dialog text gets written in by hand (a literal or a CAPS constant after
+ * the option keys, as the first argument of showErrorBox, a non-format filter
+ * name). It is no proof: the exact forms are in the regexes below, and text
+ * that reaches a dialog any other way is not seen.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readdirSync, readFileSync } from 'fs'
@@ -184,11 +184,8 @@ describe('no dialog text is written into a call site', () => {
 
   it('titles, messages, buttons and filter names come from the locale files', () => {
     const literal =
-      // A literal, or a constant in CAPS (how #288 first passed its restore
-      // title), after one of these keys or as the first argument of
-      // showErrorBox, anywhere in a file that mentions dialog.show* or
-      // showSaveDialog. Not seen: texts built elsewhere (a `report(…)` callback
-      // in backup.ts, a `const message = …`).
+      // CAPS constants are included because that is how #288 first passed its
+      // restore title. See the header for what this does not see.
       /\b(title|message|detail|checkboxLabel):\s*(['"`]|[A-Z][A-Z0-9_]+\b)|buttons:\s*\[\s*(['"`]|[A-Z][A-Z0-9_]+\b)|showErrorBox\(\s*(['"`]|[A-Z][A-Z0-9_]+\b)/
     for (const [file, src] of sources()) {
       if (!/dialog\.show\w+\(|showSaveDialog/.test(src)) continue
