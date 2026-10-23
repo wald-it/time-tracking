@@ -26,10 +26,19 @@ const openStack: StackEntry[] = []
 const RETURN_WATCH_MS = 5000
 
 /**
- * Where focus lands when its target is gone: the view's main area (App gives
- * it `tabIndex=-1`), so the next Tab starts in the view instead of on <body>.
+ * Where focus lands when its target is gone: into the modal that is still
+ * open (a delete confirmed over the calendar drawer — <main> would sit behind
+ * it), else the view's main area (App gives it `tabIndex=-1`), so the next
+ * Tab starts in the view instead of on <body>.
  */
 function focusFallback(): void {
+  const top = openStack[openStack.length - 1]?.root
+  if (top?.isConnected) {
+    const target = firstControl(top) ?? top
+    if (target === top && !top.hasAttribute('tabindex')) top.tabIndex = -1
+    target.focus()
+    return
+  }
   document.querySelector<HTMLElement>('main')?.focus()
 }
 

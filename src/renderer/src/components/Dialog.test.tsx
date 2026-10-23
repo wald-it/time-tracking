@@ -304,6 +304,40 @@ describe('Dialog — focus management', () => {
     expect(document.activeElement).toBe(opener)
   })
 
+  it('8e — an opener gone under a still-open modal sends focus into that modal, not <main>', async () => {
+    function Host({ keepRow }: { keepRow: boolean }): React.JSX.Element {
+      const [confirm, setConfirm] = useState(false)
+      return (
+        <I18nProvider>
+          <main tabIndex={-1} />
+          <Dialog open onClose={() => {}} title="Tag" closeButton={false}>
+            <button type="button">Nachtragen</button>
+            {keepRow && (
+              <button type="button" onClick={() => setConfirm(true)}>
+                Eintrag löschen
+              </button>
+            )}
+          </Dialog>
+          <Dialog open={confirm} onClose={() => setConfirm(false)} title="Löschen?">
+            <button type="button">Ok</button>
+          </Dialog>
+        </I18nProvider>
+      )
+    }
+    const { rerender } = render(<Host keepRow />)
+    await flushFocus()
+    const del = screen.getByRole('button', { name: 'Eintrag löschen' })
+    del.focus()
+    fireEvent.click(del)
+    await flushFocus()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(document.activeElement).toBe(del)
+    // The row leaves after the IPC round trip; the day modal is still open.
+    rerender(<Host keepRow={false} />)
+    await act(async () => {})
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Nachtragen' }))
+  })
+
   it('9 — a parent re-render with a fresh onClose neither steals focus back …', async () => {
     const { rerender } = renderDialog(
       <Dialog open onClose={() => {}} title="Eintrag">
