@@ -742,7 +742,11 @@ export interface ReportQuery {
 /** The figures of one group (or of the whole range). */
 export interface ReportFigures {
   entry_count: number
-  /** Worked seconds, raw — the same as list_entries and get_analytics. */
+  /**
+   * Worked seconds, raw, counted like get_analytics: whole seconds of each
+   * timestamp. list_entries counts milliseconds and can differ by up to one
+   * second per entry.
+   */
   seconds: number
   /** Worked seconds of billable entries, raw. */
   billable_seconds: number
@@ -831,7 +835,8 @@ export function getReport(db: SqliteDb, privacy: PrivacyConfig, q: ReportQuery):
       order: ['c.name ASC', 'c.id ASC']
     },
     // Per client too: two clients' "(kein Projekt)" or same-named projects
-    // stay apart, and each row says whose project it is.
+    // stay apart. The row's client_id is the entries' client (get_analytics'
+    // by_project gives the project's client, and null for no project).
     project: {
       select: [
         'e.project_id AS project_id',
@@ -881,12 +886,14 @@ export function getReport(db: SqliteDb, privacy: PrivacyConfig, q: ReportQuery):
     ...(privacy.exposeRates ? { revenue_cent: Math.round(r.revenue_cent ?? 0) } : {})
   })
 
-  // The same rule as get_analytics' breakdowns (HAVING seconds > 0 OR
-  // revenue_cent > 0), so a month by client lists the same clients. A group
-  // left out still counts in totals.
+  // A group is listed when it has worked time or billed billable time. Not
+  // decided by revenue: with rates hidden, a row that appears only because a
+  // rate exists would reveal the rate. (get_analytics' breakdowns use
+  // revenue; the two differ only for a sub-second billable entry at a rate of
+  // 0.) A group left out still counts in totals.
   const rows: McpReportRow[] = groups.length
     ? raw
-        .filter((r) => (r.seconds ?? 0) > 0 || (r.revenue_cent ?? 0) > 0)
+        .filter((r) => (r.seconds ?? 0) > 0 || (r.billable_rounded_seconds ?? 0) > 0)
         .map((r) => ({
           ...(q.groupBy.includes('client')
             ? { client_id: r.client_id, client_name: r.client_name }

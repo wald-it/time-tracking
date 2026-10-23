@@ -368,7 +368,10 @@ export function buildServer(): McpServer {
           .array(z.enum(['client', 'project', 'day']))
           .max(3)
           .default([])
-          .describe('Gruppierung, äußerste zuerst, z. B. ["client", "project"]'),
+          .describe(
+            'Gruppierung, äußerste zuerst, z. B. ["client", "project"]. Nach project gruppiert ' +
+              'trägt jede Zeile client_id, den Kunden der Einträge.'
+          ),
         client_id: z.number().int().optional().describe('Nur dieser Kunde'),
         project_id: z.number().int().optional().describe('Nur dieses Projekt'),
         billable_only: z.boolean().optional().describe('Nur abrechenbare Einträge')

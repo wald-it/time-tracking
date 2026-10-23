@@ -361,6 +361,27 @@ describe('get_report (Q17)', () => {
     expect(report).not.toContain(3)
   })
 
+  it('with rates hidden, whether a row appears does not depend on the rate', () => {
+    // Two clients, each with one billable 400 ms entry (a billed minute, no
+    // whole second); one has a rate, one has none. A row that showed only
+    // for the client with a rate would reveal that rate.
+    db.prepare(
+      `INSERT INTO clients (id, name, color, active, rate_cent)
+       VALUES (3, 'Gamma', '#555555', 1, 6000), (4, 'Delta', '#666666', 1, 0)`
+    ).run()
+    const ins = db.prepare(
+      `INSERT INTO entries (id, client_id, project_id, description, started_at, stopped_at,
+                            tags, reference, billable, private_note)
+       VALUES (?, ?, NULL, 'x', '2026-06-26T12:00:00.000Z', '2026-06-26T12:00:00.400Z', '', '', 1, '')`
+    )
+    ins.run(12, 3)
+    ins.run(13, 4)
+    const listed = getReport(sdb, HIDE, { ...JUNE, groupBy: ['client'] }).rows.map(
+      (r) => r.client_id
+    )
+    expect(listed.includes(3)).toBe(listed.includes(4))
+  })
+
   it('treats a negative stored rounding step as no step, like the money rule', () => {
     db.prepare(`UPDATE settings SET value = '-5' WHERE key = 'pdf_round_minutes'`).run()
     const r = getReport(sdb, SHOW, { ...JUNE, groupBy: [] })
