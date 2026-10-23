@@ -185,4 +185,47 @@ describe('webhook address (#272 A3)', () => {
     expect(JSON.parse(stored)[0].url).toBe(URL_A)
     expect(input.value).toBe(URL_A)
   })
+
+  // Codex follow-up 2: an edit made while the reload after a decline is still
+  // pending must not be overwritten for good by that (older) reload.
+  it('an edit during the reload after a decline still ends on the stored list', async () => {
+    let stored = existing
+    let call = 0
+    const set = vi.fn<(key: string, value: string) => Promise<SetResult>>(async (_k, v) => {
+      call++
+      if (call === 1) return { ok: false, error: 'declined', code: 'cancelled' }
+      stored = v
+      return { ok: true, data: undefined }
+    })
+    let releaseReload: () => void = () => {}
+    let reloads = 0
+    const getAll = vi.fn(async () => {
+      reloads++
+      const snapshot = stored
+      if (reloads === 1) await new Promise<void>((r) => (releaseReload = r))
+      return { ok: true, data: { webhook_targets: snapshot } }
+    })
+    ;(window as unknown as { api: unknown }).api = { settings: { getAll, set } }
+    const input = await renderSection()
+    input.focus()
+    fireEvent.change(input, { target: { value: URL_A } })
+    await act(async () => {
+      input.blur()
+    })
+    // The decline is in; the reload is now pending. An edit arrives meanwhile.
+    const secret = screen.getByLabelText(/^Secret/) as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(secret, { target: { value: 'during-reload' } })
+    })
+    await act(async () => {
+      releaseReload()
+    })
+    await act(async () => {})
+    // The editor shows exactly what is stored (the edit was built on the list
+    // that still held the declined address, and its own save went through).
+    const kept = JSON.parse(stored)[0]
+    expect(kept.secret).toBe('during-reload')
+    expect(secret.value).toBe(kept.secret)
+    expect(input.value).toBe(kept.url)
+  })
 })

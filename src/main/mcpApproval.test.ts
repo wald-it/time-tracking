@@ -28,7 +28,7 @@ describe('mcpBridge.ts wiring', () => {
   it('grants only for an approved start or stop, with "remember" or in session mode', () => {
     expect(body).toMatch(/\n\s*const approvable = APPROVABLE_OPS\.has\(op\)/)
     expect(body).toMatch(
-      /\n\s*if \(approved && approvable && \(mode === 'session' \|\| res\.checkboxChecked\)\) \{[\s\S]*?if \(confirmMode\(\) === mode\) approval\.grant\(mode\)/
+      /\n\s*if \(approved && approvable && \(mode === 'session' \|\| res\.checkboxChecked\)\) \{[\s\S]*?approval\.grantIfUnchanged\(mode, opened\)/
     )
   })
 
@@ -155,5 +155,47 @@ describe('the production clocks', () => {
     const src = readFileSync(join(__dirname, 'mcpApproval.ts'), 'utf8')
     expect(src).toMatch(/private readonly wall: \(\) => number = Date\.now/)
     expect(src).toMatch(/private readonly mono: \(\) => number = \(\) => performance\.now\(\)/)
+  })
+})
+
+// Codex follow-up 2: a dialog answered after resets must not grant, even when
+// the confirm mode is back where it was (per-write → session → per-write).
+describe('a grant from a dialog that outlived a reset', () => {
+  it('two resets while the dialog was open: nothing is granted', () => {
+    const w = new ApprovalWindow(clock().now, clock().now)
+    const opened = w.generation
+    w.reset()
+    w.reset()
+    expect(w.grantIfUnchanged('per-write', opened)).toBe(false)
+    expect(w.covers('start_timer', 'per-write')).toBe(false)
+  })
+
+  it('a single reset while the dialog was open blocks the grant too', () => {
+    const w = new ApprovalWindow(clock().now, clock().now)
+    const opened = w.generation
+    w.reset()
+    expect(w.grantIfUnchanged('session', opened)).toBe(false)
+    expect(w.covers('start_timer', 'session')).toBe(false)
+  })
+
+  it('without a reset in between, the answer grants', () => {
+    const w = new ApprovalWindow(clock().now, clock().now)
+    const opened = w.generation
+    expect(w.grantIfUnchanged('session', opened)).toBe(true)
+    expect(w.covers('start_timer', 'session')).toBe(true)
+  })
+})
+describe('mcpBridge.ts reads the generation before the dialog', () => {
+  it('opened is read before showMessageBox and used for the grant', () => {
+    const src = readFileSync(join(__dirname, 'mcpBridge.ts'), 'utf8')
+    const body = src.slice(
+      src.indexOf('async function confirm('),
+      src.indexOf('export function forgetMcpApproval')
+    )
+    const read = body.search(/\n\s*const opened = approval\.generation/)
+    const dialog = body.indexOf('showMessageBox')
+    expect(read).toBeGreaterThan(-1)
+    expect(dialog).toBeGreaterThan(read)
+    expect(body).not.toMatch(/approval\.grant\(mode\)/)
   })
 })

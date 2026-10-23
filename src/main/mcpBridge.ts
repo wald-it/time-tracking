@@ -134,12 +134,14 @@ async function confirm(summary: string, locale: Locale, op: WriteOp): Promise<bo
   // offers "remember", and in session mode only their approval grants it.
   const approvable = APPROVABLE_OPS.has(op)
   const opts = mcpConfirmDialog(locale, summary, approvable && mode === 'per-write')
+  // Any reset while the dialog is open (mode change, write access off) ends
+  // the approval; the answer to this dialog must not start a new one then,
+  // even if the mode is back where it was.
+  const opened = approval.generation
   const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
   const approved = res.response === 1
-  // A mode change while the dialog was open already ended any approval; the
-  // answer to the old dialog must not start a new one.
   if (approved && approvable && (mode === 'session' || res.checkboxChecked)) {
-    if (confirmMode() === mode) approval.grant(mode)
+    approval.grantIfUnchanged(mode, opened)
   }
   return approved
 }

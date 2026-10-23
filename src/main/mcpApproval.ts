@@ -48,12 +48,32 @@ export class ApprovalWindow {
     this.mode = mode
   }
 
+  private resets = 0
+
   /** Forget the approval (bridge restart, write access off, mode change). */
   reset(): void {
     this.wallUntil = 0
     this.monoUntil = 0
     this.writesLeft = 0
     this.mode = null
+    this.resets++
+  }
+
+  /** Read before a dialog opens; any reset meanwhile changes it. */
+  get generation(): number {
+    return this.resets
+  }
+
+  /**
+   * Grant only if no reset happened since `generation` was read (when the
+   * dialog opened). A reset while the dialog was open means the approval was
+   * meant to end; the old dialog's answer must not start a new one, even if
+   * the confirm mode is back where it was. Returns whether it granted.
+   */
+  grantIfUnchanged(mode: string, generation: number): boolean {
+    if (generation !== this.resets) return false
+    this.grant(mode)
+    return true
   }
 
   /** Whether an approval is in force right now under confirm mode `mode`. */

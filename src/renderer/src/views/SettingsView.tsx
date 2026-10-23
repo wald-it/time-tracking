@@ -1087,6 +1087,12 @@ export function WebhooksSection({
         if (pendingSaves.current > 0 || !saveFailed.current) return
         saveFailed.current = false
         const stored = await window.api.settings.getAll()
+        // An edit made while this read was pending is newer than what it
+        // returned: leave its state and reconcile again once that save drains.
+        if (pendingSaves.current > 0) {
+          saveFailed.current = true
+          return
+        }
         setTargets(stored.ok ? parseWebhookTargets(stored.data.webhook_targets) : before)
       })
     saving.current = run.catch(() => undefined)
