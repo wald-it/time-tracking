@@ -14,6 +14,7 @@
  */
 import type Database from 'better-sqlite3'
 import { billedMinutes, effectiveRateCent, feeCent } from '../../shared/currency'
+import { readRoundMinutes } from '../dashboardTotals'
 import { SCHEMA_V2_SQL } from './schemaV2'
 
 /** Shapes the report counts; one entry can have several (an imported pair). */
@@ -41,6 +42,13 @@ export type MigrationExceptionCode =
   | 'migration.createdAtUnreadable'
   /** A deleted row that was still running, sealed at its heartbeat or start. */
   | 'migration.deletedRunningSealed'
+  /**
+   * Halves of a group that start on the same local date (an edited half, or
+   * a database moved between time zones): one version cannot hold two
+   * segments of one day, so they become separate entries, like an
+   * "Inkonsistentes Paar".
+   */
+  | 'migration.sameDayPair'
 
 export interface MigrationException {
   code: MigrationExceptionCode
@@ -54,7 +62,13 @@ export interface MigrationReport {
   exceptions: MigrationException[]
 }
 
-export type MigrationAbortCode = 'migration.timestampUnreadable' | 'migration.selfCheckFailed'
+export type MigrationAbortCode =
+  | 'migration.timestampUnreadable'
+  | 'migration.selfCheckFailed'
+  /** pdf_round_minutes above 60, which a billing profile cannot hold (1 to 60). */
+  | 'migration.roundingUnsupported'
+  /** Writing one entry failed (a constraint); names its legacy ids. */
+  | 'migration.writeFailed'
 
 /** Thrown to abort; the caller's transaction then rolls everything back. */
 export class MigrationAbortError extends Error {
@@ -130,15 +144,31 @@ export function migrateEntriesToV2(
 ): MigrationReport {
   const rows = db.prepare('SELECT * FROM entries ORDER BY id').all() as LegacyRow[]
 
-  // Decision 7: an unreadable start or stop leaves no local date to work with.
+  // Decision 7: an unreadable time leaves no local date or bound to work
+  // with. That covers start and stop, the delete time (a version's written_at)
+  // and, for a deleted row that still ran, the heartbeat it is sealed at.
   const unreadable = rows
-    .filter((r) => !readable(r.started_at) || !readable(r.stopped_at))
+    .filter(
+      (r) =>
+        !readable(r.started_at) ||
+        !readable(r.stopped_at) ||
+        !readable(r.deleted_at) ||
+        (r.deleted_at !== null && r.stopped_at === null && !readable(r.heartbeat_at))
+    )
     .map(
       (r) =>
-        `id ${r.id}: started_at ${JSON.stringify(r.started_at)}, stopped_at ${JSON.stringify(r.stopped_at)}`
+        `id ${r.id}: started_at ${JSON.stringify(r.started_at)}, stopped_at ${JSON.stringify(r.stopped_at)}, ` +
+        `deleted_at ${JSON.stringify(r.deleted_at)}, heartbeat_at ${JSON.stringify(r.heartbeat_at)}`
     )
-  if (unreadable.length > 0)
+  if (unreadable.length > 0) {
     throw new MigrationAbortError('migration.timestampUnreadable', unreadable)
+  }
+
+  // The 1.x step as its readers interpret it; a profile holds 1 to 60.
+  const step = readRoundMinutes(db)
+  if (step > 60) {
+    throw new MigrationAbortError('migration.roundingUnsupported', [`pdf_round_minutes ${step}`])
+  }
 
   db.exec(SCHEMA_V2_SQL)
 
@@ -174,12 +204,22 @@ export function migrateEntriesToV2(
     }
     const live = g.filter((r) => r.deleted_at === null)
     const trashed = g.filter((r) => r.deleted_at !== null)
-    if (live.length > 0 && trashed.length > 0) {
-      parts.push({ rows: live, base: 'halfDeletedPair' })
-      parts.push({ rows: trashed, base: 'halfDeletedPair' })
-      continue
+    const split: Part[] =
+      live.length > 0 && trashed.length > 0
+        ? [
+            { rows: live, base: 'halfDeletedPair' },
+            { rows: trashed, base: 'halfDeletedPair' }
+          ]
+        : [{ rows: g, base: 'pair' }]
+    for (const part of split) {
+      const dates = part.rows.map((r) => localDate(r.started_at))
+      if (new Set(dates).size < dates.length) {
+        exceptions.push({ code: 'migration.sameDayPair', legacyIds: part.rows.map((r) => r.id) })
+        for (const r of part.rows) parts.push({ rows: [r], base: 'inconsistentPair' })
+      } else {
+        parts.push(part)
+      }
     }
-    parts.push({ rows: g, base: 'pair' })
   }
 
   // 3. Write entry, versions, segments and legacy ids.
@@ -200,10 +240,21 @@ export function migrateEntriesToV2(
   const insLegacy = db.prepare('INSERT INTO entry_legacy_id (legacy_id, entry_id) VALUES (?, ?)')
 
   for (const part of parts) {
+    try {
+      writePart(part)
+    } catch (err) {
+      // A constraint names a column, not the row; the ids lead to the row.
+      throw new MigrationAbortError('migration.writeFailed', [
+        `legacy ids ${part.rows.map((r) => r.id).join(', ')}: ${(err as Error).message}`
+      ])
+    }
+  }
+
+  function writePart(part: Part): void {
     const rs = [...part.rows].sort(
       (a, b) => a.started_at.localeCompare(b.started_at) || a.id - b.id
     )
-    const id = Math.min(...rs.map((r) => r.id))
+    const id = rs.reduce((min, r) => (r.id < min ? r.id : min), rs[0].id)
     const deleted = rs.every((r) => r.deleted_at !== null)
     const running = rs.some((r) => r.stopped_at === null)
     const open = running && !deleted
@@ -293,7 +344,7 @@ export function migrateEntriesToV2(
 
   // New entries start above every 1.x id, so none can take a second half's id.
   if (rows.length > 0) {
-    const maxLegacy = Math.max(...rows.map((r) => r.id))
+    const maxLegacy = rows.reduce((max, r) => (r.id > max ? r.id : max), rows[0].id)
     const updated = db
       .prepare("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'entry'")
       .run(maxLegacy)
@@ -314,7 +365,6 @@ export function migrateEntriesToV2(
 
   // 5. The default billing profile replaces pdf_round_minutes. German, as the
   // PDF is today whatever the app language (decision 8).
-  const step = readStep(db)
   db.prepare(
     `INSERT INTO billing_profile (client_id, project_id, interval_min, min_unit_min, alignment, columns,
        language, fee_column, group_by)
@@ -326,15 +376,6 @@ export function migrateEntriesToV2(
   selfCheck(db, rows, step)
 
   return { legacyRows: rows.length, entries: parts.length, shapes, exceptions }
-}
-
-/** pdf_round_minutes as the 1.x readers interpret it (non-numbers count as 0). */
-function readStep(db: Database.Database): number {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'pdf_round_minutes'").get() as
-    | { value: string }
-    | undefined
-  const n = Number.parseInt(row?.value ?? '0', 10)
-  return Number.isFinite(n) && n > 0 ? n : 0
 }
 
 interface Sums {
@@ -390,7 +431,7 @@ function selfCheck(db: Database.Database, rows: LegacyRow[], step: number): void
     )
     addTo(
       oldSums,
-      `${r.client_id}|${localDate(r.started_at).slice(0, 7)}`,
+      `${r.client_id}|${localDate(r.started_at).slice(0, 7)}|${r.billable}`,
       Date.parse(r.stopped_at) - Date.parse(r.started_at),
       step,
       rate
@@ -416,7 +457,7 @@ function selfCheck(db: Database.Database, rows: LegacyRow[], step: number): void
   const newSums = new Map<string, Sums>()
   const segs = db
     .prepare(
-      `SELECT v.client_id, v.project_id, s.segment_date, s.started_at, s.stopped_at
+      `SELECT v.client_id, v.project_id, v.billable, s.segment_date, s.started_at, s.stopped_at
          FROM entry e
          JOIN entry_version v ON v.id = e.current_version_id
          JOIN entry_segment s ON s.version_id = v.id
@@ -425,6 +466,7 @@ function selfCheck(db: Database.Database, rows: LegacyRow[], step: number): void
     .all() as {
     client_id: number
     project_id: number | null
+    billable: number
     segment_date: string
     started_at: string
     stopped_at: string
@@ -432,7 +474,7 @@ function selfCheck(db: Database.Database, rows: LegacyRow[], step: number): void
   for (const s of segs) {
     addTo(
       newSums,
-      `${s.client_id}|${s.segment_date.slice(0, 7)}`,
+      `${s.client_id}|${s.segment_date.slice(0, 7)}|${s.billable}`,
       Date.parse(s.stopped_at) - Date.parse(s.started_at),
       profile.interval_min,
       rateOn(s.client_id, s.project_id, s.segment_date)
@@ -449,11 +491,31 @@ function selfCheck(db: Database.Database, rows: LegacyRow[], step: number): void
       )
     }
   }
-  const legacyCount = (
-    db.prepare('SELECT COUNT(*) AS n FROM entry_legacy_id').get() as { n: number }
-  ).n
-  if (legacyCount !== rows.length) {
-    differences.push(`legacy ids: ${rows.length} rows, ${legacyCount} mapped`)
+  // Per row: mapped once, version 1 of its entry carries the row's content,
+  // and holds a segment that starts where the row started. The sums alone
+  // would miss a row landing on the wrong entry of the same client and month.
+  const firstVersion = db.prepare(
+    `SELECT v.id, ${CONTENT_FIELDS.map((f) => `v.${f}`).join(', ')}
+       FROM entry_legacy_id l
+       JOIN entry_version v ON v.entry_id = l.entry_id AND v.version_no = 1
+      WHERE l.legacy_id = ?`
+  )
+  const segmentAt = db.prepare(
+    'SELECT 1 FROM entry_segment WHERE version_id = ? AND started_at = ?'
+  )
+  for (const r of rows) {
+    const v = firstVersion.get(r.id) as (Record<string, unknown> & { id: number }) | undefined
+    if (!v) {
+      differences.push(`legacy id ${r.id}: not mapped`)
+      continue
+    }
+    const differing = CONTENT_FIELDS.filter((f) => v[f] !== r[f])
+    if (differing.length > 0) {
+      differences.push(`legacy id ${r.id}: content differs in ${differing.join(', ')}`)
+    }
+    if (!segmentAt.get(v.id, r.started_at)) {
+      differences.push(`legacy id ${r.id}: no segment starts at ${r.started_at}`)
+    }
   }
   if (differences.length > 0)
     throw new MigrationAbortError('migration.selfCheckFailed', differences)

@@ -27,7 +27,12 @@ import {
   type GeneratedDb,
   type LegacyRow
 } from '../../test/legacyEntriesGenerator'
-import { MIGRATION_SHAPES, MigrationAbortError, migrateEntriesToV2 } from './migrateV2'
+import {
+  MIGRATION_SHAPES,
+  MigrationAbortError,
+  migrateEntriesToV2,
+  type MigrationException
+} from './migrateV2'
 
 let DatabaseImpl: DatabaseCtor
 let templateDir: string
@@ -92,7 +97,7 @@ const add = (sums: Sums, key: string, ms: number, step: number, rate: number): v
   sums.set(key, t)
 }
 
-/** Per client × local month, from the raw 1.x rows. */
+/** Per client × local month × billable, from the raw 1.x rows. */
 function oracleSums(g: GeneratedDb): Sums {
   const sums: Sums = new Map()
   for (const r of g.rows) {
@@ -100,7 +105,8 @@ function oracleSums(g: GeneratedDb): Sums {
     const p = r.project_id !== null ? g.projects.get(r.project_id) : undefined
     const rate = p && p.rate !== null ? p.rate : g.clientRates.get(r.client_id)!
     const ms = Date.parse(r.stopped_at) - Date.parse(r.started_at)
-    add(sums, `${r.client_id}|${localDate(r.started_at).slice(0, 7)}`, ms, g.step, rate)
+    const key = `${r.client_id}|${localDate(r.started_at).slice(0, 7)}|${r.billable}`
+    add(sums, key, ms, g.step, rate)
   }
   return sums
 }
@@ -126,7 +132,7 @@ function newTableSums(): Sums {
   }
   const segs = db
     .prepare(
-      `SELECT v.client_id, v.project_id, s.started_at, s.stopped_at
+      `SELECT v.client_id, v.project_id, v.billable, s.started_at, s.stopped_at
          FROM entry e
          JOIN entry_version v ON v.id = e.current_version_id
          JOIN entry_segment s ON s.version_id = v.id
@@ -135,6 +141,7 @@ function newTableSums(): Sums {
     .all() as {
     client_id: number
     project_id: number | null
+    billable: number
     started_at: string
     stopped_at: string
   }[]
@@ -143,7 +150,7 @@ function newTableSums(): Sums {
     const ms = Date.parse(s.stopped_at) - Date.parse(s.started_at)
     add(
       sums,
-      `${s.client_id}|${localDate(s.started_at).slice(0, 7)}`,
+      `${s.client_id}|${localDate(s.started_at).slice(0, 7)}|${s.billable}`,
       ms,
       profile.interval_min,
       rateOf(s.client_id, s.project_id)
@@ -177,6 +184,9 @@ describe('migrateEntriesToV2 over generated 1.x databases (#P1, test 11.9)', () 
       expect(report.shapes).toEqual(shapeCounts)
       expect(report.legacyRows).toBe(g.rows.length)
       expect(report.entries).toBe(g.expected.length)
+      const byKey = (xs: MigrationException[]): string[] =>
+        xs.map((x) => `${x.code}:${[...x.legacyIds].sort((a, b) => a - b).join(',')}`).sort()
+      expect(byKey(report.exceptions)).toEqual(byKey(g.exceptions))
 
       // Every legacy id resolves to its entry; entry id = smallest row id.
       const legacy = new Map(
@@ -205,7 +215,17 @@ describe('migrateEntriesToV2 over generated 1.x databases (#P1, test 11.9)', () 
         expect(entry.is_deleted).toBe(e.deleted ? 1 : 0)
         expect(entry.graph_event_id).toBe(e.graphEventId)
         expect(entry.created_source).toBe('migration')
-        if (e.open) expect(entry.heartbeat_at).toBe(e.heartbeatAt)
+        expect(entry.heartbeat_at).toBe(e.open ? e.heartbeatAt : null)
+        expect(entry.created_at).toBe(e.createdAt)
+        const versions = db
+          .prepare(
+            'SELECT version_no, written_at FROM entry_version WHERE entry_id = ? ORDER BY version_no'
+          )
+          .all(e.id)
+        expect(versions).toEqual([
+          { version_no: 1, written_at: e.createdAt },
+          ...(e.deleted ? [{ version_no: 2, written_at: e.deletedWrittenAt }] : [])
+        ])
         const v = db
           .prepare('SELECT * FROM entry_version WHERE id = ?')
           .get(entry.current_version_id) as Record<string, unknown>
@@ -306,6 +326,23 @@ describe('migrateEntriesToV2 aborts and rolls back', () => {
     expect(db.prepare('SELECT * FROM entries ORDER BY id').all()).toEqual(before)
   })
 
+  it('content changed after the write fails the per-row check, which the sums cannot see', () => {
+    const g = generateLegacyDb(db, 7)
+    const victim = g.rows.find((r) => r.deleted_at === null && r.stopped_at !== null)!
+    expect(() =>
+      migrate({
+        afterWrite: (d) => {
+          d.prepare(
+            `UPDATE entry_version SET description = description || ' (moved)'
+              WHERE version_no = 1
+                AND entry_id = (SELECT entry_id FROM entry_legacy_id WHERE legacy_id = ?)`
+          ).run(victim.id)
+        }
+      })
+    ).toThrow(expect.objectContaining({ code: 'migration.selfCheckFailed' }))
+    expect(tables()).toEqual(['entries'])
+  })
+
   it('an unreadable timestamp aborts and names the row id (decision 7)', () => {
     const g = generateLegacyDb(db, 8)
     const victim = g.rows.find((r: LegacyRow) => r.stopped_at !== null)!
@@ -319,6 +356,44 @@ describe('migrateEntriesToV2 aborts and rolls back', () => {
     expect(error).toBeInstanceOf(MigrationAbortError)
     expect(error).toMatchObject({ code: 'migration.timestampUnreadable' })
     expect((error as MigrationAbortError).details.join(' ')).toContain(String(victim.id))
+    expect(tables()).toEqual(['entries'])
+  })
+
+  it('an unreadable heartbeat of a deleted running row aborts too: it would be the seal', () => {
+    const g = generateLegacyDb(db, 8)
+    const victim = g.rows.find((r) => r.deleted_at !== null && r.stopped_at === null)!
+    db.prepare("UPDATE entries SET heartbeat_at = 'soon' WHERE id = ?").run(victim.id)
+    expect(() => migrate()).toThrow(
+      expect.objectContaining({ code: 'migration.timestampUnreadable' })
+    )
+    expect(tables()).toEqual(['entries'])
+  })
+
+  it('a rounding step above 60 minutes aborts: a billing profile holds 1 to 60', () => {
+    generateLegacyDb(db, 8)
+    db.prepare("UPDATE settings SET value = '90' WHERE key = 'pdf_round_minutes'").run()
+    expect(() => migrate()).toThrow(
+      expect.objectContaining({ code: 'migration.roundingUnsupported' })
+    )
+    expect(tables()).toEqual(['entries'])
+  })
+
+  it('a row the new tables cannot hold aborts naming its legacy id', () => {
+    const g = generateLegacyDb(db, 8)
+    const victim = g.rows.find((r) => r.link_id === null)!
+    // A client gone without its rows: 1.x cascades, but a database written
+    // with foreign keys off can still hold one.
+    db.pragma('foreign_keys = OFF')
+    db.prepare('UPDATE entries SET client_id = 999 WHERE id = ?').run(victim.id)
+    db.pragma('foreign_keys = ON')
+    let error: unknown
+    try {
+      migrate()
+    } catch (e) {
+      error = e
+    }
+    expect(error).toMatchObject({ code: 'migration.writeFailed' })
+    expect((error as MigrationAbortError).details.join(' ')).toContain(`legacy ids ${victim.id}:`)
     expect(tables()).toEqual(['entries'])
   })
 })

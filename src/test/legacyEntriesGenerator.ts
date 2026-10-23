@@ -15,7 +15,7 @@
  * migration 027 left them.
  */
 import type Database from 'better-sqlite3'
-import type { MigrationShape } from '../main/entryLifecycle/migrateV2'
+import type { MigrationException, MigrationShape } from '../main/entryLifecycle/migrateV2'
 
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0
@@ -57,6 +57,10 @@ export interface ExpectedEntry {
   open: boolean
   graphEventId: string | null
   heartbeatAt: string | null
+  /** entry.created_at and version 1's written_at: ISO with Z, or verbatim if unreadable. */
+  createdAt: string
+  /** written_at of the delete version (the latest delete time), null if live. */
+  deletedWrittenAt: string | null
   /** Segments of the current version, in day order. */
   segments: { started_at: string; stopped_at: string | null }[]
   /** Content fields of the version (all rows of the entry share them). */
@@ -69,6 +73,8 @@ export interface ExpectedEntry {
 export interface GeneratedDb {
   rows: LegacyRow[]
   expected: ExpectedEntry[]
+  /** The exceptions the report must list, in no particular order. */
+  exceptions: MigrationException[]
   clientRates: Map<number, number>
   /** project id → { client id, rate (null inherits) } */
   projects: Map<number, { clientId: number; rate: number | null }>
@@ -86,6 +92,11 @@ const iso = (d: Date): string => d.toISOString()
 const sqliteDatetime = (d: Date): string =>
   `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
   `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+/** The ISO form a stored created_at must become (decision 6), by string shape. */
+const createdIso = (stored: string): string =>
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(stored)
+    ? `${stored.replace(' ', 'T')}.000Z`
+    : stored /* already ISO with Z, or unreadable and kept verbatim */
 
 type ShapeKind =
   | 'running'
@@ -101,8 +112,12 @@ type ShapeKind =
   | 'importedSingle'
   | 'importedPair'
   | 'editedLate'
+  | 'sameDayPair'
+  | 'createdAtUnreadable'
 
 const KINDS: ShapeKind[] = [
+  'sameDayPair',
+  'createdAtUnreadable',
   'single',
   'single',
   'single',
@@ -153,13 +168,16 @@ export function generateLegacyDb(db: Database.Database, seed: number, count = 40
       p.rate
     )
   }
-  const step = pick([0, 0, 15, 6])
+  // 'abc' is what a hand-edited setting can hold; 1.x readers take it as 0.
+  const stepSetting = pick(['0', '0', '15', '6', 'abc'])
+  const step = stepSetting === 'abc' ? 0 : Number(stepSetting)
   const appLanguage = rnd() < 0.4 ? 'en' : 'de'
-  db.prepare("UPDATE settings SET value = ? WHERE key = 'pdf_round_minutes'").run(String(step))
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'pdf_round_minutes'").run(stepSetting)
   db.prepare("UPDATE settings SET value = ? WHERE key = 'language'").run(appLanguage)
 
   const rows: LegacyRow[] = []
   const expected: ExpectedEntry[] = []
+  const exceptions: MigrationException[] = []
   let nextId = 1
   let anchor = 0
   let link = 0
@@ -200,6 +218,9 @@ export function generateLegacyDb(db: Database.Database, seed: number, count = 40
     const end = at(d, 24 + int(0, 2), int(1, 59))
     const linkId = `link-${++link}`
     const created = sqliteDatetime(end)
+    // The anchor sits on either half: 1.x import wrote it on the first, an
+    // edit that re-split the entry can leave it on the second.
+    const anchorOnSecond = extra.graph !== undefined && rnd() < 0.3
     const a = row({
       ...c,
       started_at: iso(start),
@@ -208,7 +229,7 @@ export function generateLegacyDb(db: Database.Database, seed: number, count = 40
       created_at: created,
       deleted_at: null,
       link_id: linkId,
-      graph_event_id: extra.graph ?? null
+      graph_event_id: anchorOnSecond ? null : (extra.graph ?? null)
     })
     const c2 = extra.secondDiffers ? { ...c, description: `${c.description} (edited)` } : c
     const b = row({
@@ -219,7 +240,7 @@ export function generateLegacyDb(db: Database.Database, seed: number, count = 40
       created_at: created,
       deleted_at: null,
       link_id: linkId,
-      graph_event_id: null
+      graph_event_id: anchorOnSecond ? extra.graph! : null
     })
     return [a, b]
   }
@@ -232,14 +253,18 @@ export function generateLegacyDb(db: Database.Database, seed: number, count = 40
     shapes: MigrationShape[],
     over: Partial<ExpectedEntry> = {}
   ): void => {
+    const deleted = rs.every((r) => r.deleted_at !== null)
     expected.push({
       id: Math.min(...rs.map((r) => r.id)),
       legacyIds: rs.map((r) => r.id),
       shapes,
-      deleted: rs.every((r) => r.deleted_at !== null),
+      deleted,
       open: false,
       graphEventId: rs.find((r) => r.graph_event_id)?.graph_event_id ?? null,
       heartbeatAt: null,
+      // All rows of one logical entry share created_at here.
+      createdAt: createdIso(rs[0].created_at),
+      deletedWrittenAt: deleted ? rs.map((r) => r.deleted_at!).sort()[rs.length - 1] : null,
       segments: rs.map(seg),
       content: {
         client_id: rs[0].client_id,
@@ -330,16 +355,61 @@ export function generateLegacyDb(db: Database.Database, seed: number, count = 40
         break
       }
       case 'deletedPair': {
+        // 1.x deleted both halves in one statement (equal times); a later
+        // edit could leave them apart, which the report lists.
         const [a, b] = makePair(c)
+        const apart = rnd() < 0.5
         a.deleted_at = iso(new Date(Date.parse(b.stopped_at!) + 3600000))
-        b.deleted_at = iso(new Date(Date.parse(b.stopped_at!) + 3600000 + int(1, 50) * 1000))
+        b.deleted_at = apart
+          ? iso(new Date(Date.parse(b.stopped_at!) + 3600000 + int(1, 50) * 1000))
+          : a.deleted_at
+        if (apart) exceptions.push({ code: 'migration.deletedAtDiffers', legacyIds: [a.id, b.id] })
         expect([a, b], ['pair', 'deleted'])
         break
       }
       case 'inconsistentPair': {
         const [a, b] = makePair(c, { secondDiffers: true })
+        exceptions.push({ code: 'migration.inconsistentPair', legacyIds: [a.id, b.id] })
         expect([a], ['inconsistentPair'])
         expect([b], ['inconsistentPair'])
+        break
+      }
+      case 'sameDayPair': {
+        // Two halves of one link starting on the same local day (a half
+        // edited onto the other's day): one version cannot hold both.
+        const linkId = `link-${++link}`
+        const [a, b] = [int(7, 10), int(13, 17)].map((h) => {
+          const start = at(d, h, int(0, 59))
+          return row({
+            ...c,
+            started_at: iso(start),
+            stopped_at: iso(new Date(start.getTime() + int(10, 120) * 60000)),
+            heartbeat_at: null,
+            created_at: sqliteDatetime(start),
+            deleted_at: null,
+            link_id: linkId,
+            graph_event_id: null
+          })
+        })
+        exceptions.push({ code: 'migration.sameDayPair', legacyIds: [a.id, b.id] })
+        expect([a], ['inconsistentPair'])
+        expect([b], ['inconsistentPair'])
+        break
+      }
+      case 'createdAtUnreadable': {
+        const start = at(d, int(8, 16), int(0, 59))
+        const r = row({
+          ...c,
+          started_at: iso(start),
+          stopped_at: iso(new Date(start.getTime() + int(5, 90) * 60000)),
+          heartbeat_at: null,
+          created_at: 'gestern',
+          deleted_at: null,
+          link_id: null,
+          graph_event_id: null
+        })
+        exceptions.push({ code: 'migration.createdAtUnreadable', legacyIds: [r.id] })
+        expect([r], ['single'])
         break
       }
       case 'unsplitTimer': {
@@ -386,6 +456,7 @@ export function generateLegacyDb(db: Database.Database, seed: number, count = 40
           link_id: null,
           graph_event_id: null
         })
+        exceptions.push({ code: 'migration.deletedRunningSealed', legacyIds: [r.id] })
         expect([r], ['single', 'deletedRunning', 'deleted'], {
           segments: [{ started_at: r.started_at, stopped_at: hb ?? r.started_at }]
         })
@@ -407,6 +478,7 @@ export function generateLegacyDb(db: Database.Database, seed: number, count = 40
   return {
     rows,
     expected,
+    exceptions,
     clientRates,
     projects,
     step,
