@@ -7,9 +7,19 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Breaking for MCP clients and integrations
+
+If you call TimeTrack's MCP tools from your own scripts or agents, check this before updating.
+
+- **`list_projects` `used_minutes` counts like the invoice.** It now holds the billed minutes of the project's billable entries, rounded per entry with the app's rounding setting, and includes finished entries recorded with the timer (a running timer counts once it stops). Non-billable entries no longer count, and the stored `rounded_min` of an entry is no longer its basis. Details in the entry under Changed ([#285](https://github.com/wald-it/time-tracking/issues/285)).
+
 ### Added
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
+
+### Changed
+
+- **Project budgets count like the invoice, including timer time** — Time recorded with the timer did not count toward a project's budget unless the entry was edited later; manual, edited and imported entries counted, and so did old entries that a v1.2 data update had filled in. The budget now counts what the invoice bills: the project's billable entries, each rounded up with your rounding setting, like the PDF and the Auswertung. Non-billable entries no longer count. After the update, existing budget bars jump up once because the timer time is added, and the 80 % warning may appear sooner than before. The MCP field `used_minutes` follows the same rule ([#285](https://github.com/wald-it/time-tracking/issues/285)).
 
 ### Fixed
 
