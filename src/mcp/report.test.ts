@@ -311,6 +311,23 @@ describe('get_report (Q17)', () => {
     })
   })
 
+  it('grouped by project, each row names its client; clients without projects stay apart', () => {
+    // Beta also gets an entry without a project: two "(kein Projekt)" rows.
+    db.prepare(
+      `INSERT INTO entries (id, client_id, project_id, description, started_at, stopped_at,
+                            tags, reference, billable, private_note)
+       VALUES (10, 2, NULL, 'x', '2026-06-22T12:00:00.000Z', '2026-06-22T12:30:00.000Z', '', '', 1, '')`
+    ).run()
+    const rows = getReport(sdb, SHOW, { ...JUNE, groupBy: ['project'] }).rows
+    expect(rows.map((r) => [r.project_id, r.client_id, r.seconds])).toEqual([
+      [null, 1, 50],
+      [null, 2, 1800],
+      [20, 2, 1200],
+      [12, 1, 3600],
+      [10, 1, 4020 + 1800]
+    ])
+  })
+
   it('leaves a group of zero-length entries out of the rows, like get_analytics', () => {
     db.prepare(
       `INSERT INTO entries (id, client_id, project_id, description, started_at, stopped_at,
@@ -323,6 +340,25 @@ describe('get_report (Q17)', () => {
     expect(getAnalytics(sdb, SHOW, 2026, 6).by_client.map((c) => c.client_id)).toEqual(
       getReport(sdb, SHOW, { ...JUNE, groupBy: ['client'] }).rows.map((row) => row.client_id)
     )
+  })
+
+  it('lists the same clients as get_analytics, also for a sub-second non-billable entry', () => {
+    // 400 ms, not billable: no whole second and no revenue, but a billed
+    // minute. get_analytics leaves such a client out; so does the report.
+    db.prepare(
+      `INSERT INTO clients (id, name, color, active, rate_cent) VALUES (3, 'Gamma', '#555555', 1, 6000)`
+    ).run()
+    db.prepare(
+      `INSERT INTO entries (id, client_id, project_id, description, started_at, stopped_at,
+                            tags, reference, billable, private_note)
+       VALUES (11, 3, NULL, 'x', '2026-06-25T12:00:00.000Z', '2026-06-25T12:00:00.400Z', '', '', 0, '')`
+    ).run()
+    const report = getReport(sdb, SHOW, { ...JUNE, groupBy: ['client'] }).rows.map(
+      (r) => r.client_id
+    )
+    const analytics = getAnalytics(sdb, SHOW, 2026, 6).by_client.map((c) => c.client_id)
+    expect(report.sort()).toEqual(analytics.sort())
+    expect(report).not.toContain(3)
   })
 
   it('treats a negative stored rounding step as no step, like the money rule', () => {

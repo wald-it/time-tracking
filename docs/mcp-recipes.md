@@ -35,7 +35,7 @@ Trag diese Zeit in TimeTrack nach: <was>
 
 1. Finde Kunde und Projekt mit list_clients und list_projects. Passt mehr als eines oder keines, frag mich.
 2. Bestimme Beginn und Ende als Zeitstempel mit Zeitzone. Fehlt eine Uhrzeit, frag nach, statt sie zu raten.
-3. Prüf mit list_entries für denselben und den vorigen Tag, ob sich der Eintrag mit einem bestehenden überschneidet (auch mit einem, der am Vorabend begann und über Mitternacht lief), und sag es mir.
+3. Prüf mit list_entries für jeden Tag, den der neue Eintrag berührt, und für den Tag davor, ob er sich mit einem bestehenden überschneidet (auch mit einem, der am Vorabend begann und über Mitternacht lief), und sag es mir.
 4. Leg den Eintrag mit create_manual_entry an. Jede Änderung zuerst mit preview:true aufrufen und die Vorschau zeigen. Eine Vorschau legt in TimeTrack nichts an und ändert nichts. Erst wenn ich zustimme, denselben Aufruf ohne preview wiederholen und danach bestätigen, was angelegt oder geändert wurde.
 ```
 
@@ -53,8 +53,8 @@ Bereite den Monatsabschluss für <monat> in TimeTrack vor.
 2. Hol die Einträge des Monats mit list_entries und die Projekte der Kunden mit list_projects.
 3. Liste auf, was ich mir ansehen sollte: Einträge ohne Beschreibung, Einträge über zehn Stunden, nicht abrechenbare Einträge, Einträge ohne Projekt bei Kunden mit Projekten und Überschneidungen.
 4. Schlag für Einträge mit fehlender oder unklarer Beschreibung einen Text vor, im Stil der übrigen Beschreibungen des Monats.
-5. Änderungen nur einzeln mit update_entry_fields und nur nach meiner Zustimmung. Jede Änderung zuerst mit preview:true aufrufen und die Vorschau zeigen. Eine Vorschau legt in TimeTrack nichts an und ändert nichts. Erst wenn ich zustimme, denselben Aufruf ohne preview wiederholen und danach bestätigen, was angelegt oder geändert wurde.
-6. Schließ mit den Summen aus Schritt 1: Stunden je Kunde, davon abrechenbar, gerundet wie die Rechnung.
+5. Änderungen nur einzeln mit update_entry_fields und nur nach meiner Zustimmung. Jede Änderung zuerst mit preview:true aufrufen und die Vorschau zeigen. Eine Vorschau legt in TimeTrack nichts an und ändert nichts. Erst wenn ich zustimme, denselben Aufruf ohne preview wiederholen und danach bestätigen, was angelegt oder geändert wurde. update_entry_fields speichert den Eintrag unter einer neuen id; nimm für jede weitere Änderung an ihm die id aus der Antwort.
+6. Hol die Summen danach erneut mit get_report, weil Änderungen sie verschieben, und schließ damit: Stunden je Kunde, davon abrechenbar, gerundet wie die Rechnung.
 ```
 
 ## Zeiten auf Plausibilität prüfen (`plausibilitaet`)
@@ -70,8 +70,9 @@ Prüf meine Zeiten in TimeTrack von <von> bis <bis> auf Plausibilität.
 1. Hol die Tagessummen mit get_report, gruppiert nach day.
 2. Prüf mit get_running_timer, ob ein Timer seit mehr als zwölf Stunden läuft.
 3. Prüf mit list_projects, welche Projekte ihr Budget fast oder ganz verbraucht haben.
-4. Stell mir Fragen statt Schlüsse zu ziehen: Werktage ohne Eintrag, Tage über zehn Stunden, Arbeit am Wochenende, ein lange laufender Timer, knappe Budgets.
-5. Ändere in diesem Durchgang nichts.
+4. Ein Tag fehlt in get_report auch dann, wenn dort nur ein laufender Timer oder Einträge ohne Dauer stehen. Prüf einen scheinbar leeren Werktag deshalb mit list_entries, bevor du danach fragst.
+5. Stell mir Fragen statt Schlüsse zu ziehen: Werktage ohne Eintrag, Tage über zehn Stunden, Arbeit am Wochenende, ein lange laufender Timer, knappe Budgets.
+6. Ändere in diesem Durchgang nichts.
 ```
 
 <!-- recipes:end -->

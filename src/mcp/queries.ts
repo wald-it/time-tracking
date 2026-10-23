@@ -830,10 +830,16 @@ export function getReport(db: SqliteDb, privacy: PrivacyConfig, q: ReportQuery):
       group: ['c.id'],
       order: ['c.name ASC', 'c.id ASC']
     },
+    // Per client too: two clients' "(kein Projekt)" or same-named projects
+    // stay apart, and each row says whose project it is.
     project: {
-      select: ['e.project_id AS project_id', `COALESCE(p.name, '(kein Projekt)') AS project_name`],
-      group: ['e.project_id'],
-      order: ['project_name ASC', 'e.project_id ASC']
+      select: [
+        'e.project_id AS project_id',
+        `COALESCE(p.name, '(kein Projekt)') AS project_name`,
+        'e.client_id AS project_client_id'
+      ],
+      group: ['e.client_id', 'e.project_id'],
+      order: ['project_name ASC', 'e.project_id ASC', 'e.client_id ASC']
     },
     day: {
       select: [`date(e.started_at, 'localtime') AS day`],
@@ -857,7 +863,10 @@ export function getReport(db: SqliteDb, privacy: PrivacyConfig, q: ReportQuery):
      ${groups.length ? `GROUP BY ${groups.flatMap((g) => g.group).join(', ')}` : ''}
      ${groups.length ? `ORDER BY ${groups.flatMap((g) => g.order).join(', ')}` : ''}`
 
-  type Raw = Omit<McpReportRow, 'revenue_cent'> & { revenue_cent: number }
+  type Raw = Omit<McpReportRow, 'revenue_cent'> & {
+    revenue_cent: number
+    project_client_id?: number
+  }
   const raw = (db.prepare(sql).all(params) as Raw[]).filter(
     // Without grouping, an empty range still yields one row of zeros.
     (r) => r.entry_count > 0
@@ -872,16 +881,18 @@ export function getReport(db: SqliteDb, privacy: PrivacyConfig, q: ReportQuery):
     ...(privacy.exposeRates ? { revenue_cent: Math.round(r.revenue_cent ?? 0) } : {})
   })
 
-  // Like get_analytics' breakdowns, a group with no worked and no billed time
-  // (entries of zero length) is left out of the rows; it still counts in
-  // totals.entry_count.
+  // The same rule as get_analytics' breakdowns (HAVING seconds > 0 OR
+  // revenue_cent > 0), so a month by client lists the same clients. A group
+  // left out still counts in totals.
   const rows: McpReportRow[] = groups.length
     ? raw
-        .filter((r) => (r.seconds ?? 0) > 0 || (r.rounded_seconds ?? 0) > 0)
+        .filter((r) => (r.seconds ?? 0) > 0 || (r.revenue_cent ?? 0) > 0)
         .map((r) => ({
           ...(q.groupBy.includes('client')
             ? { client_id: r.client_id, client_name: r.client_name }
-            : {}),
+            : q.groupBy.includes('project')
+              ? { client_id: r.project_client_id }
+              : {}),
           ...(q.groupBy.includes('project')
             ? { project_id: r.project_id ?? null, project_name: r.project_name }
             : {}),
