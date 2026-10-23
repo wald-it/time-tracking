@@ -15,6 +15,8 @@ import {
 } from './backup'
 import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
 import {
+  MAIN_ONLY_SETTING_KEYS,
+  pdfRequestPaths,
   rememberPickedPdf,
   ShellTargets,
   SHELL_REFUSED_MESSAGE,
@@ -139,10 +141,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     return { db: getDbPath(), backups: backupsDir, logs: dirname(logFile), logFile }
   }
 
-  // #272: what the shell helpers may open or reveal.
+  // #272: what the shell helpers may open or reveal. Built without touching
+  // the file system: getBackupsDir would mkdir a possibly dead network share.
+  // The configured folder is normalised as backup:get-path-info reports it.
   const shellTargets = new ShellTargets(() => {
-    const p = appPaths()
-    return [p.db, p.backups, p.logs, p.logFile, getDefaultBackupsDir()]
+    const logFile = log.transports.file.getFile().path
+    const configured = readBackupPathSetting(db)
+    return [
+      getDbPath(),
+      logFile,
+      dirname(logFile),
+      getDefaultBackupsDir(),
+      configured ? normalize(configured) : ''
+    ]
   })
 
   // ── Clients ──────────────────────────────────────────────────
@@ -626,7 +637,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         key: string
         value: string
       }[]
-      const settings = Object.fromEntries(rows.map((r) => [r.key, r.value])) as unknown as Settings
+      const settings = Object.fromEntries(
+        rows.filter((r) => !MAIN_ONLY_SETTING_KEYS.has(r.key)).map((r) => [r.key, r.value])
+      ) as unknown as Settings
       return ok(settings)
     } catch (e) {
       return fail(e)
@@ -955,10 +968,13 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   // PDF info: returns page count for a given PDF path. Used by the renderer to
   // show page counts before confirming a merge.
-  ipcMain.handle('pdf:pdf-info', (_e, req) => {
+  // A pick the dialog keeps using is refreshed, so it never ages out.
+  ipcMain.handle('pdf:pdf-info', async (_e, req) => {
     const refused = unpickedPdfError(db, req)
     if (refused) return fail(refused)
-    return pdfInfoHandler(req)
+    const res = await pdfInfoHandler(req)
+    if (res.ok) for (const p of pdfRequestPaths(req)) rememberPickedPdf(db, p)
+    return res
   })
 
   // PDF open dialog: opens a native file picker and returns the selected path.

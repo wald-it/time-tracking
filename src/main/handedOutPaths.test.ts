@@ -9,12 +9,13 @@ import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
+  MAIN_ONLY_SETTING_KEYS,
   MAX_PICKED_PDFS,
   NOT_PICKED_MESSAGE,
   PICKED_PDFS_KEY,
   ShellTargets,
   isPickedPdf,
-  pathKey,
+  pdfRequestPaths,
   rememberPickedPdf,
   unpickedPdfError
 } from './handedOutPaths'
@@ -39,6 +40,13 @@ const INVOICE = join(ROOT, 'Rechnung-2026-10.pdf')
 const SHEET = join(ROOT, 'Stundennachweis-2026-10.pdf')
 const OTHER = join(ROOT, 'elsewhere', 'other.pdf')
 
+function storedPicks(): string[] {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(PICKED_PDFS_KEY) as
+    | { value: string }
+    | undefined
+  return row ? (JSON.parse(row.value) as string[]) : []
+}
+
 describe('picked PDFs', () => {
   it('knows a picked PDF and nothing else', () => {
     rememberPickedPdf(db, INVOICE)
@@ -50,27 +58,21 @@ describe('picked PDFs', () => {
 
   it('survives a restart: the list lives in the settings table', () => {
     rememberPickedPdf(db, INVOICE)
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(PICKED_PDFS_KEY) as {
-      value: string
-    }
-    expect(JSON.parse(row.value)).toEqual([INVOICE])
+    expect(storedPicks()).toEqual([INVOICE])
   })
 
-  it('compares a path the way the file system does', () => {
-    expect(pathKey('C:\\Daten\\A.pdf', 'win32')).toBe(pathKey('c:\\daten\\a.pdf', 'win32'))
-    expect(pathKey('/data/A.pdf', 'linux')).not.toBe(pathKey('/data/a.pdf', 'linux'))
+  // A case-folded match would let a different file on a case-sensitive volume
+  // pass as picked; the renderer hands back the exact string anyway.
+  it('compares exactly, never case-folded', () => {
+    rememberPickedPdf(db, INVOICE)
+    expect(isPickedPdf(db, INVOICE.toUpperCase())).toBe(false)
+    expect(isPickedPdf(db, join(ROOT, '.', 'Rechnung-2026-10.pdf'))).toBe(true)
   })
 
   it('keeps the newest picks, once each, up to the cap', () => {
     for (let i = 0; i < MAX_PICKED_PDFS + 5; i++) rememberPickedPdf(db, join(ROOT, `f${i}.pdf`))
     rememberPickedPdf(db, join(ROOT, 'f10.pdf'))
-    const list = JSON.parse(
-      (
-        db.prepare('SELECT value FROM settings WHERE key = ?').get(PICKED_PDFS_KEY) as {
-          value: string
-        }
-      ).value
-    ) as string[]
+    const list = storedPicks()
     expect(list).toHaveLength(MAX_PICKED_PDFS)
     expect(list[0]).toBe(join(ROOT, 'f10.pdf'))
     expect(new Set(list).size).toBe(list.length)
@@ -84,8 +86,38 @@ describe('picked PDFs', () => {
     expect(isPickedPdf(db, INVOICE)).toBe(true)
   })
 
-  it('cannot be written by the renderer', () => {
+  it('cannot be written by the renderer, nor read through settings:getAll', () => {
     expect(RENDERER_WRITABLE_SETTINGS.has(PICKED_PDFS_KEY)).toBe(false)
+    expect(MAIN_ONLY_SETTING_KEYS.has(PICKED_PDFS_KEY)).toBe(true)
+  })
+})
+
+describe('pdfRequestPaths', () => {
+  it('reads the paths the handlers read', () => {
+    expect(pdfRequestPaths({ filePath: INVOICE })).toEqual([INVOICE])
+    expect(pdfRequestPaths({ invoicePath: INVOICE, stundennachweisPaths: [SHEET] })).toEqual([
+      INVOICE,
+      SHEET
+    ])
+    expect(pdfRequestPaths({ invoicePath: INVOICE, stundennachweisPath: SHEET })).toEqual([
+      INVOICE,
+      SHEET
+    ])
+  })
+
+  it('ignores the legacy field when the list is given, as mergeOnlyHandler does', () => {
+    expect(
+      pdfRequestPaths({
+        invoicePath: INVOICE,
+        stundennachweisPaths: [SHEET],
+        stundennachweisPath: OTHER
+      })
+    ).toEqual([INVOICE, SHEET])
+  })
+
+  it('leaves malformed values to the handlers', () => {
+    expect(pdfRequestPaths({ filePath: 42 })).toEqual([])
+    expect(pdfRequestPaths(null)).toEqual([])
   })
 })
 
@@ -111,9 +143,7 @@ describe('unpickedPdfError', () => {
       'one time sheet among several',
       { invoicePath: INVOICE, stundennachweisPaths: [SHEET, OTHER] }
     ],
-    ['the legacy single time sheet', { invoicePath: INVOICE, stundennachweisPath: OTHER }],
-    ['a path that is not a string', { filePath: 42 }],
-    ['a time sheet that is not a string', { invoicePath: INVOICE, stundennachweisPaths: [7] }]
+    ['the legacy single time sheet', { invoicePath: INVOICE, stundennachweisPath: OTHER }]
   ])('refuses %s that was not picked', (_label, req) => {
     expect(unpickedPdfError(db, req)).toBe(NOT_PICKED_MESSAGE)
   })
@@ -127,7 +157,7 @@ describe('ShellTargets', () => {
     backups: join(ROOT, 'Backups')
   }
   const targets = (): ShellTargets =>
-    new ShellTargets(() => [app.db, app.logs, app.logFile, app.backups])
+    new ShellTargets(() => [app.db, app.logs, app.logFile, app.backups, ''])
 
   it('opens the app’s own locations', () => {
     const t = targets()
@@ -146,6 +176,7 @@ describe('ShellTargets', () => {
     ['another file', join(ROOT, 'Downloads', 'payload.exe')],
     ['a file inside an allowed folder', join(app.logs, 'other.exe')],
     ['the parent of an allowed folder', join(ROOT, 'userData')],
+    ['an allowed path in other case', app.db.toUpperCase()],
     ['an empty path', ''],
     ['a value that is not a string', { path: app.db }]
   ])('refuses %s', (_label, p) => {
@@ -155,7 +186,8 @@ describe('ShellTargets', () => {
 
 // The rules above only protect if the handlers call them. A unit test of
 // ShellTargets stays green when a handler drops the check, so the wiring in
-// ipc.ts is pinned here as well.
+// ipc.ts is pinned here: the guard must be code (an `if` line, not a
+// comment) and come before the call it protects.
 describe('ipc.ts wiring', () => {
   const src = readFileSync(join(__dirname, 'ipc.ts'), 'utf8')
   const handler = (channel: string): string => {
@@ -163,23 +195,51 @@ describe('ipc.ts wiring', () => {
     expect(start, `${channel} is registered`).toBeGreaterThan(-1)
     return src.slice(start, src.indexOf('ipcMain.', start + channel.length))
   }
+  const guardBefore = (body: string, guard: RegExp, call: string): void => {
+    const g = body.search(guard)
+    expect(g, `guard ${guard} present as code`).toBeGreaterThan(-1)
+    expect(body.indexOf(call), `${call} present`).toBeGreaterThan(g)
+  }
 
-  it.each(['shell:openPath', 'shell:showItemInFolder'])('%s checks ShellTargets', (ch) => {
-    expect(handler(ch)).toContain('shellTargets.allows(path)')
+  it('shell:openPath checks ShellTargets before opening', () => {
+    guardBefore(
+      handler('shell:openPath'),
+      /\n\s*if \(!shellTargets\.allows\(path\)\) return fail\(/,
+      'shell.openPath('
+    )
   })
 
-  it.each(['pdf:pdf-info', 'pdf:merge-only', 'pdf:merge-export'])(
-    '%s refuses unpicked PDFs',
-    (ch) => {
-      expect(handler(ch)).toContain('unpickedPdfError(db, req)')
-    }
-  )
+  it('shell:showItemInFolder checks ShellTargets before revealing', () => {
+    guardBefore(
+      handler('shell:showItemInFolder'),
+      /\n\s*if \(!shellTargets\.allows\(path\)\) return fail\(/,
+      'shell.showItemInFolder('
+    )
+  })
+
+  it.each([
+    ['pdf:pdf-info', 'pdfInfoHandler('],
+    ['pdf:merge-only', 'mergeOnlyHandler('],
+    ['pdf:merge-export', 'mergeExportHandler(']
+  ])('%s refuses unpicked PDFs before reading', (ch, call) => {
+    const body = handler(ch)
+    guardBefore(body, /\n\s*const refused = unpickedPdfError\(db, req\)/, call)
+    guardBefore(body, /\n\s*if \(refused\) return fail\(refused\)/, call)
+  })
 
   it.each(['pdf:merge-only', 'pdf:merge-export'])('%s hands its output to the shell', (ch) => {
-    expect(handler(ch)).toContain('shellTargets.rememberWritten(res.data.path)')
+    expect(handler(ch)).toMatch(
+      /\n\s*if \(res\.ok\) shellTargets\.rememberWritten\(res\.data\.path\)/
+    )
   })
 
   it('pdf:open-pdf-dialog remembers the pick', () => {
-    expect(handler('pdf:open-pdf-dialog')).toContain('rememberPickedPdf(db, result.filePaths[0])')
+    expect(handler('pdf:open-pdf-dialog')).toMatch(
+      /\n\s*rememberPickedPdf\(db, result\.filePaths\[0\]\)/
+    )
+  })
+
+  it('settings:getAll leaves the main-only rows out', () => {
+    expect(handler('settings:getAll')).toContain('!MAIN_ONLY_SETTING_KEYS.has(r.key)')
   })
 })
