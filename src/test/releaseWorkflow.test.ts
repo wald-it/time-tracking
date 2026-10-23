@@ -27,7 +27,7 @@
 import { describe, it, expect } from 'vitest'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -48,8 +48,10 @@ interface Run {
 /**
  * Run a release script unchanged with `env` — in a worker thread, not a child
  * process. A child's exit is reported only once Windows has finished tearing
- * the process down, and under load that took up to 7.7 s per call, so 34
- * calls made this file's duration the machine's teardown time (#290). A
+ * the process down: the scripts' own work took 0.2–0.5 s, the wait after it
+ * up to 7.7 s, and under heavy load a single call took 64.6 s against the
+ * 60 s budget. With 27 calls the file's duration was the machine's teardown
+ * time (#290). A
  * worker has its own `process.env`, its `process.exit()` ends only the
  * worker, and its stdout/stderr come back as streams. Neither script uses
  * anything a worker lacks (argv, stdin, chdir, signals).
@@ -64,11 +66,14 @@ async function runInWorker(script: string, env: Record<string, string>): Promise
   let stderr = ''
   worker.stdout.setEncoding('utf8').on('data', (d: string) => (stdout += d))
   worker.stderr.setEncoding('utf8').on('data', (d: string) => (stderr += d))
-  // An uncaught exception ends the worker with code 1, like a crashing CLI.
+  // An uncaught exception ends the worker with code 1, like a crashing CLI:
+  // its stack goes to stderr, and 'exit' follows. (Not `once(worker, 'exit')`,
+  // which would reject on 'error' instead of reporting the exit code.)
   worker.on('error', (e) => (stderr += String(e.stack ?? e)))
+  const exited = new Promise<number>((resolve) => worker.once('exit', resolve))
   // The streams end after 'exit'; wait for both so no output is cut off.
-  const [[status]] = await Promise.all([
-    once(worker, 'exit') as Promise<[number]>,
+  const [status] = await Promise.all([
+    exited,
     once(worker.stdout, 'end'),
     once(worker.stderr, 'end')
   ])
@@ -125,6 +130,7 @@ async function runPlan(
   } catch {
     // no file written — asserted on below where it matters
   }
+  rmSync(dir, { recursive: true, force: true })
   return { status: proc.status, stderr: proc.stderr, outputs, notice, stdout: proc.stdout }
 }
 
@@ -145,8 +151,8 @@ describe('release plan (#221)', () => {
   })
 
   // The one test that pays for a real process: the script still starts and
-  // answers as a CLI, the way the workflow runs it. The budget covers the
-  // teardown wait measured in #290 (up to 7.7 s per call), with room.
+  // answers as a CLI, the way the workflow runs it. Its budget is twice the
+  // slowest single call measured in #290 (64.6 s under heavy load).
   it('runs as a CLI process, as the workflow runs it', async () => {
     const plan = await runPlan('success', 'failure', 'success', undefined, {}, runAsProcess)
     expect(plan.status, plan.stderr).toBe(0)
