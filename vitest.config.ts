@@ -1,5 +1,7 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import { resolve } from 'path'
+
+const BERLIN_TESTS = 'src/**/*.berlin.test.ts'
 
 export default defineConfig({
   resolve: {
@@ -27,8 +29,22 @@ export default defineConfig({
             // checks these very patterns still cover every test file.
             'src/test/**/*.test.ts'
           ],
+          exclude: [...configDefaults.exclude, BERLIN_TESTS],
           // No test writes into the real userData logs (#243).
           setupFiles: ['./src/test/isolateLogs.ts']
+        }
+      },
+      {
+        // #263: tests that need the whole process — JS and SQLite — in
+        // Europe/Berlin, which only the environment can provide (see the setup
+        // file). CI runs them in the Linux job with TZ=Europe/Berlin; the UTC
+        // Windows/macOS jobs leave the project out.
+        extends: true,
+        test: {
+          name: 'berlin',
+          environment: 'node',
+          include: [BERLIN_TESTS],
+          setupFiles: ['./src/test/isolateLogs.ts', './src/test/requireBerlinZone.ts']
         }
       },
       {

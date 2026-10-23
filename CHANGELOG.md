@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Internal
+
+- **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job on Linux runs with `TZ=Europe/Berlin` and checks, for 25 October 2026, that today's total, today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. The same job also reruns the test files that set a zone themselves, this time with SQLite in Berlin too. The new tests sit in their own Vitest project, `berlin`, which refuses to run in any other zone. The Windows and macOS jobs leave it out.
+
 ## [1.22.0] — 2026-10-23
 
 ### Breaking for MCP clients and integrations

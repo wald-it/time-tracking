@@ -103,8 +103,11 @@ jobs:
       # The old `pnpm rebuild better-sqlite3` step here was actively harmful: it
       # swapped in a Node-ABI binary and left the .forge-meta marker claiming
       # Electron, which is how the cached poison above came to exist.
+      #
+      # #263: the `berlin` project needs the process zone Europe/Berlin and
+      # these runners are UTC; it runs in the berlin-zone job below.
       - name: Test
-        run: pnpm test
+        run: pnpm test --project '!berlin'
 
       # #190: The Stream Deck plugin is its own package (own lockfile, own
       # toolchain) and is NOT part of the app build. Its pure modules already
@@ -169,3 +172,58 @@ jobs:
           name: timetrack-streamdeck-plugin-${{ github.sha }}
           path: streamdeck-plugin/dist/*.streamDeckPlugin
           if-no-files-found: error
+
+  # #263: the Heute totals and the weekday average cut days with SQLite's
+  # 'localtime', which reads the zone the process starts in and ignores a
+  # process.env.TZ set later (on Windows it ignores TZ altogether). So they can
+  # only be tested in Europe/Berlin when the whole job runs there: Linux, with
+  # TZ on the job. This job runs the `berlin` Vitest project (whose setup fails
+  # in any other zone) and the files that pin a zone themselves, which here run
+  # with SQLite in Berlin too instead of UTC.
+  #
+  # No licences, lint or Stream Deck steps: those are platform-independent or
+  # Windows-only by design (see the test job above), and Linux is not a release
+  # platform. The forced rebuild is not optional here either (#151).
+  berlin-zone:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TZ: Europe/Berlin
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Ensure better-sqlite3 matches the Electron ABI (forced)
+        run: pnpm exec electron-rebuild -f -w better-sqlite3
+
+      - name: Test (Europe/Berlin)
+        run: pnpm test --project berlin
+
+      # Every test file that sets process.env.TZ itself. The list is checked by
+      # src/test/berlinZoneJob.test.ts: a new zone-pinned file that is missing
+      # here turns that test red.
+      - name: Test zone-pinned files (Europe/Berlin)
+        run: >-
+          pnpm test --project node --project jsdom
+          src/shared/zonedTimestamp.test.ts
+          src/shared/dateRanges.local.test.ts
+          src/renderer/src/components/heute/dayScaleLayout.dst.test.ts
+          src/mcp/queries.test.ts
+          src/mcp/monthWindow.test.ts
+          src/main/migrations/migration027Integrity.test.ts
+          src/main/migrations/migration027.test.ts
+          src/main/mcpBridgeLocalTime.test.ts
+          src/main/entryRanges.test.ts
+          src/main/dstNightTotals.local.test.ts
