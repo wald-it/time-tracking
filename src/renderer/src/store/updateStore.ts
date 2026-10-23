@@ -10,12 +10,10 @@ import type { UpdateStatus } from '../../../shared/types'
  */
 interface UpdateStore {
   status: UpdateStatus
-  appVersion: string
   lastCheckedAt: string | null
   /** Whether the user has dismissed the current `ready` banner. */
   dismissed: boolean
   setStatus: (status: UpdateStatus) => void
-  setAppVersion: (v: string) => void
   setLastCheckedAt: (iso: string | null) => void
   dismissReady: () => void
   /** Initialize the store: subscribe to events + fetch initial state. */
@@ -30,7 +28,6 @@ let unsubscribe: (() => void) | null = null
 
 export const useUpdateStore = create<UpdateStore>((set, get) => ({
   status: { status: 'idle' },
-  appVersion: '',
   lastCheckedAt: null,
   dismissed: false,
 
@@ -42,7 +39,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         status.status === 'ready' && prev.status.status !== 'ready' ? false : prev.dismissed
     }))
   },
-  setAppVersion: (v) => set({ appVersion: v }),
   setLastCheckedAt: (iso) => set({ lastCheckedAt: iso }),
   dismissReady: () => set({ dismissed: true }),
 
@@ -55,12 +51,10 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         get().setLastCheckedAt(status.checkedAt)
       }
     })
-    const [ver, st, last] = await Promise.all([
-      window.api.update.getVersion(),
+    const [st, last] = await Promise.all([
       window.api.update.getStatus(),
       window.api.update.getLastCheck()
     ])
-    if (ver.ok) get().setAppVersion(ver.data)
     if (st.ok) get().setStatus(st.data)
     if (last.ok) get().setLastCheckedAt(last.data)
   },
