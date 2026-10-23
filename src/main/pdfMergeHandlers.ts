@@ -58,6 +58,11 @@ export function saveDialogIn(locale: () => Locale): DialogDeps {
 
 export const realFsDeps: FsDeps = { existsSync, statSync, readFileSync, writeFileSync }
 
+/** A thrown error as the renderer shows it: the message, not `Error: …` (#296). */
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
 /** `Stundennachweis` or, with several, `Stundennachweis 2` (#296: worded). */
 function snLabel(t: DialogT, i: number, count: number): string {
   return count === 1
@@ -152,7 +157,7 @@ export async function mergeOnlyHandler(
             })
           }
         }
-        return { ok: false, error: String(e) }
+        return { ok: false, error: errorText(e) }
       }
     }
 
@@ -169,7 +174,7 @@ export async function mergeOnlyHandler(
           })
         }
       }
-      return { ok: false, error: String(e) }
+      return { ok: false, error: errorText(e) }
     }
 
     // Merge: invoice first, then each Stundennachweis in order.
@@ -211,10 +216,10 @@ export async function mergeOnlyHandler(
         fsDeps.writeFileSync(fallback.filePath, merged)
         return { ok: true, data: { path: fallback.filePath } }
       }
-      return { ok: false, error: String(writeErr) }
+      return { ok: false, error: errorText(writeErr) }
     }
   } catch (e) {
-    return { ok: false, error: String(e) }
+    return { ok: false, error: errorText(e) }
   }
 }
 
@@ -250,7 +255,7 @@ export async function pdfInfoHandler(
           error: t('mainError.merge.fileLocked', { file: parse(resolved).base })
         }
       }
-      return { ok: false, error: String(e) }
+      return { ok: false, error: errorText(e) }
     }
 
     let doc: PDFDocument
@@ -262,7 +267,7 @@ export async function pdfInfoHandler(
 
     return { ok: true, data: { pageCount: doc.getPageCount() } }
   } catch (e) {
-    return { ok: false, error: String(e) }
+    return { ok: false, error: errorText(e) }
   }
 }
 
@@ -319,7 +324,7 @@ export async function mergeExportHandler(
           error: t('mainError.merge.fileLocked', { file: parse(resolvedInvoice).base })
         }
       }
-      return { ok: false, error: String(e) }
+      return { ok: false, error: errorText(e) }
     }
 
     const settingsRows = db.prepare(`SELECT key, value FROM settings`).all() as Array<{
@@ -365,9 +370,9 @@ export async function mergeExportHandler(
         fsDeps.writeFileSync(fallback.filePath, merged)
         return { ok: true, data: { path: fallback.filePath } }
       }
-      return { ok: false, error: String(writeErr) }
+      return { ok: false, error: errorText(writeErr) }
     }
   } catch (e) {
-    return { ok: false, error: String(e) }
+    return { ok: false, error: errorText(e) }
   }
 }

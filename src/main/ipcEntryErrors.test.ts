@@ -77,6 +77,19 @@ function create(client_id: number): unknown {
   })
 }
 
+describe('a thrown refusal reaches the renderer as its message (#296)', () => {
+  // clients:create throws for a negative rate; the handler used to send
+  // `Error: Stundensatz …`, which the onboarding showed as it was.
+  const negative = (): unknown =>
+    handlers.get('clients:create')!(null, { name: 'X', color: '#000', rate_cent: -1 })
+
+  it('without the Error: prefix, in the app language', () => {
+    expect(negative()).toEqual({ ok: false, error: 'Stundensatz darf nicht negativ sein' })
+    db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+    expect(negative()).toEqual({ ok: false, error: 'The hourly rate cannot be negative' })
+  })
+})
+
 describe('entries:* words a refused write in the app language (#296)', () => {
   it('German by default, as before', () => {
     expect(create(999)).toEqual({ ok: false, error: 'Kunde existiert nicht' })
