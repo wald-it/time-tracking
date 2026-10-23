@@ -328,7 +328,14 @@ export interface MonthQuery {
   month: number // 1-12
 }
 
-export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string }
+/**
+ * 'cancelled': the user closed or declined a dialog. The renderer shows
+ * nothing for it and checks the code, never the text; `error` stays a log
+ * text. Extend this union here rather than defining a second one.
+ */
+export type IpcErrorCode = 'cancelled'
+
+export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string; code?: IpcErrorCode }
 
 export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
 

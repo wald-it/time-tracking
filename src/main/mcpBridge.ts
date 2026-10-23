@@ -21,7 +21,8 @@ import type Database from 'better-sqlite3'
 import { getDbPath } from './db'
 import { createBackup } from './backup'
 import { auditWrite } from './mcpAudit'
-import { handleRequest, type BridgeCtx, type BridgeRequest } from './mcpBridgeCore'
+import { handleRequest, type BridgeCtx, type BridgeRequest, type WriteOp } from './mcpBridgeCore'
+import { ApprovalWindow } from './mcpApproval'
 import { emitWebhooks, eventForWriteOp } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { socketPathForDir, tokenPathForDir, controllerTokenPathForDir } from '../mcp/socketPath'
@@ -38,7 +39,9 @@ export interface BridgeDeps {
 
 let server: net.Server | null = null
 let deps: BridgeDeps | null = null
-let sessionApproved = false
+// #301: "remember" and the 'session' mode approve start/stop for a bounded
+// window; reset whenever the bridge (re)starts.
+const approval = new ApprovalWindow()
 let backupDone = false
 
 // Anchor token + socket on the DIRECTORY OF THE DB the app actually uses
@@ -110,13 +113,17 @@ function confirmMode(): 'per-write' | 'session' | 'silent' {
   return v === 'silent' || v === 'session' ? v : 'per-write'
 }
 
-/** Native confirm honouring per-write / session / silent + "remember". */
-async function confirm(summary: string, locale: Locale): Promise<boolean> {
+/**
+ * Native confirm honouring per-write / session / silent + "remember".
+ * 'silent' never asks (choosing it takes its own native confirmation). An
+ * approval from "remember" or the 'session' mode covers only start and stop,
+ * for 30 minutes or 20 writes (mcpApproval.ts); adding and changing an entry
+ * always ask.
+ */
+async function confirm(summary: string, locale: Locale, op: WriteOp): Promise<boolean> {
   const mode = confirmMode()
   if (mode === 'silent') return true
-  // Once approved-for-session — either via 'session' mode or the "remember"
-  // checkbox in 'per-write' mode — skip the dialog for the rest of the run.
-  if (sessionApproved) return true
+  if (approval.covers(op)) return true
 
   const win = deps?.getMainWindow() ?? null
   if (win) {
@@ -126,7 +133,7 @@ async function confirm(summary: string, locale: Locale): Promise<boolean> {
   const opts = mcpConfirmDialog(locale, summary)
   const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
   const approved = res.response === 1
-  if (approved && (mode === 'session' || res.checkboxChecked)) sessionApproved = true
+  if (approved && (mode === 'session' || res.checkboxChecked)) approval.grant()
   return approved
 }
 
@@ -210,7 +217,7 @@ function writeLine(conn: net.Socket, obj: unknown): void {
 export function startMcpBridge(d: BridgeDeps): void {
   if (server) return
   deps = d
-  sessionApproved = false
+  approval.reset()
   backupDone = false
 
   const p = sockPath()

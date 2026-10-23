@@ -97,7 +97,7 @@ export interface BridgeCtx {
    * Ask the user; encapsulates per-write/session/silent. Resolves to approval.
    * `locale` is the language `summary` was written in; the dialog uses it too.
    */
-  confirm: (summary: string, locale: Locale) => Promise<boolean>
+  confirm: (summary: string, locale: Locale, op: WriteOp) => Promise<boolean>
   /** Make the one-per-session pre-write backup (idempotent). */
   ensureBackup: () => Promise<void>
   audit: (entry: McpAuditEntry) => void
@@ -752,7 +752,24 @@ function planOp(
           ? say.t('mainDialog.mcp.stop', { id: running.id })
           : say.t('mainDialog.mcp.stopNone'),
         preview: { action: 'stop_running_timer', running: running ?? null },
-        run: () => stopRunningTimer(db),
+        run: () => {
+          // As in start_timer: the owner confirmed stopping exactly this entry
+          // (or none). If the timer changed while the dialog was open, nobody
+          // approved what stopRunningTimer would now end.
+          const now = db
+            .prepare(
+              `SELECT id FROM entries WHERE stopped_at IS NULL AND deleted_at IS NULL
+                ORDER BY started_at DESC LIMIT 1`
+            )
+            .get() as { id: number } | undefined
+          if ((now?.id ?? null) !== (running?.id ?? null)) {
+            return {
+              ok: false as const,
+              error: 'Der laufende Timer hat sich seit der Vorschau geändert — bitte erneut senden'
+            }
+          }
+          return stopRunningTimer(db)
+        },
         audit: (r) => ({ op, id: r?.id ?? null, client_id: r?.client_id ?? null })
       }
     }
@@ -969,7 +986,7 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
     return { ok: true, data: { preview: true, ...plan.preview } }
   }
 
-  const approved = await ctx.confirm(plan.summary, say.locale)
+  const approved = await ctx.confirm(plan.summary, say.locale, req.op as WriteOp)
   if (!approved) return err('confirm_declined', 'Änderung wurde in TimeTrack abgelehnt')
 
   await ctx.ensureBackup()
