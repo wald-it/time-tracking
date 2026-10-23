@@ -24,8 +24,9 @@ include the iCal feed token and the webhook targets with their secrets. The JSON
 export leaves those secrets out.
 
 **Logs:** `main.log` (app events and errors, including messages from the user
-interface; with **Mirror Teams status** on, also the Teams status message as
-Teams stored it, which names the client and project when you show them), `webhooks.log` (per delivery only the target host and, on failure,
+interface; with **Mirror Teams status** on, also whether Teams holds
+TimeTrack's status message, never the message text), `webhooks.log` (per
+delivery only the target host and, on failure,
 the kind of error — never the payload or a secret) and `mcp-writes.log` (one line
 per write through MCP: operation, entry and client id, times — never the content
 of an internal note and never the token).
@@ -65,8 +66,11 @@ finds a new version, the app downloads it in the background as above.
   free/busy status, organizer, attendees and your response. Attendee e-mail
   domains are used locally to suggest the client; the domain-to-client mappings
   you confirm are stored in the database. With **Mirror Teams status** on,
-  TimeTrack also reads your account ID once per run and your Teams presence
-  after each change it makes, to log what Teams stored.
+  TimeTrack also reads your account ID once per run and your Teams presence:
+  after each change it makes, to check what Teams stored; before it clears the
+  status message, to see whether it is still TimeTrack's; and once at the
+  first status update of a run, to find a status message a previous run left
+  behind.
 - **What is sent to Microsoft:** a calendar import only reads; its request
   names the date range you chose. With **Mirror Teams status** on (work or
   school accounts only), TimeTrack sets your Teams presence to Busy, with the
@@ -78,17 +82,21 @@ finds a new version, the app downloads it in the background as above.
   message and the Busy status in Teams. TimeTrack updates both when you start
   or stop a timer and when the message text changes (for example another client
   or project, or another app language), and renews them about every 25 minutes
-  while a timer runs, so they also show when you work. An availability you set yourself in Teams
-  takes precedence over the Busy status.
-  Descriptions, notes, tags and rates are never sent.
+  while a timer runs, so they also show when you work. An availability you set
+  yourself in Teams takes precedence over the Busy status. Descriptions, notes,
+  tags and rates are never sent.
 - **When it is removed:** when the timer stops, or when you switch **Mirror
-  Teams status** off, TimeTrack clears the status message (including one you
-  wrote yourself while the timer ran) and the Busy status. If clearing fails
-  (offline, for example), the message, the Busy status or both stay until
-  TimeTrack tries again at its next status update. If the app quits or crashes,
-  or you disconnect the account while a timer runs, nothing clears them, also
-  not after a restart, until TimeTrack sets your status again or they expire:
-  the Busy status after at most an hour, the message after 12 hours.
+  Teams status** off, TimeTrack ends the Busy status and clears the status
+  message if it is still TimeTrack's. A message you wrote in Teams while the
+  timer ran stays. If clearing fails or the presence cannot be read (offline,
+  for example), what is left stays until TimeTrack tries again at its next
+  status update. If the app quits or crashes while a timer runs, TimeTrack
+  withdraws its own message and the Busy status at the next start, once it can
+  reach Teams and the feature is on. It recognises its message by its form
+  ("🔴 Fokus" or "🔴 Focus", alone or followed by a colon and a client), so a
+  message you typed in exactly that form yourself is cleared then too. If you
+  disconnect the account while a timer runs, nothing clears them until they
+  expire: the Busy status after at most an hour, the message after 12 hours.
 - **Tokens:** stored in a separate file in the data folder, encrypted by the
   operating system (DPAPI / Keychain), not part of backups or exports.
   **Disconnect** deletes that file; revoking the app's access in your Microsoft

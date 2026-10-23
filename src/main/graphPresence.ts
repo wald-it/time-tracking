@@ -9,9 +9,11 @@
  * the "stop happened via entries:update" class of blind spots an event hook
  * would have.
  *
- * Ownership rule: this module only ever clears a message it set itself. A
- * manually set Teams status is never touched, and switching the feature off
- * clears at most our own last message.
+ * Ownership rule: this module only ever clears a message it set itself. Before
+ * clearing it reads the message back and leaves it alone when the user has
+ * written their own in the meantime (#316); after a restart, when the exact
+ * text is gone, it recognises a leftover by the shape desiredMessage produces
+ * (#317). Our Busy session (sessionId = our client id) is always ours.
  *
  * Failures are logged and swallowed — presence must never affect the timer.
  * The applied state is only updated on success, so the next poke retries.
@@ -58,15 +60,48 @@ interface AppliedState {
   message: string | null
   at: number
   userId: string | null
+  /**
+   * Whether this run has looked for a status a previous run left behind
+   * (#317). The applied state lives in memory only, so after a crash or quit
+   * nothing else would ever withdraw it.
+   */
+  swept: boolean
 }
 
-const state: AppliedState = { message: null, at: 0, userId: null }
+const state: AppliedState = { message: null, at: 0, userId: null, swept: false }
 
 /** Test-only: forget everything this module has applied. */
 export function resetPresenceStateForTests(): void {
   state.message = null
   state.at = 0
   state.userId = null
+  state.swept = false
+}
+
+/**
+ * Every message desiredMessage can produce: "🔴 Fokus" / "🔴 Focus", alone or
+ * with ": client" and an optional " — project". Used to recognise our own
+ * leftover after a restart (#317), when the exact text is no longer known.
+ */
+const OWN_MESSAGE = /^🔴 (Fokus|Focus)(: .+)?$/u
+
+/**
+ * Compare-ready form of a status message. How Graph returns a message set as
+ * contentType "text" has not been observed against a real tenant: as set, or
+ * HTML-wrapped (`<p>…</p>`, `&nbsp;`). Both reduce to the same plain text.
+ */
+function plainMessage(content: string): string {
+  return content
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function scopeGranted(view: PresenceAccountView): boolean {
@@ -126,10 +161,13 @@ export async function reconcilePresence(
   const log = deps.log ?? ((): void => {})
   const now = deps.now?.() ?? Date.now()
   const enabled = deps.getSetting('presence_enabled') === '1'
+  // First poke of a run with the feature on and nothing applied yet: look for
+  // a status a crashed or quit run left behind (#317).
+  const sweepDue = enabled && !state.swept && state.message === null
 
   // Feature off: leave Teams alone — except to withdraw our own last message.
   const wantsClear = !enabled || running === null
-  if (wantsClear && (state.message === null || state.message === '')) return
+  if (wantsClear && (state.message === null || state.message === '') && !sweepDue) return
 
   const view = deps.getAccountStatus()
   if (!view.connected || view.personalAccount) return
@@ -178,12 +216,40 @@ export async function reconcilePresence(
   }
 
   const sessionId = deps.getClientId()
+  const clearMessage = (): Promise<boolean> =>
+    post('setStatusMessage', { statusMessage: { message: { content: '', contentType: 'text' } } })
+
+  if (sweepDue && running === null) {
+    // Nothing applied in this run, no timer: only a leftover can need
+    // withdrawing. Recognised by its shape, since its exact text is gone with
+    // the previous run; a message the user wrote is left alone.
+    const current = await readPresence(fetchFn, token, userId, log)
+    if (!current) return // retried at the next poke
+    if (current.content !== null && OWN_MESSAGE.test(plainMessage(current.content))) {
+      if (!((await clearMessage()) && (await post('clearPresence', { sessionId })))) return
+      log('presence: withdrew a status message left from a previous run')
+    }
+    state.swept = true
+    return
+  }
+  // A timer runs at the first poke: the set below replaces any leftover.
+  state.swept = true
+
   let ok: boolean
   if (message === '') {
-    ok =
-      (await post('setStatusMessage', {
-        statusMessage: { message: { content: '', contentType: 'text' } }
-      })) && (await post('clearPresence', { sessionId }))
+    // Clear only a message that is still ours (#316): the user may have
+    // written their own in Teams while the timer ran. Our Busy session is
+    // ours by definition and always ends.
+    const current = await readPresence(fetchFn, token, userId, log)
+    if (!current) return // retried at the next poke; erring toward keeping the user's text
+    const ours =
+      current.content !== null &&
+      state.message !== null &&
+      plainMessage(current.content) === plainMessage(state.message)
+    if (current.content !== null && !ours) {
+      log('presence: status message was changed in Teams — left as is')
+    }
+    ok = (!ours || (await clearMessage())) && (await post('clearPresence', { sessionId }))
   } else {
     // Busy/InACall is the only plain-"red" combination setPresence accepts;
     // DoNotDisturb/Presenting would suppress the user's notifications.
@@ -204,40 +270,72 @@ export async function reconcilePresence(
   if (!ok) return
   state.message = message
   state.at = now
-  log(message === '' ? 'presence: cleared (message + session)' : 'presence: set (message + Busy)')
-  await readBack(fetchFn, token, userId, log)
+  log(
+    message === ''
+      ? 'presence: cleared (session, message if ours)'
+      : 'presence: set (message + Busy)'
+  )
+  await readBack(fetchFn, token, userId, message, log)
 }
 
-/**
- * Read the presence back after a write and log what Graph ACTUALLY stored.
- * A 200 on setStatusMessage alone proves nothing — this makes a silent
- * no-op visible in the log instead of looking like success.
- */
-async function readBack(
+interface PresenceView {
+  availability: string | null
+  /** The status message as Graph returns it; null when there is none. */
+  content: string | null
+}
+
+/** GET the signed-in user's presence; null when it could not be read. */
+async function readPresence(
   fetchFn: typeof fetch,
   token: string,
   userId: string,
   log: (m: string) => void
-): Promise<void> {
+): Promise<PresenceView | null> {
   try {
     const res = await fetchFn(`${GRAPH_BASE}/users/${encodeURIComponent(userId)}/presence`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     })
     if (!res.ok) {
-      log(`presence: read-back failed with HTTP ${res.status}`)
-      return
+      log(`presence: read failed with HTTP ${res.status}`)
+      return null
     }
     const body = (await res.json()) as {
       availability?: unknown
       statusMessage?: { message?: { content?: unknown } } | null
     }
     const content = body.statusMessage?.message?.content
-    log(
-      `presence: read-back availability=${String(body.availability)} statusMessage=` +
-        (typeof content === 'string' ? JSON.stringify(content) : 'none')
-    )
+    return {
+      availability: typeof body.availability === 'string' ? body.availability : null,
+      content: typeof content === 'string' && plainMessage(content) !== '' ? content : null
+    }
   } catch (err) {
-    log(`presence: read-back failed (${err instanceof Error ? err.name : 'error'})`)
+    log(`presence: read failed (${err instanceof Error ? err.name : 'error'})`)
+    return null
   }
+}
+
+/**
+ * Read the presence back after a write and log what Graph ACTUALLY stored.
+ * A 200 on setStatusMessage alone proves nothing — this makes a silent
+ * no-op visible in the log instead of looking like success. It logs whether
+ * the message is ours, never its text: that names clients and projects and
+ * has no place in main.log (#318).
+ */
+async function readBack(
+  fetchFn: typeof fetch,
+  token: string,
+  userId: string,
+  expected: string,
+  log: (m: string) => void
+): Promise<void> {
+  const current = await readPresence(fetchFn, token, userId, log)
+  if (!current) return
+  const message =
+    current.content === null
+      ? 'none'
+      : expected !== '' && plainMessage(current.content) === plainMessage(expected)
+        ? 'matches'
+        : 'differs'
+  log(`presence: read-back availability=${String(current.availability)} statusMessage=${message}`)
 }

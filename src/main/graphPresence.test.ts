@@ -28,6 +28,32 @@ interface FetchCall {
   body: unknown
 }
 
+/**
+ * What the fake Teams holds: the status message and availability. Shared by
+ * every makeDeps() of a test, like the real Teams is shared across pokes;
+ * reset with the module state.
+ */
+const teams: { content: string | null; availability: string; html: boolean } = {
+  content: null,
+  availability: 'Available',
+  html: false
+}
+
+function resetTeams(): void {
+  teams.content = null
+  teams.availability = 'Available'
+  teams.html = false
+}
+
+/**
+ * How Graph hands back a stored message has not been observed against a real
+ * tenant (#316): plain, as set, or wrapped as HTML. `teams.html` serves the
+ * second form so both are tested.
+ */
+function served(content: string): string {
+  return teams.html ? `<p>${content.replace(/ /g, '&nbsp;')}</p>` : content
+}
+
 function makeDeps(
   o: Partial<{
     enabled: boolean
@@ -55,8 +81,35 @@ function makeDeps(
       body: init?.body ? JSON.parse(String(init.body)) : null
     })
     if (o.failWith !== undefined) return new Response('', { status: o.failWith })
-    if (String(url).includes('/me?$select=id')) {
+    const u = String(url)
+    if (u.includes('/me?$select=id')) {
       return new Response(JSON.stringify({ id: 'user-guid-1' }), { status: 200 })
+    }
+    const body = init?.body ? JSON.parse(String(init.body)) : null
+    if (u.endsWith('/setStatusMessage')) {
+      const content = (body as { statusMessage: { message: { content: string } } }).statusMessage
+        .message.content
+      teams.content = content === '' ? null : content
+    } else if (u.endsWith('/setPresence')) {
+      teams.availability = 'Busy'
+    } else if (u.endsWith('/clearPresence')) {
+      teams.availability = 'Available'
+    } else if (u.endsWith('/presence') && (init?.method ?? 'GET') === 'GET') {
+      return new Response(
+        JSON.stringify({
+          availability: teams.availability,
+          statusMessage:
+            teams.content === null
+              ? null
+              : {
+                  message: {
+                    content: served(teams.content),
+                    contentType: teams.html ? 'html' : 'text'
+                  }
+                }
+        }),
+        { status: 200 }
+      )
     }
     return new Response('', { status: 200 })
   }) as typeof fetch
@@ -96,8 +149,16 @@ describe('desiredMessage', () => {
   })
 })
 
+/** The writes only: what actually changes something in Teams. */
+function writes(calls: FetchCall[]): FetchCall[] {
+  return calls.filter((c) => c.method === 'POST')
+}
+
 describe('reconcilePresence', () => {
-  beforeEach(() => resetPresenceStateForTests())
+  beforeEach(() => {
+    resetPresenceStateForTests()
+    resetTeams()
+  })
 
   it('sets the message on start: /me lookup once, then setStatusMessage with expiry', async () => {
     const { deps, calls } = makeDeps({ showClient: true })
@@ -175,8 +236,11 @@ describe('reconcilePresence', () => {
 
   it('clears with empty content on stop — but only after having set something', async () => {
     const { deps, calls } = makeDeps()
-    await reconcilePresence(deps, null) // idle, never set → must not touch Teams
-    expect(calls).toHaveLength(0)
+    // Idle, never set → must not change Teams. Since #317 the first poke of a
+    // run may READ the presence (to withdraw a status a crash left behind),
+    // but it writes nothing.
+    await reconcilePresence(deps, null)
+    expect(writes(calls)).toHaveLength(0)
     await reconcilePresence(deps, RUNNING)
     await reconcilePresence(deps, null)
     const set = statusCalls(calls)
@@ -230,6 +294,129 @@ describe('reconcilePresence', () => {
       throw new Error('offline')
     }) as typeof fetch
     await expect(reconcilePresence(deps, RUNNING)).resolves.toBeUndefined()
+  })
+
+  // ── #316: stop must not erase a message the user wrote ─────────────────
+  it('stop leaves a status message the user wrote meanwhile, and still ends our Busy session', async () => {
+    const { deps, calls } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    teams.content = 'Back at 3, ping me in chat' // typed in Teams while the timer ran
+    await reconcilePresence(deps, null)
+
+    expect(teams.content).toBe('Back at 3, ping me in chat')
+    expect(statusCalls(calls)).toHaveLength(1) // only the set at start
+    expect(sessionCalls(calls).map((c) => c.url.split('/presence/')[1])).toEqual([
+      'setPresence',
+      'clearPresence'
+    ])
+  })
+
+  it('stop still clears our own message when it is unchanged', async () => {
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    expect(teams.content).toBe('🔴 Fokus: Acme — Rollout')
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('stop recognises our own message when Graph returns it HTML-wrapped', async () => {
+    teams.html = true
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('stop leaves a user message when Graph returns it HTML-wrapped', async () => {
+    teams.html = true
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    teams.content = 'In a workshop'
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('In a workshop')
+  })
+
+  it('stop with an unreadable presence writes nothing and retries at the next poke', async () => {
+    const { deps, calls } = makeDeps()
+    await reconcilePresence(deps, RUNNING)
+    const inner = deps.fetchFn!
+    let readFails = true
+    deps.fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (readFails && String(url).endsWith('/presence') && (init?.method ?? 'GET') === 'GET') {
+        await inner(url, init)
+        return new Response('', { status: 503 })
+      }
+      return inner(url, init)
+    }) as typeof fetch
+    const before = writes(calls).length
+    await reconcilePresence(deps, null)
+    expect(writes(calls).length).toBe(before)
+    expect(teams.content).toBe('🔴 Fokus')
+
+    readFails = false
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  // ── #317: a status left behind by a crash or quit ────────────────────────
+  it('first poke of a run withdraws our own message left from the previous run', async () => {
+    teams.content = '🔴 Fokus: Acme — Rollout' // the app crashed with this standing
+    teams.availability = 'Busy'
+    const { deps, calls } = makeDeps()
+    await reconcilePresence(deps, null)
+
+    expect(teams.content).toBeNull()
+    expect(teams.availability).toBe('Available')
+    expect(sessionCalls(calls)[0].body).toEqual({ sessionId: 'app-client-id' })
+    // Once per run: a further idle poke does not read again.
+    const reads = calls.length
+    await reconcilePresence(deps, null)
+    expect(calls.length).toBe(reads)
+  })
+
+  it('first poke of a run recognises our leftover message when Graph returns it HTML-wrapped', async () => {
+    teams.html = true
+    teams.content = '🔴 Focus: Acme'
+    const { deps } = makeDeps()
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  it('first poke of a run leaves a message the user wrote', async () => {
+    teams.content = 'Out until Monday'
+    const { deps, calls } = makeDeps()
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBe('Out until Monday')
+    expect(writes(calls)).toHaveLength(0)
+  })
+
+  it('feature off at start: no read, no write', async () => {
+    teams.content = '🔴 Fokus'
+    const { deps, calls } = makeDeps({ enabled: false })
+    await reconcilePresence(deps, null)
+    expect(calls).toHaveLength(0)
+    expect(teams.content).toBe('🔴 Fokus')
+  })
+
+  it('an unreadable presence at start is retried at the next poke', async () => {
+    teams.content = '🔴 Focus'
+    const failing = makeDeps({ failWith: 503 })
+    await reconcilePresence(failing.deps, null)
+    expect(teams.content).toBe('🔴 Focus')
+    const ok = makeDeps()
+    await reconcilePresence(ok.deps, null)
+    expect(teams.content).toBeNull()
+  })
+
+  // ── #318: client and project names stay out of main.log ─────────────────
+  it('the read-back log says whether Teams holds our message, never its text', async () => {
+    const { deps, logs } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, RUNNING)
+    await reconcilePresence(deps, null)
+    const all = logs.join('\n')
+    expect(all).not.toContain('Acme')
+    expect(all).not.toContain('Rollout')
+    expect(logs.some((l) => /read-back .*statusMessage=matches/.test(l))).toBe(true)
   })
 
   it('privacy switch mid-run re-renders the message', async () => {
