@@ -15,6 +15,7 @@ import type Database from 'better-sqlite3'
 import { formatCsv, type CsvOptions } from '../shared/csv'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 
 export interface CsvRequest {
   clientId: number
@@ -71,7 +72,11 @@ export async function handleCsvExport(
 
     const result = await dialog.showSaveDialog({
       title: 'CSV speichern',
-      defaultPath: `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.csv`,
+      defaultPath: exportDefaultPath(
+        db,
+        'csv',
+        `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.csv`
+      ),
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (result.canceled || !result.filePath) {
@@ -99,6 +104,7 @@ export async function handleCsvExport(
     const csv = formatCsv(entries, clientMap, opts)
 
     writeFileSync(result.filePath, csv, 'utf8')
+    rememberExportFolder(db, 'csv', result.filePath)
     return ok({ path: result.filePath })
   } catch (e) {
     return fail(e)

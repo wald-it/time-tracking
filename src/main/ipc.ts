@@ -23,6 +23,7 @@ import {
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 import { buildPdfHtml, buildPdfPayload, type PdfRequest } from './pdf'
 import { renderPdfBuffer } from './pdfWindow'
 import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
@@ -837,7 +838,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const today = new Date().toISOString().slice(0, 10)
       const result = await dialog.showSaveDialog({
         title: 'Datenexport speichern',
-        defaultPath: `timetrack-export-${today}.json`,
+        defaultPath: exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
@@ -846,6 +847,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const payload = buildJsonExportPayload(db, app.getVersion())
       const json = JSON.stringify(payload, null, 2)
       writeFileSync(result.filePath, json, 'utf8')
+      rememberExportFolder(db, 'json', result.filePath)
       return ok({ path: result.filePath, bytes: Buffer.byteLength(json, 'utf8') })
     } catch (e) {
       return fail(e)
@@ -884,7 +886,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         }
         const result = await dialog.showSaveDialog({
           title: 'Stundennachweis speichern',
-          defaultPath: `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`,
+          defaultPath: exportDefaultPath(
+            db,
+            'pdf',
+            `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`
+          ),
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
         if (result.canceled || !result.filePath) {
@@ -904,6 +910,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const html = buildPdfHtml(payload)
         const buf = await renderPdfBuffer({ html })
         writeFileSync(result.filePath, buf)
+        rememberExportFolder(db, 'pdf', result.filePath)
         return ok({ path: result.filePath })
       } catch (e) {
         return fail(e)

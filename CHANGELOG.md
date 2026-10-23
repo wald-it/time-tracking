@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Export dialogs open in the folder you used last.** With Electron 44 a save dialog opens in Downloads every time, and the system no longer remembers where you saved. TimeTrack now remembers the folder itself, separately for the PDF time report, CSV, iCal and the JSON data export, and keeps it across restarts. If that folder no longer exists, the dialog opens in Downloads. The pickers for the backup folder, a PDF to merge and the PDF logo now start in Downloads too ([#269](https://github.com/wald-it/time-tracking/issues/269)).
+
 ### Added
 
 - **Switch off the automatic update check** — Settings → About → Updates has a new switch, **Check for updates automatically** (on by default). When it is off, TimeTrack makes no request to GitHub at start and downloads nothing on its own; **Check for updates now** still works, and if it finds a new version it downloads it as before. The switch applies from the next start. PRIVACY.md and the README describe it ([#273](https://github.com/wald-it/time-tracking/issues/273)).
@@ -20,9 +24,11 @@ All notable changes to TimeTrack are documented here.
 ### Internal
 
 - **The Heute totals and the weekday average are tested across the clock change (#263)** — Both cut days with SQLite's `'localtime'`, which follows the zone the process starts in and not a zone set inside a test, so the 1.22 clock-change tests could not reach them on the UTC runners. A new CI job runs the whole test suite on Linux with `TZ=Europe/Berlin`, so JS and SQLite both run in Berlin. New tests there check, for 25 October 2026, that today's total (also the rounded one), today's entries and the week bar take in the whole 25-hour day and that the weekday average puts the night on Sunday. They sit in their own Vitest project, `berlin`, which is only registered when the process runs in Europe/Berlin; elsewhere `pnpm test` leaves it out.
+- **No native rebuild step any more (#269).** better-sqlite3 13 is an N-API module and ships prebuilt binaries that load under Node and Electron alike, so `pnpm install` compiles nothing. The `postinstall` rebuild and the forced `electron-rebuild` steps in CI are gone, and pnpm no longer builds better-sqlite3 or electron itself. `pnpm test` still runs on Electron's own Node; calling `vitest` directly now stops with a hint instead of running on the system Node. After pulling this, run `pnpm install` once.
 
 ### Security
 
+- **TimeTrack runs on Electron 44.** Electron 44.9.3 with Chromium 152.0.7977.167 and Node 24.22.0 replaces Electron 39.8.10, which has had no security updates since May 2026. Electron 44 gets them until March 2027. **macOS 13 (Ventura) or later is now required**; on macOS 12, stay on 1.22 ([#269](https://github.com/wald-it/time-tracking/issues/269)).
 - **Narrower IPC surface, part 1 (#272).** The app window now gets only TimeTrack's own API. The generic `window.electron` object (raw IPC access and `process.env`) is gone. The main process saves only the settings the app's own screens write. The backup folder, the PDF logo path, the window position and the iCal feed token can no longer be set from the window. The theme is now the only setting the window can read synchronously. A backup restore now takes the file name of a backup from the backup list instead of a path, and refuses a file that is not a SQLite database before the open database is touched. The unused `update:getVersion` channel is gone as well (#281).
 
 ## [1.22.0] — 2026-10-23

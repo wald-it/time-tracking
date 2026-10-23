@@ -55,11 +55,13 @@ the GitHub release it comes from.
 
 ## Runtime
 
-TimeTrack 1.22 runs on **Electron 39.8.10**. The Electron 39 line no longer
-receives upstream security updates; the move to a supported line (Electron 44)
-follows in its own release shortly after 1.22.0. The app loads only its own
-local user interface — no remote web content — which limits how far a browser
-engine flaw can be reached.
+TimeTrack runs on **Electron 44** (44.9.3: Chromium 152.0.7977.167, Node
+24.22.0), a line that receives upstream security updates until 2 March 2027
+according to Electron's release schedule. The move to the next supported line is
+planned before then. Up to 1.22, TimeTrack ran on Electron 39, which has had no
+security updates since May 2026. The app loads only its own local user
+interface — no remote web content — which limits how far a browser engine flaw
+can be reached.
 
 ## Scope
 

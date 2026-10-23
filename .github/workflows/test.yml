@@ -171,7 +171,7 @@ jobs:
   #
   # No licences, lint or Stream Deck steps: those are platform-independent or
   # Windows-only by design (see the test job above), and Linux is not a release
-  # platform. The forced rebuild is not optional here either (#151).
+  # platform. No native rebuild step either (#269, see the test job).
   berlin-zone:
     runs-on: ubuntu-latest
     permissions:
@@ -193,9 +193,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Ensure better-sqlite3 matches the Electron ABI (forced)
-        run: pnpm exec electron-rebuild -f -w better-sqlite3
-
       # Its own step, named: if the zone did not reach the config and the
       # project is not registered, Vitest fails here ("no projects matched")
       # instead of the job passing with the Berlin tests silently left out.
@@ -204,7 +201,7 @@ jobs:
         run: pnpm test --project berlin
 
       # Also after a red berlin step, so one run reports both — but not after a
-      # failed install or rebuild, where every test would fail for that reason.
+      # failed install, where every test would fail for that reason.
       - name: Test everything else (Europe/Berlin)
         if: ${{ success() || steps.berlin.outcome == 'failure' }}
         run: pnpm test --project '!berlin'
