@@ -677,7 +677,9 @@ export const en: Record<TranslationKey, string> = {
   'settings.mcp.confirmMode': 'Confirmation',
   'settings.mcp.confirmModeHint': 'How a write action is confirmed in the app.',
   'settings.mcp.confirmPerWrite': 'Ask on every change',
-  'settings.mcp.confirmSession': 'Once per session',
+  'settings.mcp.confirmSession': 'Release start and stop for 30 minutes',
+  'settings.mcp.confirmSessionHint':
+    'Adding and changing entries always asks. After 30 minutes or 20 writes, TimeTrack asks again.',
   'settings.mcp.confirmSilent': "Don't ask",
   'settings.mcp.auditLog': 'Audit log',
   'settings.mcp.auditLogHint': 'Every executed write action is logged to mcp-writes.log.',
@@ -856,7 +858,7 @@ export const en: Record<TranslationKey, string> = {
   'mainDialog.mcp.message': 'Claude wants to make a change in TimeTrack:',
   'mainDialog.mcp.deny': 'Deny',
   'mainDialog.mcp.allow': 'Allow',
-  'mainDialog.mcp.remember': 'Remember for this session (stop asking)',
+  'mainDialog.mcp.remember': 'Allow start and stop without asking for 30 minutes',
   'mainDialog.mcp.create': 'Add entry — client {client}, {span} ({minutes} min)',
   'mainDialog.mcp.update': 'Change entry #{id} — before {before}, after {after}',
   'mainDialog.mcp.start': 'Start timer — client {client}, {from}{ends}',
@@ -880,6 +882,28 @@ export const en: Record<TranslationKey, string> = {
   'mainDialog.mcp.no': 'no',
   'mainDialog.mcp.offsetHint':
     'Note: {offset} is not the local offset on {day} ({local}). Saved as {time} local time.',
+  'mainDialog.settingConfirm.title': 'TimeTrack — Confirm setting',
+  'mainDialog.settingConfirm.cancel': 'Cancel',
+  'mainDialog.settingConfirm.mcpWrite.message': 'Turn on MCP write access?',
+  'mainDialog.settingConfirm.mcpWrite.detail':
+    'An AI program with access to TimeTrack can then add and change entries and start and stop timers. How often TimeTrack asks first is set under “Confirmation”.',
+  'mainDialog.settingConfirm.mcpWrite.confirm': 'Turn on',
+  'mainDialog.settingConfirm.controller.message': 'Allow hardware keys?',
+  'mainDialog.settingConfirm.controller.detail':
+    'Stream Deck and similar devices can then start, stop and switch timers. A key press counts as confirmation; TimeTrack does not ask.',
+  'mainDialog.settingConfirm.controller.confirm': 'Allow',
+  'mainDialog.settingConfirm.silent.message': 'Allow writes without asking?',
+  'mainDialog.settingConfirm.silent.detail':
+    'An AI program with access to TimeTrack can then add and change entries and control timers without TimeTrack asking.',
+  'mainDialog.settingConfirm.silent.confirm': 'Allow without asking',
+  'mainDialog.settingConfirm.webhook.message': 'Save webhook target?',
+  'mainDialog.settingConfirm.webhook.detail':
+    'Whenever a timer starts or stops and whenever an entry is added or changed, depending on the events you chose, TimeTrack then sends the entry’s data to:\n{urls}\nThis includes client, project, times, description, tags and reference; the hourly rate and the internal note only if you released them under “Integrations”.\nOnly save if you trust this address.',
+  'mainDialog.settingConfirm.webhook.confirm': 'Save',
+  'mainDialog.settingConfirm.graphClientId.message': 'Use a different app registration?',
+  'mainDialog.settingConfirm.graphClientId.detail':
+    'Microsoft sign-in then runs through app ID {id} instead of TimeTrack’s own. Only change this if your IT requires it.',
+  'mainDialog.settingConfirm.graphClientId.confirm': 'Use',
   'mainDialog.hotkey.title': 'TimeTrack — Hotkey conflict',
   'mainDialog.hotkey.message': 'The mini widget hotkey "{hotkey}" could not be registered.',
   'mainDialog.hotkey.detail':

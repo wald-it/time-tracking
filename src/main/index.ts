@@ -22,7 +22,9 @@ import {
   hotkeyConflictDialog,
   localeFromSetting,
   localeFromSystem,
-  migrationErrorDialog
+  migrationErrorDialog,
+  readLanguage,
+  sensitiveSettingDialog
 } from './mainI18n'
 import {
   assertSmokeUserDataIsolated,
@@ -50,6 +52,7 @@ import {
   clearWriteToken,
   generateControllerToken,
   clearControllerToken,
+  forgetMcpApproval,
   type BridgeDeps
 } from './mcpBridge'
 import { initAutoUpdater } from './updater'
@@ -711,6 +714,9 @@ app.whenReady().then(async () => {
         startMcpBridge(mcpBridgeDeps())
       } else {
         clearWriteToken()
+        // #301: switching write access off ends any approval, also while the
+        // controller keeps the bridge running.
+        forgetMcpApproval()
         // The bridge socket stays up while the controller scope needs it.
         if (mcpBridgeDeps().getSetting('controller_enabled') !== '1') stopMcpBridge()
       }
@@ -737,6 +743,13 @@ app.whenReady().then(async () => {
       if (icalFeedDeps().getSetting('ical_feed_enabled') === '1') {
         restartFeedServer(icalFeedDeps())
       }
+    },
+    // #272 (A3): the native confirmation for a setting that widens access.
+    confirmSensitiveSetting: async (change) => {
+      const opts = sensitiveSettingDialog(readLanguage(getDb()), change)
+      const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+      const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+      return res.response === 1
     }
   })
   createWindow()

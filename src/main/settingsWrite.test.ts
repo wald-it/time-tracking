@@ -11,7 +11,9 @@ import type { IpcHooks } from './ipc'
 import {
   RENDERER_WRITABLE_SETTINGS,
   readSettingSync,
-  writeSettingFromRenderer
+  sensitiveSettingChange,
+  writeSettingFromRenderer,
+  type SensitiveSettingChange
 } from './settingsWrite'
 
 let DatabaseImpl: DatabaseCtor
@@ -21,6 +23,8 @@ beforeAll(async () => {
 
 let db: Database.Database
 let calls: string[]
+let answer: boolean
+let asked: SensitiveSettingChange[]
 
 function hooks(): IpcHooks {
   const record =
@@ -40,7 +44,11 @@ function hooks(): IpcHooks {
     setControllerEnabled: record('setControllerEnabled'),
     pokePresence: record('pokePresence'),
     setIcalFeedEnabled: record('setIcalFeedEnabled'),
-    restartIcalFeed: record('restartIcalFeed')
+    restartIcalFeed: record('restartIcalFeed'),
+    confirmSensitiveSetting: async (change) => {
+      asked.push(change)
+      return answer
+    }
   }
 }
 
@@ -57,6 +65,8 @@ beforeEach(() => {
   db.prepare("INSERT INTO settings (key, value) VALUES ('theme_mode', 'dark')").run()
   db.prepare("INSERT INTO settings (key, value) VALUES ('ical_feed_token', 'secret')").run()
   calls = []
+  answer = true
+  asked = []
 })
 
 afterEach(() => {
@@ -64,15 +74,15 @@ afterEach(() => {
 })
 
 describe('settings:set allow-list', () => {
-  it('stores an allowed key and applies its side effect', () => {
-    const res = writeSettingFromRenderer(db, hooks(), 'hotkey_toggle', 'Alt+Shift+T')
+  it('stores an allowed key and applies its side effect', async () => {
+    const res = await writeSettingFromRenderer(db, hooks(), 'hotkey_toggle', 'Alt+Shift+T')
     expect(res).toEqual({ ok: true, data: undefined })
     expect(stored('hotkey_toggle')).toBe('Alt+Shift+T')
     expect(calls).toEqual(['setHotkey(Alt+Shift+T)'])
   })
 
-  it('refuses an unknown key and writes nothing', () => {
-    const res = writeSettingFromRenderer(db, hooks(), 'something_new', 'x')
+  it('refuses an unknown key and writes nothing', async () => {
+    const res = await writeSettingFromRenderer(db, hooks(), 'something_new', 'x')
     expect(res.ok).toBe(false)
     expect(stored('something_new')).toBeUndefined()
     expect(calls).toEqual([])
@@ -80,19 +90,19 @@ describe('settings:set allow-list', () => {
 
   it.each(['backup_path', 'pdf_logo_path', 'window_bounds', 'ical_feed_token'])(
     'refuses %s, which only the main process writes',
-    (key) => {
+    async (key) => {
       const before = stored(key)
-      const res = writeSettingFromRenderer(db, hooks(), key, 'C:\\elsewhere')
+      const res = await writeSettingFromRenderer(db, hooks(), key, 'C:\\elsewhere')
       expect(res.ok).toBe(false)
       expect(stored(key)).toBe(before)
     }
   )
 
-  it('refuses a key or value that is not a string', () => {
-    expect(writeSettingFromRenderer(db, hooks(), { toString: () => 'theme_mode' }, 'x').ok).toBe(
-      false
-    )
-    expect(writeSettingFromRenderer(db, hooks(), 'theme_mode', 1).ok).toBe(false)
+  it('refuses a key or value that is not a string', async () => {
+    expect(
+      (await writeSettingFromRenderer(db, hooks(), { toString: () => 'theme_mode' }, 'x')).ok
+    ).toBe(false)
+    expect((await writeSettingFromRenderer(db, hooks(), 'theme_mode', 1)).ok).toBe(false)
     expect(stored('theme_mode')).toBe('dark')
   })
 
@@ -142,5 +152,90 @@ describe('settings:getSync', () => {
   it('answers nothing else, not even an existing key', () => {
     expect(readSettingSync(db, 'ical_feed_token')).toBeNull()
     expect(readSettingSync(db, 42)).toBeNull()
+  })
+})
+
+// #272 (A3): a change that widens access to the user's data is stored only
+// after the native confirmation; switching off, clearing and removing never ask.
+describe('sensitive settings ask first', () => {
+  const target = (url: string, enabled = true): Record<string, unknown> => ({
+    id: url,
+    url,
+    secret: '',
+    events: ['timer.started'],
+    enabled
+  })
+  const targets = (...t: Record<string, unknown>[]): string => JSON.stringify(t)
+  const A = 'https://hooks.example.com/a'
+  const B = 'https://hooks.example.com/b'
+
+  it.each([
+    ['mcp_write_enabled', '0', '1', { kind: 'mcpWrite' }],
+    ['controller_enabled', '0', '1', { kind: 'controller' }],
+    ['mcp_write_confirm_mode', 'per-write', 'silent', { kind: 'silent' }],
+    ['webhook_targets', '[]', targets(target(A)), { kind: 'webhook', urls: [A] }],
+    [
+      'webhook_targets',
+      targets(target(A)),
+      targets(target(A), target(B)),
+      { kind: 'webhook', urls: [B] }
+    ],
+    [
+      'webhook_targets',
+      targets(target(A, false)),
+      targets(target(A)),
+      { kind: 'webhook', urls: [A] }
+    ],
+    ['graph_client_id', '', ' 1234-abcd ', { kind: 'graphClientId', id: '1234-abcd' }]
+  ])('%s %s → %s asks', (key, before, after, expected) => {
+    expect(sensitiveSettingChange(key, after, before)).toEqual(expected)
+  })
+
+  it.each([
+    ['mcp_write_enabled', '1', '0'],
+    ['mcp_write_enabled', '1', '1'],
+    ['controller_enabled', '1', '0'],
+    ['mcp_write_confirm_mode', 'silent', 'per-write'],
+    ['mcp_write_confirm_mode', 'per-write', 'session'],
+    ['webhook_targets', targets(target(A)), '[]'],
+    ['webhook_targets', targets(target(A)), targets(target(A, false))],
+    ['webhook_targets', targets(target(A)), targets({ ...target(A), secret: 's' })],
+    ['webhook_targets', '[]', targets(target('https://'))],
+    ['graph_client_id', 'x', ''],
+    ['graph_client_id', 'x', ' x '],
+    ['theme_mode', 'light', 'dark']
+  ])('%s %s → %s does not ask', (key, before, after) => {
+    expect(sensitiveSettingChange(key, after, before)).toBeNull()
+  })
+
+  it('asks on the first write too, when nothing is stored yet', () => {
+    expect(sensitiveSettingChange('mcp_write_enabled', '1', undefined)).toEqual({
+      kind: 'mcpWrite'
+    })
+  })
+
+  it('stores a confirmed change and applies its side effect', async () => {
+    const res = await writeSettingFromRenderer(db, hooks(), 'mcp_write_enabled', '1')
+    expect(res).toEqual({ ok: true, data: undefined })
+    expect(asked).toEqual([{ kind: 'mcpWrite' }])
+    expect(stored('mcp_write_enabled')).toBe('1')
+    expect(calls).toEqual(['setMcpWriteEnabled(true)'])
+  })
+
+  it('a declined change writes nothing, runs no side effect and says cancelled', async () => {
+    answer = false
+    const res = await writeSettingFromRenderer(db, hooks(), 'webhook_targets', targets(target(A)))
+    expect(res).toMatchObject({ ok: false, code: 'cancelled' })
+    expect(stored('webhook_targets')).toBeUndefined()
+    expect(calls).toEqual([])
+  })
+
+  it('switching off goes through without asking', async () => {
+    db.prepare("INSERT INTO settings (key, value) VALUES ('controller_enabled', '1')").run()
+    answer = false
+    const res = await writeSettingFromRenderer(db, hooks(), 'controller_enabled', '0')
+    expect(res.ok).toBe(true)
+    expect(asked).toEqual([])
+    expect(stored('controller_enabled')).toBe('0')
   })
 })

@@ -167,7 +167,8 @@ export default function SettingsView(): React.JSX.Element {
     setSettings({ ...settings, [key]: value })
     const res = await window.api.settings.set(String(key), String(value))
     if (!res.ok) {
-      setStatusMsg(t('common.error', { error: res.error }))
+      // A declined native confirmation (#272) needs no message of its own.
+      if (res.code !== 'cancelled') setStatusMsg(t('common.error', { error: res.error }))
       // revert by reloading
       await loadAll()
     }
@@ -886,7 +887,11 @@ export default function SettingsView(): React.JSX.Element {
                 <>
                   <Row
                     label={t('settings.mcp.confirmMode')}
-                    hint={t('settings.mcp.confirmModeHint')}
+                    hint={
+                      settings.mcp_write_confirm_mode === 'session'
+                        ? t('settings.mcp.confirmSessionHint')
+                        : t('settings.mcp.confirmModeHint')
+                    }
                   >
                     <select
                       aria-label={t('settings.mcp.confirmMode')}
@@ -1035,7 +1040,7 @@ function Row({
  * An in-progress target with an empty/invalid URL is kept in the editor but is
  * dropped by `parseWebhookTargets` on the delivery side, so it never fires.
  */
-function WebhooksSection({
+export function WebhooksSection({
   initialRaw,
   logsPath
 }: {
@@ -1053,8 +1058,25 @@ function WebhooksSection({
   }
 
   async function persist(next: WebhookTarget[]): Promise<void> {
+    const before = targets
     setTargets(next)
-    await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
+    const res = await window.api.settings.set('webhook_targets', serializeWebhookTargets(next))
+    // A new address asks natively first (#272); declined, the list goes back.
+    if (!res.ok) setTargets(before)
+  }
+
+  // The address is saved when the field is left, not per keystroke: a new
+  // address asks for confirmation, and that must happen once, for the whole URL.
+  const [urlDrafts, setUrlDrafts] = useState<Record<string, string>>({})
+  function commitUrl(id: string): void {
+    const draft = urlDrafts[id]
+    setUrlDrafts((d) => {
+      const rest = { ...d }
+      delete rest[id]
+      return rest
+    })
+    const current = targets.find((tg) => tg.id === id)
+    if (draft !== undefined && current && draft !== current.url) patch(id, { url: draft })
   }
 
   function patch(id: string, fields: Partial<WebhookTarget>): void {
@@ -1087,7 +1109,8 @@ function WebhooksSection({
             </p>
           )}
           {targets.map((tg, i) => {
-            const urlInvalid = tg.url !== '' && !isValidWebhookUrl(tg.url)
+            const shownUrl = urlDrafts[tg.id] ?? tg.url
+            const urlInvalid = shownUrl !== '' && !isValidWebhookUrl(shownUrl)
             return (
               <div key={tg.id} className="flex flex-col gap-2.5 border-t border-[var(--line)] pt-3">
                 <div className="flex items-center justify-between">
@@ -1118,9 +1141,16 @@ function WebhooksSection({
                   {t('settings.webhooks.url')}
                   <input
                     type="url"
-                    value={tg.url}
+                    value={urlDrafts[tg.id] ?? tg.url}
                     placeholder="https://…"
-                    onChange={(e) => patch(tg.id, { url: e.target.value })}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setUrlDrafts((d) => ({ ...d, [tg.id]: v }))
+                    }}
+                    onBlur={() => commitUrl(tg.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                    }}
                     className={inputClass}
                   />
                   {urlInvalid && (

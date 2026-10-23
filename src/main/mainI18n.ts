@@ -14,6 +14,7 @@ import type { MessageBoxOptions } from 'electron'
 import { translateLiteral, type Locale } from '../shared/i18n'
 import type { TranslationKey } from '../shared/locales/de'
 import { LOCALE_STRINGS } from '../shared/locales'
+import type { SensitiveSettingChange } from './settingsWrite'
 
 export type DialogT = (key: TranslationKey, vars?: Record<string, string | number>) => string
 
@@ -65,6 +66,36 @@ export function mcpConfirmDialog(
     detail: summary,
     checkboxLabel: t('mainDialog.mcp.remember'),
     checkboxChecked: false
+  }
+}
+
+/**
+ * #272 (A3): the confirmation before a setting widens access to the user's
+ * data (settingsWrite.ts → sensitiveSettingChange). Index 1 confirms;
+ * cancel and Esc are index 0, and Enter cancels too: the safe answer is the
+ * default for a change the renderer asked for.
+ */
+export function sensitiveSettingDialog(
+  locale: Locale,
+  change: SensitiveSettingChange
+): MessageBoxOptions & { buttons: string[] } {
+  const t = dialogT(locale)
+  const k = change.kind
+  const detail =
+    change.kind === 'webhook'
+      ? t('mainDialog.settingConfirm.webhook.detail', { urls: change.urls.join('\n') })
+      : change.kind === 'graphClientId'
+        ? t('mainDialog.settingConfirm.graphClientId.detail', { id: change.id })
+        : t(`mainDialog.settingConfirm.${k}.detail`)
+  return {
+    type: 'warning',
+    buttons: [t('mainDialog.settingConfirm.cancel'), t(`mainDialog.settingConfirm.${k}.confirm`)],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: t('mainDialog.settingConfirm.title'),
+    message: t(`mainDialog.settingConfirm.${k}.message`),
+    detail
   }
 }
 

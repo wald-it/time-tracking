@@ -24,7 +24,8 @@ import {
   mcpConfirmDialog,
   migrationErrorDialog,
   readLanguage,
-  readLanguageOr
+  readLanguageOr,
+  sensitiveSettingDialog
 } from './mainI18n'
 
 let DatabaseImpl: DatabaseCtor
@@ -81,7 +82,8 @@ describe('values are filled in literally', () => {
 })
 
 describe('mcpBridge.ts — the write confirmation', () => {
-  it('German, byte for byte as before; Allow stays index 1 and the default', () => {
+  // The checkbox names the bounded approval since #301 (owner-approved text).
+  it('German, byte for byte; Allow stays index 1 and the default', () => {
     expect(mcpConfirmDialog('de', 'S')).toEqual({
       type: 'question',
       buttons: ['Ablehnen', 'Erlauben'],
@@ -91,7 +93,7 @@ describe('mcpBridge.ts — the write confirmation', () => {
       title: 'TimeTrack — MCP-Schreibzugriff',
       message: 'Claude möchte eine Änderung in TimeTrack vornehmen:',
       detail: 'S',
-      checkboxLabel: 'Für diese Session merken (nicht mehr fragen)',
+      checkboxLabel: 'Start und Stopp 30 Minuten lang ohne Nachfrage erlauben',
       checkboxChecked: false
     })
   })
@@ -102,8 +104,47 @@ describe('mcpBridge.ts — the write confirmation', () => {
     expect([o.defaultId, o.cancelId]).toEqual([1, 0])
     expect(o.title).toBe('TimeTrack — MCP write access')
     expect(o.message).toBe('Claude wants to make a change in TimeTrack:')
-    expect(o.checkboxLabel).toBe('Remember for this session (stop asking)')
+    expect(o.checkboxLabel).toBe('Allow start and stop without asking for 30 minutes')
   })
+})
+
+describe('index.ts — the confirmation of a sensitive setting (#272 A3)', () => {
+  it('cancel is index 0, the default and Esc; confirm is index 1', () => {
+    const o = sensitiveSettingDialog('de', { kind: 'mcpWrite' })
+    expect(o.buttons).toEqual(['Abbrechen', 'Einschalten'])
+    expect([o.defaultId, o.cancelId]).toEqual([0, 0])
+    expect(o.title).toBe('TimeTrack — Einstellung bestätigen')
+    expect(o.message).toBe('MCP-Schreibzugriff einschalten?')
+  })
+
+  it('names every new webhook address, one per line', () => {
+    const o = sensitiveSettingDialog('de', {
+      kind: 'webhook',
+      urls: ['https://a.example', 'https://b.example']
+    })
+    expect(o.detail).toContain('\nhttps://a.example\nhttps://b.example\n')
+    expect(o.buttons[1]).toBe('Speichern')
+  })
+
+  it('names the app id, in English too', () => {
+    const o = sensitiveSettingDialog('en', { kind: 'graphClientId', id: '1234-abcd' })
+    expect(o.message).toBe('Use a different app registration?')
+    expect(o.detail).toContain('app ID 1234-abcd')
+    expect(o.buttons).toEqual(['Cancel', 'Use'])
+  })
+
+  it.each(['mcpWrite', 'controller', 'silent'] as const)(
+    '%s has text in both languages',
+    (kind) => {
+      for (const locale of ['de', 'en'] as const) {
+        const o = sensitiveSettingDialog(locale, { kind })
+        for (const s of [o.message, o.detail, o.buttons[1]]) {
+          expect(s).toBeTruthy()
+          expect(s).not.toContain('mainDialog.')
+        }
+      }
+    }
+  )
 })
 
 describe('index.ts — the dialogs at start', () => {

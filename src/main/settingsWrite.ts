@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import type { IpcHooks } from './ipc'
 import type { IpcResult } from '../shared/types'
+import { parseWebhookTargets } from '../shared/webhooks'
 
 /**
  * #272 — the settings keys the renderer may write through `settings:set`.
@@ -65,18 +66,82 @@ function fail(error: unknown): IpcResult<never> {
   return { ok: false, error: String(error) }
 }
 
-/** `settings:set`: store a renderer-written setting and apply its side effect. */
-export function writeSettingFromRenderer(
+/**
+ * #272 (A3) — a settings change that widens what can reach or change the
+ * user's data, and so needs a native confirmation the renderer cannot click
+ * through on its own. Switching off, clearing or removing never asks.
+ */
+export type SensitiveSettingChange =
+  | { kind: 'mcpWrite' }
+  | { kind: 'controller' }
+  | { kind: 'silent' }
+  | { kind: 'webhook'; urls: string[] }
+  | { kind: 'graphClientId'; id: string }
+
+function enabledWebhookUrls(raw: string | undefined): Set<string> {
+  return new Set(
+    parseWebhookTargets(raw)
+      .filter((t) => t.enabled)
+      .map((t) => t.url)
+  )
+}
+
+/** What `value` for `key` would newly allow, compared with the stored value; null if nothing. */
+export function sensitiveSettingChange(
+  key: string,
+  value: string,
+  current: string | undefined
+): SensitiveSettingChange | null {
+  switch (key) {
+    case 'mcp_write_enabled':
+      return value === '1' && current !== '1' ? { kind: 'mcpWrite' } : null
+    case 'controller_enabled':
+      return value === '1' && current !== '1' ? { kind: 'controller' } : null
+    case 'mcp_write_confirm_mode':
+      return value === 'silent' && current !== 'silent' ? { kind: 'silent' } : null
+    case 'webhook_targets': {
+      // A URL that will now receive entry data and did not before.
+      const before = enabledWebhookUrls(current)
+      const urls = [...enabledWebhookUrls(value)].filter((u) => !before.has(u))
+      return urls.length > 0 ? { kind: 'webhook', urls } : null
+    }
+    case 'graph_client_id': {
+      const id = value.trim()
+      return id !== '' && id !== (current ?? '').trim() ? { kind: 'graphClientId', id } : null
+    }
+    default:
+      return null
+  }
+}
+
+/** The user declined a confirmation; the renderer shows nothing for it. */
+function cancelled(): IpcResult<never> {
+  return { ok: false, error: 'Einstellung nicht übernommen (abgelehnt)', code: 'cancelled' }
+}
+
+/**
+ * `settings:set`: store a renderer-written setting and apply its side effect.
+ * A sensitive change (see `sensitiveSettingChange`) is stored only after the
+ * native confirmation in `hooks.confirmSensitiveSetting`.
+ */
+export async function writeSettingFromRenderer(
   db: Database.Database,
   hooks: IpcHooks,
   key: unknown,
   value: unknown
-): IpcResult<void> {
+): Promise<IpcResult<void>> {
   if (typeof key !== 'string' || !RENDERER_WRITABLE_SETTINGS.has(key)) {
     return fail(`Unbekannte Einstellung: ${String(key).slice(0, 64)}`)
   }
   if (typeof value !== 'string') return fail(`Ungültiger Wert für ${key}`)
   try {
+    const current = (
+      db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+        | { value: string }
+        | undefined
+    )?.value
+    const change = sensitiveSettingChange(key, value, current)
+    if (change && !(await hooks.confirmSensitiveSetting(change))) return cancelled()
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
     // Apply side-effects for known keys.
     if (key === 'idle_threshold_minutes') {

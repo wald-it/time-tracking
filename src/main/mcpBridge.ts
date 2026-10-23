@@ -137,6 +137,11 @@ async function confirm(summary: string, locale: Locale, op: WriteOp): Promise<bo
   return approved
 }
 
+/** #301: end any start/stop approval (write access switched off). */
+export function forgetMcpApproval(): void {
+  approval.reset()
+}
+
 async function ensureBackup(): Promise<void> {
   if (backupDone) return
   backupDone = true // set first so concurrent requests don't double-snapshot
