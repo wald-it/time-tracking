@@ -22,8 +22,12 @@ import {
   hotkeyConflictDialog,
   localeFromSetting,
   localeFromSystem,
-  migrationErrorDialog
+  migrationErrorDialog,
+  readLanguageOr,
+  trayLabels,
+  trayTooltip
 } from './mainI18n'
+import type { Locale } from '../shared/i18n'
 import {
   assertSmokeUserDataIsolated,
   parseSmokeOutPath,
@@ -199,18 +203,32 @@ function refreshActiveClients(): void {
   }
 }
 
+/**
+ * The tray follows the app language (#296). The tray is built after the
+ * database opened; if the setting cannot be read, the system language.
+ */
+function trayLocale(): Locale {
+  const system = (): Locale => localeFromSystem(app.getPreferredSystemLanguages())
+  try {
+    return readLanguageOr(getDb(), system)
+  } catch {
+    return system()
+  }
+}
+
 function buildTrayMenu(): Menu {
   const items: MenuItemConstructorOptions[] = []
+  const text = trayLabels(trayLocale())
 
   items.push({
-    label: isTimerRunning ? `● ${runningLabel}` : 'Kein Timer aktiv',
+    label: isTimerRunning ? `● ${runningLabel}` : text.idle,
     enabled: false
   })
   items.push({ type: 'separator' })
 
   if (isTimerRunning) {
     items.push({
-      label: 'Stop',
+      label: text.stop,
       click: () => mainWindow?.webContents.send('timer:tray-stop')
     })
   } else if (cachedActiveClients.length > 0) {
@@ -220,15 +238,15 @@ function buildTrayMenu(): Menu {
         label: `▶ ${c.name}`,
         click: () => mainWindow?.webContents.send('timer:tray-quick-start', c.id)
       }))
-    items.push({ label: 'Quick-Start', enabled: false })
+    items.push({ label: text.quickStart, enabled: false })
     items.push(...quickStart)
   } else {
-    items.push({ label: 'Keine aktiven Kunden', enabled: false })
+    items.push({ label: text.noClients, enabled: false })
   }
 
   items.push({ type: 'separator' })
   items.push({
-    label: 'Fenster anzeigen',
+    label: text.showWindow,
     click: () => {
       mainWindow?.show()
       mainWindow?.focus()
@@ -236,7 +254,7 @@ function buildTrayMenu(): Menu {
   })
   items.push({ type: 'separator' })
   items.push({
-    label: 'Beenden',
+    label: text.quit,
     click: () => {
       isQuitting = true
       app.quit()
@@ -255,15 +273,10 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   // grey clock when idle. Both files live in resources/ and are bundled by
   // electron-vite's `?asset` resolver.
   tray.setImage(running ? trayRunningIcon : trayStoppedIcon)
-  // Tooltip format (v1.2 #31):
-  //   running: `● {client} · {HH:MM} · Heute {HH:MM}`
+  // Tooltip format (v1.2 #31), in the app language since #296:
+  //   running: `● {client} · Heute {HH:MM}`
   //   idle:    `TimeTrack — Heute {HH:MM}`
-  // (i18n in tooltip deferred to v1.4 — see DESIGN.md known limitations.)
-  tray.setToolTip(
-    running
-      ? `● ${label} · Heute ${fmtHHMM(todaySeconds)}`
-      : `TimeTrack — Heute ${fmtHHMM(todaySeconds)}`
-  )
+  tray.setToolTip(trayTooltip(trayLocale(), running, label, fmtHHMM(todaySeconds)))
   tray.setContextMenu(buildTrayMenu())
 }
 
@@ -700,6 +713,9 @@ app.whenReady().then(async () => {
       refreshActiveClients()
       tray?.setContextMenu(buildTrayMenu())
     },
+    // #296: menu and tooltip in the new language right away, not at the next
+    // timer event.
+    refreshTrayLanguage: () => updateTray(isTimerRunning, runningLabel, lastTodaySeconds),
     setHotkey: (accelerator) => registerHotkey(accelerator),
     setAutoStart: (enabled) => applyAutoStart(enabled),
     setIdleThreshold: (minutes) => setIdleThresholdMinutes(minutes),

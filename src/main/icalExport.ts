@@ -23,7 +23,7 @@ import type Database from 'better-sqlite3'
 import { formatIcal } from '../shared/ical'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
-import { dialogT, readLanguage } from './mainI18n'
+import { cancelledResult, dialogT, exportFileName, readLanguage } from './mainI18n'
 
 export interface IcalRequest {
   clientId: number
@@ -73,25 +73,22 @@ export async function handleIcalExport(
       projectMap.set(row.id, row.name)
     }
 
-    const rangeHint = `${req.fromIso.slice(0, 7)}`
-    const safeName = client.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Kunde'
+    // Bei Projektfilter den Projektnamen an den Dateinamen anhängen (ein
+    // leerer Name hängt hier nichts an).
+    const proj = req.projectId != null ? projectMap.get(req.projectId) : undefined
 
-    // Bei Projektfilter den Projektnamen an den Dateinamen anhängen.
-    let projectSuffix = ''
-    if (req.projectId != null) {
-      const proj = projectMap.get(req.projectId)
-      if (proj) {
-        projectSuffix = `-${proj.replace(/[\\/:*?"<>|]/g, '_').trim()}`
-      }
-    }
-
+    const locale = readLanguage(db)
     const result = await dialog.showSaveDialog({
-      title: dialogT(readLanguage(db))('mainDialog.ical.title'),
-      defaultPath: `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.ics`,
+      title: dialogT(locale)('mainDialog.ical.title'),
+      defaultPath: exportFileName(locale, 'ical', {
+        client: client.name,
+        project: proj || null,
+        month: req.fromIso.slice(0, 7)
+      }),
       filters: [{ name: 'iCalendar', extensions: ['ics'] }]
     })
     if (result.canceled || !result.filePath) {
-      return fail('Export abgebrochen')
+      return cancelledResult(locale, 'mainError.exportCancelled')
     }
 
     const clientMap = new Map([[client.id, client]])

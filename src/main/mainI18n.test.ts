@@ -13,13 +13,16 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { translateLiteral } from '../shared/i18n'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
+  cancelledResult,
   dbErrorDialog,
   dialogT,
+  exportFileName,
   hotkeyConflictDialog,
-  localeFromSetting,
+  mergedFileName,
+  trayLabels,
+  trayTooltip,
   localeFromSystem,
   mcpConfirmDialog,
   migrationErrorDialog,
@@ -33,13 +36,7 @@ beforeAll(async () => {
 })
 
 describe('the language of a main-process dialog', () => {
-  it('follows the renderer rule: en is English, anything else German', () => {
-    expect(localeFromSetting('en')).toBe('en')
-    expect(localeFromSetting('de')).toBe('de')
-    expect(localeFromSetting(undefined)).toBe('de')
-    expect(localeFromSetting('fr')).toBe('de')
-  })
-
+  // The rule itself (localeFromSetting) is tested in shared/i18n.test.ts.
   it('is read from the settings table and switches with it', () => {
     const db = new DatabaseImpl(':memory:')
     applyMigrations(db)
@@ -69,14 +66,6 @@ describe('the language of a main-process dialog', () => {
     expect(localeFromSystem(['en-GB', 'de-DE'])).toBe('en')
     expect(localeFromSystem(['dev'])).toBe('en')
     expect(localeFromSystem([])).toBe('en')
-  })
-})
-
-describe('values are filled in literally', () => {
-  it('a value that looks like a slot stays as written', () => {
-    const strings = { k: '{a} and {b}' }
-    expect(translateLiteral(strings, 'k', { a: '{b}', b: 'B' })).toBe('{b} and B')
-    expect(translateLiteral(strings, 'k', { a: 'A' })).toBe('A and {b}')
   })
 })
 
@@ -144,6 +133,120 @@ describe('index.ts — the dialogs at start', () => {
       title: 'TimeTrack — Database error',
       message: 'The database could not be opened:\n\nlocked'
     })
+  })
+})
+
+describe('#296 — default file names follow the app language', () => {
+  const month = '2026-04'
+
+  it('German: the names the app always wrote, byte for byte', () => {
+    // The old templates, written out: `Stundennachweis-${safe}${suffix}-${month}.pdf`
+    expect(exportFileName('de', 'pdf', { client: 'Acme', month })).toBe(
+      'Stundennachweis-Acme-2026-04.pdf'
+    )
+    expect(exportFileName('de', 'pdf', { client: 'Acme', project: 'Rollout', month })).toBe(
+      'Stundennachweis-Acme-Rollout-2026-04.pdf'
+    )
+    expect(exportFileName('de', 'csv', { client: 'Acme', month })).toBe(
+      'Zeiterfassung-Acme-2026-04.csv'
+    )
+    expect(exportFileName('de', 'ical', { client: 'Acme', project: 'Rollout', month })).toBe(
+      'Zeiterfassung-Acme-Rollout-2026-04.ics'
+    )
+    expect(mergedFileName('de', 'Rechnung-17')).toBe('Rechnung-17_inkl_Stundennachweis.pdf')
+    expect(mergedFileName('de', 'Rechnung-17', '2026-04-30T10-00-00')).toBe(
+      'Rechnung-17_inkl_Stundennachweis_2026-04-30T10-00-00.pdf'
+    )
+  })
+
+  it('English: Timesheet / Time-entries / _incl_Timesheet', () => {
+    expect(exportFileName('en', 'pdf', { client: 'Acme', project: 'Rollout', month })).toBe(
+      'Timesheet-Acme-Rollout-2026-04.pdf'
+    )
+    expect(exportFileName('en', 'csv', { client: 'Acme', month })).toBe(
+      'Time-entries-Acme-2026-04.csv'
+    )
+    expect(exportFileName('en', 'ical', { client: 'Acme', month })).toBe(
+      'Time-entries-Acme-2026-04.ics'
+    )
+    expect(mergedFileName('en', 'Invoice-17')).toBe('Invoice-17_incl_Timesheet.pdf')
+    expect(mergedFileName('en', 'Invoice-17', 'x')).toBe('Invoice-17_incl_Timesheet_x.pdf')
+  })
+
+  it('cleans the name parts as before; an empty client name falls back', () => {
+    expect(exportFileName('de', 'pdf', { client: 'A/B:C*?', project: ' P|Q ', month })).toBe(
+      'Stundennachweis-A_B_C__-P_Q-2026-04.pdf'
+    )
+    expect(exportFileName('de', 'csv', { client: ' <> ', month })).toBe(
+      'Zeiterfassung-__-2026-04.csv'
+    )
+    expect(exportFileName('de', 'csv', { client: '  ', month })).toBe(
+      'Zeiterfassung-Kunde-2026-04.csv'
+    )
+    expect(exportFileName('en', 'csv', { client: '', month })).toBe(
+      'Time-entries-Client-2026-04.csv'
+    )
+  })
+
+  it('a client name that looks like a slot stays as written', () => {
+    expect(exportFileName('de', 'pdf', { client: '{month}', month })).toBe(
+      'Stundennachweis-{month}-2026-04.pdf'
+    )
+  })
+})
+
+describe('#296 — tray', () => {
+  it('German labels and tooltip as before', () => {
+    expect(trayLabels('de')).toEqual({
+      idle: 'Kein Timer aktiv',
+      stop: 'Stop',
+      quickStart: 'Quick-Start',
+      noClients: 'Keine aktiven Kunden',
+      showWindow: 'Fenster anzeigen',
+      quit: 'Beenden'
+    })
+    expect(trayTooltip('de', true, 'Acme', '01:30')).toBe('● Acme · Heute 01:30')
+    expect(trayTooltip('de', false, '', '00:00')).toBe('TimeTrack — Heute 00:00')
+  })
+
+  it('English labels and tooltip', () => {
+    expect(trayLabels('en')).toEqual({
+      idle: 'No timer running',
+      stop: 'Stop',
+      quickStart: 'Quick start',
+      noClients: 'No active clients',
+      showWindow: 'Show window',
+      quit: 'Quit'
+    })
+    expect(trayTooltip('en', true, 'Acme', '01:30')).toBe('● Acme · Today 01:30')
+    expect(trayTooltip('en', false, '', '00:00')).toBe('TimeTrack — Today 00:00')
+  })
+})
+
+describe('#296 — a closed dialog is a code, not a text', () => {
+  it('carries code cancelled and a text in the app language', () => {
+    expect(cancelledResult('de', 'mainError.exportCancelled')).toEqual({
+      ok: false,
+      error: 'Export abgebrochen',
+      code: 'cancelled'
+    })
+    expect(cancelledResult('en', 'mainError.saveCancelled')).toEqual({
+      ok: false,
+      error: 'Saving cancelled',
+      code: 'cancelled'
+    })
+  })
+
+  // The renderer used to compare these texts; none may come back.
+  it('no renderer source compares an error text with a cancel wording', () => {
+    const root = join(__dirname, '..', 'renderer', 'src')
+    const hits: string[] = []
+    for (const f of readdirSync(root, { recursive: true }) as string[]) {
+      if (!/\.tsx?$/.test(f) || /\.test\.tsx?$/.test(f)) continue
+      const src = readFileSync(join(root, f), 'utf8')
+      if (/error\s*===\s*['"`]/.test(src)) hits.push(f)
+    }
+    expect(hits).toEqual([])
   })
 })
 

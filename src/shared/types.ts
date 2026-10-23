@@ -328,7 +328,14 @@ export interface MonthQuery {
   month: number // 1-12
 }
 
-export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string }
+/**
+ * Why a call did not succeed, where the renderer must act on the reason and
+ * not on the wording of `error` (#296). `cancelled`: the user closed a
+ * dialog or declined; show nothing. `error` still carries a text for logs.
+ */
+export type IpcErrorCode = 'cancelled'
+
+export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string; code?: IpcErrorCode }
 
 export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
 

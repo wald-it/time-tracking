@@ -23,6 +23,7 @@
  * Clearing via empty content is community-established but undocumented.
  */
 import type { RunningStatus } from './mcpBridgeCore'
+import { localeFromSetting } from '../shared/i18n'
 
 export interface PresenceAccountView {
   connected: boolean
@@ -77,10 +78,10 @@ function scopeGranted(view: PresenceAccountView): boolean {
 export function desiredMessage(
   running: Pick<RunningStatus, 'client_name' | 'project_name'> | null,
   showClient: boolean,
-  language: string
+  language: string | undefined
 ): string {
   if (!running) return ''
-  const focus = language === 'en' ? 'Focus' : 'Fokus'
+  const focus = localeFromSetting(language) === 'en' ? 'Focus' : 'Fokus'
   if (!showClient) return `🔴 ${focus}`
   const project = running.project_name ? ` — ${running.project_name}` : ''
   return `🔴 ${focus}: ${running.client_name}${project}`
@@ -143,7 +144,7 @@ export async function reconcilePresence(
     : desiredMessage(
         running,
         deps.getSetting('presence_show_client') === '1',
-        deps.getSetting('language') ?? 'de'
+        deps.getSetting('language')
       )
   const unchanged = state.message === message
   const fresh = now - state.at < REFRESH_AFTER_MS

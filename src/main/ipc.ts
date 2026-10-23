@@ -30,7 +30,14 @@ import {
   realFsDeps,
   saveDialogIn
 } from './pdfMergeHandlers'
-import { dialogT, localeFromSystem, readLanguageOr, type DialogT } from './mainI18n'
+import {
+  cancelledResult,
+  dialogT,
+  exportFileName,
+  localeFromSystem,
+  readLanguageOr,
+  type DialogT
+} from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
@@ -69,6 +76,8 @@ import { monthEntries } from './entryRanges'
 
 export interface IpcHooks {
   refreshTrayClients(): void
+  /** Rebuild tray menu and tooltip after the app language changed (#296). */
+  refreshTrayLanguage(): void
   setHotkey(accelerator: string): boolean
   setAutoStart(enabled: boolean): void
   setIdleThreshold(minutes: number): void
@@ -868,7 +877,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
-        return fail('Export abgebrochen')
+        return cancelledResult(dialogLocale(), 'mainError.exportCancelled')
       }
       const payload = buildJsonExportPayload(db, app.getVersion())
       const json = JSON.stringify(payload, null, 2)
@@ -896,26 +905,25 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           | undefined
         if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
 
-        const monthHint = req.fromIso.slice(0, 7) // YYYY-MM
-        // Strip filesystem-hostile chars from the client name for the suggested filename.
-        const safeName = client.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Kunde'
-        // v1.9 #75: append project name when filtered to a single project.
-        let projectSuffix = ''
-        if (req.projectId != null) {
-          const proj = db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
-            | { name: string }
-            | undefined
-          if (proj) {
-            projectSuffix = `-${proj.name.replace(/[\\/:*?"<>|]/g, '_').trim()}`
-          }
-        }
+        // v1.9 #75: the project name goes into the file name when filtered to one.
+        const proj =
+          req.projectId != null
+            ? (db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
+                | { name: string }
+                | undefined)
+            : undefined
+        const locale = dialogLocale()
         const result = await dialog.showSaveDialog({
-          title: tDialog('mainDialog.pdf.saveTitle'),
-          defaultPath: `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`,
+          title: dialogT(locale)('mainDialog.pdf.saveTitle'),
+          defaultPath: exportFileName(locale, 'pdf', {
+            client: client.name,
+            project: proj?.name ?? null,
+            month: req.fromIso.slice(0, 7) // YYYY-MM
+          }),
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
         if (result.canceled || !result.filePath) {
-          return fail('Export abgebrochen')
+          return cancelledResult(locale, 'mainError.exportCancelled')
         }
 
         const settingsRows = db.prepare(`SELECT key, value FROM settings`).all() as Array<{
@@ -981,7 +989,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // and persists the path into settings.pdf_logo_path.
   ipcMain.handle('logo:set', async (): Promise<IpcResult<{ path: string }>> => {
     try {
-      const t = dialogT(dialogLocale())
+      const locale = dialogLocale()
+      const t = dialogT(locale)
       const result = await dialog.showOpenDialog({
         title: t('mainDialog.logo.title'),
         properties: ['openFile'],
@@ -990,7 +999,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         ]
       })
       if (result.canceled || result.filePaths.length === 0) {
-        return fail('Auswahl abgebrochen')
+        return cancelledResult(locale, 'mainError.selectionCancelled')
       }
       const userDataDir = app.getPath('userData')
       const target = saveLogo(result.filePaths[0], userDataDir)

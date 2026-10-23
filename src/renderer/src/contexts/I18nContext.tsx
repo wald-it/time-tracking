@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react'
 import type { Locale } from '../../../shared/i18n'
-import { translate } from '../../../shared/i18n'
+import { localeFromSetting, translate } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/locales/de'
 import { de } from '../../../shared/locales/de'
 import { en } from '../../../shared/locales/en'
@@ -34,10 +34,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }): React
   const language = useSettingsStore((s) => s.settings?.language)
   const [locale, setLocaleState] = useState<Locale>('de')
 
-  // Sync locale once settings are loaded.
+  // Sync locale once settings are loaded. Before that (`undefined`) the
+  // default stays; afterwards both directions follow the stored value (#296:
+  // the old check only ever switched to English).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — ruft rohes window.api.settings.set, und settings:set sendet kein Push-Update — lokaler State ist die einzige Stelle, die von der Änderung erfährt (wie ThemeContext)
-    if (language === 'en') setLocaleState('en')
+    if (language !== undefined) setLocaleState(localeFromSetting(language))
   }, [language])
 
   const setLocale = useCallback(async (l: Locale) => {

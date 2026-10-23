@@ -203,7 +203,7 @@ export function ExportModal(props: Props): React.JSX.Element {
     if (res.ok) {
       setStatusKind('success')
       setStatusMsg(t('export.status.pdfSaved', { path: res.data.path }))
-    } else if (res.error === 'Export abgebrochen') {
+    } else if (res.code === 'cancelled') {
       setStatusMsg(null)
     } else {
       setStatusKind('error')
@@ -228,7 +228,7 @@ export function ExportModal(props: Props): React.JSX.Element {
     if (res.ok) {
       setStatusKind('success')
       setStatusMsg(t('export.status.csvSaved', { path: res.data.path }))
-    } else if (res.error === 'Export abgebrochen') {
+    } else if (res.code === 'cancelled') {
       setStatusMsg(null)
     } else {
       setStatusKind('error')
@@ -252,7 +252,7 @@ export function ExportModal(props: Props): React.JSX.Element {
     if (res.ok) {
       setStatusKind('success')
       setStatusMsg(t('export.status.icalSaved', { path: res.data.path }))
-    } else if (res.error === 'Export abgebrochen') {
+    } else if (res.code === 'cancelled') {
       setStatusMsg(null)
     } else {
       setStatusKind('error')

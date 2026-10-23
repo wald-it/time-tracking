@@ -31,6 +31,7 @@ function hooks(): IpcHooks {
     }
   return {
     refreshTrayClients: record('refreshTrayClients'),
+    refreshTrayLanguage: record('refreshTrayLanguage'),
     setHotkey: record('setHotkey'),
     setAutoStart: record('setAutoStart'),
     setIdleThreshold: record('setIdleThreshold'),
@@ -69,6 +70,13 @@ describe('settings:set allow-list', () => {
     expect(res).toEqual({ ok: true, data: undefined })
     expect(stored('hotkey_toggle')).toBe('Alt+Shift+T')
     expect(calls).toEqual(['setHotkey(Alt+Shift+T)'])
+  })
+
+  // #296: the tray follows a language change at once, not at the next timer event.
+  it('a language change rebuilds the tray and re-renders presence', () => {
+    const res = writeSettingFromRenderer(db, hooks(), 'language', 'en')
+    expect(res).toEqual({ ok: true, data: undefined })
+    expect(calls).toEqual(['pokePresence()', 'refreshTrayLanguage()'])
   })
 
   it('refuses an unknown key and writes nothing', () => {

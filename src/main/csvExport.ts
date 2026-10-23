@@ -15,7 +15,7 @@ import type Database from 'better-sqlite3'
 import { formatCsv, type CsvOptions } from '../shared/csv'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
-import { dialogT, readLanguage } from './mainI18n'
+import { cancelledResult, dialogT, exportFileName, readLanguage } from './mainI18n'
 
 export interface CsvRequest {
   clientId: number
@@ -56,27 +56,26 @@ export async function handleCsvExport(
 
     const entries = exportEntries(db, req)
 
-    const rangeHint = `${req.fromIso.slice(0, 7)}`
-    const safeName = client.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Kunde'
+    // When filtered by project, the project name goes into the file name.
+    const proj =
+      req.projectId != null
+        ? (db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
+            | { name: string }
+            | undefined)
+        : undefined
 
-    // When filtered by project, append the project name to the filename.
-    let projectSuffix = ''
-    if (req.projectId != null) {
-      const proj = db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
-        | { name: string }
-        | undefined
-      if (proj) {
-        projectSuffix = `-${proj.name.replace(/[\\/:*?"<>|]/g, '_').trim()}`
-      }
-    }
-
+    const locale = readLanguage(db)
     const result = await dialog.showSaveDialog({
-      title: dialogT(readLanguage(db))('mainDialog.csv.title'),
-      defaultPath: `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.csv`,
+      title: dialogT(locale)('mainDialog.csv.title'),
+      defaultPath: exportFileName(locale, 'csv', {
+        client: client.name,
+        project: proj?.name ?? null,
+        month: req.fromIso.slice(0, 7)
+      }),
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (result.canceled || !result.filePath) {
-      return fail('Export abgebrochen')
+      return cancelledResult(locale, 'mainError.exportCancelled')
     }
 
     // Amounts follow the invoice rule: rounding step and project rates.
