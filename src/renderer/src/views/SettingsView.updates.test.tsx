@@ -8,7 +8,7 @@
  * anywhere in the section means a version row came back.
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { act, cleanup, render } from '@testing-library/react'
+import { cleanup, render, waitFor } from '@testing-library/react'
 import { UpdatesSection } from './SettingsView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useUpdateStore } from '../store/updateStore'
@@ -42,17 +42,14 @@ describe('Settings → Updates section (#274)', () => {
         <UpdatesSection />
       </I18nProvider>
     )
-    // Let init() resolve so the store holds the version before we look.
-    await act(async () => {})
-
-    // Guards against a vacuous pass: the version is loaded and the section
-    // rendered, so its absence below is a finding, not an empty store.
-    expect(useUpdateStore.getState().appVersion).toBe(VERSION)
+    // Guards against a vacuous pass: init() has loaded the version and the
+    // section rendered, so its absence below is a finding, not an empty store.
+    await waitFor(() => expect(useUpdateStore.getState().appVersion).toBe(VERSION))
     const text = container.textContent ?? ''
     expect(text).toContain(de['settings.update.checkNow'])
     expect(text).not.toContain(VERSION)
-    // The removed row's label in both languages, in case it returns without a value.
+    // The removed row's label, in case it returns without a value. The test
+    // renders the default locale (de) only.
     expect(text).not.toContain('Aktuelle Version')
-    expect(text).not.toContain('Current version')
   })
 })
