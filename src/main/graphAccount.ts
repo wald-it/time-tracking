@@ -17,7 +17,8 @@ import {
   GraphAuthError,
   isPersonalAccount,
   needsRefresh,
-  PRESENCE_SCOPE
+  PRESENCE_SCOPE,
+  refreshScopes
 } from '../shared/graphAuth'
 import type { AccountInfo, StoredTokens } from '../shared/graphAuth'
 import { refreshTokens } from './graphAuth'
@@ -148,7 +149,14 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
 
   let refreshed: StoredTokens
   try {
-    refreshed = await refreshTokens(configOf(deps), tokens, deps.auth)
+    const cfg = configOf(deps)
+    // Only scopes already granted (#308): asking for one not yet consented
+    // makes the whole refresh fail.
+    refreshed = await refreshTokens(
+      { ...cfg, scopes: refreshScopes(cfg.scopes ?? [], tokens.grantedScopes ?? []) },
+      tokens,
+      deps.auth
+    )
   } catch (err) {
     if (err instanceof GraphAuthError && err.code === 'invalid_grant') {
       deps.log?.('graph account: grant no longer valid, connection dropped')

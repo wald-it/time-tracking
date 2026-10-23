@@ -11,6 +11,8 @@ import {
   authorizeUrl,
   buildAuthorizeUrl,
   describeAuthorizeError,
+  hasScope,
+  PRESENCE_SCOPE,
   isPersonalAccount,
   needsRefresh,
   parseCallbackQuery,
@@ -18,6 +20,7 @@ import {
   parseIdTokenClaims,
   redirectUriForPort,
   refreshBody,
+  refreshScopes,
   tokenUrl,
   tokensFromResponse,
   type StoredTokens
@@ -417,5 +420,23 @@ describe('parseErrorEnvelope', () => {
 
   it('yields nulls for a body that is not an OAuth error envelope', () => {
     expect(parseErrorEnvelope('<html>502</html>')).toEqual({ code: null, description: null })
+  })
+})
+
+describe('hasScope / refreshScopes (#308)', () => {
+  it('a scope matches without case and without the Graph resource prefix', () => {
+    expect(hasScope(['presence.readwrite'], PRESENCE_SCOPE)).toBe(true)
+    expect(hasScope(['https://graph.microsoft.com/Presence.ReadWrite'], PRESENCE_SCOPE)).toBe(true)
+    expect(hasScope(['Presence.Read'], PRESENCE_SCOPE)).toBe(false)
+    expect(hasScope([], PRESENCE_SCOPE)).toBe(false)
+  })
+
+  it('a refresh keeps the calendar scopes and only granted feature scopes', () => {
+    const wanted = [...CALENDAR_SCOPES, PRESENCE_SCOPE]
+    expect(refreshScopes(wanted, ['Calendars.Read'])).toEqual([...CALENDAR_SCOPES])
+    expect(refreshScopes(wanted, [])).toEqual([...CALENDAR_SCOPES])
+    expect(refreshScopes(wanted, ['https://graph.microsoft.com/Presence.ReadWrite'])).toEqual(
+      wanted
+    )
   })
 })

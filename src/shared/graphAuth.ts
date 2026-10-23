@@ -72,6 +72,34 @@ export const CALENDAR_SCOPES = ['offline_access', 'openid', 'profile', 'Calendar
  */
 export const PRESENCE_SCOPE = 'Presence.ReadWrite'
 
+/**
+ * Whether `scope` is among the `granted` scopes of a token response. Compared
+ * without case and without the Graph resource prefix, so `Presence.ReadWrite`,
+ * `presence.readwrite` and `https://graph.microsoft.com/Presence.ReadWrite`
+ * are the same scope.
+ */
+export function hasScope(granted: readonly string[], scope: string): boolean {
+  const norm = (s: string): string =>
+    s
+      .trim()
+      .toLowerCase()
+      .replace(/^https:\/\/graph\.microsoft\.com\//, '')
+  return granted.some((g) => norm(g) === norm(scope))
+}
+
+/**
+ * Scopes for a refresh (#308). Entra refreshes only scopes "equivalent to or a
+ * subset of" those granted, and a refresh asking for more fails — with Teams
+ * presence switched on but not yet consented, that broke the calendar import.
+ * So the calendar scopes, asked for at every connect, always go along; any
+ * further feature scope only once it is granted. A new scope is asked for in
+ * the interactive connect, never in a refresh.
+ */
+export function refreshScopes(wanted: readonly string[], granted: readonly string[]): string[] {
+  const base = CALENDAR_SCOPES as readonly string[]
+  return wanted.filter((s) => base.includes(s) || hasScope(granted, s))
+}
+
 export function authorityBase(tenant: GraphTenant): string {
   return `https://login.microsoftonline.com/${encodeURIComponent(tenant)}`
 }
