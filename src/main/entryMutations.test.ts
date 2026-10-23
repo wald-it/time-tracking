@@ -594,3 +594,81 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
     expect(rows()).toEqual([{ id: singleId, graph_event_id: 'EVT-1', created_at: CREATED }])
   })
 })
+
+// An edit writes the entry anew (delete + reinsert). Every column it does not
+// pass on is reset — that is how #299 lost graph_event_id and created_at. This
+// guard turns red for the next column: each one must be classified here, and
+// an edit that changes nothing must keep every value the entry owns.
+describe('an edit keeps every column of the entry (guard)', () => {
+  /** Where updateManualEntry gets each column's value from. */
+  const COLUMNS: Record<string, 'input' | 'carried' | 'rebuilt'> = {
+    client_id: 'input',
+    description: 'input',
+    started_at: 'input',
+    stopped_at: 'input',
+    tags: 'input',
+    reference: 'input',
+    billable: 'input',
+    private_note: 'input',
+    project_id: 'input',
+    graph_event_id: 'carried',
+    created_at: 'carried',
+    // New rows: a new id and link_id, heartbeat = stop, minutes from the
+    // range, and a live row is not deleted.
+    id: 'rebuilt',
+    link_id: 'rebuilt',
+    heartbeat_at: 'rebuilt',
+    rounded_min: 'rebuilt',
+    deleted_at: 'rebuilt'
+  }
+
+  it('every column of entries is classified', () => {
+    const db = new DatabaseImpl(':memory:')
+    seed(db)
+    const names = (db.prepare(`PRAGMA table_info(entries)`).all() as Array<{ name: string }>)
+      .map((c) => c.name)
+      .sort()
+    expect(names, 'classify the new column in COLUMNS and carry it in updateManualEntry').toEqual(
+      Object.keys(COLUMNS).sort()
+    )
+  })
+
+  it('an edit that changes nothing keeps every value the entry owns', () => {
+    const db = new DatabaseImpl(':memory:')
+    seed(db)
+    const made = createManualEntry(db, {
+      client_id: 1,
+      project_id: 10,
+      description: 'Alles gesetzt',
+      started_at: new Date(2026, 5, 10, 9).toISOString(),
+      stopped_at: new Date(2026, 5, 10, 10, 30).toISOString(),
+      tags: ',a,',
+      reference: 'REF-1',
+      billable: 0,
+      private_note: 'intern'
+    })
+    if (!made.ok) throw new Error(made.error)
+    db.prepare(
+      `UPDATE entries SET graph_event_id = 'EVT-G', created_at = '2026-01-02 08:00:00'`
+    ).run()
+    const before = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
+    const res = updateManualEntry(db, {
+      id: before.id as number,
+      client_id: before.client_id as number,
+      project_id: before.project_id as number,
+      description: before.description as string,
+      started_at: before.started_at as string,
+      stopped_at: before.stopped_at as string,
+      tags: before.tags as string,
+      reference: before.reference as string,
+      billable: before.billable as number,
+      private_note: before.private_note as string
+    })
+    if (!res.ok) throw new Error(res.error)
+    const after = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
+    const owned = Object.keys(COLUMNS).filter((c) => COLUMNS[c] !== 'rebuilt')
+    expect(Object.fromEntries(owned.map((c) => [c, after[c]]))).toEqual(
+      Object.fromEntries(owned.map((c) => [c, before[c]]))
+    )
+  })
+})

@@ -209,7 +209,8 @@ export function createManualEntry(db: Db, input: CreateManualEntryInput): IpcRes
  * midnight cut — that edge belongs to the entry, not to the half (#311).
  */
 export const SPLIT_EDGE_ERROR =
-  'Dieser Eintrag ist um Mitternacht geteilt. Den Beginn an der ersten Hälfte ändern, das Ende an der zweiten.'
+  'Dieser Eintrag ist um Mitternacht geteilt, und die Grenze um 0:00 lässt sich an einer Hälfte nicht verschieben. ' +
+  'Den Beginn bitte an der ersten Hälfte ändern, das Ende an der zweiten, oder Beginn und Ende zusammen neu setzen.'
 
 /**
  * #311: callers hand over the range of the half they were called on — MCP
@@ -218,7 +219,9 @@ export const SPLIT_EDGE_ERROR =
  * entry, so that range is mapped onto the entry first: the half's outer edge
  * (the entry's start on the first half, its end on the last) takes the
  * input's value; an edge at a midnight cut keeps the entry's own edge and may
- * not move. Before this, the other half was simply deleted.
+ * not move on its own. A range that crosses midnight, or one with both edges
+ * new, replaces the range of the whole entry. Before this, the other half was
+ * simply deleted.
  */
 function rangeOfEntry(
   half: { started_at: string; stopped_at: string },
@@ -226,6 +229,14 @@ function rangeOfEntry(
   input: { started_at: string; stopped_at: string }
 ): { started_at: string; stopped_at: string } | null {
   const same = (a: string, b: string): boolean => Date.parse(a) === Date.parse(b)
+  const whole = { started_at: input.started_at, stopped_at: input.stopped_at }
+  if (splitAtMidnight(new Date(input.started_at), new Date(input.stopped_at)).length > 1) {
+    return whole
+  }
+  // Both edges new: the caller replaced the range, it is the entry's range.
+  if (!same(input.started_at, half.started_at) && !same(input.stopped_at, half.stopped_at)) {
+    return whole
+  }
   const entryStart = group[0].started_at
   const entryStop = group[group.length - 1].stopped_at
   const atStart = same(half.started_at, entryStart)

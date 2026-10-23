@@ -15,7 +15,7 @@ import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { makeCtx, seed } from '../test/bridgeKit'
 import { handleRequest } from './mcpBridgeCore'
-import { createManualEntry, updateManualEntry } from './entryMutations'
+import { createManualEntry, SPLIT_EDGE_ERROR, updateManualEntry } from './entryMutations'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -111,6 +111,79 @@ describe('editing one half of a split entry (#311)', () => {
     expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([
       [local(10, 20), local(11, 0)],
       [local(11, 0), local(11, 5)]
+    ])
+  })
+
+  it('MCP moving the start on the first half moves the start of the entry', async () => {
+    const { ctx } = makeCtx(db)
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id: rows()[0].id, started_at: local(10, 19) }
+    })
+    expect(res.ok).toBe(true)
+    expect(rows().map((r) => [r.started_at, r.stopped_at])).toEqual([
+      [local(10, 19), local(11, 0)],
+      [local(11, 0), local(11, 4)]
+    ])
+  })
+
+  it('a range across midnight given for one half becomes the range of the entry', () => {
+    const res = updateManualEntry(db, {
+      id: rows()[1].id,
+      client_id: 1,
+      description: 'Nachtschicht',
+      started_at: local(10, 21),
+      stopped_at: local(11, 3)
+    })
+    expect(res.ok).toBe(true)
+    expect(totalHours()).toBe(6)
+    expect(rows()).toHaveLength(2)
+  })
+
+  it('moving the edge at midnight on one half is refused, nothing changes', async () => {
+    const before = rows()
+    const second = before[1]
+    expect(
+      updateManualEntry(db, {
+        id: second.id,
+        client_id: 1,
+        description: 'Nachtschicht',
+        started_at: local(11, 0, 30),
+        stopped_at: second.stopped_at
+      })
+    ).toEqual({ ok: false, error: SPLIT_EDGE_ERROR })
+    const { ctx } = makeCtx(db)
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id: before[0].id, stopped_at: local(10, 23) }
+    })
+    expect(res.ok).toBe(false)
+    expect(rows()).toEqual(before)
+  })
+
+  it('a half in the trash stays there, restorable, when the other half is edited', () => {
+    const [first, second] = rows()
+    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(local(12, 9), first.id)
+    const res = updateManualEntry(db, {
+      id: second.id,
+      client_id: 1,
+      description: 'nur die zweite Hälfte',
+      started_at: second.started_at,
+      stopped_at: second.stopped_at
+    })
+    expect(res.ok).toBe(true)
+    // The trashed row is untouched — same id, still in the trash.
+    expect(
+      db
+        .prepare(`SELECT id, deleted_at IS NOT NULL AS trashed FROM entries WHERE id = ?`)
+        .get(first.id)
+    ).toEqual({ id: first.id, trashed: 1 })
+    expect(rows().map((r) => [r.description, r.started_at, r.stopped_at])).toEqual([
+      ['nur die zweite Hälfte', local(11, 0), local(11, 4)]
     ])
   })
 })
