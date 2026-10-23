@@ -593,16 +593,4 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
     const singleId = edit(pairId, local(10, 9), local(10, 10))
     expect(rows()).toEqual([{ id: singleId, graph_event_id: 'EVT-1', created_at: CREATED }])
   })
-
-  it('a half moved to the trash keeps its meeting released', () => {
-    // Trashing the anchored half alone offers the meeting to the import again;
-    // editing the other half must not take it back.
-    const first = imported(...SPLIT)
-    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(local(12, 9), first)
-    expect([...importedEventIds(db)]).toEqual([])
-    const second = rows()[1].id
-    edit(second, SPLIT[0], local(11, 3))
-    expect(rows().map((r) => r.graph_event_id)).toEqual([null, null])
-    expect([...importedEventIds(db)]).toEqual([])
-  })
 })

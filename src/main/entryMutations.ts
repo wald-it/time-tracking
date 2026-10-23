@@ -220,14 +220,13 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
     // calendar import anchor (otherwise the next preview offers the meeting
     // again) and the time the entry was first written. Of a midnight-split
     // pair, the anchor sits on one half and the earliest created_at counts.
-    // One predicate for what is read and what is deleted. The anchor only
-    // from a live row: a half moved to the trash has released its meeting to
-    // the import again (graphImport reads live rows only).
+    // One predicate for what is read and what is deleted. A trashed half is
+    // read too: the reinsert below writes the whole range back as live rows,
+    // so its time — and with it its meeting — is live again (#311).
     const [where, key] = existingLinkId ? ['link_id = ?', existingLinkId] : ['id = ?', input.id]
     const carried = db
       .prepare(
-        `SELECT MAX(CASE WHEN deleted_at IS NULL THEN graph_event_id END) AS graph_event_id,
-                MIN(created_at) AS created_at
+        `SELECT MAX(graph_event_id) AS graph_event_id, MIN(created_at) AS created_at
            FROM entries WHERE ${where}`
       )
       .get(key) as { graph_event_id: string | null; created_at: string | null }
