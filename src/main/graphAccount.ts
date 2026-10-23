@@ -139,6 +139,8 @@ export function disconnect(deps: GraphAccountDeps): AccountStatus {
  * On `invalid_grant` the stored connection is dropped: the grant is gone for
  * good (revoked, password changed, unused too long), and keeping a dead blob
  * around would make the settings page claim a connection that cannot work.
+ * With a feature scope in the request, that holds for the calendar-only
+ * retry (#308): a refused feature scope can arrive as `invalid_grant` too.
  */
 export async function getAccessToken(deps: GraphAccountDeps): Promise<string | null> {
   const tokens = loadTokens(deps.store)
@@ -190,7 +192,7 @@ async function refreshWithFallback(
       throw err
     }
     deps.log?.(
-      `graph account: refresh with ${extras.join(' ')} refused (${err.code}), retrying with the calendar scopes`
+      `graph account: refresh with ${extras.join(' ')} refused (${err.code}); retrying with the calendar scopes alone, if that fails too the grant itself is gone`
     )
     return refreshTokens({ ...cfg, scopes: [...CALENDAR_SCOPES] }, tokens, deps.auth)
   }
@@ -204,7 +206,9 @@ function isRefusal(code: string | null): boolean {
     code === 'interaction_required' ||
     code === 'invalid_scope'
   )
-} /** Outcome of "check connection" — proves the stored token is accepted by Graph. */
+}
+
+/** Outcome of "check connection" — proves the stored token is accepted by Graph. */
 export interface VerifyResult {
   /** From Graph's own `/me`, not from the id_token — a second, independent source. */
   displayName: string | null

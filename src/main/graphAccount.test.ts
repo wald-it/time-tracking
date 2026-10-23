@@ -332,7 +332,11 @@ describe('a refused refresh with feature scopes falls back to the calendar scope
   it('after the fallback the stored scopes are the calendar scopes, so settings asks to reconnect', async () => {
     const s = server('consent_required', 'ok')
     const d = presenceOn(s.fetchFn)
-    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    // The stored list still names the scope, e.g. after the consent was revoked.
+    saveTokens(
+      tokens({ expiresAtMs: NOW + 1000, grantedScopes: ['Calendars.Read', 'Presence.ReadWrite'] }),
+      d.store
+    )
     await getAccessToken(d)
     expect(loadTokens(d.store)?.grantedScopes).not.toContain('Presence.ReadWrite')
   })
