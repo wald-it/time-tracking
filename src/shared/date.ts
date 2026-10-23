@@ -7,6 +7,8 @@
  * midnight (shared/midnightSplit); a form edits one of those halves.
  */
 
+import { localMidnightAfter } from './midnightSplit'
+
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 function toDate(input: string | Date): Date {
@@ -43,28 +45,28 @@ export function parseTimeToDate(dateISO: string | Date, time: string): Date {
 
 /**
  * The stop of a form that edits one day (#334): like `parseTimeToDate`, except
- * that a stop of 00:00 on an entry that ends at the next midnight is that
- * midnight. That is how the first half of an entry across midnight (20:00 to
- * 00:00) reads, and a whole day from 00:00 to 00:00. Only an entry that really
- * ends there gets this reading (`endsAtNextMidnight`); a new entry or any other
- * stop stays on the same day, so a stop before the start is still refused
- * instead of becoming an overnight entry.
+ * on an entry that ends at the next midnight (`untilMidnight`), where the time
+ * of that midnight is that midnight. That is how the first half of an entry
+ * across midnight (20:00 to 00:00) reads, and a whole day from 00:00 to
+ * 00:00. The boundary is the one the split uses (`localMidnightAfter`), so it
+ * also holds where the clock jumps from 00:00 to 01:00 and the form shows
+ * 01:00. A new entry or any other stop stays on the same day, so a stop
+ * before the start is still refused instead of becoming an overnight entry.
  */
 export function parseStopToDate(
   dateISO: string | Date,
   stopTime: string,
-  endsAtNextMidnight: boolean
+  untilMidnight: boolean
 ): Date {
   const stop = parseTimeToDate(dateISO, stopTime)
-  if (!endsAtNextMidnight || stop.getHours() !== 0 || stop.getMinutes() !== 0) return stop
-  return new Date(stop.getFullYear(), stop.getMonth(), stop.getDate() + 1)
+  if (!untilMidnight) return stop
+  const next = localMidnightAfter(stop)
+  return formatTimeHHMM(next) === stopTime ? next : stop
 }
 
 /** True when `stop` is exactly the local midnight after the day of `start`. */
 export function endsAtNextMidnight(start: string | Date, stop: string | Date): boolean {
-  const a = toDate(start)
-  const next = new Date(a.getFullYear(), a.getMonth(), a.getDate() + 1)
-  return toDate(stop).getTime() === next.getTime()
+  return toDate(stop).getTime() === localMidnightAfter(toDate(start)).getTime()
 }
 /** Format a date as "HH:MM" in the host's local timezone. */
 export function formatTimeHHMM(date: string | Date): string {
