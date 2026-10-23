@@ -23,7 +23,7 @@ import {
   localeFromSetting,
   localeFromSystem,
   migrationErrorDialog,
-  readLanguageOr,
+  appLocale,
   trayLabels,
   trayTooltip
 } from './mainI18n'
@@ -203,22 +203,29 @@ function refreshActiveClients(): void {
   }
 }
 
+/** The language the tray last spoke; kept while the handle is closed. */
+let trayLocaleSeen: Locale | null = null
+
 /**
- * The tray follows the app language (#296). The tray is built after the
- * database opened; if the setting cannot be read, the system language.
+ * The tray follows the app language (#296), read with the shared rule that
+ * never throws. After a restore attempt the handle stays closed until the
+ * relaunch; the tray then keeps its language instead of switching to the
+ * system language for those moments.
  */
 function trayLocale(): Locale {
-  const system = (): Locale => localeFromSystem(app.getPreferredSystemLanguages())
   try {
-    return readLanguageOr(getDb(), system)
+    if (trayLocaleSeen && !getDb().open) return trayLocaleSeen
   } catch {
-    return system()
+    // getDb() failing falls through to appLocale, which does not throw.
   }
+  const locale = appLocale(getDb, () => app.getPreferredSystemLanguages())
+  trayLocaleSeen = locale
+  return locale
 }
 
-function buildTrayMenu(): Menu {
+function buildTrayMenu(locale: Locale = trayLocale()): Menu {
   const items: MenuItemConstructorOptions[] = []
-  const text = trayLabels(trayLocale())
+  const text = trayLabels(locale)
 
   items.push({
     label: isTimerRunning ? `● ${runningLabel}` : text.idle,
@@ -276,8 +283,9 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   // Tooltip format (v1.2 #31), in the app language since #296:
   //   running: `● {client} · Heute {HH:MM}`
   //   idle:    `TimeTrack — Heute {HH:MM}`
-  tray.setToolTip(trayTooltip(trayLocale(), running, label, fmtHHMM(todaySeconds)))
-  tray.setContextMenu(buildTrayMenu())
+  const locale = trayLocale()
+  tray.setToolTip(trayTooltip(locale, running, label, fmtHHMM(todaySeconds)))
+  tray.setContextMenu(buildTrayMenu(locale))
 }
 
 function registerHotkey(accelerator: string): boolean {

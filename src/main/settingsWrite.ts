@@ -100,8 +100,15 @@ export function writeSettingFromRenderer(
       // Toggling mirroring off clears our own status message; the language
       // and privacy switches re-render it while a timer runs.
       hooks.pokePresence()
-      // The tray speaks the app language too (#296).
-      if (key === 'language') hooks.refreshTrayLanguage()
+      // The tray speaks the app language too (#296). The setting is saved at
+      // this point, so a failed rebuild must not report the change as failed.
+      if (key === 'language') {
+        try {
+          hooks.refreshTrayLanguage()
+        } catch (e) {
+          console.warn('[tray] rebuild after language change failed:', e)
+        }
+      }
     } else if (key === 'ical_feed_enabled') {
       hooks.setIcalFeedEnabled(value === '1')
     } else if (key === 'ical_feed_port') {

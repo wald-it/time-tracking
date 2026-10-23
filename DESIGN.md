@@ -13,27 +13,27 @@ Supersedes the v1.8 Glass design system (#76); the Glass reference `design/issue
 
 ### Idea
 
-TimeTrack is a measuring instrument, not a dashboard: a solid chassis, a dark readout window, hard keys, scales with ticks. Everything is flat and solid — **no blur, no translucency, no glow, no gradient backgrounds, no drop shadows** (the only "shadow" is the 2 px keycap edge). Hatching (`repeating-linear-gradient`) is the one allowed pattern: it marks _running_ time and _non-billable_ time. Colour carries meaning, not decoration: client colours identify, `--sig` means _now / running / today_, everything else is ink on paper.
+TimeTrack is a measuring instrument, not a dashboard: a solid chassis, a dark readout window, hard keys, scales with ticks. Everything is flat and solid — **no blur, no translucency, no glow, no gradient backgrounds, no drop shadows** (the only "shadow" is the 2 px keycap edge). Hatching (`repeating-linear-gradient`) is the one allowed pattern: it marks *running* time and *non-billable* time. Colour carries meaning, not decoration: client colours identify, `--sig` means *now / running / today*, everything else is ink on paper.
 
 ### Themes and tokens
 
 Two themes, **Papier** (`:root`) and **Graphit** (`.dark`), plus "System". All colours come from tokens in `src/renderer/src/assets/base.css`; components never hard-code colours or Tailwind palette classes. Three exceptions are deliberate: the mini widget's `var(--token, #hex)` fallbacks (its window can paint before the tokens apply), the client/project colour presets (`components/clientColors.ts` — data the user picks, not UI colour), and the PDF accent colour (a user setting, default `#4f46e5`, used only in the PDF).
 
-| Token                                               | Use                                                                                                                                             |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--bg`                                              | Chassis / page. Solid, never a gradient.                                                                                                        |
-| `--key`                                             | Raised key, inputs, hovered row, selected cell.                                                                                                 |
-| `--key-edge`                                        | Key border and the 2 px keycap bottom edge.                                                                                                     |
-| `--line`                                            | Hairlines between rows and cells.                                                                                                               |
-| `--tick`                                            | Scale ticks, graticule, non-billable hatch.                                                                                                     |
-| `--ink` / `--ink2` / `--ink3`                       | Primary text and 2 px section rules / secondary text and legends / hints and metadata — `--ink3` is the lightest text colour allowed on `--bg`. |
-| `--disp`, `--disp-ink`, `--disp-dim`, `--disp-line` | The readout window (timer display, cursor readout, toasts).                                                                                     |
-| `--inv`, `--inv-ink`, `--inv-dim`                   | Inverted keys (STOPP, active segment).                                                                                                          |
-| `--sig`, `--sig-ink`                                | Signal: running, now, today, focus. **Never small text on `--bg`.** Text on `--sig` uses `--sig-ink`.                                           |
-| `--danger`                                          | Destructive actions and errors.                                                                                                                 |
-| `--focus`                                           | Focus ring (= `--sig`).                                                                                                                         |
-| `--r-key` 4 px, `--r-disp` 6 px, `--r-fine` 2 px    | Radii of keys, windows/dialogs, small marks.                                                                                                    |
-| `--edge-key`, `--edge-bigkey`                       | Keycap edges.                                                                                                                                   |
+| Token | Use |
+|---|---|
+| `--bg` | Chassis / page. Solid, never a gradient. |
+| `--key` | Raised key, inputs, hovered row, selected cell. |
+| `--key-edge` | Key border and the 2 px keycap bottom edge. |
+| `--line` | Hairlines between rows and cells. |
+| `--tick` | Scale ticks, graticule, non-billable hatch. |
+| `--ink` / `--ink2` / `--ink3` | Primary text and 2 px section rules / secondary text and legends / hints and metadata — `--ink3` is the lightest text colour allowed on `--bg`. |
+| `--disp`, `--disp-ink`, `--disp-dim`, `--disp-line` | The readout window (timer display, cursor readout, toasts). |
+| `--inv`, `--inv-ink`, `--inv-dim` | Inverted keys (STOPP, active segment). |
+| `--sig`, `--sig-ink` | Signal: running, now, today, focus. **Never small text on `--bg`.** Text on `--sig` uses `--sig-ink`. |
+| `--danger` | Destructive actions and errors. |
+| `--focus` | Focus ring (= `--sig`). |
+| `--r-key` 4 px, `--r-disp` 6 px, `--r-fine` 2 px | Radii of keys, windows/dialogs, small marks. |
+| `--edge-key`, `--edge-bigkey` | Keycap edges. |
 
 Contrast was checked per theme (table in `design/messinstrument/tokens.css`).
 
@@ -55,23 +55,23 @@ Contrast was checked per theme (table in `design/messinstrument/tokens.css`).
 
 - Focus: 2 px `--focus` outline (`focus-visible`), never removed.
 - Hover (HANDOFF §2.4): keys get a 1 px `--ink3` outline at 2 px offset (`.key-hover`), not a colour change; rows and icon buttons take the `--key` background; selected cells add `inset 0 0 0 1px var(--ink)`.
-- Running: a blinking `--sig` square (`tt-blink`), hatched bars, a `--sig` needle at _now_. `prefers-reduced-motion` stops the blink, the 180 ms view fade (`.view-enter`) and the hold-to-open fill; a test checks that every CSS animation in `base.css` and `main.css` has such a stop.
+- Running: a blinking `--sig` square (`tt-blink`), hatched bars, a `--sig` needle at *now*. `prefers-reduced-motion` stops the blink, the 180 ms view fade (`.view-enter`) and the hold-to-open fill; a test checks that every CSS animation in `base.css` and `main.css` has such a stop.
 - No transitions on layout; motion only where it carries state (blink, hold-to-open fill).
 
 ### Components (where they live)
 
-| Component                                                                              | File                                                                               | Spec              |
-| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------- |
-| App header with stages for narrow windows                                              | `components/heute/AppHeader.tsx`                                                   | §3.1              |
-| Display (timer readout), BigKey (START/STOPP), Readout, WeekMeter                      | `components/heute/*`                                                               | §3.2–§3.7         |
-| DayScale (Tagesverlauf), MiniDayScale (calendar cell)                                  | `components/heute/DayScale.tsx`, `components/kalender/MiniDayScale.tsx`            | §3.8, §3.9        |
-| EntryTable                                                                             | `components/heute/EntryTable.tsx`                                                  | §3.10             |
-| QuickStart — preset keys + project list                                                | `components/heute/QuickStart.tsx`                                                  | §3.11             |
-| Calendar grid, day panel / drawer, client breakdown                                    | `views/CalendarView.tsx`, `components/kalender/*`, `components/CalendarDrawer.tsx` | §3.12–§3.14       |
-| KPI readouts, Stunden nach Kunde, Wochentag-Schnitt, two-band trend, segmented control | `components/auswertung/*`                                                          | §3.5, §3.6, §3.15 |
-| Dialog shell (focus trap, Escape, focus return, `Z_MODAL` / `Z_TOAST`)                 | `components/Dialog.tsx`                                                            | §5                |
-| Toggle (`role="switch"`, named by its settings row)                                    | `components/Toggle.tsx`                                                            | §5, §8            |
-| Shared class strings for keys, inputs, readouts, legends, sections                     | `components/instrumentClasses.ts`                                                  | §2.3, §3.4        |
+| Component | File | Spec |
+|---|---|---|
+| App header with stages for narrow windows | `components/heute/AppHeader.tsx` | §3.1 |
+| Display (timer readout), BigKey (START/STOPP), Readout, WeekMeter | `components/heute/*` | §3.2–§3.7 |
+| DayScale (Tagesverlauf), MiniDayScale (calendar cell) | `components/heute/DayScale.tsx`, `components/kalender/MiniDayScale.tsx` | §3.8, §3.9 |
+| EntryTable | `components/heute/EntryTable.tsx` | §3.10 |
+| QuickStart — preset keys + project list | `components/heute/QuickStart.tsx` | §3.11 |
+| Calendar grid, day panel / drawer, client breakdown | `views/CalendarView.tsx`, `components/kalender/*`, `components/CalendarDrawer.tsx` | §3.12–§3.14 |
+| KPI readouts, Stunden nach Kunde, Wochentag-Schnitt, two-band trend, segmented control | `components/auswertung/*` | §3.5, §3.6, §3.15 |
+| Dialog shell (focus trap, Escape, focus return, `Z_MODAL` / `Z_TOAST`) | `components/Dialog.tsx` | §5 |
+| Toggle (`role="switch"`, named by its settings row) | `components/Toggle.tsx` | §5, §8 |
+| Shared class strings for keys, inputs, readouts, legends, sections | `components/instrumentClasses.ts` | §2.3, §3.4 |
 
 ### Numbers
 
@@ -81,12 +81,12 @@ One rounding rule (HANDOFF §2.2): large numbers are **worked time**, to the sec
 
 Each approved behaviour change has one named switch in the code that brings back the old behaviour:
 
-|     | Change                                                                                                  | Switch                                                                                                    |
-| --- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| B1  | Quick start while a timer runs switches instead of being locked; project list instead of the radial fan | `QUICKSTART_SWITCH_WHILE_RUNNING` (`components/heute/QuickStart.tsx`)                                     |
-| B2  | Current month compared with the same days of the previous month                                         | `SAME_PERIOD_COMPARISON` (`main/analyticsHandlers.ts`)                                                    |
-| B3  | Trend as two bands on one x-axis instead of a dual axis                                                 | `TREND_TWO_BANDS` (`views/AuswertungView.tsx`)                                                            |
-| B4  | Calendar day panel at wide widths, day scales in cells                                                  | `DAY_PANEL_MEDIA_QUERY` (`views/CalendarView.tsx`) — the drawer stays as the narrow-width layout for good |
+| | Change | Switch |
+|---|---|---|
+| B1 | Quick start while a timer runs switches instead of being locked; project list instead of the radial fan | `QUICKSTART_SWITCH_WHILE_RUNNING` (`components/heute/QuickStart.tsx`) |
+| B2 | Current month compared with the same days of the previous month | `SAME_PERIOD_COMPARISON` (`main/analyticsHandlers.ts`) |
+| B3 | Trend as two bands on one x-axis instead of a dual axis | `TREND_TWO_BANDS` (`views/AuswertungView.tsx`) |
+| B4 | Calendar day panel at wide widths, day scales in cells | `DAY_PANEL_MEDIA_QUERY` (`views/CalendarView.tsx`) — the drawer stays as the narrow-width layout for good |
 
 The switches and the code behind them stay until the owner decides to remove them, once the design has run for a while. The calendar drawer is not part of that: it is the layout for narrow windows.
 
@@ -114,27 +114,27 @@ The primary artifact: a PDF timesheet that looks like "page 2" of your own invoi
 
 ## Premises (confirmed)
 
-| #   | Premise                                                                            |
-| --- | ---------------------------------------------------------------------------------- |
-| 1   | Solo-freelancer tool. No team, no cloud, everything local.                         |
-| 2   | Mini mode is the daily workflow. Calendar is for adding entries & month-end close. |
-| 3   | Primary artifact: PDF timesheet. No invoicing, no accounting export.               |
-| 4   | Electron + React as the base. Outlook integration (Graph API) comes in phase 2.    |
+| #   | Premise                                                                                   |
+| --- | ----------------------------------------------------------------------------------------- |
+| 1   | Solo-freelancer tool. No team, no cloud, everything local.                                |
+| 2   | Mini mode is the daily workflow. Calendar is for adding entries & month-end close.        |
+| 3   | Primary artifact: PDF timesheet. No invoicing, no accounting export.                      |
+| 4   | Electron + React as the base. Outlook integration (Graph API) comes in phase 2.           |
 
 ---
 
 ## Tech stack
 
-| Layer           | Technology                                    | Rationale                                                                    |
-| --------------- | --------------------------------------------- | ---------------------------------------------------------------------------- |
-| Shell           | **Electron**                                  | Native Windows window, system tray, no browser needed                        |
-| UI              | **React** + Tailwind CSS                      | User knows the web stack, fast iteration                                     |
-| Database        | **SQLite** (via `better-sqlite3`)             | Local, zero-config, no server                                                |
-| PDF             | **Electron `webContents.printToPDF()`**       | Uses the Chromium that Electron already ships — no Puppeteer (+300MB) needed |
-| Build           | **electron-builder**                          | `.exe` installer for Windows, auto-update prepared                           |
-| Package manager | **npm** / **pnpm**                            | Standard for Electron projects                                               |
-| IPC security    | **Context Bridge** (`contextIsolation: true`) | HTML templates are rendered — nodeIntegration stays off                      |
-| Data path       | **`app.getPath('userData')`**                 | `%AppData%\TimeTrack\` — updates never overwrite data                        |
+| Layer          | Technology                                    | Rationale                                                                          |
+| -------------- | --------------------------------------------- | --------------------------------------------------------------------------------- |
+| Shell          | **Electron**                                  | Native Windows window, system tray, no browser needed                             |
+| UI             | **React** + Tailwind CSS                      | User knows the web stack, fast iteration                                          |
+| Database       | **SQLite** (via `better-sqlite3`)             | Local, zero-config, no server                                                     |
+| PDF            | **Electron `webContents.printToPDF()`**       | Uses the Chromium that Electron already ships — no Puppeteer (+300MB) needed      |
+| Build          | **electron-builder**                          | `.exe` installer for Windows, auto-update prepared                                |
+| Package manager | **npm** / **pnpm**                           | Standard for Electron projects                                                    |
+| IPC security   | **Context Bridge** (`contextIsolation: true`) | HTML templates are rendered — nodeIntegration stays off                           |
+| Data path      | **`app.getPath('userData')`**                 | `%AppData%\TimeTrack\` — updates never overwrite data                             |
 
 > **Why not Tauri?** The Rust learning curve would slow down phase 1. Tauri stays
 > an option for phase 3, when executable size becomes important.
@@ -335,32 +335,32 @@ time-tracking/
 
 ## Open decisions
 
-| Question           | Recommendation                                           | Alternative          |
-| ------------------ | -------------------------------------------------------- | -------------------- |
-| State management   | Zustand (minimal, no Redux overhead)                     | Jotai                |
-| Date library       | `date-fns` (tree-shakeable)                              | `dayjs`              |
-| Calendar component | Custom-built (simple grid)                               | `react-big-calendar` |
-| PDF preview        | Browser preview window (BrowserWindow with `printToPDF`) | save directly        |
-| Update mechanism   | electron-updater (GitHub Releases)                       | manual               |
+| Question            | Recommendation                                            | Alternative          |
+| ------------------- | --------------------------------------------------------- | -------------------- |
+| State management    | Zustand (minimal, no Redux overhead)                      | Jotai                |
+| Date library        | `date-fns` (tree-shakeable)                               | `dayjs`              |
+| Calendar component  | Custom-built (simple grid)                                | `react-big-calendar` |
+| PDF preview         | Browser preview window (BrowserWindow with `printToPDF`)  | save directly        |
+| Update mechanism    | electron-updater (GitHub Releases)                        | manual               |
 
 ## Architecture decisions (from reviews)
 
-| Decision       | Chosen                     | Rationale                                             |
-| -------------- | -------------------------- | ----------------------------------------------------- |
-| IPC security   | Context Bridge             | HTML templates are rendered, nodeIntegration off      |
-| PDF engine     | `webContents.printToPDF()` | Electron already has Chromium — no Puppeteer          |
-| Data path      | `app.getPath('userData')`  | Update-safe, no data loss                             |
-| Crash recovery | Heartbeat + auto-stop      | `heartbeat_at` every 30s, close open entries on start |
+| Decision       | Chosen                     | Rationale                                                     |
+| -------------- | -------------------------- | ------------------------------------------------------------- |
+| IPC security   | Context Bridge             | HTML templates are rendered, nodeIntegration off              |
+| PDF engine     | `webContents.printToPDF()` | Electron already has Chromium — no Puppeteer                  |
+| Data path      | `app.getPath('userData')`  | Update-safe, no data loss                                     |
+| Crash recovery | Heartbeat + auto-stop      | `heartbeat_at` every 30s, close open entries on start         |
 
 ## Mandatory tests (from eng review)
 
-| Test                                          | Type        | Priority |
-| --------------------------------------------- | ----------- | -------- |
-| Rounding mode (all 3 modes × all intervals)   | Unit        | P1       |
-| Crash recovery: app start with an open entry  | Integration | P1       |
-| PDF export: correct time range, correct hours | Integration | P1       |
-| Auto-backup: target folder does not exist     | Unit        | P2       |
-| Zombie detection: heartbeat > 5 min old       | Unit        | P1       |
+| Test                                             | Type        | Priority  |
+| ------------------------------------------------ | ----------- | --------- |
+| Rounding mode (all 3 modes × all intervals)      | Unit        | P1        |
+| Crash recovery: app start with an open entry     | Integration | P1        |
+| PDF export: correct time range, correct hours    | Integration | P1        |
+| Auto-backup: target folder does not exist        | Unit        | P2        |
+| Zombie detection: heartbeat > 5 min old          | Unit        | P1        |
 
 ---
 

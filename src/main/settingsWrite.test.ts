@@ -79,6 +79,16 @@ describe('settings:set allow-list', () => {
     expect(calls).toEqual(['pokePresence()', 'refreshTrayLanguage()'])
   })
 
+  it('a failing tray rebuild does not report the saved language change as failed', () => {
+    const h = hooks()
+    h.refreshTrayLanguage = () => {
+      throw new Error('tray destroyed')
+    }
+    const res = writeSettingFromRenderer(db, h, 'language', 'en')
+    expect(res).toEqual({ ok: true, data: undefined })
+    expect(stored('language')).toBe('en')
+  })
+
   it('refuses an unknown key and writes nothing', () => {
     const res = writeSettingFromRenderer(db, hooks(), 'something_new', 'x')
     expect(res.ok).toBe(false)

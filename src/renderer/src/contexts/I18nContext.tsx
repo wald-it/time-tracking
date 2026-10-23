@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react'
 import type { Locale } from '../../../shared/i18n'
 import { localeFromSetting, translate } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/locales/de'
@@ -33,17 +33,20 @@ export function I18nProvider({ children }: { children: React.ReactNode }): React
   // settings write (v1.13.2 PR 2).
   const language = useSettingsStore((s) => s.settings?.language)
   const [locale, setLocaleState] = useState<Locale>('de')
+  // Set once the user picks a language. The store is filled by load() and
+  // never told about setLocale (raw settings.set, no push), so a load that
+  // resolves after the pick carries the old value and must not undo it.
+  const pickedRef = useRef(false)
 
-  // Sync locale whenever the stored value arrives or changes. Before that
-  // (`undefined`) the default stays. The language pickers go through
-  // `setLocale`; this follows the store in both directions with the shared
-  // rule (#296).
+  // Sync locale with the stored value (shared rule, #296) until the user
+  // picks one. Before the settings load (`undefined`) the default stays.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — ruft rohes window.api.settings.set, und settings:set sendet kein Push-Update — lokaler State ist die einzige Stelle, die von der Änderung erfährt (wie ThemeContext)
-    if (language !== undefined) setLocaleState(localeFromSetting(language))
+    if (language !== undefined && !pickedRef.current) setLocaleState(localeFromSetting(language))
   }, [language])
 
   const setLocale = useCallback(async (l: Locale) => {
+    pickedRef.current = true
     setLocaleState(l)
     await window.api.settings.set('language', l)
   }, [])

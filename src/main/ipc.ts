@@ -30,14 +30,7 @@ import {
   realFsDeps,
   saveDialogIn
 } from './pdfMergeHandlers'
-import {
-  cancelledResult,
-  dialogT,
-  exportFileName,
-  localeFromSystem,
-  readLanguageOr,
-  type DialogT
-} from './mainI18n'
+import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
@@ -130,26 +123,16 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
-  // Native dialogs follow the app language (#270); with the handle closed
-  // (after a restore attempt) the system language, as at start.
-  const systemLocale = (): Locale => localeFromSystem(app.getPreferredSystemLanguages())
-  const dialogLocale = (): Locale => readLanguageOr(db, systemLocale)
+  // Native dialogs, file names and cancel texts follow the app language
+  // (#270, #296). Never throws (mainI18n.appLocale): with the handle closed
+  // after a restore attempt, the system language, as at start. The restore
+  // reads it once, before it can close the handle.
+  const dialogLocale = (): Locale =>
+    appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
   const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
-  // A restore failure must reach the user whatever the database says: this
-  // never throws. Read once, before the restore can close the handle. If the
-  // system language cannot be read either: German, the app's default
-  // (migration 002, localeFromSetting).
-  const restoreLocale = (): Locale => {
-    try {
-      return dialogLocale()
-    } catch {
-      try {
-        return systemLocale()
-      } catch {
-        return 'de'
-      }
-    }
-  }
 
   // ── Clients ──────────────────────────────────────────────────
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
@@ -713,7 +696,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle(
     'backup:restore',
     (_e, filename: unknown): IpcResult<{ safetyBackupPath: string }> => {
-      const locale = restoreLocale()
+      const locale = dialogLocale()
       try {
         return restoreListedBackupOrReport(
           db,
@@ -871,13 +854,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('export:json', async (): Promise<IpcResult<{ path: string; bytes: number }>> => {
     try {
       const today = new Date().toISOString().slice(0, 10)
+      const locale = dialogLocale()
       const result = await dialog.showSaveDialog({
-        title: tDialog('mainDialog.exportJson.title'),
+        title: dialogT(locale)('mainDialog.exportJson.title'),
         defaultPath: `timetrack-export-${today}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
-        return cancelledResult(dialogLocale(), 'mainError.exportCancelled')
+        return cancelledResult(locale, 'mainError.exportCancelled')
       }
       const payload = buildJsonExportPayload(db, app.getVersion())
       const json = JSON.stringify(payload, null, 2)

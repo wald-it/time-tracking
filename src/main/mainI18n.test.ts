@@ -15,6 +15,7 @@ import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
+  appLocale,
   cancelledResult,
   dbErrorDialog,
   dialogT,
@@ -55,6 +56,43 @@ describe('the language of a main-process dialog', () => {
     db.close()
     expect(() => readLanguage(db)).toThrow()
     expect(readLanguageOr(db, () => 'de')).toBe('de')
+  })
+
+  it('appLocale never throws: setting, then system language, then German', () => {
+    const db = new DatabaseImpl(':memory:')
+    applyMigrations(db)
+    db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+    expect(
+      appLocale(
+        () => db,
+        () => ['de-DE']
+      )
+    ).toBe('en')
+    const broken = new DatabaseImpl(':memory:') // open, but no settings table
+    expect(
+      appLocale(
+        () => broken,
+        () => ['de-DE']
+      )
+    ).toBe('de')
+    expect(
+      appLocale(
+        () => broken,
+        () => ['en-US']
+      )
+    ).toBe('en')
+    db.close()
+    expect(
+      appLocale(
+        () => db,
+        () => ['en-US']
+      )
+    ).toBe('en')
+    const fail = (): never => {
+      throw new Error('unavailable')
+    }
+    expect(appLocale(fail, fail)).toBe('de')
+    broken.close()
   })
 
   it('before the database is open: the first system language', () => {
@@ -185,6 +223,18 @@ describe('#296 — default file names follow the app language', () => {
     )
     expect(exportFileName('en', 'csv', { client: '', month })).toBe(
       'Time-entries-Client-2026-04.csv'
+    )
+  })
+
+  // Kept as the app always did it, and named here so nobody "fixes" one side
+  // silently: CSV and PDF add `-` for a project row whose name is empty,
+  // iCal (whose caller passes `name || null`) does not.
+  it('an empty project name: a given project adds the dash, none adds nothing', () => {
+    expect(exportFileName('de', 'csv', { client: 'Acme', project: '', month })).toBe(
+      'Zeiterfassung-Acme--2026-04.csv'
+    )
+    expect(exportFileName('de', 'ical', { client: 'Acme', project: null, month })).toBe(
+      'Zeiterfassung-Acme-2026-04.ics'
     )
   })
 

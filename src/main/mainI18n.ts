@@ -42,6 +42,27 @@ export function readLanguageOr(db: Database.Database, fallback: () => Locale): L
 }
 
 /**
+ * The app language for any text of the main process, never throwing (#296):
+ * the setting; with the handle closed or the read failing, the first system
+ * language; if even that cannot be read, German, the app default. A dialog,
+ * a tray label or a file name must not fail because a settings read did.
+ */
+export function appLocale(
+  getDb: () => Database.Database,
+  systemLanguages: () => readonly string[]
+): Locale {
+  try {
+    return readLanguageOr(getDb(), () => localeFromSystem(systemLanguages()))
+  } catch {
+    try {
+      return localeFromSystem(systemLanguages())
+    } catch {
+      return 'de'
+    }
+  }
+}
+
+/**
  * The MCP write confirmation (mcpBridge.ts). `summary` is the text
  * mcpBridgeCore built in the same language. Button order, default and cancel
  * are part of the guard: index 1 approves, Enter approves, Esc denies.
