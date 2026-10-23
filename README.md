@@ -1,49 +1,60 @@
 # TimeTrack
 
-A personal Windows desktop time-tracking app for freelancers. Lightweight Toggl alternative with a local SQLite database, calendar view, and PDF timesheet export.
+A desktop time tracker for freelancers and consultants — Windows and macOS, a
+local SQLite database, invoices-ready PDF timesheets, and integrations for
+Microsoft 365 calendars, AI clients (MCP), webhooks and hardware keys. No
+account, no server, no telemetry.
+
+The interface is built like a measuring instrument: a dark readout window for
+the running timer, hard keys, scales with ticks, in two themes (**Papier**,
+**Graphit**) plus "System". The design rules are in [DESIGN.md](DESIGN.md).
+
+## Platforms
+
+| Platform | Build | Notes |
+| -------- | ----- | ----- |
+| Windows 10/11 (x64) | NSIS installer | not code-signed — SmartScreen warns on first run |
+| macOS (Apple silicon) | DMG / ZIP (arm64) | signed ad hoc, not notarized — macOS 15 and later: System Settings → Privacy & Security → Open Anyway; older versions: right-click → Open; Intel Macs: no build yet ([#168](https://github.com/wald-it/time-tracking/issues/168)) |
+
+Every release lists SHA-256 checksums and carries a build provenance
+attestation; see [SECURITY.md](SECURITY.md#release-integrity) for how to check a
+download. Download: [latest release](https://github.com/wald-it/time-tracking/releases/latest).
 
 ## Features
 
-- **Today View** — Default tab with the active timer as a pill, daily/weekly total, top-3 client quick-start, and last 5 entries.
-- **Timer** — Start/stop with client selection and description. Crash-safe via heartbeat.
-- **Calendar Mode** — 7×N monthly grid with calendar-week column, daily total, color-coded mini-bars per client, and day-drawer with inline edit.
-- **Quick-Filter + 1-Click PDF** — "This week / Last week / This month / Last month" plus hero button "📄 Last month as PDF".
-- **PDF Timesheet** — Printable A4 PDF with date / from / to / activity / duration (optionally with fee). Configurable in **Settings → PDF Template**: logo, sender address, tax number, accent color, footer, hour rounding, optional signature fields.
-- **PDF Merge — Attach to Invoice** — Attach the timesheet directly to an existing Lexware / sevDesk / Billomat invoice PDF. Enable the checkbox in the export modal, pick your invoice, done. No Smallpdf, no Acrobat. Output: `<invoice-name>_inkl_Stundennachweis.pdf` next to the original file. The original is never modified.
-- **Hourly Rate per Client** — Optional fee field, renders as a €-column in the PDF.
-- **Full JSON Export** — Clients + entries + settings as a readable JSON file (data portability).
-- **Cross-Midnight Auto-Split** — Entries spanning midnight are automatically split into two linked half-day entries — DST-safe.
-- **Client & Project Management** — Create, edit, archive, and delete clients (color code + hourly rate). Each client can have any number of **projects** with their own color and an optional hourly-rate override. Timer, Today View, Calendar, and entry editing all show the project name; export (PDF + CSV) can be filtered by project.
-- **Global Hotkey** — `Alt+Shift+S` (configurable) starts/stops the timer from any tab.
-- **Tray Icon + Quick-Start** — Right-click the tray to open active clients as direct buttons. Tray glyph changes with timer state.
-- **Mini Widget** — Always-on-top 200×40 overlay (hotkey `Alt+Shift+M`, configurable). Shows running timer + client + stop/start buttons — no main window needed. Draggable, visible over fullscreen apps.
-- **Tags per Entry** — Color chips per time block. Filter in the calendar drawer by tag click. PDF export groupable by tag.
-- **Quick Note after Stop** — Description field left empty? A 30 s "What was that?" modal appears after stopping. Enter saves, Escape skips.
-- **Idle Detection** — PC idle beyond the threshold? A modal asks: keep, stop, or mark as break.
-- **Auto-Backup** — Rolling 7-day SQLite snapshots under `%AppData%\TimeTrack\backups\`. Manual backup + restore from Settings.
-- **DB Migrations** — Versioned schema with pre-migration backup, so updates never lose data.
-- **Auto-Update** — `electron-updater` checks for new GitHub releases on startup. UpdateBanner appears when updates are available; manual check + install button in Settings → Updates.
-- **Crash Logging** — `electron-log` writes rotating logs to `%AppData%\TimeTrack\logs\`. Catch-all for main- and renderer-process errors. Log file can be opened directly from Settings → Diagnostics.
-- **Onboarding Wizard** — 3-step assistant on first start: choose language → create first client → hotkey hint. Shown once; existing users keep the flag automatically.
-- **CSV Export** — Unified ExportModal with client/date-range filter. Output: flat CSV file with all entries (DATEV-compatible format).
-- **i18n DE/EN** — Full translation via type-safe locale files. Language switchable in Settings → General (applies live, no restart needed).
-- **License Notices** — About dialog under Settings → About. Shows the MIT license of TimeTrack + an expandable list of all 95 bundled third-party packages with SPDX identifier and license text.
-- **Auto-Update Releases** — Pushing a `v*` tag builds the Windows installer and publishes a GitHub Release automatically (with a packaged smoke test against the DB **and** the PDF pipeline).
-- **Local SQLite** — All data stays on your machine under `%AppData%\TimeTrack\`.
+**Tracking**
+- **Heute** — the running timer in a readout window, a day scale with a needle at *now*, today's entries, worked time today and this week (the rounded time as a sub-line).
+- **Preset keys** — up to three keys under the timer for the clients you used most in the last 30 days. A click starts the client's last project; while a timer runs, it **switches**: the running entry stops at exactly the moment the new one starts. A long press, right-click or the ▾ segment opens the client's project list.
+- **Quick note after stop** — an entry stopped without a description asks for one (30 s), keeping all of the entry's other fields.
+- **Global hotkey** (`Alt+Shift+S`, configurable), **tray menu** with active clients, **mini widget** (always-on-top overlay, `Alt+Shift+M`).
+- **Idle detection** — after the idle threshold: keep, stop at the idle moment, or mark as break.
+- **Cross-midnight split** — entries over midnight become two linked halves, correct on the days the clocks change.
 
-### Coming soon
+**Calendar, analysis, export**
+- **Kalender** — month grid with day scales, week and month sums and each day's billable revenue; a day panel beside the month on wide windows (a drawer on narrow ones) with inline edit, backfill and delete with undo.
+- **Auswertung** — worked hours per month, client and weekday, revenue, and a two-band trend; the running month is compared with the same days of the previous month.
+- **PDF timesheet** (A4, logo, sender, accent colour, rounding step, optional fee and signature lines), **PDF merge** onto an existing invoice PDF, **CSV** (DE/US format), **iCal** export and a **JSON** export of your data (without stored secrets — for reading and checking, not for restoring).
+- **Clients and projects** with colours, hourly rates (project rate overrides the client rate), budgets, contact data and archive; **tags** with a central tag manager.
 
-- **Outlook Integration** (v2.0) — Read-only import via Microsoft Graph
-  (Device Code Flow, no server, Office E1 + personal accounts).
-- Pomodoro mode (#23) — conditionally deferred to v1.8 based on user demand.
+**Integrations** (all off until you set them up)
+- **Microsoft 365 calendar import** — take appointments over as entries; the client is suggested from the attendees' e-mail domains.
+- **MCP server** for AI clients such as Claude — read your entries, and (opt-in) create or edit them with a confirmation dialog in the app. See [MCP Integration](#mcp-integration).
+- **Webhooks** — HTTP calls on timer start/stop and entry changes, signed (HMAC) when the target has a secret.
+- **iCal feed** — a local `webcal://` feed of the last 90 days for your calendar app.
+- **Stream Deck plugin** — one key per client/project, live timer state on the key; see [streamdeck-plugin/README.md](streamdeck-plugin/README.md).
 
-Full roadmap: [ROADMAP.md](ROADMAP.md) · Issues: [github.com/wald-it/time-tracking/issues](https://github.com/wald-it/time-tracking/issues)
+**Safety of your data**
+- Local SQLite database, daily backups (7 kept), a backup before every database update, manual backup and restore under **Settings → Data**.
+- Versioned migrations; the app does not continue on a partially migrated database.
+- Crash-safe timer (heartbeat), German and English UI, switchable live.
+
+What is planned lives in [ROADMAP.md](ROADMAP.md), what was deferred with a reason in [TODOS.md](TODOS.md); open issues: [github.com/wald-it/time-tracking/issues](https://github.com/wald-it/time-tracking/issues).
 
 ## Tech Stack
 
 | Layer    | Library                 |
 | -------- | ----------------------- |
-| Shell    | Electron 39             |
+| Shell    | Electron 39 (move to 44 planned) |
 | Build    | electron-vite 5         |
 | UI       | React 19 + TypeScript 5 |
 | Styling  | Tailwind CSS 4          |
@@ -53,7 +64,7 @@ Full roadmap: [ROADMAP.md](ROADMAP.md) · Issues: [github.com/wald-it/time-track
 
 ## Development
 
-**Requirements:** Node.js 18+, pnpm 10+
+**Requirements:** Node.js 22, pnpm 10 (the versions CI uses). Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 # Install dependencies (also compiles native SQLite module)
@@ -68,7 +79,7 @@ pnpm typecheck
 # Run tests
 pnpm test
 
-# Build Windows installer
+# Build the Windows installer (macOS: pnpm build:mac)
 pnpm build:win
 ```
 
@@ -84,7 +95,7 @@ pnpm build:win
 > Calling `pnpm exec vitest run` **directly** fails accordingly — with a hint
 > pointing to `pnpm test`. This is intentional: previously the DB tests would
 > silently skip themselves in that case and a third of the coverage disappeared
-> behind a green summary ([#151](https://github.com/skoedr/time-tracking/issues/151)).
+> behind a green summary ([#151](https://github.com/wald-it/time-tracking/issues/151)).
 
 ## MCP Integration
 
@@ -96,7 +107,8 @@ hours for client X in June by project" or "log the meeting I forgot".
 (filter by name/contact person), `list_projects` (filter by client, name, external
 project number), `list_entries` (month or date range, filter by client/project/tag,
 summary-only mode), `get_running_timer`, `get_dashboard`, `get_analytics` (monthly
-hours rounded like the PDF export, optionally revenue).
+worked time to the second, plus `rounded_seconds` / `billable_rounded_seconds`
+rounded per entry like the invoice; revenue optional).
 
 **Write tools** (opt-in, see below): `create_manual_entry`, `update_entry_fields`,
 `start_timer`, `stop_running_timer` — each with `preview: true` for a preview without a commit.
@@ -185,7 +197,9 @@ Integrations → Write access**. Security model:
 - **Token:** On enabling, the app generates a random token (`<userData>/mcp-write.token`,
   mode `0600`) that rotates per app start; every write request must carry it.
 - **Confirmation** per write action is selectable: ask on every change (default), once per
-  session, or never ask.
+  session, or never ask. The dialog names every field a write changes, before → after
+  (client, project, billable, tags, reference, internal note, description; times in
+  local time); `start_timer` names the running entry it ends.
 - **Pre-write backup** once per session before the first change; every executed action lands
   in the append-only **audit log** `mcp-writes.log` (token/internal notes are never logged).
 
@@ -200,28 +214,18 @@ Recommendation: call write tools with `preview: true` first, then commit.
 
 ## Releases
 
-Releases are built automatically by `.github/workflows/release.yml` when a `v*` tag
-is pushed to `main`. The workflow rebuilds `better-sqlite3` against the Electron
-ABI via `@electron/rebuild`, packages an NSIS installer, and publishes a GitHub
-Release with the `.exe`, `.blockmap`, and `latest.yml` attached.
+Releases are built by `.github/workflows/release.yml` from a `v*` tag (or a manual
+run started from that tag). The workflow builds exactly the tagged commit, runs the
+tests, packages the Windows installer, the macOS DMG/ZIP (arm64) and the Stream Deck
+plugin, checks the package contents, smoke-tests the packaged app against its
+database and PDF pipeline, attests build provenance and publishes the GitHub Release
+with SHA-256 checksums in the notes. Releases are not code-signed (see
+[SECURITY.md](SECURITY.md#release-integrity)).
 
-- Download the latest installer:
-  [github.com/wald-it/time-tracking/releases/latest](https://github.com/wald-it/time-tracking/releases/latest)
-- Roadmap and per-version planning: see [ROADMAP.md](ROADMAP.md) and the
-  [open issues](https://github.com/wald-it/time-tracking/issues) grouped by `v1.x` labels.
+- Download: [github.com/wald-it/time-tracking/releases/latest](https://github.com/wald-it/time-tracking/releases/latest)
+- Planning: [ROADMAP.md](ROADMAP.md) and the [open issues](https://github.com/wald-it/time-tracking/issues). Issues carry a type label (`bug`, `enhancement`) and no version label — see [CONTRIBUTING.md](CONTRIBUTING.md#how-issues-are-tracked).
 
-To cut a new release locally:
-
-```bash
-# 1. Bump version in package.json + add CHANGELOG entry
-# 2. Commit, tag, and push
-git add package.json CHANGELOG.md
-git commit -m "chore(release): bump version to 1.x.y"
-git tag v1.x.y
-git push origin main v1.x.y
-# 3. The Release workflow does the rest — runs tests, builds the NSIS installer,
-#    and publishes the GitHub Release automatically.
-```
+The release steps for maintainers are in [CONTRIBUTING.md](CONTRIBUTING.md#release-process-maintainers-only).
 
 ## Project Structure
 
@@ -236,11 +240,11 @@ src/
     pdf.ts       # PDF payload builder + HTML template (Stundennachweis)
     pdfWindow.ts # Hidden BrowserWindow renderer (printToPDF pipeline)
     pdfMerge.ts  # PDF merge logic (mergePdfs via pdf-lib)
-    jsonExport.ts# Full JSON export (clients + entries + settings)
+    jsonExport.ts# JSON export of your data (without stored secrets; for reading, not restoring)
     logo.ts      # Logo file -> base64 data URL for PDF embedding
     updater.ts   # electron-updater bridge + IPC handlers (auto-update)
     csvExport.ts # CSV export builder
-    migrations/  # Versioned schema migrations + runner (001..013)
+    migrations/  # Versioned schema migrations + runner (001..027)
   mcp/           # Bundled MCP server (started by the AI client, see "MCP Integration")
     server.ts    # Entry point: tool definitions, stdio transport, update handshake
     holders.ts   # Holder registry + cooperative shutdown before updates (#198)
@@ -252,7 +256,7 @@ src/
     index.ts     # Context Bridge (window.api)
     index.d.ts   # TypeScript types for renderer
   renderer/src/
-    views/       # TimerView, TodayView, CalendarView, ClientsView, SettingsView
+    views/       # TodayView, CalendarView, AuswertungView, ClientsView, ExportView, SettingsView, TagManagementView
     components/  # Dialog, IdleModal, CalendarDrawer, EntryEditForm, Toast,
                  # ConfirmDialog, ProjectFormModal, PdfMergeModal, UpdateBanner, OnboardingWizard, AboutDialog, ExportModal
     contexts/    # I18nContext (DE/EN translations, useT hook)
@@ -272,27 +276,32 @@ scripts/
   sync-icon.mjs         # resources/icon.png -> build/icon.png + multi-res .ico (prebuild hook)
   generate-licenses.mjs # Scans production deps, writes resources/licenses.json (prebuild hook)
 resources/
-  licenses.json  # Generated license list (95 packages, updated on pnpm build)
+  licenses.json  # Generated license list (updated on pnpm build)
 templates/
 ```
 
 ## Data Storage
 
-The SQLite database lives at `%AppData%\TimeTrack\timetrack.db`. Schema (as of v1.11.1, schema_version 13):
+All data lives in the app data folder `time-tracking` — `%APPDATA%\time-tracking\` on
+Windows, `~/Library/Application Support/time-tracking/` on macOS: the database
+`timetrack.sqlite`, `backups\` and (Windows) `logs\`. The folder is named after
+`package.json`, not after the product name. The schema is versioned (27 migrations as
+of 1.22); main tables:
 
-- `clients` — name, color, active flag, `rate_cent` (optional hourly rate)
-- `projects` — client_id (FK), name, color, active flag, `rate_cent` (optional hourly-rate override)
-- `entries` — client_id, description, started_at, stopped_at, heartbeat_at, `deleted_at` (soft-delete), `link_id` (cross-midnight pair UUID), `project_id` (nullable FK → projects)
-- `settings` — key/value store (incl. PDF template settings: logo path, sender, tax id, accent color, footer, round minutes)
+- `clients` — name, colour, active flag, hourly rate, billing and contact data
+- `projects` — client, name, colour, status, rate override, budget, external number
+- `entries` — client, project, description, start, stop, heartbeat, tags, reference, billable flag, internal note, soft delete, cross-midnight link
+- `settings` — key/value store
 
-On startup the app auto-stops any entries where the heartbeat is older than 5 minutes (crash recovery).
+On start the app stops entries whose heartbeat is older than five minutes (crash recovery).
 
 ## Security
 
-- `contextIsolation: true`, `nodeIntegration: false`
-- All database access runs in the main process only
-- Renderer communicates exclusively via the typed Context Bridge (`window.api`)
-- Vulnerability reporting: see [SECURITY.md](SECURITY.md)
+- Renderer with `contextIsolation`, no Node integration, a strict Content Security Policy; all database access in the main process.
+- Links leave the app only as `http(s)` links; app windows never navigate away from the app.
+- Local interfaces (MCP write bridge, hardware keys, iCal feed) are off by default and protected by random tokens.
+- Releases are not code-signed; checksums and build provenance are published. The current Electron line (39) is out of support; the move to 44 follows after 1.22.
+- Reporting a vulnerability and the full scope: [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
@@ -300,7 +309,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, branch naming, and PR guid
 
 ## Privacy
 
-All data stays local. Only outbound call: auto-update check against `api.github.com`. No telemetry. See [PRIVACY.md](PRIVACY.md).
+All data stays local. In basic operation the only network request is the update
+check against GitHub; the integrations (Microsoft 365, MCP, webhooks, iCal feed,
+Stream Deck) send data only when you switch them on. No telemetry, no account.
+Details: [PRIVACY.md](PRIVACY.md).
 
 ## License
 

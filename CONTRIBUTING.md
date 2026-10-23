@@ -36,15 +36,16 @@ This is written down so the gap reads as a decision rather than as neglect — t
 
 ## Local development
 
-Requirements: **Node.js 20+**, **pnpm 10+**, Windows or macOS.
+Requirements: **Node.js 22** and **pnpm 10** (what CI uses), Windows or macOS.
 
 ```powershell
-pnpm install        # Dependencies + native Module bauen
-pnpm dev            # Electron + Vite Dev-Server starten
-pnpm test           # Vitest unit tests
-pnpm typecheck      # tsc --noEmit für alle tsconfig*-Projekte
+pnpm install        # dependencies + native modules (better-sqlite3 for Electron)
+pnpm dev            # Electron + Vite dev server
+pnpm test           # Vitest on the Electron binary in Node mode (see below)
+pnpm typecheck      # tsc --noEmit for all tsconfig projects
 pnpm lint           # ESLint
-pnpm build          # Production-Build (electron-builder, ohne Publish)
+pnpm build          # typecheck + MCP server + electron-vite build (no installer)
+pnpm build:unpack   # + unpacked app via electron-builder (dist/)
 ```
 
 App data lands locally in `%AppData%\time-tracking\` (Windows) or
@@ -189,9 +190,15 @@ finds forgotten spots.
 ## Release process (maintainers only)
 
 1. Merge stage PRs against `main` (squash).
-2. Bump the version in `package.json`, add to `CHANGELOG.md`.
-3. Set tag `v{X.Y.Z}`, push → GitHub Actions builds the release artifacts.
-4. Publish the release notes on GitHub → the auto-updater pulls it.
+2. Bump the version in `package.json`, turn `[Unreleased]` in `CHANGELOG.md` into the version heading.
+3. Push the tag `v{X.Y.Z}` on that commit (or start the Release workflow from the tag). The workflow
+   checks that tag, `package.json` and the built commit agree, builds Windows, macOS (arm64) and the
+   Stream Deck plugin, checks the package contents, runs the packaged smoke test, attests build
+   provenance and publishes the release with SHA-256 checksums.
+4. Check the published release (notes, assets, `gh attestation verify` on one installer) → the
+   auto-updater offers it to installed apps.
+
+Artifacts are not code-signed (see [SECURITY.md](./SECURITY.md#release-integrity)).
 
 ## License
 

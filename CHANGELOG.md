@@ -7,6 +7,20 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Breaking for MCP clients and integrations
+
+If you call TimeTrack's MCP tools from your own scripts or agents, or receive its webhooks, check these before updating. Details in the entries below.
+
+- **MCP write tools take times only with a zone.** `create_manual_entry`, `update_entry_fields` and `start_timer` refuse a `started_at` / `stopped_at` without an offset or `Z` (`2026-10-22T09:00:00`), a bare date and an impossible date — also in preview mode. Send e.g. `2026-10-22T09:00:00+02:00` or `2026-10-22T07:00:00Z`.
+- **`get_analytics` seconds are worked time, unrounded.** The seconds fields now hold the time actually worked; the rounded figures moved to the new fields `rounded_seconds` and `billable_rounded_seconds` (rounded per entry like the invoice).
+- **MCP `start_timer` switches.** With a timer running, it ends that entry exactly at the new start time (also a start in the past), refuses a start before the running entry began or more than a minute in the future, and its confirmation names the entry it ends.
+- **Webhooks: `timer.stopped` before `timer.started`.** A switch now sends `timer.stopped` for the ended entry before `timer.started` for the new one (from the app, the Stream Deck and MCP), and deliveries to one target go out one after another, so a receiver gets them in that order even when one needs a retry.
+- **Stream Deck plugin:** the dial shows worked time only after the plugin is updated as well (the plugin file is attached to the release). An older plugin keeps working against the new app and keeps showing the rounded values.
+
+### Known limitations
+
+- **MCP from the packaged macOS app is unverified** — Starting the MCP server from the installed macOS app (Electron in Node mode, entry inside `app.asar`) has been verified on Windows only; on macOS it is untested ([#145](https://github.com/wald-it/time-tracking/issues/145)). Reports from Mac users are welcome there.
+
 ### Security
 
 - **Electron 39.8.10, MCP SDK 1.32.1, electron-updater 6.8.11** — Updates within the current major versions. Electron 39.8.10 carries Chromium security fixes that 39.8.9 lacked. Electron 39 itself no longer receives updates; the move to a supported line (Electron 44) follows in its own release shortly after this one. The MCP SDK advisories concern its HTTP transports, which TimeTrack does not use (its MCP server talks over stdio); the update keeps the shipped package current anyway. electron-updater brings builder-util-runtime 9.7.0.
