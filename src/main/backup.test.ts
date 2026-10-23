@@ -377,7 +377,8 @@ describe('restoreListedBackupOrReport', () => {
 
   // #270: the refusal speaks the app language.
   it('refuses an unlisted name in the language it is given', async () => {
-    const { restoreListedBackupOrReport } = await loadBackup()
+    const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
+    listedBackup(getBackupsDir())
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: Array<[string, string]> = []
