@@ -41,7 +41,9 @@ export function I18nProvider({ children }: { children: React.ReactNode }): React
   // Sync locale with the stored value (shared rule, #296) until the user
   // picks one. Before the settings load (`undefined`) the default stays.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — ruft rohes window.api.settings.set, und settings:set sendet kein Push-Update — lokaler State ist die einzige Stelle, die von der Änderung erfährt (wie ThemeContext)
+    // Local state on purpose (#142): setLocale calls raw window.api.settings.set,
+    // and settings:set sends no push update, so this state is the only place
+    // that learns of the change (like ThemeContext).
     if (language !== undefined && !pickedRef.current) setLocaleState(localeFromSetting(language))
   }, [language])
 

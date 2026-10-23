@@ -48,19 +48,22 @@ describe('I18nProvider', () => {
     ;(window as unknown as { api: unknown }).api = {
       settings: { set: async () => ({ ok: true, data: undefined }) }
     }
-    let pick: ((l: 'de' | 'en') => Promise<void>) | null = null
     function Picker(): React.JSX.Element {
       const { locale, setLocale } = useLocale()
-      pick = setLocale
-      return <span data-testid="locale">{locale}</span>
+      return (
+        <>
+          <span data-testid="locale">{locale}</span>
+          <button onClick={() => void setLocale('en')}>en</button>
+        </>
+      )
     }
-    const { getByTestId } = render(
+    const { getByTestId, getByText } = render(
       <I18nProvider>
         <Picker />
       </I18nProvider>
     )
     await act(async () => {
-      await pick!('en')
+      getByText('en').click()
     })
     expect(getByTestId('locale').textContent).toBe('en')
     setLanguage('de')
