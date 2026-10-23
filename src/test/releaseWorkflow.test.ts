@@ -69,7 +69,7 @@ async function runInWorker(script: string, env: Record<string, string>): Promise
   // An uncaught exception ends the worker with code 1, like a crashing CLI:
   // its stack goes to stderr, and 'exit' follows. (Not `once(worker, 'exit')`,
   // which would reject on 'error' instead of reporting the exit code.)
-  worker.on('error', (e) => (stderr += String(e.stack ?? e)))
+  worker.on('error', (e: unknown) => (stderr += String((e as Error | null)?.stack ?? e)))
   const exited = new Promise<number>((resolve) => worker.once('exit', resolve))
   // The streams end after 'exit'; wait for both so no output is cut off.
   const [status] = await Promise.all([
@@ -130,7 +130,11 @@ async function runPlan(
   } catch {
     // no file written — asserted on below where it matters
   }
-  rmSync(dir, { recursive: true, force: true })
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  } catch {
+    // best effort: a scanner holding a just-written file must not fail the test
+  }
   return { status: proc.status, stderr: proc.stderr, outputs, notice, stdout: proc.stdout }
 }
 
