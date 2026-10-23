@@ -88,8 +88,9 @@ interface Intents {
    */
   possiblyOurs: Set<string>
   /**
-   * The start-up read found a message in our shape, left by a previous run
-   * (#317): withdraw it, recognised by shape since its exact text is gone.
+   * A message of ours may be in Teams whose exact text is not known: the
+   * start-up read found one in our form, left by a previous run (#317), or a
+   * sent text was dropped from `possiblyOurs`. Withdraw a message in our form.
    */
   shapeOwed: boolean
   /**
@@ -141,6 +142,34 @@ function codePoint(code: number, raw: string): string {
 }
 
 /**
+ * Named entities an HTML-returning Graph may use for what our messages and
+ * German client names contain: the " — " before the project, umlauts, ß,
+ * common accents. `&amp;` comes last, so `&amp;lt;` stays the text "&lt;".
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: ' ',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  mdash: '—',
+  ndash: '–',
+  hellip: '…',
+  auml: 'ä',
+  ouml: 'ö',
+  uuml: 'ü',
+  Auml: 'Ä',
+  Ouml: 'Ö',
+  Uuml: 'Ü',
+  szlig: 'ß',
+  eacute: 'é',
+  egrave: 'è',
+  aacute: 'á',
+  agrave: 'à',
+  ccedil: 'ç'
+}
+
+/**
  * Graph content of contentType "html" as plain text. How Graph returns a
  * message set as contentType "text" has not been observed against a real
  * tenant: as set, or as HTML (`<p>…</p>`, `&nbsp;`, entities). Graph names the
@@ -151,10 +180,7 @@ function fromHtml(content: string): string {
   return flat(
     content
       .replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
+      .replace(/&([a-z]+);/gi, (raw, name: string) => NAMED_ENTITIES[name] ?? raw)
       .replace(/&#39;/g, "'")
       .replace(/&#x([0-9a-f]+);/gi, (raw, hex: string) => codePoint(parseInt(hex, 16), raw))
       .replace(/&#(\d+);/g, (raw, dec: string) => codePoint(Number(dec), raw))
@@ -406,7 +432,7 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
         statusMessage: { message: { content: '', contentType: 'text' } }
       })
       if (!cleared) return
-      if (byShape) log('presence: withdrew a status message left from a previous run')
+      if (byShape) log('presence: withdrew a status message recognised by its form')
     } else if (text !== null) {
       log('presence: status message was changed in Teams — left as is')
     }

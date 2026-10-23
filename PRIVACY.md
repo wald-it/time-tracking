@@ -103,14 +103,15 @@ finds a new version, the app downloads it in the background as above.
   no timer runs; signed out, TimeTrack sends nothing. If the app quits or
   crashes while a timer runs, TimeTrack withdraws its own message at the next
   start, or later in that run when you first switch **Mirror Teams status** on:
-  at the first status update with the feature on it reads your presence, clears
-  a message in its own form (or replaces it, if a timer runs) and ends its own
-  Busy status. It ends that Busy status once per run at this point, whether
-  Teams shows it or not, because an availability you set in Teams can hide it;
-  if the feature stays off for the whole run, this does not happen. It recognises its message by its
-  form ("🔴 Fokus" or "🔴 Focus", alone or followed by a colon and a client),
-  so a message you typed in exactly that form yourself is cleared then too. If
-  it cannot reach Teams at that start, it tries again at the next status
+  at the first status update with the feature on it reads your presence. If no
+  timer runs then, it clears a message in its own form and ends its own Busy
+  status, whether Teams shows it or not, because an availability you set in
+  Teams can hide it; if a timer runs, it sets its status, which replaces both.
+  If the feature stays off for the whole run, none of this happens. It also
+  recognises a message by its form ("🔴 Fokus" or "🔴 Focus", alone or followed
+  by a colon and a client) when it has lost track of the exact text after many
+  failed requests in a row. So a message you typed in exactly that form
+  yourself can be cleared too. If it cannot reach Teams at that start, it tries again at the next status
   update. If you disconnect the account while a timer runs, nothing clears them
   until you reconnect and the next status update comes, TimeTrack sets your
   status again, or they expire: the Busy status after at most an hour, the
@@ -118,10 +119,12 @@ finds a new version, the app downloads it in the background as above.
 - **On several devices:** use **Mirror Teams status** on one device at a time.
   Teams knows one presence session per app ("Provide the ID of the application
   as sessionId", Microsoft Graph documentation), so all devices signed in to
-  the same account share it and write the same status message. The device
-  that last starts or stops a timer decides what Teams shows, and a device
-  that starts up takes another device's live status for a leftover of its own
-  and clears it.
+  the same account share it and write the same status message, so they get
+  in each other's way. A device that starts a timer replaces the other's
+  status; a device that stops one ends the shared Busy status, so the other
+  device's message can stay up without Busy until that device renews its
+  status (within about 25 minutes); and a device that starts up takes another
+  device's live status for a leftover of its own and clears it.
 - **Tokens:** stored in a separate file in the data folder, encrypted by the
   operating system (DPAPI / Keychain), not part of backups or exports.
   **Disconnect** deletes that file; revoking the app's access in your Microsoft

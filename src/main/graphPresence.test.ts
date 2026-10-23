@@ -438,6 +438,46 @@ describe('reconcilePresence', () => {
     expect(logs.some((l) => l.includes('reconcile failed'))).toBe(true)
   })
 
+  it('a set whose Busy failed is retried at the next poke, even when its text was applied before (#331)', async () => {
+    const t0 = 1_750_000_000_000
+    // Client shown, so the switch to Beta is a different text.
+    const at = (min: number): ReturnType<typeof makeDeps>['deps'] => {
+      const d = makeDeps({ now: t0 + min * 60 * 1000, showClient: true }).deps
+      d.fetchFn = fetchFn
+      return d
+    }
+    const base = makeDeps({ now: t0, showClient: true })
+    let failSet = false
+    let failPresence = false
+    const inner = base.deps.fetchFn!
+    const fetchFn = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (failSet && u.endsWith('/setStatusMessage')) return new Response('', { status: 503 })
+      if (failPresence && u.endsWith('/setPresence')) return new Response('', { status: 503 })
+      return inner(url, init)
+    }) as typeof fetch
+    base.deps.fetchFn = fetchFn
+
+    await reconcilePresence(base.deps, RUNNING) // Acme + Busy, confirmed
+    failSet = true
+    await reconcilePresence(at(1), { ...RUNNING, client_name: 'Beta' }) // lost before Teams
+    failSet = false
+    teams.availability = 'Available' // our Busy session expired meanwhile
+    failPresence = true
+    await reconcilePresence(at(2), RUNNING) // message confirmed again, Busy fails
+    failPresence = false
+    await reconcilePresence(at(3), RUNNING) // within 25 minutes of the first set
+    expect(teams.availability).toBe('Busy')
+  })
+
+  it('an HTML-returned message with named entities is still recognised as ours (#331)', async () => {
+    teams.html = true
+    const { deps } = makeDeps({ showClient: true })
+    await reconcilePresence(deps, { ...RUNNING, client_name: 'Müller' })
+    await reconcilePresence(deps, null)
+    expect(teams.content).toBeNull()
+  })
+
   it('a text dropped from the remembered ones is still withdrawn, by its form (#331)', async () => {
     // Nine client switches on a bad line: the first text reaches Teams, the
     // next eight never do. Only eight texts are remembered exactly, so the

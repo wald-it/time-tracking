@@ -95,7 +95,7 @@ interface Teams {
 
 type Outcome = 'ok' | 'lostBefore' | 'lostAfter'
 
-const CLIENTS = ['Acme', 'Beta', 'Gamma']
+const CLIENTS = ['Acme', 'Beta', 'Müller']
 const USER_TEXTS = ['Back at 3', 'Out until Monday', '<OOO>', 'In a workshop']
 /** Messages a user could type that are exactly in TimeTrack's form. */
 const USER_TEXTS_IN_OUR_FORM = ['🔴 Fokus', '🔴 Fokus: Acme — Rollout']
@@ -109,6 +109,8 @@ function asHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/🔴/g, '&#x1F534;')
+    .replace(/—/g, '&mdash;')
+    .replace(/ü/g, '&uuml;')
     .replace(/ /g, '&nbsp;')
   return `<p>${escaped}</p>`
 }
@@ -356,12 +358,39 @@ async function runSequence(
     await poke(`step ${step}`)
   }
 
-  // Calm phase: healthy network, signed in, timer stopped, a few pokes.
+  // From here the network is healthy and the account signed in.
   failRate = 0
   w.connected = true
   w.hasToken = true
+
+  // (v) Liveness, straight from whatever state the sequence left: with the
+  // feature on and a timer running, TimeTrack ends up showing its status, and
+  // still does after the 25-minute renewal. A guard that skips too eagerly,
+  // or a set that loses its Busy, keeps every other check green.
+  const enabledAtEnd = w.enabled
+  w.enabled = true
+  timer = running(pick(CLIENTS))
+  const expected = desiredMessage(timer, w.showClient, 'de')
+  w.log.push(
+    `live: feature on, timer ${timer.client_name}, expect ${JSON.stringify(expected)} + Busy`
+  )
+  for (let i = 0; i < CALM_POKES; i++) {
+    w.now += 60 * 1000
+    await poke(`live ${i}`)
+  }
+  w.now += 26 * 60 * 1000
+  await poke('live after renewal')
+  if (w.teams.content !== expected || w.teams.author !== 'tt' || !w.teams.session) {
+    w.violations.push(
+      `(v) live status missing: message ${JSON.stringify(w.teams.content)}, Busy ${w.teams.session}`
+    )
+  }
+
+  // Calm phase: the feature switch back as the sequence left it, timer
+  // stopped, a few pokes. Then the clean-up invariants.
+  w.enabled = enabledAtEnd
   timer = null
-  w.log.push('calm: timer stopped, signed in, network healthy')
+  w.log.push(`calm: timer stopped, feature ${w.enabled ? 'on' : 'off'}`)
   for (let i = 0; i < CALM_POKES; i++) {
     w.now += 60 * 1000
     await poke(`calm ${i}`)
@@ -377,25 +406,6 @@ async function runSequence(
   }
   if (w.teams.session && (w.enabled || w.knownSession)) {
     w.violations.push(`(iii) Busy session left (feature ${w.enabled ? 'on' : 'off'})`)
-  }
-
-  // (v) Liveness: whatever the sequence did, with the feature on and a timer
-  // running TimeTrack ends up showing its status. A guard that skips too
-  // eagerly, or a set that loses its Busy, keeps every other check green.
-  w.enabled = true
-  timer = running(pick(CLIENTS))
-  const expected = desiredMessage(timer, w.showClient, 'de')
-  w.log.push(
-    `live: feature on, timer ${timer.client_name}, expect ${JSON.stringify(expected)} + Busy`
-  )
-  for (let i = 0; i < CALM_POKES; i++) {
-    w.now += 60 * 1000
-    await poke(`live ${i}`)
-  }
-  if (w.teams.content !== expected || w.teams.author !== 'tt' || !w.teams.session) {
-    w.violations.push(
-      `(v) live status missing: message ${JSON.stringify(w.teams.content)}, Busy ${w.teams.session}`
-    )
   }
   return { violations: w.violations, exceptions: w.exceptions, log: w.log }
 }
