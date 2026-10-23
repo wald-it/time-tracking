@@ -47,9 +47,20 @@ const unexpected = [...new Set(files.map((f) => f.split('/')[0]))].filter(
 )
 const missing = REQUIRED.filter((r) => !fileSet.has(r))
 
-if (unexpected.length || missing.length) {
+// #269: exactly the native SQLite binary of the platform that built the
+// package (this script runs on the build runner), none of the other seven.
+const PREBUILDS = 'node_modules/better-sqlite3/prebuilds/'
+const ownPrebuild = `${PREBUILDS}${process.platform}-${process.arch}.node`
+const prebuilds = files.filter((f) => f.startsWith(PREBUILDS) && f.endsWith('.node'))
+const prebuildProblem =
+  prebuilds.length === 1 && prebuilds[0] === ownPrebuild
+    ? null
+    : `expected only ${ownPrebuild}, found [${prebuilds.join(', ')}]`
+
+if (unexpected.length || missing.length || prebuildProblem) {
   if (unexpected.length) console.error(`Unexpected top-level entries: ${unexpected.join(', ')}`)
   if (missing.length) console.error(`Missing runtime files: ${missing.join(', ')}`)
+  if (prebuildProblem) console.error(`Native SQLite binaries: ${prebuildProblem}`)
   process.exit(1)
 }
 console.log(`Package contents ok: ${files.length} entries under ${[...ALLOWED_TOP].join(', ')}`)

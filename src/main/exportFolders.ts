@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
-import { existsSync, statSync } from 'fs'
+import log from 'electron-log/main'
+import { stat } from 'fs/promises'
 import { dirname, isAbsolute, join } from 'path'
 
 /**
@@ -12,8 +13,9 @@ import { dirname, isAbsolute, join } from 'path'
  * across restarts (owner decision 2026-10-23).
  *
  * One settings row, `export_folders`, holds a JSON object `{ kind: folder }`.
- * Only the main process writes it (after a successful save dialog), so it is
- * not on the renderer allow-list in settingsWrite.ts.
+ * Only the main process writes it (after a successful save), so it is not on
+ * the renderer allow-list in settingsWrite.ts, and the JSON data export leaves
+ * it out (jsonExport.ts).
  */
 export type ExportKind = 'csv' | 'ical' | 'json' | 'pdf'
 
@@ -34,9 +36,14 @@ function readFolders(db: Database.Database): Folders {
   }
 }
 
-function isFolder(path: string): boolean {
+/**
+ * Asynchronous on purpose: the remembered folder may sit on a network share
+ * that is offline, and a synchronous stat of an unreachable path can block the
+ * main process (window, tray, timer) for many seconds.
+ */
+async function isFolder(path: string): Promise<boolean> {
   try {
-    return existsSync(path) && statSync(path).isDirectory()
+    return (await stat(path)).isDirectory()
   } catch {
     return false
   }
@@ -48,26 +55,34 @@ function isFolder(path: string): boolean {
  * it no longer exists (a removed USB drive, a renamed folder), it is the bare
  * file name and the dialog opens where Electron opens it (Downloads).
  */
-export function exportDefaultPath(
+export async function exportDefaultPath(
   db: Database.Database,
   kind: ExportKind,
   fileName: string
-): string {
+): Promise<string> {
   const folder = readFolders(db)[kind]
-  return typeof folder === 'string' && isAbsolute(folder) && isFolder(folder)
+  return typeof folder === 'string' && isAbsolute(folder) && (await isFolder(folder))
     ? join(folder, fileName)
     : fileName
 }
 
-/** Remember the folder of a file the user just chose in a save dialog. */
+/**
+ * Remember the folder of a file the user just saved. A convenience: if the
+ * settings write fails, the export it follows has still succeeded, so the
+ * error is logged and swallowed rather than reported as a failed export.
+ */
 export function rememberExportFolder(
   db: Database.Database,
   kind: ExportKind,
   filePath: string
 ): void {
-  const folders = { ...readFolders(db), [kind]: dirname(filePath) }
-  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(
-    EXPORT_FOLDERS_SETTING,
-    JSON.stringify(folders)
-  )
+  try {
+    const folders = { ...readFolders(db), [kind]: dirname(filePath) }
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(
+      EXPORT_FOLDERS_SETTING,
+      JSON.stringify(folders)
+    )
+  } catch (error) {
+    log.warn(`[export] could not remember the ${kind} export folder:`, error)
+  }
 }

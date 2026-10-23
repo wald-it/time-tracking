@@ -72,7 +72,7 @@ export async function handleCsvExport(
 
     const result = await dialog.showSaveDialog({
       title: 'CSV speichern',
-      defaultPath: exportDefaultPath(
+      defaultPath: await exportDefaultPath(
         db,
         'csv',
         `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.csv`

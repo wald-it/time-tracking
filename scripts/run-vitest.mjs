@@ -41,12 +41,14 @@ try {
   electronPath = require('electron')
 } catch (cause) {
   fail([
-    'Cannot run the test suite: the Electron binary is missing.',
+    'Cannot run the test suite: the Electron binary is missing and could not be',
+    'downloaded.',
     '',
-    'Tests run on Electron so that they run in the runtime the app ships.',
-    'Reinstall dependencies first:',
+    'Tests run on Electron so that they run in the runtime the app ships. Since',
+    'Electron 42, `pnpm install` does not fetch the binary; it is downloaded on',
+    'first use, which needs network access. Fetch it explicitly:',
     '',
-    '    pnpm install',
+    '    pnpm exec install-electron --no',
     '',
     `Underlying error: ${cause?.message ?? cause}`
   ])

@@ -837,7 +837,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const today = new Date().toISOString().slice(0, 10)
       const result = await dialog.showSaveDialog({
         title: 'Datenexport speichern',
-        defaultPath: exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
+        defaultPath: await exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
@@ -885,7 +885,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         }
         const result = await dialog.showSaveDialog({
           title: 'Stundennachweis speichern',
-          defaultPath: exportDefaultPath(
+          defaultPath: await exportDefaultPath(
             db,
             'pdf',
             `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`

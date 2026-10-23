@@ -87,7 +87,7 @@ export async function handleIcalExport(
 
     const result = await dialog.showSaveDialog({
       title: 'iCal speichern',
-      defaultPath: exportDefaultPath(
+      defaultPath: await exportDefaultPath(
         db,
         'ical',
         `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.ics`

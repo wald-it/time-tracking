@@ -13,8 +13,10 @@ export interface JsonExportPayload {
  * goes as a whole — besides the HMAC secret, a webhook URL is often a secret
  * itself (Slack, Discord, Teams, Zapier and n8n put the token in the path or
  * query), and with no importer for this file the targets are of no use in it.
+ * `export_folders` (#269) holds the folders of the last exports — local paths
+ * that often name clients — and is of no use outside this machine.
  */
-const OMITTED_SETTING_KEYS = new Set(['ical_feed_token', 'webhook_targets'])
+const OMITTED_SETTING_KEYS = new Set(['ical_feed_token', 'webhook_targets', 'export_folders'])
 
 /**
  * Any key that names a secret is left out too, so a secret stored later under
