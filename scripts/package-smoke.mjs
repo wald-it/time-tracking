@@ -44,7 +44,11 @@ function parseArgs(argv) {
   for (let i = 0; i < rest.length; i += 2) {
     const key = rest[i]
     if (!key?.startsWith('--') || rest[i + 1] === undefined) {
-      throw new ProbeError(`bad argument near "${key ?? ''}"`)
+      throw new ProbeError(
+        `bad argument near "${key ?? ''}"\n` +
+          'usage: package-smoke.mjs smoke --exe <binary>\n' +
+          '       package-smoke.mjs mcp --exe <binary> --entry <server.js> [--server-source <file>] [--timeout-ms <ms>]'
+      )
     }
     opts[key.slice(2)] = rest[i + 1]
   }
@@ -87,13 +91,54 @@ function relayLines(stream, prefix, onLine = () => {}) {
   })
 }
 
-/** Spawn, turning a missing or non-executable binary into a ProbeError. */
+/** How long to wait for the stdio pipes to drain once the process is gone. */
+const DRAIN_GRACE_MS = 2000
+
+/**
+ * Spawn, turning a missing binary into a ProbeError. `child.ended` resolves
+ * with `{ code, signal, error }` once the process is gone and its output is
+ * drained — or, if a grandchild keeps the pipes open so that 'close' never
+ * comes, DRAIN_GRACE_MS after 'exit'. It never waits on 'close' alone.
+ */
 function start(exe, args, options) {
   if (!existsSync(exe)) throw new ProbeError(`binary not found at ${exe}`)
-  const child = spawn(exe, args, options)
-  // Resolves with the spawn error, if any; 'close' still follows it.
-  child.spawnError = new Promise((resolve) => child.once('error', resolve))
+  let child
+  try {
+    child = spawn(exe, args, options)
+  } catch (error) {
+    // Windows rejects a file that is not an executable image synchronously
+    // (`spawn UNKNOWN`); elsewhere the same failure arrives as 'error'.
+    throw startFailure(exe, { error })
+  }
+  child.ended = new Promise((resolve) => {
+    let result = null
+    let grace = null
+    const finish = () => {
+      clearTimeout(grace)
+      resolve(result)
+    }
+    // The first error is a spawn failure. The listener stays for the
+    // lifetime of the child, so a later one (from kill()) cannot go unhandled.
+    child.on('error', (error) => {
+      if (result) return
+      result = { code: null, signal: null, error }
+      grace = setTimeout(finish, DRAIN_GRACE_MS)
+    })
+    child.on('exit', (code, signal) => {
+      if (!result) result = { code, signal, error: null }
+      clearTimeout(grace)
+      grace = setTimeout(finish, DRAIN_GRACE_MS)
+    })
+    child.on('close', (code, signal) => {
+      if (!result) result = { code, signal, error: null }
+      finish()
+    })
+  })
   return child
+}
+
+function startFailure(exe, ended) {
+  return new ProbeError(`could not start ${exe}: ${ended.error.message}`)
 }
 
 async function runSmoke(dir, exe, timeoutMs) {
@@ -104,20 +149,17 @@ async function runSmoke(dir, exe, timeoutMs) {
   const out = join(dir, 'smoke.json')
   console.log(`Running smoke test: ${exe} --smoke-test=${out}`)
   const child = start(exe, [`--smoke-test=${out}`], { stdio: 'inherit' })
-  let spawnError = null
-  child.spawnError.then((e) => (spawnError = e))
-  const code = await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL')
-      resolve('timeout')
-    }, timeoutMs)
-    child.on('close', (c, signal) => {
-      clearTimeout(timer)
-      resolve(signal ? 1 : (c ?? 1))
-    })
-  })
-  if (spawnError) throw new ProbeError(`could not start ${exe}: ${spawnError.message}`)
-  if (code === 'timeout') throw new ProbeError(`smoke test timed out after ${timeoutMs} ms`)
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    child.kill('SIGKILL')
+  }, timeoutMs)
+  // Waits for the killed process too, so cleanup does not race a live app.
+  const ended = await child.ended
+  clearTimeout(timer)
+  if (ended.error) throw startFailure(exe, ended)
+  if (timedOut) throw new ProbeError(`smoke test timed out after ${timeoutMs} ms`)
+  const code = ended.signal ? 1 : (ended.code ?? 1)
   let report
   try {
     report = JSON.parse(readFileSync(out, 'utf8'))
@@ -155,10 +197,9 @@ async function runMcp(dir, exe, entry, expected, timeoutMs) {
 
   const responses = new Map()
   const waiters = new Map()
-  // Set on 'close', which fires only after stdout and stderr are drained, so
-  // an answer written just before the exit is never mistaken for a missing one.
+  // Set from `child.ended`, which waits for stdout to drain, so an answer
+  // written just before the exit is never mistaken for a missing one.
   let closed = null
-  let spawnError = null
   relayLines(child.stdout, '[stdout]', (line) => {
     let msg
     try {
@@ -173,16 +214,12 @@ async function runMcp(dir, exe, entry, expected, timeoutMs) {
   })
   relayLines(child.stderr, '[stderr]')
   // A server that is gone makes writes fail with EPIPE; that is reported
-  // through 'close' below, not as an uncaught exception.
+  // through `child.ended` below, not as an uncaught exception.
   child.stdin.on('error', () => {})
-  child.spawnError.then((e) => (spawnError = e))
-  const closedPromise = new Promise((resolve) =>
-    child.on('close', (code, signal) => {
-      closed = { code, signal }
-      for (const w of [...waiters.values()]) w()
-      resolve()
-    })
-  )
+  const endedPromise = child.ended.then((result) => {
+    closed = result
+    for (const w of waiters.values()) w()
+  })
 
   const deadline = Date.now() + timeoutMs
   const send = (msg) => {
@@ -202,11 +239,13 @@ async function runMcp(dir, exe, entry, expected, timeoutMs) {
         clearTimeout(timer)
         waiters.delete(id)
         if (responses.has(id)) resolve(responses.get(id))
-        else if (spawnError) {
-          reject(new ProbeError(`could not start ${exe}: ${spawnError.message}`))
-        } else {
+        else if (closed.error) reject(startFailure(exe, closed))
+        else {
+          const { code, signal } = closed
           reject(
-            new ProbeError(`server exited (${JSON.stringify(closed)}) before answering ${method}`)
+            new ProbeError(
+              `server exited (${JSON.stringify({ code, signal })}) before answering ${method}`
+            )
           )
         }
       })
@@ -249,9 +288,9 @@ async function runMcp(dir, exe, entry, expected, timeoutMs) {
 
   if (!closed) child.stdin.end()
   const killTimer = setTimeout(() => child.kill('SIGKILL'), 5000)
-  await closedPromise
+  await endedPromise
   clearTimeout(killTimer)
-  console.log(`MCP server exit: ${JSON.stringify(closed)}`)
+  console.log(`MCP server exit: ${JSON.stringify({ code: closed.code, signal: closed.signal })}`)
   if (problem) throw problem
   console.log('MCP probe passed')
 }
@@ -282,7 +321,13 @@ async function main() {
   try {
     await run(dir)
   } finally {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    // A leftover handle must neither hide the probe's own error nor turn a
+    // passing run red; the temp dir is the runner's to discard.
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    } catch (e) {
+      console.warn(`warning: could not remove ${dir}: ${e?.message ?? e}`)
+    }
   }
 }
 

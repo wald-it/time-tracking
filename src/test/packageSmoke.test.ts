@@ -27,7 +27,8 @@ const mode = process.env.FAKE_MODE
 const tools = process.env.FAKE_TOOLS.split(',')
 process.stderr.write('[fake] up\\n')
 if (mode === 'crash') {
-  process.stderr.write('[fake] Fatal: boom\\n')
+  // No final newline: the probe must flush the unterminated last line.
+  process.stderr.write('[fake] Fatal: boom')
   process.exit(1)
 }
 // The probe must hand over Node mode, an existing temp DB and temp userData.
@@ -58,6 +59,9 @@ rl.on('line', (line) => {
 rl.on('close', () => process.exit(0))
 `
 
+/** Upper bound for one probe run: its own deadline plus two process starts. */
+const PROBE_LIMIT_MS = 90_000
+
 function probe(
   mode: string,
   tools: string[],
@@ -86,12 +90,14 @@ function probe(
         '--server-source',
         opts.source ?? source,
         '--timeout-ms',
-        '3000'
+        // Short only where the deadline is the point: a cold Electron start
+        // on a busy runner can take several seconds before it answers.
+        mode === 'silent' ? '3000' : '20000'
       ],
       {
         env: { ...process.env, FAKE_MODE: mode, FAKE_TOOLS: tools.join(',') },
         encoding: 'utf8',
-        timeout: 30_000
+        timeout: PROBE_LIMIT_MS
       }
     )
     return { status: proc.status, output: `${proc.stdout}\n${proc.stderr}` }
@@ -102,7 +108,7 @@ function probe(
 
 const TOOLS = ['list_clients', 'get_dashboard']
 
-describe('package-smoke mcp probe', () => {
+describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => {
   it('passes against a server that lists every registered tool and reaches SQLite', () => {
     const r = probe('ok', TOOLS)
     expect(r.output).toContain('MCP probe passed')
@@ -140,6 +146,20 @@ describe('package-smoke mcp probe', () => {
     const r = probe('ok', TOOLS, { exe: join(tmpdir(), 'no-such-dir', 'TimeTrack.exe') })
     expect(r.status).toBe(1)
     expect(r.output).toContain('ERROR: binary not found at')
+  })
+
+  it('fails with a plain message when the binary exists but cannot be started', () => {
+    // A text file: not an executable image on Windows, no exec bit on macOS.
+    const dir = mkdtempSync(join(tmpdir(), 'package-smoke-exe-'))
+    try {
+      const notAnApp = join(dir, 'TimeTrack.exe')
+      writeFileSync(notAnApp, 'not a program\n')
+      const r = probe('ok', TOOLS, { exe: notAnApp })
+      expect(r.status).toBe(1)
+      expect(r.output).toContain(`ERROR: could not start ${notAnApp}`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('reads every tool the real server source registers', () => {
