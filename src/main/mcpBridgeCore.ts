@@ -11,8 +11,8 @@ import type Database from 'better-sqlite3'
 import {
   createManualEntry,
   updateManualEntry,
-  startTimer,
   switchTimer,
+  FUTURE_START_TOLERANCE_MS,
   stopRunningTimer,
   validateManualEntry,
   validateProjectForClient
@@ -26,6 +26,7 @@ import type {
 import type { McpAuditEntry } from './mcpAudit'
 import { readRoundMinutes, readRoundedTotals, readTotals } from './dashboardTotals'
 import {
+  formatLocalClock,
   formatLocalMoment,
   formatLocalSpan,
   offsetHint,
@@ -177,6 +178,11 @@ interface Plan {
   hints?: OffsetHints
   run: () => { ok: true; data: Entry | null } | { ok: false; error: string }
   audit: (result: Entry | null) => McpAuditEntry
+  /**
+   * The webhooks to emit after the commit, in order. Absent: one event for
+   * the op with its result. `start_timer` names the entry it ended first.
+   */
+  webhooks?: (result: Entry | null) => Array<[WriteOp, Entry | null]>
 }
 
 /** Build an executable plan for an op, or return an error string. */
@@ -355,9 +361,31 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
         const pErr = validateProjectForClient(db, input.project_id, input.client_id)
         if (pErr) return { error: pErr }
       }
+      // switchTimer refuses both again at run time; checked here as well so
+      // the preview says so and no confirmation is asked for a doomed write.
+      if (Date.parse(input.started_at) > Date.now() + FUTURE_START_TOLERANCE_MS) {
+        return { error: 'Startzeit liegt in der Zukunft' }
+      }
+      // The running entry ends at the new start (switchTimer, B1) — the owner
+      // confirms that too, with a start in the past even retroactively.
+      const running = db
+        .prepare(
+          `SELECT e.id, e.started_at, c.name AS client_name
+             FROM entries e JOIN clients c ON c.id = e.client_id
+            WHERE e.stopped_at IS NULL AND e.deleted_at IS NULL
+            ORDER BY e.started_at DESC LIMIT 1`
+        )
+        .get() as { id: number; started_at: string; client_name: string } | undefined
+      if (running && Date.parse(running.started_at) > Date.parse(input.started_at)) {
+        return { error: 'Startzeit liegt vor dem Beginn des laufenden Eintrags' }
+      }
+      const ends = running
+        ? `; beendet #${running.id} (${running.client_name}) um ${formatLocalClock(input.started_at)}`
+        : ''
+      let stopped: Entry | null = null
       return {
         summary: withHints(
-          `Timer starten — Kunde ${input.client_id}, ${given ? `ab ${formatLocalMoment(input.started_at)}` : 'ab jetzt'}: "${input.description}"`,
+          `Timer starten — Kunde ${input.client_id}, ${given ? `ab ${formatLocalMoment(input.started_at)}` : 'ab jetzt'}: "${input.description}"${ends}`,
           hints
         ),
         preview: {
@@ -366,16 +394,38 @@ function planOp(db: Db, op: WriteOp, args: Record<string, unknown>): Plan | { er
           started_at: input.started_at,
           started_local: toLocalIso(input.started_at),
           project_id: input.project_id,
+          stops: running
+            ? {
+                id: running.id,
+                client_name: running.client_name,
+                stopped_at: input.started_at,
+                stopped_local: toLocalIso(input.started_at)
+              }
+            : null,
           ...hintPreview(hints)
         },
         hints,
-        run: () => startTimer(db, input),
+        run: () => {
+          const r = switchTimer(db, input)
+          if (!r.ok) return r
+          stopped = r.data.stopped
+          return { ok: true, data: r.data.entry }
+        },
         audit: (r) => ({
           op,
           id: r?.id ?? null,
           client_id: input.client_id,
           started_at: input.started_at
-        })
+        }),
+        // Same order as the app and controller paths: the receiver hears
+        // timer.stopped for the ended entry before timer.started.
+        webhooks: (r) =>
+          stopped
+            ? [
+                ['stop_running_timer', stopped],
+                [op, r]
+              ]
+            : [[op, r]]
       }
     }
     case 'stop_running_timer': {
@@ -615,7 +665,8 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
   ctx.onChange()
   ctx.audit(plan.audit(result.data))
   // Same emission point as the IPC handlers, one level up from the mutation.
-  ctx.emitWebhook?.(req.op as WriteOp, result.data)
+  const events = plan.webhooks?.(result.data) ?? [[req.op as WriteOp, result.data]]
+  for (const [event, entry] of events) ctx.emitWebhook?.(event, entry)
   if (plan.hints && Object.keys(plan.hints).length) {
     return { ok: true, data: { ...(result.data ?? {}), zeit_hinweise: plan.hints } }
   }

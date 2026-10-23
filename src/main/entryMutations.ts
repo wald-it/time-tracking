@@ -235,8 +235,12 @@ export function updateManualEntry(db: Db, input: UpdateEntryInput): IpcResult<En
  * open the quick-note prompt for it.
  *
  * A start before the running entry's own start is refused — stopping there
- * would give the old entry a negative duration.
+ * would give the old entry a negative duration. So is a start more than
+ * `FUTURE_START_TOLERANCE_MS` ahead: the running entry would end in the
+ * future (MCP `start_timer` takes a free `started_at`).
  */
+export const FUTURE_START_TOLERANCE_MS = 60_000
+
 export function switchTimer(db: Db, input: CreateEntryInput): IpcResult<SwitchTimerResult> {
   const clientRow = db.prepare(`SELECT id FROM clients WHERE id = ?`).get(input.client_id) as
     | { id: number }
@@ -253,6 +257,9 @@ export function switchTimer(db: Db, input: CreateEntryInput): IpcResult<SwitchTi
   // wrong day or month.
   const start = new Date(input.started_at)
   if (Number.isNaN(start.getTime())) return fail('Startzeit ist ungültig')
+  if (start.getTime() > Date.now() + FUTURE_START_TOLERANCE_MS) {
+    return fail('Startzeit liegt in der Zukunft')
+  }
   const startedAt = start.toISOString()
   const running = db
     .prepare(`SELECT id, started_at, deleted_at FROM entries WHERE stopped_at IS NULL`)

@@ -292,4 +292,12 @@ describe('QuickStart — project list', () => {
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Timer für Acme, Audit starten' }))
     expect(screen.getByRole('menu')).toBeTruthy()
   })
+  it('a click on the main area while the list is open starts and closes the list', () => {
+    const { onStart } = setup()
+    fireEvent.click(toggleFor('Acme'))
+    expect(screen.getByRole('menu')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Timer für Acme, Audit starten' }))
+    expect(onStart).toHaveBeenCalledWith(1, 11)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
 })

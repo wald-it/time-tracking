@@ -419,4 +419,22 @@ describe('switchTimer (B1)', () => {
     const n = db.prepare(`SELECT COUNT(*) AS n FROM entries`).get() as { n: number }
     expect(n.n).toBe(1)
   })
+
+  it('refuses a start more than a minute ahead, accepts one within the minute', () => {
+    startTimer(db, { client_id: 1, description: '', started_at: '2026-06-10T09:00:00.000Z' })
+    const far = switchTimer(db, {
+      client_id: 2,
+      description: '',
+      started_at: new Date(Date.now() + 10 * 60_000).toISOString()
+    })
+    expect(far).toEqual({ ok: false, error: 'Startzeit liegt in der Zukunft' })
+    const running = db.prepare(`SELECT client_id FROM entries WHERE stopped_at IS NULL`).all()
+    expect(running).toEqual([{ client_id: 1 }])
+    const near = switchTimer(db, {
+      client_id: 2,
+      description: '',
+      started_at: new Date(Date.now() + 30_000).toISOString()
+    })
+    expect(near.ok).toBe(true)
+  })
 })

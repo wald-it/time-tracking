@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { Client, DashboardSummary, Project } from '../../../../shared/types'
 import { useUiPrefsStore } from '../../store/uiPrefsStore'
 import { useT } from '../../contexts/I18nContext'
+import { formatSecondsHm } from '../../../../shared/currency'
 import {
   buildRows,
   initialIndex,
@@ -235,6 +236,8 @@ function PresetKey({
       return
     }
     cancelHold()
+    // A start from the main area while the list is open closes the list too.
+    if (open) onOpenChange(false)
     if (locked) return
     if (action.kind === 'start') onStart(clientId, action.projectId)
     else if (action.kind === 'switch') onSwitch(clientId, action.projectId)
@@ -397,7 +400,7 @@ function PresetKey({
             </span>
           ) : (
             <span className="font-num flex-none text-xs text-[var(--ink2)]">
-              {formatHMM(seconds)}
+              {formatSecondsHm(seconds)}
             </span>
           )}
         </button>
@@ -556,12 +559,4 @@ const LEGEND: React.CSSProperties = {
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
   fontStretch: '118%'
-}
-
-/** `H:MM` — hours over 30 days, as in the mockup (`48:20`). */
-function formatHMM(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds))
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  return `${h}:${String(m).padStart(2, '0')}`
 }
