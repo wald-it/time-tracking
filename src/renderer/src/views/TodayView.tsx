@@ -134,6 +134,9 @@ export default function TodayView(): React.JSX.Element {
     const res = await window.api.entries.delete(entry.id)
     if (!res.ok) {
       showToast(t('common.entryDeleteFailed', { error: res.error }))
+      // The row may be gone already (deleted in another view): reload so it
+      // does not stay on screen (#323).
+      useEntriesStore.getState().bumpVersion()
       return
     }
     useEntriesStore.getState().bumpVersion()

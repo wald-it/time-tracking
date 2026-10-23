@@ -386,7 +386,8 @@ export function deleteEntry(db: Db, id: number): IpcResult<void> {
     | undefined
   // A row already in the trash (a view that has not refreshed) is not deleted
   // again: its sibling would get a new time and undo would restore the wrong
-  // rows. Same answer as editing a trashed entry.
+  // rows. The answer is the same as MCP `update_entry_fields` gives for a
+  // trashed entry.
   if (!row || row.deleted_at !== null) return fail('Eintrag existiert nicht')
   const now = new Date().toISOString()
   if (row.link_id) {

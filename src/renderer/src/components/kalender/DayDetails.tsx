@@ -170,6 +170,9 @@ export function DayDetails({
     const res = await window.api.entries.delete(entry.id)
     if (!res.ok) {
       showToast(t('common.entryDeleteFailed', { error: res.error }))
+      // The row may be gone already (deleted in another view): reload so it
+      // does not stay on screen (#323).
+      useEntriesStore.getState().bumpVersion()
       return
     }
     useEntriesStore.getState().bumpVersion()
@@ -521,7 +524,7 @@ function buildDeleteMessage(
   return t(key, { client: name, date: dateStr, duration: dur })
 }
 
-/** `HH:MM` — kept for the delete question, whose wording is unchanged. */
+/** `HH:MM` for the delete question. */
 function formatHHMM(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
   const h = Math.floor(total / 3600)
