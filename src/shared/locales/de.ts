@@ -1024,7 +1024,19 @@ export const de = {
   'mainError.settings.hotkeyLost': 'Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.',
   'mainError.settings.unknownKey': 'Unbekannte Einstellung: {key}',
   'mainError.settings.badValue': 'Ungültiger Wert für {key}',
-  'mainError.analytics.badMonth': 'Ungültige Monatsangabe'
+  'mainError.analytics.badMonth': 'Ungültige Monatsangabe',
+
+  // ── Main process: update install, calendar-import domains (#296 part B) ──
+  'mainError.update.blockedOne':
+    'Das Update kann nicht installiert werden: {count} MCP-Server ({list}) benutzt noch die TimeTrack-Programmdatei und hat auf die Aufforderung zum Beenden nicht reagiert. Diese Prozesse haben kein Fenster — sie gehören zu einem laufenden AI-Client (Einstellungen → Integrationen). Beende den AI-Client und versuche es erneut.',
+  'mainError.update.blockedMany':
+    'Das Update kann nicht installiert werden: {count} MCP-Server ({list}) benutzen noch die TimeTrack-Programmdatei und haben auf die Aufforderung zum Beenden nicht reagiert. Diese Prozesse haben kein Fenster — sie gehören zu einem laufenden AI-Client (Einstellungen → Integrationen). Beende den AI-Client und versuche es erneut.',
+  'mainError.update.startedMidUpdate':
+    'Mindestens einer dieser Server wurde erst während des Updates gestartet — solange der AI-Client läuft, startet er beendete Server automatisch neu.',
+  'mainError.update.devMode': 'Update-Check ist im Entwicklungsmodus deaktiviert.',
+  'mainError.domain.invalid': "'{domain}' ist keine gültige Domain.",
+  'mainError.domain.clientMissing': 'Kunde {id} existiert nicht.',
+  'mainError.domain.projectNotOfClient': 'Projekt {project} gehört nicht zu Kunde {client}.'
 } as const
 
 export type TranslationKey = keyof typeof de

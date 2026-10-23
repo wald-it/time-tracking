@@ -1003,5 +1003,17 @@ export const en: Record<TranslationKey, string> = {
   'mainError.settings.hotkeyLost': 'The previous hotkey is no longer active either.',
   'mainError.settings.unknownKey': 'Unknown setting: {key}',
   'mainError.settings.badValue': 'Invalid value for {key}',
-  'mainError.analytics.badMonth': 'Invalid month'
+  'mainError.analytics.badMonth': 'Invalid month',
+
+  // ── Main process: update install, calendar-import domains (#296 part B) ──
+  'mainError.update.blockedOne':
+    'The update cannot be installed: {count} MCP server ({list}) still uses the TimeTrack program file and did not respond to the request to quit. These processes have no window; they belong to a running AI client (Settings → Integrations). Quit the AI client and try again.',
+  'mainError.update.blockedMany':
+    'The update cannot be installed: {count} MCP servers ({list}) still use the TimeTrack program file and did not respond to the request to quit. These processes have no window; they belong to a running AI client (Settings → Integrations). Quit the AI client and try again.',
+  'mainError.update.startedMidUpdate':
+    'At least one of these servers was only started during the update. While the AI client runs, it restarts servers that were quit.',
+  'mainError.update.devMode': 'The update check is turned off in development mode.',
+  'mainError.domain.invalid': "'{domain}' is not a valid domain.",
+  'mainError.domain.clientMissing': 'Client {id} does not exist.',
+  'mainError.domain.projectNotOfClient': 'Project {project} does not belong to client {client}.'
 } as const satisfies Record<TranslationKey, string>

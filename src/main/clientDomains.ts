@@ -12,6 +12,21 @@
 import type Database from 'better-sqlite3'
 import type { IpcResult } from '../shared/types'
 import type { DomainTarget } from '../shared/graphCalendar'
+import { appLocale, dialogT, type DialogT } from './mainI18n'
+
+/**
+ * The texts in the app language (#296 part B). Electron-free: `db` is open
+ * here; the empty system-language list stands in for a fallback this module
+ * has no Electron access for.
+ */
+function tFor(db: Database.Database): DialogT {
+  return dialogT(
+    appLocale(
+      () => db,
+      () => []
+    )
+  )
+}
 
 export interface ClientDomain {
   id: number
@@ -78,11 +93,11 @@ export function learnDomain(
   projectId: number | null = null
 ): IpcResult<ClientDomain> {
   const domain = normalizeDomain(rawDomain)
-  if (!domain) return fail(`'${rawDomain.trim()}' ist keine gültige Domain.`)
+  if (!domain) return fail(tFor(db)('mainError.domain.invalid', { domain: rawDomain.trim() }))
 
   try {
     const client = db.prepare(`SELECT id FROM clients WHERE id = ?`).get(clientId)
-    if (!client) return fail(`Kunde ${clientId} existiert nicht.`)
+    if (!client) return fail(tFor(db)('mainError.domain.clientMissing', { id: clientId }))
     if (projectId !== null) {
       // The project must belong to the client — a mapping pointing across
       // clients would produce entries the overlap check charges to the wrong
@@ -90,7 +105,11 @@ export function learnDomain(
       const project = db
         .prepare(`SELECT id FROM projects WHERE id = ? AND client_id = ?`)
         .get(projectId, clientId)
-      if (!project) return fail(`Projekt ${projectId} gehört nicht zu Kunde ${clientId}.`)
+      if (!project) {
+        return fail(
+          tFor(db)('mainError.domain.projectNotOfClient', { project: projectId, client: clientId })
+        )
+      }
     }
     db.prepare(
       `INSERT INTO client_domains (domain, client_id, project_id) VALUES (?, ?, ?)
@@ -112,7 +131,7 @@ export function learnDomain(
 /** Forget a mapping. Removing a non-existent domain is a no-op, not an error. */
 export function forgetDomain(db: Database.Database, rawDomain: string): IpcResult<void> {
   const domain = normalizeDomain(rawDomain)
-  if (!domain) return fail(`'${rawDomain.trim()}' ist keine gültige Domain.`)
+  if (!domain) return fail(tFor(db)('mainError.domain.invalid', { domain: rawDomain.trim() }))
   try {
     db.prepare(`DELETE FROM client_domains WHERE domain = ?`).run(domain)
     return ok(undefined)
