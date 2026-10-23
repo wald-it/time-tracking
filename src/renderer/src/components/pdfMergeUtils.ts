@@ -7,7 +7,8 @@
  */
 export function detectFilePurpose(filename: string): 'sn' | 'invoice' | null {
   if (!filename) return null
-  if (/stundennachweis|nachweis|sn[_-]/i.test(filename)) return 'sn'
+  // `timesheet`: the English name the app writes since #296.
+  if (/stundennachweis|nachweis|timesheet|sn[_-]/i.test(filename)) return 'sn'
   if (/rechnung|invoice|inv[_-]/i.test(filename)) return 'invoice'
   return null
 }
