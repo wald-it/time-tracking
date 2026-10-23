@@ -85,37 +85,22 @@ function errorResult(e: unknown): {
  * openWorldHint true.
  */
 const READ_TOOL_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const
+
+/** None of the writes is idempotent: a repeat adds, or acts on whatever runs then. */
+const writeTool = (destructiveHint: boolean) =>
+  ({ readOnlyHint: false, destructiveHint, idempotentHint: false, openWorldHint: true }) as const
+
 const WRITE_TOOL_ANNOTATIONS = {
-  /** Adds a new entry; a repeated call adds a second one. */
-  create_manual_entry: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true
-  },
-  /** Replaces the entry's fields: the app deletes the row (and its linked
-   * midnight segments) and inserts it again under a new id. */
-  update_entry_fields: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: true
-  },
-  /** Ends a running entry at the new start, which may lie in the past. */
-  start_timer: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: true
-  },
-  /** Sets the running entry's end; with nothing running it does nothing, so
-   * repeating it has no further effect. */
-  stop_running_timer: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true
-  }
+  /** Only adds: a new, finished entry. */
+  create_manual_entry: writeTool(false),
+  /** Changes an existing entry: the app deletes its rows (every linked
+   * midnight segment) and inserts the edited range under a new id. */
+  update_entry_fields: writeTool(true),
+  /** Ends a running entry at the new start time, which may lie in the past. */
+  start_timer: writeTool(true),
+  /** Ends whichever entry is running when the call arrives. It takes no id,
+   * so a retry can end a timer started in the meantime. */
+  stop_running_timer: writeTool(true)
 } as const
 
 export function buildServer(): McpServer {
