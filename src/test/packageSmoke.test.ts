@@ -13,7 +13,7 @@
  * it has no test here; its checks mirror the release jobs.
  */
 import { describe, it, expect } from 'vitest'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -74,6 +74,39 @@ rl.on('close', () => process.exit(0))
  */
 const PROBE_LIMIT_MS = 90_000
 
+/** Writes the fake server and its source into `dir`; returns the probe's argv and env. */
+function probeCommand(
+  dir: string,
+  mode: string,
+  tools: string[],
+  opts: { source?: string; exe?: string }
+): { args: string[]; env: NodeJS.ProcessEnv } {
+  const server = join(dir, 'server.js')
+  const source = join(dir, 'server.ts')
+  writeFileSync(server, FAKE_SERVER)
+  writeFileSync(
+    source,
+    tools.map((n) => `server.registerTool(\n  '${n}',\n  {},\n  async () => ({})\n)\n`).join('')
+  )
+  // The suite runs on the Electron binary in Node mode, so process.execPath
+  // stands in for the packaged app binary; the probe sets Node mode itself.
+  const args = [
+    SCRIPT,
+    'mcp',
+    '--exe',
+    opts.exe ?? process.execPath,
+    '--entry',
+    server,
+    '--server-source',
+    opts.source ?? source,
+    '--timeout-ms',
+    // Short only where the deadline is the point: a cold Electron start
+    // on a busy runner can take several seconds before it answers.
+    mode === 'silent' ? '3000' : '20000'
+  ]
+  return { args, env: { ...process.env, FAKE_MODE: mode, FAKE_TOOLS: tools.join(',') } }
+}
+
 function probe(
   mode: string,
   tools: string[],
@@ -81,41 +114,58 @@ function probe(
 ): { status: number | null; output: string } {
   const dir = mkdtempSync(join(tmpdir(), 'package-smoke-test-'))
   try {
-    const server = join(dir, 'server.js')
-    const source = join(dir, 'server.ts')
-    writeFileSync(server, FAKE_SERVER)
-    writeFileSync(
-      source,
-      tools.map((n) => `server.registerTool(\n  '${n}',\n  {},\n  async () => ({})\n)\n`).join('')
-    )
-    // The suite runs on the Electron binary in Node mode, so process.execPath
-    // stands in for the packaged app binary; the probe sets Node mode itself.
-    const proc = spawnSync(
-      process.execPath,
-      [
-        SCRIPT,
-        'mcp',
-        '--exe',
-        opts.exe ?? process.execPath,
-        '--entry',
-        server,
-        '--server-source',
-        opts.source ?? source,
-        '--timeout-ms',
-        // Short only where the deadline is the point: a cold Electron start
-        // on a busy runner can take several seconds before it answers.
-        mode === 'silent' ? '3000' : '20000'
-      ],
-      {
-        env: { ...process.env, FAKE_MODE: mode, FAKE_TOOLS: tools.join(',') },
-        encoding: 'utf8',
-        timeout: PROBE_LIMIT_MS
-      }
-    )
+    const { args, env } = probeCommand(dir, mode, tools, opts)
+    const proc = spawnSync(process.execPath, args, {
+      env,
+      encoding: 'utf8',
+      timeout: PROBE_LIMIT_MS
+    })
     return { status: proc.status, output: `${proc.stdout}\n${proc.stderr}` }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+}
+
+/**
+ * Like `probe`, but also returns how long the probe took to reach its verdict
+ * after the fake server was up: from the relayed `[fake] up` line to the
+ * probe's final `ERROR:` line (#328). That leaves out what the probe does not
+ * control: the start of two Electron processes before the line, and the end
+ * of the probe's own process after it, which under load Windows can stretch
+ * by tens of seconds (#264, #286).
+ */
+function probeTimed(
+  mode: string,
+  tools: string[]
+): Promise<{ status: number | null; output: string; verdictMs: number | null }> {
+  const dir = mkdtempSync(join(tmpdir(), 'package-smoke-test-'))
+  const { args, env } = probeCommand(dir, mode, tools, {})
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, { env })
+    let output = ''
+    let upAt: number | null = null
+    let verdictAt: number | null = null
+    let partial = ''
+    const read = (chunk: Buffer): void => {
+      const text = partial + chunk.toString('utf8')
+      const lines = text.split(/\r?\n/)
+      partial = lines.pop() ?? ''
+      for (const line of lines) {
+        output += line + '\n'
+        if (upAt === null && line.includes('[stderr] [fake] up')) upAt = Date.now()
+        if (verdictAt === null && line.startsWith('ERROR:')) verdictAt = Date.now()
+      }
+    }
+    child.stdout.on('data', read)
+    child.stderr.on('data', read)
+    child.on('error', reject)
+    child.on('close', (status) => {
+      output += partial
+      rmSync(dir, { recursive: true, force: true })
+      const verdictMs = upAt !== null && verdictAt !== null ? verdictAt - upAt : null
+      resolve({ status, output, verdictMs })
+    })
+  })
 }
 
 const TOOLS = ['list_clients', 'get_dashboard']
@@ -158,11 +208,13 @@ describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => 
   // 'close' waits for it. On Windows 'close' follows 'exit' at once even then
   // (measured 2026-10-23: 18 ms with the descendant alive), so this test is
   // green there with or without the pipe release; it guards on the macOS job.
-  it('ends when the server is gone even if a descendant keeps its pipes open', () => {
-    const started = Date.now()
-    const r = probe('orphan', TOOLS)
+  it('ends when the server is gone even if a descendant keeps its pipes open', async () => {
+    const r = await probeTimed('orphan', TOOLS)
     // 45 s is how long the descendant lives; the probe must not wait for it.
-    expect(Date.now() - started).toBeLessThan(40_000)
+    // Measured from the server's first line to the verdict, not as wall time
+    // around the probe process (#328).
+    expect(r.verdictMs).not.toBeNull()
+    expect(r.verdictMs!).toBeLessThan(40_000)
     expect(r.status).toBe(1)
     expect(r.output).toContain('before answering initialize')
   })
