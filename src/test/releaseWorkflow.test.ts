@@ -391,6 +391,17 @@ describe('release.yml provenance', () => {
     expect(jobs['prepare']).toContain('echo "sha=$SHA"')
   })
 
+  // Codex finding on #256: the provenance attestation takes the commit from
+  // the OIDC token (GITHUB_SHA), not from the checkout. prepare refuses to
+  // build any other commit, so the attestation always names what is built.
+  it('prepare refuses to build a commit other than the one the run started from', () => {
+    const prepare = jobs['prepare'] ?? ''
+    const guard = prepare.indexOf('if [ "$SHA" != "$GITHUB_SHA" ]; then')
+    expect(guard).toBeGreaterThan(-1)
+    expect(guard).toBeLessThan(prepare.indexOf('echo "sha=$SHA"'))
+    expect(prepare.slice(guard, prepare.indexOf('fi', guard))).toContain('exit 1')
+  })
+
   it('every job after prepare checks out exactly that commit', () => {
     const others = Object.entries(jobs).filter(([id]) => id !== 'prepare')
     expect(others.length).toBeGreaterThan(0)

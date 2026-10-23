@@ -73,6 +73,16 @@ jobs:
         run: |
           set -euo pipefail
           SHA="$(git rev-parse HEAD)"
+          # The provenance attestation names the commit the run was started
+          # from (GITHUB_SHA, from the OIDC token), not what a job checked
+          # out. Building anything else would publish an attestation for the
+          # wrong source, so the two must be the same: a dispatch is started
+          # from the ref to build ("Use workflow from"), and inputs.ref, if
+          # given, must resolve to that commit.
+          if [ "$SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::The commit to build ($SHA) is not the commit this run was started from ($GITHUB_SHA). Start the workflow from the ref you want to release (Run workflow → Use workflow from), so the provenance attestation names the commit that is built."
+            exit 1
+          fi
           # If the tag already exists on origin it must point at this commit.
           # For an annotated tag, the `^{}` line carries the commit it peels
           # to; a lightweight tag has only the plain line.
