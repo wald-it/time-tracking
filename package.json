@@ -1,6 +1,6 @@
 {
   "name": "time-tracking",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "description": "Schlanker Desktop-Zeiterfasser für Windows — Toggl-Track-Style, lokal, ohne Cloud.",
   "main": "./out/main/index.js",
   "author": "skoedr",
