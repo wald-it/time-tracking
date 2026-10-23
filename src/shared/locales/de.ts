@@ -970,7 +970,18 @@ export const de = {
   'mainError.entry.staleEdit':
     'Der Eintrag hat sich während der Rückfrage geändert. Bitte die Änderung erneut anfragen.',
   'mainError.entry.timerStartInFuture': 'Startzeit liegt in der Zukunft',
-  'mainError.entry.startBeforeRunning': 'Startzeit liegt vor dem Beginn des laufenden Eintrags'
+  'mainError.entry.startBeforeRunning': 'Startzeit liegt vor dem Beginn des laufenden Eintrags',
+
+  // ── Main process: tag management (#296 part B) ────────────────────────────
+  'mainError.tag.empty': 'Tag-Name darf nicht leer sein',
+  'mainError.tag.tooLong': 'Tag-Name darf maximal {max} Zeichen haben',
+  'mainError.tag.whitespace': 'Tag-Name darf keine Leerzeichen enthalten (nutze "_" oder "-")',
+  'mainError.tag.chars': 'Tag-Name darf nur Kleinbuchstaben, Ziffern und . _ - enthalten',
+  'mainError.tag.exists': "Tag '{tag}' existiert bereits",
+  'mainError.tag.renameExists': "Ein Tag mit dem Namen '{tag}' existiert bereits",
+  'mainError.tag.mergeSame': 'Quell- und Ziel-Tag dürfen nicht gleich sein',
+  'mainError.tag.inUse':
+    "Tag '{tag}' hat noch {count} Eintrag/Einträge und kann nicht gelöscht werden"
 } as const
 
 export type TranslationKey = keyof typeof de

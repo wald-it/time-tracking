@@ -950,5 +950,15 @@ export const en: Record<TranslationKey, string> = {
   'mainError.entry.staleEdit':
     'The entry changed while you were being asked. Please request the change again.',
   'mainError.entry.timerStartInFuture': 'The start time is in the future',
-  'mainError.entry.startBeforeRunning': 'The start time is before the start of the running entry'
+  'mainError.entry.startBeforeRunning': 'The start time is before the start of the running entry',
+
+  // ── Main process: tag management (#296 part B) ────────────────────────────
+  'mainError.tag.empty': 'The tag name cannot be empty',
+  'mainError.tag.tooLong': 'The tag name can have at most {max} characters',
+  'mainError.tag.whitespace': 'The tag name cannot contain spaces (use "_" or "-")',
+  'mainError.tag.chars': 'The tag name can only contain lowercase letters, digits and . _ -',
+  'mainError.tag.exists': "Tag '{tag}' already exists",
+  'mainError.tag.renameExists': "A tag named '{tag}' already exists",
+  'mainError.tag.mergeSame': 'Source and target tag cannot be the same',
+  'mainError.tag.inUse': "Tag '{tag}' is still used by entries ({count}) and cannot be deleted"
 } as const satisfies Record<TranslationKey, string>
