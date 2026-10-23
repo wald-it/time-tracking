@@ -1218,8 +1218,8 @@ function SegmentedPicker<T extends string>({
  * `init()` here defensively in case Settings is opened before the banner
  * has appeared in some future layout change.
  */
-function UpdatesSection(): React.JSX.Element {
-  const { status, appVersion, lastCheckedAt, checkNow, installNow, init } = useUpdateStore()
+export function UpdatesSection(): React.JSX.Element {
+  const { status, lastCheckedAt, checkNow, installNow, init } = useUpdateStore()
   const t = useT()
   useEffect(() => {
     void init()
@@ -1260,11 +1260,6 @@ function UpdatesSection(): React.JSX.Element {
 
   return (
     <Section title={t('settings.update.title')}>
-      <Row label={t('settings.update.version', { version: appVersion || '—' })}>
-        <span className="font-num text-sm" style={{ color: 'var(--ink2)' }}>
-          {appVersion || '\u2014'}
-        </span>
-      </Row>
       <Row
         label={t('settings.update.status')}
         hint={`${t('settings.update.lastCheck')}: ${lastCheckedLabel}`}
