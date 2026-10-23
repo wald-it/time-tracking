@@ -44,10 +44,12 @@ function readPicked(db: Database.Database): string[] {
   }
 }
 
-/** Record (or refresh) a picked PDF: newest first, once each, capped. */
+/** Record (or refresh) a picked PDF: most recently used first, once each, capped. */
 export function rememberPickedPdf(db: Database.Database, path: string): void {
   const resolved = resolve(path)
-  const next = [resolved, ...readPicked(db).filter((p) => p !== resolved)].slice(0, MAX_PICKED_PDFS)
+  const current = readPicked(db)
+  if (current[0] === resolved) return
+  const next = [resolved, ...current.filter((p) => p !== resolved)].slice(0, MAX_PICKED_PDFS)
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(
     PICKED_PDFS_KEY,
     JSON.stringify(next)
@@ -63,27 +65,46 @@ export function isPickedPdf(db: Database.Database, path: unknown): boolean {
 export const NOT_PICKED_MESSAGE =
   'Diese Datei wurde nicht über die Dateiauswahl gewählt. Bitte die PDF erneut auswählen.'
 
+export const MALFORMED_PDF_REQUEST_MESSAGE = 'Ungültige PDF-Anfrage'
+
+const isAbsent = (v: unknown): boolean => v === undefined || v === null || v === ''
+
 /**
- * The input paths a PDF request (`pdf:pdf-info`, `pdf:merge-only`,
- * `pdf:merge-export`) will read, chosen the way the handlers choose them:
- * the time-sheet list wins over the legacy single field. Non-string values
- * are left out; the handlers refuse them as malformed without reading.
+ * The path fields of a PDF request (`pdf:pdf-info`, `pdf:merge-only`,
+ * `pdf:merge-export`), or null when any of them has a shape the handlers do
+ * not expect. Strict on purpose: every path field is absent, a string, or
+ * (the time-sheet list) an array of strings. Anything else is refused before
+ * a handler can touch the file system, so the guard and the handlers cannot
+ * read the same request differently.
  */
-export function pdfRequestPaths(req: unknown): string[] {
-  const r = (req ?? {}) as Record<string, unknown>
-  const candidates: unknown[] = [r.filePath, r.invoicePath]
-  if (Array.isArray(r.stundennachweisPaths) && r.stundennachweisPaths.length > 0) {
-    candidates.push(...r.stundennachweisPaths)
-  } else {
-    candidates.push(r.stundennachweisPath)
+export function pdfRequestPaths(req: unknown): string[] | null {
+  if (req === null || typeof req !== 'object') return null
+  const r = req as Record<string, unknown>
+  const paths: string[] = []
+  for (const field of ['filePath', 'invoicePath', 'stundennachweisPath'] as const) {
+    const v = r[field]
+    if (isAbsent(v)) continue
+    if (typeof v !== 'string') return null
+    paths.push(v)
   }
-  return candidates.filter((p): p is string => typeof p === 'string' && p !== '')
+  const list = r.stundennachweisPaths
+  if (list !== undefined && list !== null) {
+    if (!Array.isArray(list) || !list.every((p) => typeof p === 'string')) return null
+    paths.push(...list.filter((p) => p !== ''))
+  }
+  return paths
 }
 
-/** Every path the request will read must be a picked PDF. Returns the refusal, or null. */
+/**
+ * Every path in the request must be a picked PDF, and the request must be
+ * well-formed. Returns the refusal, or null. Checks every path field, also
+ * one a handler would ignore, so a stray field cannot reach the file system.
+ */
 export function unpickedPdfError(db: Database.Database, req: unknown): string | null {
+  const paths = pdfRequestPaths(req)
+  if (paths === null) return MALFORMED_PDF_REQUEST_MESSAGE
   const picked = new Set(readPicked(db))
-  for (const p of pdfRequestPaths(req)) {
+  for (const p of paths) {
     if (!picked.has(resolve(p))) return NOT_PICKED_MESSAGE
   }
   return null

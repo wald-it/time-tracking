@@ -5,11 +5,12 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'fs'
-import { join } from 'path'
+import { join, sep } from 'path'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
   MAIN_ONLY_SETTING_KEYS,
+  MALFORMED_PDF_REQUEST_MESSAGE,
   MAX_PICKED_PDFS,
   NOT_PICKED_MESSAGE,
   PICKED_PDFS_KEY,
@@ -66,7 +67,9 @@ describe('picked PDFs', () => {
   it('compares exactly, never case-folded', () => {
     rememberPickedPdf(db, INVOICE)
     expect(isPickedPdf(db, INVOICE.toUpperCase())).toBe(false)
-    expect(isPickedPdf(db, join(ROOT, '.', 'Rechnung-2026-10.pdf'))).toBe(true)
+    // Built by concatenation: join() would already drop the '.' segment, and
+    // the test must exercise the resolve() in the check itself.
+    expect(isPickedPdf(db, ROOT + sep + '.' + sep + 'Rechnung-2026-10.pdf')).toBe(true)
   })
 
   it('keeps the newest picks, once each, up to the cap', () => {
@@ -105,19 +108,26 @@ describe('pdfRequestPaths', () => {
     ])
   })
 
-  it('ignores the legacy field when the list is given, as mergeOnlyHandler does', () => {
+  it('includes every path field, also one a handler would ignore', () => {
     expect(
       pdfRequestPaths({
         invoicePath: INVOICE,
         stundennachweisPaths: [SHEET],
         stundennachweisPath: OTHER
       })
-    ).toEqual([INVOICE, SHEET])
+    ).toEqual([INVOICE, OTHER, SHEET])
   })
 
-  it('leaves malformed values to the handlers', () => {
-    expect(pdfRequestPaths({ filePath: 42 })).toEqual([])
-    expect(pdfRequestPaths(null)).toEqual([])
+  // The guard must never read a request differently from the handlers: any
+  // shape they do not expect is refused before the file system is touched.
+  it.each([
+    ['no object', null],
+    ['a path that is not a string', { filePath: 42 }],
+    ['an invoice that is not a string', { invoicePath: { toString: () => INVOICE } }],
+    ['a time sheet list that is not an array', { stundennachweisPaths: { length: 1, 0: OTHER } }],
+    ['a time sheet that is not a string', { stundennachweisPaths: [SHEET, 7] }]
+  ])('rejects %s as malformed', (_label, req) => {
+    expect(pdfRequestPaths(req)).toBeNull()
   })
 })
 
@@ -143,9 +153,25 @@ describe('unpickedPdfError', () => {
       'one time sheet among several',
       { invoicePath: INVOICE, stundennachweisPaths: [SHEET, OTHER] }
     ],
-    ['the legacy single time sheet', { invoicePath: INVOICE, stundennachweisPath: OTHER }]
+    ['the legacy single time sheet', { invoicePath: INVOICE, stundennachweisPath: OTHER }],
+    [
+      'a stray legacy field next to the list',
+      { invoicePath: INVOICE, stundennachweisPaths: [SHEET], stundennachweisPath: OTHER }
+    ]
   ])('refuses %s that was not picked', (_label, req) => {
     expect(unpickedPdfError(db, req)).toBe(NOT_PICKED_MESSAGE)
+  })
+
+  // Round 2: a non-array list with a `length` used to slip past the guard and
+  // reach existsSync in mergeOnlyHandler (a UNC path there leaks the NTLM hash).
+  it('refuses a malformed request before any handler runs', () => {
+    expect(
+      unpickedPdfError(db, {
+        invoicePath: INVOICE,
+        stundennachweisPath: SHEET,
+        stundennachweisPaths: { length: 1, 0: '\\\\evil\\share\\a.pdf' }
+      })
+    ).toBe(MALFORMED_PDF_REQUEST_MESSAGE)
   })
 })
 
@@ -223,7 +249,7 @@ describe('ipc.ts wiring', () => {
     ['pdf:merge-export', 'mergeExportHandler(']
   ])('%s refuses unpicked PDFs before reading', (ch, call) => {
     const body = handler(ch)
-    guardBefore(body, /\n\s*const refused = unpickedPdfError\(db, req\)/, call)
+    guardBefore(body, /\n\s*const refused = pdfRequestRefusal\(req\)/, call)
     guardBefore(body, /\n\s*if \(refused\) return fail\(refused\)/, call)
   })
 
@@ -231,6 +257,12 @@ describe('ipc.ts wiring', () => {
     expect(handler(ch)).toMatch(
       /\n\s*if \(res\.ok\) shellTargets\.rememberWritten\(res\.data\.path\)/
     )
+  })
+
+  it('pdf:pdf-info refreshes only the file it read', () => {
+    const body = handler('pdf:pdf-info')
+    expect(body).toMatch(/\n\s*rememberPickedPdf\(db, filePath\)/)
+    expect(body).not.toContain('pdfRequestPaths')
   })
 
   it('pdf:open-pdf-dialog remembers the pick', () => {
