@@ -18,16 +18,20 @@
  *     install is not a partial release.
  *
  * Two halves, both checked here: the decision itself lives in
- * `scripts/release-plan.mjs` (run as the workflow runs it, as a CLI), and the
- * wiring that lets `publish-release` run on partial success lives in
- * `release.yml` (checked as text — the repo has no YAML parser as a direct
- * dependency, and the assertions are about a handful of exact lines).
+ * `scripts/release-plan.mjs` (run with the workflow's inputs and outputs: env
+ * in; files, stdout, stderr and exit code out), and the wiring that lets
+ * `publish-release` run on partial success lives in `release.yml` (checked as
+ * text — the repo has no YAML parser as a direct dependency, and the
+ * assertions are about a handful of exact lines).
  */
 import { describe, it, expect } from 'vitest'
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { Worker } from 'node:worker_threads'
 
 const REPO_ROOT = resolve(__dirname, '..', '..')
 const SCRIPT = join(REPO_ROOT, 'scripts', 'release-plan.mjs')
@@ -35,39 +39,80 @@ const WORKFLOW = join(REPO_ROOT, '.github', 'workflows', 'release.yml')
 
 type Result = 'success' | 'failure' | 'skipped' | 'cancelled'
 
-interface Plan {
+interface Run {
   status: number | null
-  stderr: string
-  outputs: Record<string, string>
-  notice: string
   stdout: string
+  stderr: string
 }
 
-function runPlan(
+/**
+ * Run a release script unchanged with `env` — in a worker thread, not a child
+ * process. A child's exit is reported only once Windows has finished tearing
+ * the process down, and under load that took up to 7.7 s per call, so 34
+ * calls made this file's duration the machine's teardown time (#290). A
+ * worker has its own `process.env`, its `process.exit()` ends only the
+ * worker, and its stdout/stderr come back as streams. Neither script uses
+ * anything a worker lacks (argv, stdin, chdir, signals).
+ */
+async function runInWorker(script: string, env: Record<string, string>): Promise<Run> {
+  const worker = new Worker(pathToFileURL(script), {
+    env: { ...process.env, ...env },
+    stdout: true,
+    stderr: true
+  })
+  let stdout = ''
+  let stderr = ''
+  worker.stdout.setEncoding('utf8').on('data', (d: string) => (stdout += d))
+  worker.stderr.setEncoding('utf8').on('data', (d: string) => (stderr += d))
+  // An uncaught exception ends the worker with code 1, like a crashing CLI.
+  worker.on('error', (e) => (stderr += String(e.stack ?? e)))
+  // The streams end after 'exit'; wait for both so no output is cut off.
+  const [[status]] = await Promise.all([
+    once(worker, 'exit') as Promise<[number]>,
+    once(worker.stdout, 'end'),
+    once(worker.stderr, 'end')
+  ])
+  return { status, stdout, stderr }
+}
+
+/** The same, as a real process — what the workflow does. Used once, below. */
+async function runAsProcess(script: string, env: Record<string, string>): Promise<Run> {
+  // The suite runs on the Electron binary in Node mode (ELECTRON_RUN_AS_NODE
+  // is already set in this process), so process.execPath runs a plain script.
+  const proc = spawn(process.execPath, [script], { env: { ...process.env, ...env } })
+  let stdout = ''
+  let stderr = ''
+  proc.stdout.setEncoding('utf8').on('data', (d: string) => (stdout += d))
+  proc.stderr.setEncoding('utf8').on('data', (d: string) => (stderr += d))
+  const [status] = (await once(proc, 'close')) as [number | null]
+  return { status, stdout, stderr }
+}
+
+interface Plan extends Run {
+  outputs: Record<string, string>
+  notice: string
+}
+
+async function runPlan(
   windows: Result,
   macos: Result,
   streamdeck: Result,
   releaseAssets?: string[],
-  extraEnv: Record<string, string> = {}
-): Plan {
+  extraEnv: Record<string, string> = {},
+  run: typeof runInWorker = runInWorker
+): Promise<Plan> {
   const dir = mkdtempSync(join(tmpdir(), 'release-plan-'))
   const outputFile = join(dir, 'github_output')
   const noticeFile = join(dir, 'notice.md')
   writeFileSync(outputFile, '')
-  // The suite runs on the Electron binary in Node mode (ELECTRON_RUN_AS_NODE
-  // is already set in this process), so process.execPath runs a plain script.
-  const proc = spawnSync(process.execPath, [SCRIPT], {
-    env: {
-      ...process.env,
-      WINDOWS_RESULT: windows,
-      MACOS_RESULT: macos,
-      STREAMDECK_RESULT: streamdeck,
-      GITHUB_OUTPUT: outputFile,
-      NOTICE_FILE: noticeFile,
-      ...(releaseAssets === undefined ? {} : { RELEASE_ASSETS: releaseAssets.join('\n') }),
-      ...extraEnv
-    },
-    encoding: 'utf8'
+  const proc = await run(SCRIPT, {
+    WINDOWS_RESULT: windows,
+    MACOS_RESULT: macos,
+    STREAMDECK_RESULT: streamdeck,
+    GITHUB_OUTPUT: outputFile,
+    NOTICE_FILE: noticeFile,
+    ...(releaseAssets === undefined ? {} : { RELEASE_ASSETS: releaseAssets.join('\n') }),
+    ...extraEnv
   })
   const outputs: Record<string, string> = {}
   for (const line of readFileSync(outputFile, 'utf8').split('\n')) {
@@ -84,23 +129,34 @@ function runPlan(
 }
 
 describe('release plan (#221)', () => {
-  it('everything built: a normal release without a notice', () => {
-    const plan = runPlan('success', 'success', 'success')
+  it('everything built: a normal release without a notice', async () => {
+    const plan = await runPlan('success', 'success', 'success')
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice.trim()).toBe('')
   })
 
-  it('only the Stream Deck plugin missing: normal release, notice names the plugin', () => {
-    const plan = runPlan('success', 'success', 'failure')
+  it('only the Stream Deck plugin missing: normal release, notice names the plugin', async () => {
+    const plan = await runPlan('success', 'success', 'failure')
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice).toMatch(/Stream Deck plugin/)
     expect(plan.notice).not.toMatch(/macOS|Windows/)
   })
 
-  it('macOS missing: prerelease, notice names macOS and its update feed', () => {
-    const plan = runPlan('success', 'failure', 'success')
+  // The one test that pays for a real process: the script still starts and
+  // answers as a CLI, the way the workflow runs it. The budget covers the
+  // teardown wait measured in #290 (up to 7.7 s per call), with room.
+  it('runs as a CLI process, as the workflow runs it', async () => {
+    const plan = await runPlan('success', 'failure', 'success', undefined, {}, runAsProcess)
+    expect(plan.status, plan.stderr).toBe(0)
+    expect(plan.outputs.prerelease).toBe('true')
+    expect(plan.notice).toMatch(/macOS/)
+    expect(plan.stdout).toContain('::warning::')
+  }, 120_000)
+
+  it('macOS missing: prerelease, notice names macOS and its update feed', async () => {
+    const plan = await runPlan('success', 'failure', 'success')
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
     expect(plan.notice).toMatch(/macOS/)
@@ -108,22 +164,22 @@ describe('release plan (#221)', () => {
     expect(plan.notice).not.toMatch(/Windows|Stream Deck/)
   })
 
-  it('Windows missing: prerelease, notice names Windows and its update feed', () => {
-    const plan = runPlan('failure', 'success', 'success')
+  it('Windows missing: prerelease, notice names Windows and its update feed', async () => {
+    const plan = await runPlan('failure', 'success', 'success')
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
     expect(plan.notice).toMatch(/Windows/)
     expect(plan.notice).toMatch(/latest\.yml/)
   })
 
-  it('a skipped or cancelled job counts as missing, not as built', () => {
-    expect(runPlan('success', 'skipped', 'success').outputs.prerelease).toBe('true')
-    expect(runPlan('cancelled', 'success', 'success').outputs.prerelease).toBe('true')
-    expect(runPlan('success', 'success', 'skipped').notice).toMatch(/Stream Deck plugin/)
+  it('a skipped or cancelled job counts as missing, not as built', async () => {
+    expect((await runPlan('success', 'skipped', 'success')).outputs.prerelease).toBe('true')
+    expect((await runPlan('cancelled', 'success', 'success')).outputs.prerelease).toBe('true')
+    expect((await runPlan('success', 'success', 'skipped')).notice).toMatch(/Stream Deck plugin/)
   })
 
-  it('refuses an unknown job result instead of guessing', () => {
-    const plan = runPlan('success', 'bogus' as Result, 'success')
+  it('refuses an unknown job result instead of guessing', async () => {
+    const plan = await runPlan('success', 'bogus' as Result, 'success')
     expect(plan.status).not.toBe(0)
   })
 })
@@ -144,70 +200,72 @@ const COMPLETE_ASSETS = [
 ]
 
 describe('release plan on a re-run: decided from the attached assets (#234)', () => {
-  it('a complete release stays complete when an installer job fails in the re-run', () => {
+  it('a complete release stays complete when an installer job fails in the re-run', async () => {
     // --clobber removes nothing: the first run's installers and latest*.yml
     // are still attached, so demoting the release would only withdraw a
     // valid version from stable updates.
-    const plan = runPlan('failure', 'success', 'success', COMPLETE_ASSETS)
+    const plan = await runPlan('failure', 'success', 'success', COMPLETE_ASSETS)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice.trim()).toBe('')
   })
 
-  it('no job succeeding in the re-run does not demote a complete release either', () => {
-    const plan = runPlan('failure', 'cancelled', 'skipped', COMPLETE_ASSETS)
+  it('no job succeeding in the re-run does not demote a complete release either', async () => {
+    const plan = await runPlan('failure', 'cancelled', 'skipped', COMPLETE_ASSETS)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice.trim()).toBe('')
   })
 
-  it('a partial release whose gap is still open stays a prerelease', () => {
+  it('a partial release whose gap is still open stays a prerelease', async () => {
     const withoutMac = COMPLETE_ASSETS.filter((a) => !/\.dmg|\.zip|latest-mac/.test(a))
-    const plan = runPlan('success', 'failure', 'success', withoutMac)
+    const plan = await runPlan('success', 'failure', 'success', withoutMac)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
     expect(plan.notice).toMatch(/macOS/)
     expect(plan.notice).not.toMatch(/Windows|Stream Deck/)
   })
 
-  it('an installer without its update feed counts as missing, whatever the job says', () => {
+  it('an installer without its update feed counts as missing, whatever the job says', async () => {
     const withoutFeed = COMPLETE_ASSETS.filter((a) => a !== 'latest.yml')
-    const plan = runPlan('success', 'success', 'success', withoutFeed)
+    const plan = await runPlan('success', 'success', 'success', withoutFeed)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
     expect(plan.notice).toMatch(/Windows/)
     expect(plan.notice).not.toMatch(/macOS|Stream Deck/)
   })
 
-  it('only the Stream Deck plugin missing from the release: normal release with a notice', () => {
+  it('only the Stream Deck plugin missing from the release: normal release with a notice', async () => {
     const withoutPlugin = COMPLETE_ASSETS.filter((a) => !a.endsWith('.streamDeckPlugin'))
-    const plan = runPlan('success', 'success', 'failure', withoutPlugin)
+    const plan = await runPlan('success', 'success', 'failure', withoutPlugin)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice).toMatch(/Stream Deck plugin/)
   })
 
-  it('a release with no assets at all is a prerelease, not complete', () => {
-    const plan = runPlan('success', 'success', 'success', [])
+  it('a release with no assets at all is a prerelease, not complete', async () => {
+    const plan = await runPlan('success', 'success', 'success', [])
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
   })
 
-  it('the job-result plan before a re-run is provisional: no ::warning:: annotation', () => {
-    const provisional = runPlan('failure', 'success', 'success', undefined, {
+  it('the job-result plan before a re-run is provisional: no ::warning:: annotation', async () => {
+    const provisional = await runPlan('failure', 'success', 'success', undefined, {
       RELEASE_EXISTS: 'true'
     })
     expect(provisional.status, provisional.stderr).toBe(0)
     expect(provisional.stdout).not.toContain('::warning::')
     expect(provisional.stdout).toMatch(/Provisional plan/)
     // A first publish still annotates, and so does the re-plan from assets.
-    expect(runPlan('failure', 'success', 'success').stdout).toContain('::warning::')
-    const replan = runPlan('failure', 'success', 'success', [], { RELEASE_EXISTS: 'true' })
+    expect((await runPlan('failure', 'success', 'success')).stdout).toContain('::warning::')
+    const replan = await runPlan('failure', 'success', 'success', [], { RELEASE_EXISTS: 'true' })
     expect(replan.stdout).toContain('::warning::')
   })
 
-  it('still refuses an unknown job result', () => {
-    expect(runPlan('success', 'bogus' as Result, 'success', COMPLETE_ASSETS).status).not.toBe(0)
+  it('still refuses an unknown job result', async () => {
+    expect(
+      (await runPlan('success', 'bogus' as Result, 'success', COMPLETE_ASSETS)).status
+    ).not.toBe(0)
   })
 })
 
@@ -465,69 +523,68 @@ describe('release.yml provenance', () => {
 
 const LATEST_SCRIPT = join(REPO_ROOT, 'scripts', 'release-latest.mjs')
 
-function runLatest(env: {
+async function runLatest(env: {
   TAG: string
   CURRENT_LATEST: string
   WAS_PRERELEASE: string
   PRERELEASE: string
-}): { status: number | null; stdout: string; stderr: string } {
-  const proc = spawnSync(process.execPath, [LATEST_SCRIPT], {
-    env: { ...process.env, ...env },
-    encoding: 'utf8'
-  })
-  return { status: proc.status, stdout: proc.stdout.trim(), stderr: proc.stderr }
+}): Promise<Run> {
+  const r = await runInWorker(LATEST_SCRIPT, env)
+  return { ...r, stdout: r.stdout.trim() }
 }
 
 describe('release-latest: may a completed prerelease take the latest marker? (#221)', () => {
   const completed = { WAS_PRERELEASE: 'true', PRERELEASE: 'false' }
 
-  it('completing an older prerelease after a newer stable release sets no --latest', () => {
+  it('completing an older prerelease after a newer stable release sets no --latest', async () => {
     // v1.20.0 went out partial, v1.21.0 shipped stable, then v1.20.0 is
     // re-run: moving the marker back would make electron-updater offer
     // clients v1.20.0 instead of v1.21.0.
-    const r = runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.21.0' })
+    const r = await runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.21.0' })
     expect(r.status, r.stderr).toBe(0)
     expect(r.stdout).toBe('false')
   })
 
-  it('a completed prerelease newer than the current latest takes the marker', () => {
-    const r = runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.19.1' })
+  it('a completed prerelease newer than the current latest takes the marker', async () => {
+    const r = await runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.19.1' })
     expect(r.status, r.stderr).toBe(0)
     expect(r.stdout).toBe('true')
   })
 
-  it('compares versions numerically, not as text', () => {
-    expect(runLatest({ ...completed, TAG: 'v1.10.0', CURRENT_LATEST: 'v1.9.3' }).stdout).toBe(
-      'true'
-    )
-    expect(runLatest({ ...completed, TAG: 'v1.9.3', CURRENT_LATEST: 'v1.10.0' }).stdout).toBe(
-      'false'
-    )
+  it('compares versions numerically, not as text', async () => {
+    expect(
+      (await runLatest({ ...completed, TAG: 'v1.10.0', CURRENT_LATEST: 'v1.9.3' })).stdout
+    ).toBe('true')
+    expect(
+      (await runLatest({ ...completed, TAG: 'v1.9.3', CURRENT_LATEST: 'v1.10.0' })).stdout
+    ).toBe('false')
   })
 
-  it('the tag that already is latest needs no --latest', () => {
-    expect(runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.20.0' }).stdout).toBe(
-      'false'
-    )
+  it('the tag that already is latest needs no --latest', async () => {
+    expect(
+      (await runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: 'v1.20.0' })).stdout
+    ).toBe('false')
   })
 
-  it('only a former prerelease that is now complete qualifies', () => {
+  it('only a former prerelease that is now complete qualifies', async () => {
     const base = { TAG: 'v1.20.0', CURRENT_LATEST: 'v1.19.1' }
-    expect(runLatest({ ...base, WAS_PRERELEASE: 'false', PRERELEASE: 'false' }).stdout).toBe(
+    expect(
+      (await runLatest({ ...base, WAS_PRERELEASE: 'false', PRERELEASE: 'false' })).stdout
+    ).toBe('false')
+    expect((await runLatest({ ...base, WAS_PRERELEASE: 'true', PRERELEASE: 'true' })).stdout).toBe(
       'false'
     )
-    expect(runLatest({ ...base, WAS_PRERELEASE: 'true', PRERELEASE: 'true' }).stdout).toBe('false')
   })
 
-  it('fails closed when the current latest release could not be read', () => {
-    const r = runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: '' })
+  it('fails closed when the current latest release could not be read', async () => {
+    const r = await runLatest({ ...completed, TAG: 'v1.20.0', CURRENT_LATEST: '' })
     expect(r.status, r.stderr).toBe(0)
     expect(r.stdout).toBe('false')
     expect(r.stderr).toMatch(/by hand/)
   })
 
-  it('fails closed on a tag it cannot compare', () => {
-    const r = runLatest({ ...completed, TAG: 'v1.20.0-beta.1', CURRENT_LATEST: 'v1.19.1' })
+  it('fails closed on a tag it cannot compare', async () => {
+    const r = await runLatest({ ...completed, TAG: 'v1.20.0-beta.1', CURRENT_LATEST: 'v1.19.1' })
     expect(r.status, r.stderr).toBe(0)
     expect(r.stdout).toBe('false')
     expect(r.stderr).toMatch(/by hand/)
