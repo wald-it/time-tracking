@@ -1226,14 +1226,14 @@ function SegmentedPicker<T extends string>({
  * its value and writer come from SettingsView; the store only mirrors the
  * main-process updater.
  */
-function UpdatesSection({
+export function UpdatesSection({
   autoCheck,
   onAutoCheckChange
 }: {
   autoCheck: boolean
   onAutoCheckChange: (v: boolean) => void
 }): React.JSX.Element {
-  const { status, appVersion, lastCheckedAt, checkNow, installNow, init } = useUpdateStore()
+  const { status, lastCheckedAt, checkNow, installNow, init } = useUpdateStore()
   const t = useT()
   useEffect(() => {
     void init()
@@ -1274,11 +1274,6 @@ function UpdatesSection({
 
   return (
     <Section title={t('settings.update.title')}>
-      <Row label={t('settings.update.version', { version: appVersion || '—' })}>
-        <span className="font-num text-sm" style={{ color: 'var(--ink2)' }}>
-          {appVersion || '\u2014'}
-        </span>
-      </Row>
       <Row
         label={t('settings.update.status')}
         hint={`${t('settings.update.lastCheck')}: ${lastCheckedLabel}`}

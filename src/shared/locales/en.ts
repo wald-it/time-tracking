@@ -38,7 +38,6 @@ export const en: Record<TranslationKey, string> = {
 
   // ── Settings → Updates ──────────────────────────────────────────────────
   'settings.update.title': 'Updates',
-  'settings.update.version': 'Current version: {version}',
   'settings.update.checkNow': 'Check for updates now',
   'settings.update.checking': 'Checking …',
   'settings.update.lastCheck': 'Last check',

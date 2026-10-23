@@ -38,7 +38,6 @@ export const de = {
 
   // ── Settings → Updates ──────────────────────────────────────────────────
   'settings.update.title': 'Updates',
-  'settings.update.version': 'Aktuelle Version: {version}',
   'settings.update.checkNow': 'Jetzt nach Updates suchen',
   'settings.update.checking': 'Suche …',
   'settings.update.lastCheck': 'Letzter Check',
