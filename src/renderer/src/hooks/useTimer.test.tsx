@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { act, cleanup, waitFor, renderHook, type RenderHookResult } from '@testing-library/react'
-import type { Client, Entry } from '../../../shared/types'
+import type { Client, Entry, Project } from '../../../shared/types'
 import type { UseTimerResult } from './useTimer'
 
 // `globals` is off in vitest.config.ts, so Testing Library's auto-cleanup
@@ -97,6 +97,15 @@ interface MockOpts {
   running?: Entry | null
   /** entries:switch answers { ok: false } — the main transaction rolled back. */
   switchFails?: boolean
+  /**
+   * dashboard:summary's recentEntries, newest first — the START dialog's and
+   * the selection-less start's "last pair" (#297). Defaults to one entry of
+   * client 1 without a project: the pair the old first-active-client
+   * fallback also picked in every test that does not set this.
+   */
+  recent?: Entry[]
+  /** projects:getAll — for the last pair's project (#297). Default: none. */
+  projects?: Project[]
 }
 
 function mockApi(opts: MockOpts = {}): ApiMock {
@@ -159,7 +168,24 @@ function mockApi(opts: MockOpts = {}): ApiMock {
       heartbeat
     },
     dashboard: {
-      todayTotal: async () => ({ ok: true as const, data: 0 })
+      todayTotal: async () => ({ ok: true as const, data: 0 }),
+      summary: async () => ({
+        ok: true as const,
+        data: {
+          todaySeconds: 0,
+          weekSeconds: 0,
+          weekDaySeconds: [0, 0, 0, 0, 0, 0, 0],
+          recentEntries: opts.recent ?? [makeEntry({ id: 1, client_id: 1, project_id: null })],
+          todayEntries: [],
+          topClients30d: []
+        }
+      })
+    },
+    projects: {
+      getAll: async ({ clientId }: { clientId?: number }) => ({
+        ok: true as const,
+        data: (opts.projects ?? []).filter((p) => clientId == null || p.client_id === clientId)
+      })
     },
     tray: { update: trayUpdate },
     idle: { dismiss: idleDismiss },
@@ -262,17 +288,67 @@ describe('useTimer — start/stop', () => {
     )
   })
 
-  it('start() without a selection falls back to the first ACTIVE client', async () => {
+  // #297 replaces the first-active-client fallback: the hotkey and the mini
+  // widget's play key start what the START dialog offers, the last pair.
+  // Client 1 sorts first and is active, so the old rule would pick it.
+  it('start() without a selection starts the last entry’s client and project', async () => {
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({
+      clients,
+      recent: [makeEntry({ id: 9, client_id: 2, project_id: 20 })],
+      projects: [
+        {
+          id: 20,
+          client_id: 2,
+          name: 'Audit',
+          color: '',
+          rate_cent: null,
+          active: 1,
+          created_at: ''
+        }
+      ]
+    })
+
+    await startTimer(hook)
+
+    expect(api.start).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 2, project_id: 20 })
+    )
+    expect(hook.result.current.selectedClientId).toBe(2)
+    expect(hook.result.current.selectedProjectId).toBe(20)
+  })
+
+  it('start() without a selection opens the START dialog when the last client is archived', async () => {
     const clients = [
       makeClient({ id: 1, name: 'Archived', active: 0 }),
       makeClient({ id: 2, name: 'Beta' })
     ]
-    const { api, hook } = await setup({ clients })
+    const { api, hook } = await setup({
+      clients,
+      recent: [makeEntry({ id: 9, client_id: 1 })]
+    })
+    // The module registry is fresh per setup(); take the store from it.
+    const { useStartTimerModalStore } = await import('../store/startTimerModalStore')
 
-    await startTimer(hook)
+    await act(async () => {
+      await hook.result.current.start()
+    })
 
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ client_id: 2 }))
-    expect(hook.result.current.selectedClientId).toBe(2)
+    expect(api.start).not.toHaveBeenCalled()
+    expect(hook.result.current.runningEntry).toBeNull()
+    await waitFor(() => expect(useStartTimerModalStore.getState().open).toBe(true))
+  })
+
+  it('start() without a selection opens the START dialog when there is no entry yet', async () => {
+    const { api, hook } = await setup({ recent: [] })
+    const { useStartTimerModalStore } = await import('../store/startTimerModalStore')
+
+    await act(async () => {
+      await hook.result.current.start()
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    await waitFor(() => expect(useStartTimerModalStore.getState().open).toBe(true))
   })
 
   it('start() with no active client at all is a silent no-op', async () => {

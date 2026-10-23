@@ -41,6 +41,13 @@ function App(): React.JSX.Element {
     void useUiPrefsStore.getState().load()
   }, [onboardingCompleted])
 
+  // #297: the start hotkey or the mini widget's play key found nothing to
+  // start; main has brought the window forward, the START dialog opens here.
+  useEffect(
+    () => window.api.onOpenStart(() => void useStartTimerModalStore.getState().openStart()),
+    []
+  )
+
   async function finishOnboarding(): Promise<void> {
     setShowOnboarding(false)
     await window.api.settings.set('onboarding_completed', '1')

@@ -49,6 +49,7 @@ import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
+  readRecentEntries,
   readRoundMinutes,
   readTodayEntries,
   readTopClients30d,
@@ -621,13 +622,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         // the Stream Deck dial can never drift apart (#186).
         const totals = readTotals(db)
 
-        const recentEntries = db
-          .prepare(
-            `SELECT * FROM entries
-               WHERE deleted_at IS NULL
-               ORDER BY started_at DESC LIMIT 5`
-          )
-          .all() as Entry[]
+        const recentEntries = readRecentEntries(db, 5)
 
         return {
           todaySeconds: totals.today_seconds,

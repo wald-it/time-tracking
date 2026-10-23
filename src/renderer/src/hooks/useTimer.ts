@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import type { Client, Entry, IpcResult, UpdateEntryInput } from '../../../shared/types'
 import { useTimerStore } from '../store/timerStore'
 import { useClientsStore } from '../store/clientsStore'
+import { readLastStartPair, useStartTimerModalStore } from '../store/startTimerModalStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
 
 /**
@@ -273,16 +274,22 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   )
 
   const start = useCallback(async (): Promise<string | null> => {
-    // Resolve which client to start. If the user hasn't picked one (e.g. the
-    // hotkey fires from Today/Calendar where there is no selector at all),
-    // fall back to the first active client so Alt+Shift+S always does
-    // *something* instead of silently no-op'ing.
+    // Resolve which client to start. If the user hasn't picked one (the
+    // hotkey or the mini widget's play key, from anywhere), start what the
+    // START dialog offers: the last entry's client and project (#297; it used
+    // to be the first active client, a client the user may not work for).
+    // Client and project are set together, so no stale project of another
+    // client travels along. Without such a pair the dialog opens instead.
     let clientId = selectedClientId
     if (!clientId) {
-      const fallback = clients.find((c) => c.active === 1)
-      if (!fallback) return null
-      clientId = fallback.id
+      const pair = await readLastStartPair()
+      if (!pair) {
+        void useStartTimerModalStore.getState().openStart()
+        return null
+      }
+      clientId = pair.clientId
       setSelectedClientId(clientId)
+      useTimerStore.getState().setSelectedProjectId(pair.projectId)
     }
     const projectId = useTimerStore.getState().selectedProjectId
     // A timer already runs (the start dialog was open while one started

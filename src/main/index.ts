@@ -58,6 +58,7 @@ import { reconcilePresence, type PresenceDeps } from './graphPresence'
 import { graphAccountDepsFor } from './graphHandlers'
 import { effectiveClientId, getAccessToken, getStatus } from './graphAccount'
 import { applyMiniEnabled, destroyMini, pushMiniState, toggleMini } from './miniWindow'
+import { decideStartRequest } from './startRequest'
 import {
   generateFeedToken,
   restartFeedServer,
@@ -267,6 +268,24 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   tray.setContextMenu(buildTrayMenu())
 }
 
+/**
+ * The global start hotkey and the mini widget's play key (#297). The only
+ * place that sends `timer:open-start` and brings the window forward for it:
+ * an explicit press, never a background event (startRequest.test.ts pins
+ * that). Everything else goes the old way, `timer:hotkey-toggle`.
+ */
+function onStartKey(): void {
+  if (!mainWindow) return
+  if (decideStartRequest(getDb()) === 'open-start') {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send('timer:open-start')
+    return
+  }
+  mainWindow.webContents.send('timer:hotkey-toggle')
+}
+
 function registerHotkey(accelerator: string): boolean {
   // Cross-slot collision check (v1.4 PR B). Without this, suspending
   // shortcuts during capture would let the user silently steal the
@@ -281,9 +300,7 @@ function registerHotkey(accelerator: string): boolean {
     currentToggleHotkey = ''
   }
   if (!accelerator) return false
-  const ok = globalShortcut.register(accelerator, () => {
-    mainWindow?.webContents.send('timer:hotkey-toggle')
-  })
+  const ok = globalShortcut.register(accelerator, onStartKey)
   if (ok) currentToggleHotkey = accelerator
   else console.warn(`[hotkey] Could not register ${accelerator}`)
   return ok
@@ -325,9 +342,7 @@ function suspendGlobalShortcuts(): void {
 
 function resumeGlobalShortcuts(): void {
   if (currentToggleHotkey) {
-    globalShortcut.register(currentToggleHotkey, () => {
-      mainWindow?.webContents.send('timer:hotkey-toggle')
-    })
+    globalShortcut.register(currentToggleHotkey, onStartKey)
   }
   if (currentMiniHotkey) {
     globalShortcut.register(currentMiniHotkey, () => {
@@ -835,11 +850,9 @@ app.whenReady().then(async () => {
   ipcMain.on('mini:request-stop', () => {
     mainWindow?.webContents.send('timer:tray-stop')
   })
-  ipcMain.on('mini:request-start', () => {
-    // hotkey-toggle starts when no timer is running and falls back to the
-    // first active client — exactly what we want for the play button.
-    mainWindow?.webContents.send('timer:hotkey-toggle')
-  })
+  // The play button does what the start hotkey does (#297): start the last
+  // pair, or open the START dialog when there is none.
+  ipcMain.on('mini:request-start', onStartKey)
 
   // Settings view → main: pause/resume registered global shortcuts during
   // hotkey capture so the user can rebind a key (e.g. Alt+Shift+S) without
