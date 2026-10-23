@@ -153,6 +153,8 @@ export const de = {
   'timer.client.noClientsSuffix': ', um welche hinzuzufügen.',
   'timer.description.label': 'Beschreibung',
   'timer.description.placeholder': 'Woran arbeitest du?',
+  'timer.startFailed': 'Start fehlgeschlagen: {error}',
+  'timer.switchFailed': 'Wechsel fehlgeschlagen: {error}. Der laufende Timer läuft weiter.',
 
   // ── TodayView ────────────────────────────────────────────────────────────
   'today.error.title': 'Daten konnten nicht geladen werden.',

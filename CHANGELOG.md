@@ -10,6 +10,7 @@ All notable changes to TimeTrack are documented here.
 ### Fixed
 
 - **Settings → About shows the version once.** The Updates section no longer has its own version row, which printed the version twice next to the one in the About section (#274).
+- **A start or switch that fails now says so.** When TimeTrack could not start a timer from the start dialog or a quick-start key, or could not switch to another client while a timer ran, nothing happened on screen. The dialog closed, and the old timer, if any, kept running. A message now names the reason and, for a switch, says that the running timer keeps running. Also, a timer action that got no answer from the app's background process no longer locks the start key: before, starting from the dialog and every quick-start switch stayed blocked until the app was restarted.
 
 ## [1.22.0] — 2026-10-23
 
