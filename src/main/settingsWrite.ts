@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { IpcHooks } from './ipc'
+import type { HotkeyChange } from './hotkeySlot'
 import type { IpcResult } from '../shared/types'
 
 /**
@@ -65,6 +66,40 @@ function fail(error: unknown): IpcResult<never> {
   return { ok: false, error: String(error) }
 }
 
+/**
+ * #292: a hotkey is stored only once it is registered, so the setting and the
+ * active shortcut agree. Refused, the previous one stays in both. If storing
+ * fails after the new one was registered, the previous one is registered
+ * again, for the same reason.
+ */
+function writeHotkey(
+  db: Database.Database,
+  hooks: IpcHooks,
+  key: 'hotkey_toggle' | 'mini_hotkey',
+  value: string
+): IpcResult<void> {
+  const apply = (accelerator: string): HotkeyChange =>
+    key === 'hotkey_toggle' ? hooks.setHotkey(accelerator) : hooks.setMiniHotkey(accelerator)
+  const previous =
+    (
+      db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+        | { value: string }
+        | undefined
+    )?.value ?? ''
+  const change = apply(value)
+  if (!change.ok) {
+    const lost = change.previousKept ? '' : ' Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
+    return fail(`Hotkey "${value}" konnte nicht registriert werden.${lost}`)
+  }
+  try {
+    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
+  } catch (e) {
+    if (previous) apply(previous)
+    return fail(e)
+  }
+  return ok(undefined)
+}
+
 /** `settings:set`: store a renderer-written setting and apply its side effect. */
 export function writeSettingFromRenderer(
   db: Database.Database,
@@ -77,19 +112,7 @@ export function writeSettingFromRenderer(
   }
   if (typeof value !== 'string') return fail(`Ungültiger Wert für ${key}`)
   try {
-    // #292: a hotkey is stored only once it is registered, so the setting and
-    // the active shortcut agree; refused, the previous one stays in both.
-    if (key === 'hotkey_toggle' || key === 'mini_hotkey') {
-      const change = key === 'hotkey_toggle' ? hooks.setHotkey(value) : hooks.setMiniHotkey(value)
-      if (!change.ok) {
-        const lost = change.previousKept
-          ? ''
-          : ' Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
-        return fail(`Hotkey "${value}" konnte nicht registriert werden.${lost}`)
-      }
-      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
-      return ok(undefined)
-    }
+    if (key === 'hotkey_toggle' || key === 'mini_hotkey') return writeHotkey(db, hooks, key, value)
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
     // Apply side-effects for known keys.
     if (key === 'idle_threshold_minutes') {

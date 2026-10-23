@@ -1,18 +1,30 @@
 /**
  * #292 — a hotkey slot changes only when the new accelerator is in force.
  * Refused, the previous one stays registered and stays the slot's, so what
- * the settings store and what the OS has registered agree.
+ * the settings store and what the OS has registered agree. Whether the OS
+ * holds a slot's accelerator is tracked per slot, also across hotkey capture.
  */
 import { describe, it, expect } from 'vitest'
-import { changeHotkey, type HotkeySlot, type ShortcutRegistry } from './hotkeySlot'
+import {
+  changeHotkey,
+  hotkeySlot,
+  resumeHotkeys,
+  suspendHotkeys,
+  type HotkeySlot,
+  type ShortcutRegistry
+} from './hotkeySlot'
 
 /** A stand-in for `globalShortcut` that refuses the accelerators it is told to. */
-function fakeRegistry(refused: string[] = []): ShortcutRegistry & { active: Set<string> } {
+function fakeRegistry(refused: string[] = []): ShortcutRegistry & {
+  active: Set<string>
+  refused: string[]
+} {
   const active = new Set<string>()
   return {
     active,
-    register: (accelerator) => {
-      if (refused.includes(accelerator) || active.has(accelerator)) return false
+    refused,
+    register(accelerator) {
+      if (this.refused.includes(accelerator) || active.has(accelerator)) return false
       active.add(accelerator)
       return true
     },
@@ -22,33 +34,33 @@ function fakeRegistry(refused: string[] = []): ShortcutRegistry & { active: Set<
   }
 }
 
-const onPress = (): void => undefined
-const opts = { other: 'Alt+Shift+M', onPress, suspended: false }
+const OTHER = 'Alt+Shift+M'
 
-/** A slot that holds `current`, registered with `registry` as at start-up. */
+/** A slot that holds `current`, registered as at start-up. */
 function holding(registry: ShortcutRegistry, current: string): HotkeySlot {
-  registry.register(current, onPress)
-  return { current }
+  const slot = hotkeySlot(() => undefined)
+  expect(changeHotkey(registry, slot, current, OTHER)).toEqual({ ok: true })
+  return slot
 }
 
 describe('changing a hotkey slot (#292)', () => {
   it('moves to a free accelerator', () => {
     const registry = fakeRegistry()
     const slot = holding(registry, 'Alt+Shift+S')
-    expect(changeHotkey(registry, slot, 'Alt+Shift+T', opts)).toEqual({ ok: true })
-    expect(slot.current).toBe('Alt+Shift+T')
+    expect(changeHotkey(registry, slot, 'Alt+Shift+T', OTHER)).toEqual({ ok: true })
+    expect(slot).toMatchObject({ current: 'Alt+Shift+T', registered: true })
     expect([...registry.active]).toEqual(['Alt+Shift+T'])
   })
 
   it('refused by the OS: the previous accelerator stays registered and stays the slot’s', () => {
     const registry = fakeRegistry(['Ctrl+Alt+Del'])
     const slot = holding(registry, 'Alt+Shift+S')
-    expect(changeHotkey(registry, slot, 'Ctrl+Alt+Del', opts)).toEqual({
+    expect(changeHotkey(registry, slot, 'Ctrl+Alt+Del', OTHER)).toEqual({
       ok: false,
       reason: 'refused',
       previousKept: true
     })
-    expect(slot.current).toBe('Alt+Shift+S')
+    expect(slot).toMatchObject({ current: 'Alt+Shift+S', registered: true })
     expect([...registry.active]).toEqual(['Alt+Shift+S'])
   })
 
@@ -56,63 +68,87 @@ describe('changing a hotkey slot (#292)', () => {
     const registry = fakeRegistry()
     const slot = holding(registry, 'Alt+Shift+S')
     // Something else grabs both while the slot changes.
-    const refusing = { ...registry, register: () => false }
-    expect(changeHotkey(refusing, slot, 'Alt+Shift+T', opts)).toEqual({
+    registry.refused.push('Alt+Shift+T', 'Alt+Shift+S')
+    expect(changeHotkey(registry, slot, 'Alt+Shift+T', OTHER)).toEqual({
       ok: false,
       reason: 'refused',
       previousKept: false
     })
-    expect(slot.current).toBe('')
+    expect(slot).toMatchObject({ current: '', registered: false })
     expect(registry.active.size).toBe(0)
   })
 
   it('taken by the other slot: nothing changes', () => {
     const registry = fakeRegistry()
     const slot = holding(registry, 'Alt+Shift+S')
-    expect(changeHotkey(registry, slot, 'Alt+Shift+M', opts)).toEqual({
+    expect(changeHotkey(registry, slot, OTHER, OTHER)).toEqual({
       ok: false,
       reason: 'taken',
       previousKept: true
     })
-    expect(slot.current).toBe('Alt+Shift+S')
+    expect(slot).toMatchObject({ current: 'Alt+Shift+S', registered: true })
     expect([...registry.active]).toEqual(['Alt+Shift+S'])
   })
 
   it('an empty accelerator: nothing changes', () => {
     const registry = fakeRegistry()
     const slot = holding(registry, 'Alt+Shift+S')
-    expect(changeHotkey(registry, slot, '', opts)).toEqual({
+    expect(changeHotkey(registry, slot, '', OTHER)).toEqual({
       ok: false,
       reason: 'empty',
       previousKept: true
     })
-    expect(slot.current).toBe('Alt+Shift+S')
+    expect(slot).toMatchObject({ current: 'Alt+Shift+S', registered: true })
     expect([...registry.active]).toEqual(['Alt+Shift+S'])
   })
+})
 
-  it('refused during hotkey capture: the previous one is kept for resuming, not registered now', () => {
-    // Capture has paused the shortcuts: the slot still names its accelerator,
-    // but the OS no longer has it, so pressing it can reach the capture.
+describe('changing a hotkey slot during hotkey capture (#292)', () => {
+  it('refused: the previous one is kept for resuming, not registered mid-capture', () => {
+    // Capture pauses the shortcuts so that pressing them reaches the capture.
     const registry = fakeRegistry(['Ctrl+Alt+Del'])
     const slot = holding(registry, 'Alt+Shift+S')
-    registry.unregister('Alt+Shift+S')
-    expect(changeHotkey(registry, slot, 'Ctrl+Alt+Del', { ...opts, suspended: true })).toEqual({
+    suspendHotkeys(registry, [slot])
+    expect(changeHotkey(registry, slot, 'Ctrl+Alt+Del', OTHER)).toEqual({
       ok: false,
       reason: 'refused',
       previousKept: true
     })
-    expect(slot.current).toBe('Alt+Shift+S')
+    expect(slot).toMatchObject({ current: 'Alt+Shift+S', registered: false })
     expect(registry.active.size).toBe(0)
+    expect(resumeHotkeys(registry, [slot])).toEqual([])
+    expect([...registry.active]).toEqual(['Alt+Shift+S'])
   })
 
-  it('a change during hotkey capture registers the new accelerator', () => {
+  it('a change that succeeds registers the new accelerator, and resuming leaves it', () => {
     const registry = fakeRegistry()
     const slot = holding(registry, 'Alt+Shift+S')
-    registry.unregister('Alt+Shift+S')
-    expect(changeHotkey(registry, slot, 'Alt+Shift+T', { ...opts, suspended: true })).toEqual({
-      ok: true
-    })
-    expect(slot.current).toBe('Alt+Shift+T')
+    suspendHotkeys(registry, [slot])
+    expect(changeHotkey(registry, slot, 'Alt+Shift+T', OTHER)).toEqual({ ok: true })
+    expect(resumeHotkeys(registry, [slot])).toEqual([])
+    expect([...registry.active]).toEqual(['Alt+Shift+T'])
+  })
+
+  it('two changes in one capture: the first one is released, not left registered', () => {
+    // E.g. "Reset" while capturing, then a new key.
+    const registry = fakeRegistry()
+    const slot = holding(registry, 'Alt+Shift+S')
+    suspendHotkeys(registry, [slot])
+    expect(changeHotkey(registry, slot, 'Alt+Shift+R', OTHER)).toEqual({ ok: true })
+    expect(changeHotkey(registry, slot, 'Alt+Shift+T', OTHER)).toEqual({ ok: true })
+    resumeHotkeys(registry, [slot])
+    expect([...registry.active]).toEqual(['Alt+Shift+T'])
+  })
+
+  it('resuming fails: the slot says it is not registered and the accelerator is reported', () => {
+    const registry = fakeRegistry()
+    const slot = holding(registry, 'Alt+Shift+S')
+    suspendHotkeys(registry, [slot])
+    registry.refused.push('Alt+Shift+S') // another app took it meanwhile
+    expect(resumeHotkeys(registry, [slot])).toEqual(['Alt+Shift+S'])
+    expect(slot).toMatchObject({ current: 'Alt+Shift+S', registered: false })
+    // A later change does not try to unregister what the OS never gave back.
+    expect(changeHotkey(registry, slot, 'Alt+Shift+T', OTHER)).toEqual({ ok: true })
     expect([...registry.active]).toEqual(['Alt+Shift+T'])
   })
 })
