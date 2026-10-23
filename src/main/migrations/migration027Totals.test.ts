@@ -70,18 +70,17 @@ describe('migration 027 — Heute totals before and after', () => {
     midnight.setHours(0, 0, 0, 0)
     const span = now - midnight.getTime()
     // Six slots spread over today so far, each at most a minute long. A slot
-    // whose local wall-clock time is ambiguous — within an hour of a change
-    // of the offset, i.e. possibly in the repeated hour of the autumn clock
-    // change — is skipped: written without a zone it means two instants, and
-    // the expectations below assume one (Codex finding on #257; the release
-    // falls on 2026-10-25).
+    // is used only if its local wall-clock time, written without a zone,
+    // reads back as the same instant — not so in the repeated hour of the
+    // autumn clock change, where it means two instants and the expectations
+    // below assume one (Codex findings on #257; the release falls on
+    // 2026-10-25). Unlike a fixed distance to the offset change this keeps
+    // valid times right after a spring-forward jump at midnight.
     const n = 6
     const candidates = 60
     const step = Math.floor(span / (candidates + 1) / 1000) * 1000
     const len = Math.max(1000, Math.min(60_000, Math.floor(step / 2000) * 1000))
-    const offsetAt = (ms: number): number => new Date(ms).getTimezoneOffset()
-    const unambiguous = (ms: number): boolean =>
-      offsetAt(ms - 3_600_000) === offsetAt(ms) && offsetAt(ms + 3_600_000) === offsetAt(ms)
+    const unambiguous = (ms: number): boolean => new Date(zoneless(ms)).getTime() === ms
     const usable = Array.from({ length: candidates }, (_, i) => {
       const start = midnight.getTime() + 1000 + i * step
       return { start, stop: start + len }
