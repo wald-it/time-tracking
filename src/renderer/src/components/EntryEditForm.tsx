@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import type { Client, Entry, Project } from '../../../shared/types'
-import { formatTimeHHMM, parseTimeToDate } from '../../../shared/date'
+import { formatTimeHHMM, parseStopToDate, parseTimeToDate } from '../../../shared/date'
 import { useEntriesStore } from '../store/entriesStore'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useT } from '../contexts/I18nContext'
@@ -103,7 +103,7 @@ export function EntryEditForm({
     let stop: Date
     try {
       start = parseTimeToDate(date, startTime)
-      stop = parseTimeToDate(date, stopTime)
+      stop = parseStopToDate(date, startTime, stopTime)
     } catch (e) {
       return (e as Error).message
     }
@@ -130,7 +130,7 @@ export function EntryEditForm({
     setState('saving')
     setError(null)
     const start = parseTimeToDate(date, startTime).toISOString()
-    const stop = parseTimeToDate(date, stopTime).toISOString()
+    const stop = parseStopToDate(date, startTime, stopTime).toISOString()
     const res = entry
       ? await window.api.entries.update({
           id: entry.id,

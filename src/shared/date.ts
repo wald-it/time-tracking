@@ -41,6 +41,19 @@ export function parseTimeToDate(dateISO: string | Date, time: string): Date {
   return out
 }
 
+/**
+ * The stop of a form that edits one day: like `parseTimeToDate`, except that
+ * a stop of 00:00 after a later start is the end of that day — midnight of
+ * the next one (#334). That is how the first half of an entry across
+ * midnight (20:00 to 00:00) reads. Any other stop before the start stays on
+ * the same day, so the form still refuses it instead of making an overnight
+ * entry out of a typo.
+ */
+export function parseStopToDate(dateISO: string | Date, startTime: string, stopTime: string): Date {
+  const stop = parseTimeToDate(dateISO, stopTime)
+  if (stopTime !== '00:00' || startTime === '00:00') return stop
+  return new Date(stop.getFullYear(), stop.getMonth(), stop.getDate() + 1)
+}
 /** Format a date as "HH:MM" in the host's local timezone. */
 export function formatTimeHHMM(date: string | Date): string {
   const d = toDate(date)
