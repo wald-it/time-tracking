@@ -195,8 +195,8 @@ const DIALOG_TEXT_MAX = 120
  * embeddings, overrides and isolates (U+061C, U+200E/F, U+202A–202E,
  * U+2066–2069) that can make text read in another order than it is stored.
  */
-// eslint-disable-next-line no-control-regex -- matching control characters is the point
 const HIDDEN_CHARS =
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
 
 /**
