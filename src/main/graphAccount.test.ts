@@ -255,3 +255,104 @@ describe('disconnect', () => {
     expect(() => disconnect(deps())).not.toThrow()
   })
 })
+
+// #308: Entra refreshes only scopes "equivalent to or a subset of" the ones
+// granted. With Teams presence switched on but not yet consented (no
+// reconnect, or the tenant needs an admin), every refresh asked for
+// Presence.ReadWrite and failed — the calendar import stopped working.
+describe('a refused refresh with feature scopes falls back to the calendar scopes (#308)', () => {
+  /** Answers each refresh in turn and records the scopes it asked for. */
+  function server(...answers: Array<'ok' | string>): {
+    asked: string[][]
+    fetchFn: typeof fetch
+  } {
+    const asked: string[][] = []
+    const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+      const scope = new URLSearchParams(String(init?.body ?? '')).get('scope') ?? ''
+      asked.push(scope.split(' ').filter(Boolean))
+      const a = answers[asked.length - 1] ?? 'ok'
+      return (a === 'ok'
+        ? {
+            ok: true,
+            status: 200,
+            json: async () => ({ access_token: 'access-2', expires_in: 3600, scope })
+          }
+        : {
+            ok: false,
+            status: 400,
+            json: async () => ({ error: a, error_description: 'AADSTS65001' })
+          }) as unknown as Response
+    }) as unknown as typeof fetch
+    return { asked, fetchFn }
+  }
+
+  function presenceOn(fetchFn: typeof fetch): GraphAccountDeps {
+    return withSettings({ presence_enabled: '1' }, { auth: { now: () => NOW, fetchFn } })
+  }
+
+  for (const code of ['invalid_grant', 'consent_required', 'interaction_required']) {
+    it(`presence not consented (${code}): the import still gets a token, the connection stays`, async () => {
+      const s = server(code, 'ok')
+      const d = presenceOn(s.fetchFn)
+      saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+      await expect(getAccessToken(d)).resolves.toBe('access-2')
+      expect(s.asked).toHaveLength(2)
+      expect(s.asked[0]).toContain('Presence.ReadWrite')
+      expect(s.asked[1]).toEqual(['offline_access', 'openid', 'profile', 'Calendars.Read'])
+      expect(loadTokens(d.store)?.accessToken).toBe('access-2')
+    })
+  }
+
+  it('presence consented: one refresh, and the token carries it again', async () => {
+    const s = server('ok')
+    const d = presenceOn(s.fetchFn)
+    // Even when the stored list lost the scope (presence was off for a while).
+    saveTokens(tokens({ expiresAtMs: NOW + 1000, grantedScopes: ['Calendars.Read'] }), d.store)
+    await getAccessToken(d)
+    expect(s.asked).toHaveLength(1)
+    expect(s.asked[0]).toContain('Presence.ReadWrite')
+    expect(loadTokens(d.store)?.grantedScopes).toContain('Presence.ReadWrite')
+  })
+
+  it('the calendar-only refresh failing too means the grant is gone', async () => {
+    const s = server('invalid_grant', 'invalid_grant')
+    const d = presenceOn(s.fetchFn)
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(loadTokens(d.store)).toBeNull()
+  })
+
+  it('without feature scopes there is no second attempt', async () => {
+    const s = server('invalid_grant')
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(s.asked).toHaveLength(1)
+  })
+  it('after the fallback the stored scopes are the calendar scopes, so settings asks to reconnect', async () => {
+    const s = server('consent_required', 'ok')
+    const d = presenceOn(s.fetchFn)
+    // The stored list still names the scope, e.g. after the consent was revoked.
+    saveTokens(
+      tokens({ expiresAtMs: NOW + 1000, grantedScopes: ['Calendars.Read', 'Presence.ReadWrite'] }),
+      d.store
+    )
+    await getAccessToken(d)
+    expect(loadTokens(d.store)?.grantedScopes).not.toContain('Presence.ReadWrite')
+  })
+
+  for (const code of ['temporarily_unavailable', 'server_error']) {
+    it(`a transient error (${code}) is not a refusal: no fallback, presence keeps its scope`, async () => {
+      const s = server(code)
+      const d = presenceOn(s.fetchFn)
+      const before = tokens({
+        expiresAtMs: NOW + 1000,
+        grantedScopes: ['Calendars.Read', 'Presence.ReadWrite']
+      })
+      saveTokens(before, d.store)
+      await expect(getAccessToken(d)).rejects.toThrow()
+      expect(s.asked).toHaveLength(1)
+      expect(loadTokens(d.store)?.grantedScopes).toEqual(before.grantedScopes)
+    })
+  }
+})
