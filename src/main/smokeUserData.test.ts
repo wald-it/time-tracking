@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { spawn } from 'child_process'
+import { spawn, type ChildProcess } from 'child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -15,6 +15,34 @@ import {
 } from './smokeUserData'
 
 let root: string
+
+/**
+ * The cleaner's outcome line. Deliberately not its `exit` event: under load,
+ * Windows can take 20 s and more to finish tearing down an exited
+ * electron.exe, and the `exit` event waits for that (#264).
+ */
+function cleanerOutcome(cleaner: ChildProcess): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let out = ''
+    cleaner.stdout!.on('data', (chunk) => {
+      out += chunk
+      if (out.includes('\n')) resolve(out.split('\n')[0].trim())
+    })
+    cleaner.once('error', reject)
+    // Printed nothing: fail on the assertion instead of the test timeout.
+    cleaner.once('exit', (code) => resolve(out.trim() || `exit ${code} without outcome`))
+  })
+}
+
+/** Same liveness check as the cleaner's own. */
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'tt-smoke-ud-'))
@@ -110,8 +138,11 @@ describe('smoke userData isolation', () => {
     const victim = join(root, 'time-tracking')
     mkdirSync(victim)
     const { command, args, env } = buildCleanerCommand(process.execPath, victim, 999999)
-    const cleaner = spawn(command, args, { env: { ...process.env, ...env }, stdio: 'ignore' })
-    await new Promise((r) => cleaner.once('exit', r))
+    const cleaner = spawn(command, args, {
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+    expect(await cleanerOutcome(cleaner)).toBe('skipped')
     expect(existsSync(victim)).toBe(true)
   }, 15_000)
 
@@ -175,17 +206,20 @@ describe('smoke userData isolation', () => {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
       stdio: 'ignore'
     })
-    const holderExited = new Promise((r) => holder.once('exit', r))
     const { command, args, env } = buildCleanerCommand(process.execPath, dir, holder.pid!)
-    const cleaner = spawn(command, args, { env: { ...process.env, ...env }, stdio: 'ignore' })
-    const cleanerExited = new Promise((r) => cleaner.once('exit', r))
+    const cleaner = spawn(command, args, {
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+    const outcome = cleanerOutcome(cleaner)
 
     await new Promise((r) => setTimeout(r, 400))
     expect(existsSync(dir)).toBe(true) // holder still alive → nothing removed yet
 
-    await holderExited
-    await cleanerExited
+    expect(await outcome).toBe('removed')
     expect(existsSync(dir)).toBe(false)
+    // The removal came after the holder ended, however late the cleaner started.
+    expect(isAlive(holder.pid!)).toBe(false)
   }, 15_000)
 
   it('removes the temp directory with its contents', () => {

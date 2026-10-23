@@ -126,20 +126,30 @@ export function removeSmokeUserDataDir(dir: string, tmpRoot: string = tmpdir()):
  * Node program run by the detached cleaner: wait until the smoke process
  * (`TT_SMOKE_PID`) is gone, then remove `TT_SMOKE_DIR`. Gives up after 60 s
  * so a stuck parent cannot leave the cleaner running forever.
+ *
+ * Prints its outcome (`skipped`, `removed` or `failed`) on stdout. The app
+ * ignores it; tests wait for it instead of the cleaner's exit, because under
+ * load Windows can take many seconds to finish tearing down an exited
+ * process, and Node's `exit` event waits for that (#264).
  */
 const CLEANER_SCRIPT = `
 const { rmSync } = require('fs')
 const { basename } = require('path')
 const dir = process.env.TT_SMOKE_DIR
-if (!dir || !basename(dir).startsWith('timetrack-smoke-')) process.exit(0)
 const pid = Number(process.env.TT_SMOKE_PID)
 const deadline = Date.now() + 60000
 const alive = () => { try { process.kill(pid, 0); return true } catch { return false } }
 const tick = () => {
   if (alive() && Date.now() < deadline) return setTimeout(tick, 200)
-  try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch {}
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+    process.stdout.write('removed\\n')
+  } catch {
+    process.stdout.write('failed\\n')
+  }
 }
-tick()
+if (!dir || !basename(dir).startsWith('timetrack-smoke-')) process.stdout.write('skipped\\n')
+else tick()
 `
 
 export interface CleanerCommand {
