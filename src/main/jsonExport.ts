@@ -18,8 +18,8 @@ const OMITTED_SETTING_KEYS = new Set(['ical_feed_token', 'webhook_targets'])
 
 /**
  * Any key that names a secret is left out too, so a secret stored later under
- * a new key (settings:set takes any key) does not leak into the export
- * unnoticed.
+ * a new key (by the main process, or added to the renderer allow-list in
+ * settingsWrite.ts) does not leak into the export unnoticed.
  */
 const SECRET_KEY = /token|secret|password/i
 

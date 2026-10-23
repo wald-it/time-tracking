@@ -95,7 +95,7 @@ export interface Project {
   end_date?: string | null
   /**
    * Total hour budget in minutes. Integer arithmetic, consistent with
-   * `rounded_min`. null = no budget set.
+   * `used_minutes`. null = no budget set.
    */
   budget_minutes?: number | null
   /**
@@ -104,8 +104,8 @@ export interface Project {
   status?: 'active' | 'paused' | 'archived'
   /**
    * Only present in `projects:getAll` responses.
-   * Total minutes of completed (stopped) entries for this project, all-time.
-   * null when no entries exist or budget_minutes is null.
+   * Budget used, all-time: billed minutes of the project's completed,
+   * billable entries, each rounded like the invoice (#285). 0 when none.
    */
   used_minutes?: number | null
   // v1.12 #105 — Project-level contact person
@@ -226,6 +226,9 @@ export interface Settings {
   ical_feed_enabled?: string
   ical_feed_port?: string
   ical_feed_token?: string
+  // #273 — automatic update check at app start, '1'/'0'. No migration: absent
+  // means on (see shared/updateCheck.ts). Manual "Check now" is unaffected.
+  update_check_enabled?: string
 }
 
 export interface CreateClientInput {
@@ -458,6 +461,6 @@ export interface AnalyticsSummary {
 export interface BudgetStatus {
   /** Total budget in minutes, or null when no budget is set. */
   budgetMinutes: number | null
-  /** Sum of rounded_min for all completed (stopped) entries, all-time. */
+  /** Billed minutes of completed, billable entries, all-time, as on the invoice (#285). */
   usedMinutes: number
 }

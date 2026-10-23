@@ -3,6 +3,7 @@ import { useTimer } from '../hooks/useTimer'
 import { useT } from '../contexts/I18nContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useTimerStore } from '../store/timerStore'
+import { useToastStore } from '../store/toastStore'
 import * as Icons from './Icons'
 import { Dialog } from './Dialog'
 import { FIELD_LABEL, INPUT, KEY_INV } from './instrumentClasses'
@@ -26,6 +27,7 @@ export function StartTimerModal({
 }: StartTimerModalProps): React.JSX.Element | null {
   const t = useT()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
+  const showToast = useToastStore((s) => s.show)
   const {
     clients,
     selectedClientId,
@@ -113,8 +115,13 @@ export function StartTimerModal({
 
   async function handleStart(): Promise<void> {
     if (!canStart) return
-    await start()
+    // start() switches when a timer runs; it checks synchronously, so this
+    // read sees the same state.
+    const switching = useTimerStore.getState().runningEntry !== null
+    const error = await start()
     onClose()
+    // The dialog closes either way; a refusal changed nothing, so say so.
+    if (error) showToast(t(switching ? 'timer.switchFailed' : 'timer.startFailed', { error }))
   }
 
   return (

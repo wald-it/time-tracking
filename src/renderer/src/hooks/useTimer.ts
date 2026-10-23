@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import type { Client, Entry } from '../../../shared/types'
+import type { Client, Entry, IpcResult } from '../../../shared/types'
 import { useTimerStore } from '../store/timerStore'
 import { useClientsStore } from '../store/clientsStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
@@ -23,10 +23,13 @@ export interface UseTimerResult {
   setSelectedProjectId: (id: number | null) => void
   setDescription: (desc: string) => void
   setQuickNoteEntry: (entry: Entry | null) => void
-  start: () => Promise<void>
+  /** Resolves to the error of a refused or failed start/switch, else null. */
+  start: () => Promise<string | null>
   stop: () => Promise<void>
-  startWithClient: (clientId: number, projectId?: number | null) => Promise<void>
-  switchTo: (clientId: number, projectId: number | null) => Promise<void>
+  /** Resolves to the error of a refused or failed start, else null. */
+  startWithClient: (clientId: number, projectId?: number | null) => Promise<string | null>
+  /** Resolves to the error of a refused or failed switch, else null. */
+  switchTo: (clientId: number, projectId: number | null) => Promise<string | null>
   idleKeep: () => void
   idleStopAtIdle: () => Promise<void>
   idleMarkPause: () => Promise<void>
@@ -45,6 +48,25 @@ async function pushTrayUpdate(running: boolean, label: string): Promise<void> {
   // elapsed time locally without round-trips. `null` when no timer is running.
   const startedAt = useTimerStore.getState().runningEntry?.started_at ?? null
   window.api.tray.update(running, label, seconds, startedAt)
+}
+
+/**
+ * Run one timer IPC call with `isLoading` set, and clear it whatever happens.
+ * A call that rejects (no answer from main) comes back as a failed result,
+ * so callers report it like a refusal — used where the caller shows the
+ * error (start, switch); the others clear the flag with try/finally. Before, a rejection left `isLoading`
+ * set for good: the start dialog's start key stayed disabled and the switch
+ * path ignored every later call until the window was reloaded.
+ */
+async function withLoading<T>(call: () => Promise<IpcResult<T>>): Promise<IpcResult<T>> {
+  useTimerStore.getState().setIsLoading(true)
+  try {
+    return await call()
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  } finally {
+    useTimerStore.getState().setIsLoading(false)
+  }
 }
 
 // Refs shared across all useTimer() instances so listeners are registered ONCE
@@ -173,7 +195,57 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     }
   }, [runningEntry, engine])
 
-  const start = useCallback(async () => {
+  /**
+   * The switch path shared by switchTo() and start() while a timer runs
+   * (#271): stop the running entry and start (client, project) at ONE
+   * instant, in one main-process transaction (`entries:switch`). If that
+   * fails, the old entry keeps running.
+   *
+   * Unlike startWithClient this must NOT dismiss the quick-note prompt: when
+   * the stopped entry had no description, the prompt opens for it once the
+   * new entry runs — the same prompt a manual stop() shows. A pending idle
+   * event belongs to the stopped entry and is dropped, as in stop().
+   * `onSwitched` runs after a successful switch, before the new entry is set.
+   * Resolves to the error of a refused or failed switch, for the caller to
+   * show; null after a switch, and for a call ignored as a double click.
+   */
+  const switchToEntry = useCallback(
+    async (
+      clientId: number,
+      projectId: number | null,
+      newDescription: string,
+      onSwitched?: () => void
+    ): Promise<string | null> => {
+      // A double click would switch twice: the second call still sees the old
+      // running entry and leaves a zero-length entry with its own prompt.
+      if (useTimerStore.getState().isLoading) return null
+      const res = await withLoading(() =>
+        window.api.entries.switch({
+          client_id: clientId,
+          project_id: projectId,
+          description: newDescription,
+          started_at: new Date().toISOString()
+        })
+      )
+      if (!res.ok) return res.error
+      const { entry, stopped } = res.data
+      onSwitched?.()
+      setRunningEntry(entry)
+      if (useTimerStore.getState().idleEvent) {
+        setIdleEvent(null)
+        window.api.idle.dismiss()
+      }
+      const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
+      await pushTrayUpdate(true, clientName)
+      if (stopped && stopped.description.trim() === '') setQuickNoteEntry(stopped)
+      return null
+    },
+    // The store setters are stable; listed so this callback adds no lint
+    // warning (the older ones carry theirs in the baseline).
+    [clients, setRunningEntry, setIdleEvent, setQuickNoteEntry]
+  )
+
+  const start = useCallback(async (): Promise<string | null> => {
     // Resolve which client to start. If the user hasn't picked one (e.g. the
     // hotkey fires from Today/Calendar where there is no selector at all),
     // fall back to the first active client so Alt+Shift+S always does
@@ -181,7 +253,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     let clientId = selectedClientId
     if (!clientId) {
       const fallback = clients.find((c) => c.active === 1)
-      if (!fallback) return
+      if (!fallback) return null
       clientId = fallback.id
       setSelectedClientId(clientId)
     }
@@ -192,50 +264,37 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     // prompt for the stopped entry if it had no description, and an open
     // prompt is NOT dismissed.
     if (useTimerStore.getState().runningEntry) {
-      if (useTimerStore.getState().isLoading) return
-      setIsLoading(true)
-      const sw = await window.api.entries.switch({
+      return switchToEntry(clientId, projectId ?? null, description)
+    }
+    const res = await withLoading(() =>
+      window.api.entries.start({
         client_id: clientId,
-        project_id: projectId ?? null,
+        project_id: projectId ?? undefined,
         description,
         started_at: new Date().toISOString()
       })
-      setIsLoading(false)
-      if (!sw.ok) return
-      const { entry, stopped } = sw.data
-      setRunningEntry(entry)
-      if (useTimerStore.getState().idleEvent) {
-        setIdleEvent(null)
-        window.api.idle.dismiss()
-      }
-      const name = clients.find((c) => c.id === clientId)?.name ?? ''
-      await pushTrayUpdate(true, name)
-      if (stopped && stopped.description.trim() === '') setQuickNoteEntry(stopped)
-      return
-    }
-    setIsLoading(true)
-    const res = await window.api.entries.start({
-      client_id: clientId,
-      project_id: projectId ?? undefined,
-      description,
-      started_at: new Date().toISOString()
-    })
-    setIsLoading(false)
-    if (res.ok) {
-      setRunningEntry(res.data)
-      // Dismiss quicknote modal if user starts a new timer before answering
-      if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
-      const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
-      await pushTrayUpdate(true, clientName)
-    }
-  }, [selectedClientId, description, clients])
+    )
+    if (!res.ok) return res.error
+    setRunningEntry(res.data)
+    // Dismiss quicknote modal if user starts a new timer before answering
+    if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
+    const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
+    await pushTrayUpdate(true, clientName)
+    return null
+  }, [selectedClientId, description, clients, switchToEntry])
 
   const stop = useCallback(async () => {
     if (!runningEntry) return
     const wasEmpty = runningEntry.description.trim() === ''
+    // Not withLoading: nothing reports a failed stop yet, so a rejection
+    // still reaches the caller as before; only the flag must not stick.
     setIsLoading(true)
-    const res = await window.api.entries.stop(runningEntry.id)
-    setIsLoading(false)
+    let res: IpcResult<Entry>
+    try {
+      res = await window.api.entries.stop(runningEntry.id)
+    } finally {
+      setIsLoading(false)
+    }
     if (res.ok) {
       setRunningEntry(null)
       setDescription('')
@@ -253,81 +312,47 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   }, [runningEntry])
 
   const startWithClient = useCallback(
-    async (clientId: number, projectId?: number | null) => {
-      if (useTimerStore.getState().runningEntry) return
+    async (clientId: number, projectId?: number | null): Promise<string | null> => {
+      if (useTimerStore.getState().runningEntry) return null
       // Client and project together: a stale project of the previous client
       // would otherwise travel into the next start() (global hotkey).
       setSelectedClientId(clientId)
       useTimerStore.getState().setSelectedProjectId(projectId ?? null)
-      setIsLoading(true)
-      const res = await window.api.entries.start({
-        client_id: clientId,
-        project_id: projectId ?? null,
-        description: '',
-        started_at: new Date().toISOString()
-      })
-      setIsLoading(false)
-      if (res.ok) {
-        setRunningEntry(res.data)
-        setDescription('')
-        // Dismiss quicknote modal if user starts a new timer before answering
-        if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
-        const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
-        await pushTrayUpdate(true, clientName)
-      }
+      const res = await withLoading(() =>
+        window.api.entries.start({
+          client_id: clientId,
+          project_id: projectId ?? null,
+          description: '',
+          started_at: new Date().toISOString()
+        })
+      )
+      if (!res.ok) return res.error
+      setRunningEntry(res.data)
+      setDescription('')
+      // Dismiss quicknote modal if user starts a new timer before answering
+      if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
+      const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
+      await pushTrayUpdate(true, clientName)
+      return null
     },
     [clients]
   )
 
   /**
-   * B1 — quick start while a timer runs: stop the running entry and start
-   * (client, project) at ONE instant, in one main-process transaction
-   * (`entries:switch`). If that fails, the old entry keeps running.
-   *
-   * Unlike startWithClient this must NOT dismiss the quick-note prompt: when
-   * the stopped entry had no description, the prompt opens for it once the
-   * new entry runs — the same prompt a manual stop() shows. A pending idle
-   * event belongs to the stopped entry and is dropped, as in stop().
+   * B1 — quick start while a timer runs, over the shared switch path (see
+   * switchToEntry). The key did not go through the selector, so a successful
+   * switch adopts its client and project as the selection and clears the
+   * description.
    */
   const switchTo = useCallback(
-    async (clientId: number, projectId: number | null) => {
-      // A double click would switch twice: the second call still sees the old
-      // running entry and leaves a zero-length entry with its own prompt.
-      if (useTimerStore.getState().isLoading) return
-      setIsLoading(true)
-      const res = await window.api.entries.switch({
-        client_id: clientId,
-        project_id: projectId,
-        description: '',
-        started_at: new Date().toISOString()
-      })
-      setIsLoading(false)
-      if (!res.ok) return
-      const { entry, stopped } = res.data
-      // Client and project together, as in startWithClient (global hotkey).
-      setSelectedClientId(clientId)
-      useTimerStore.getState().setSelectedProjectId(projectId)
-      setRunningEntry(entry)
-      setDescription('')
-      if (useTimerStore.getState().idleEvent) {
-        setIdleEvent(null)
-        window.api.idle.dismiss()
-      }
-      const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
-      await pushTrayUpdate(true, clientName)
-      if (stopped && stopped.description.trim() === '') setQuickNoteEntry(stopped)
-    },
-    // The store setters are stable; listed so this new callback adds no lint
-    // warning (the older ones above carry theirs in the baseline).
-    [
-      clients,
-      setIsLoading,
-      setSelectedClientId,
-      setRunningEntry,
-      setDescription,
-      setIdleEvent,
-      setQuickNoteEntry
-    ]
+    (clientId: number, projectId: number | null) =>
+      switchToEntry(clientId, projectId, '', () => {
+        // Client and project together, as in startWithClient (global hotkey).
+        setSelectedClientId(clientId)
+        useTimerStore.getState().setSelectedProjectId(projectId)
+        setDescription('')
+      }),
+    [switchToEntry, setSelectedClientId, setDescription]
   )
 
   const dismissIdle = useCallback(() => {
@@ -346,15 +371,21 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       dismissIdle()
       return
     }
+    // Not withLoading: a rejection must keep the idle prompt open (it reaches
+    // the caller before dismissIdle below), as it always did.
     setIsLoading(true)
-    const res = await window.api.entries.update({
-      id: entry.id,
-      client_id: entry.client_id,
-      description: entry.description,
-      started_at: entry.started_at,
-      stopped_at: ev.idleSince
-    })
-    setIsLoading(false)
+    let res: IpcResult<Entry>
+    try {
+      res = await window.api.entries.update({
+        id: entry.id,
+        client_id: entry.client_id,
+        description: entry.description,
+        started_at: entry.started_at,
+        stopped_at: ev.idleSince
+      })
+    } finally {
+      setIsLoading(false)
+    }
     if (res.ok) {
       setRunningEntry(null)
       setDescription('')
@@ -371,37 +402,42 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       return
     }
     setIsLoading(true)
-    // 1. Stop the running entry at idleSince
-    const stopRes = await window.api.entries.update({
-      id: entry.id,
-      client_id: entry.client_id,
-      description: entry.description,
-      started_at: entry.started_at,
-      stopped_at: ev.idleSince
-    })
-    if (stopRes.ok) {
-      // 2. Insert pause entry from idleSince to now
-      const pauseStart = ev.idleSince
-      const pauseEnd = new Date().toISOString()
-      const pauseStartRes = await window.api.entries.start({
+    // Three calls in a row, so not withLoading: the flag spans all of them,
+    // and a rejection still reaches the caller, but never leaves it set.
+    try {
+      // 1. Stop the running entry at idleSince
+      const stopRes = await window.api.entries.update({
+        id: entry.id,
         client_id: entry.client_id,
-        description: 'Pause',
-        started_at: pauseStart
+        description: entry.description,
+        started_at: entry.started_at,
+        stopped_at: ev.idleSince
       })
-      if (pauseStartRes.ok) {
-        await window.api.entries.update({
-          id: pauseStartRes.data.id,
+      if (stopRes.ok) {
+        // 2. Insert pause entry from idleSince to now
+        const pauseStart = ev.idleSince
+        const pauseEnd = new Date().toISOString()
+        const pauseStartRes = await window.api.entries.start({
           client_id: entry.client_id,
           description: 'Pause',
-          started_at: pauseStart,
-          stopped_at: pauseEnd
+          started_at: pauseStart
         })
+        if (pauseStartRes.ok) {
+          await window.api.entries.update({
+            id: pauseStartRes.data.id,
+            client_id: entry.client_id,
+            description: 'Pause',
+            started_at: pauseStart,
+            stopped_at: pauseEnd
+          })
+        }
+        setRunningEntry(null)
+        setDescription('')
+        await pushTrayUpdate(false, '')
       }
-      setRunningEntry(null)
-      setDescription('')
-      await pushTrayUpdate(false, '')
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
     dismissIdle()
   }, [dismissIdle])
 

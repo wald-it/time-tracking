@@ -14,16 +14,18 @@
  * registration been wrong, 32 tests would have quietly stopped existing.
  *
  * So the condition moves out of prose and into a check that can go red:
- *   - every `*.test.ts(x)` in the repo matches at least one project's include
- *   - every project's include still matches at least one file
+ *   - every `*.test.ts(x)` in the repo is run by at least one project: matched
+ *     by its include and not taken out again by its exclude
+ *   - every project still runs at least one file
  *
  * The config is imported, not parsed — the assertion is about the object
  * Vitest actually runs on, not about the text of the file.
  */
 import { describe, it, expect } from 'vitest'
+import { configDefaults } from 'vitest/config'
 import { readdirSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
-import config from '../../vitest.config'
+import config, { BERLIN_TESTS, RUNS_IN_BERLIN } from '../../vitest.config'
 
 const REPO_ROOT = resolve(__dirname, '..', '..')
 
@@ -88,16 +90,36 @@ export function globToRegExp(glob: string): RegExp {
 }
 
 interface ProjectShape {
-  test?: { name?: string; include?: string[] }
+  test?: { name?: string; include?: string[]; exclude?: string[] }
 }
 
 const projects = ((config as { test?: { projects?: ProjectShape[] } }).test?.projects ??
   []) as ProjectShape[]
 
+const toPattern = (g: string): { glob: string; re: RegExp } => ({ glob: g, re: globToRegExp(g) })
+
 const declared = projects.map((p) => ({
   name: p.test?.name ?? '(unnamed)',
-  patterns: (p.test?.include ?? []).map((g) => ({ glob: g, re: globToRegExp(g) }))
+  patterns: (p.test?.include ?? []).map(toPattern),
+  // An exclude takes a file out of the project again (#263 keeps the berlin
+  // files out of node and jsdom this way), so it counts against coverage.
+  excludes: (p.test?.exclude ?? []).map(toPattern)
 }))
+// Outside Europe/Berlin the `berlin` project is not registered (#263); its
+// files run in the berlin-zone CI job. They count as covered here, and the
+// pattern must still match something.
+if (!RUNS_IN_BERLIN) {
+  declared.push({
+    name: 'berlin (registered only in Europe/Berlin)',
+    patterns: [toPattern(BERLIN_TESTS)],
+    excludes: []
+  })
+}
+
+/** Does the project run this file — included and not excluded again? */
+function runs(p: (typeof declared)[number], file: string): boolean {
+  return p.patterns.some((x) => x.re.test(file)) && !p.excludes.some((x) => x.re.test(file))
+}
 
 describe('vitest projects cover every test file', () => {
   const files = findTestFiles(REPO_ROOT)
@@ -114,17 +136,17 @@ describe('vitest projects cover every test file', () => {
   })
 
   it('every test file is included by some project', () => {
-    const orphans = files.filter((f) => !declared.some((p) => p.patterns.some((x) => x.re.test(f))))
+    const orphans = files.filter((f) => !declared.some((p) => runs(p, f)))
     // A file listed here runs nowhere: green, zero skips, zero coverage.
     expect(orphans, `test files no Vitest project runs:\n  ${orphans.join('\n  ')}`).toEqual([])
   })
 
   it('every project still matches at least one file', () => {
     for (const p of declared) {
-      const matched = files.filter((f) => p.patterns.some((x) => x.re.test(f)))
+      const matched = files.filter((f) => runs(p, f))
       expect(
         matched.length,
-        `project "${p.name}" matches nothing — patterns: ${p.patterns.map((x) => x.glob).join(', ')}`
+        `project "${p.name}" runs nothing — include: ${p.patterns.map((x) => x.glob).join(', ')}; exclude: ${p.excludes.map((x) => x.glob).join(', ') || 'none'}`
       ).toBeGreaterThan(0)
     }
   })
@@ -145,5 +167,10 @@ describe('globToRegExp', () => {
     expect(globToRegExp('a/*/b.test.ts').test('a/x/y/b.test.ts')).toBe(false)
     // A dot is a literal, not "any character".
     expect(globToRegExp('src/a.test.ts').test('src/aXtest.ts')).toBe(false)
+    // The default excludes the projects inherit: dependencies, not sources.
+    for (const g of configDefaults.exclude) {
+      expect(globToRegExp(g).test('src/main/ipc.test.ts'), g).toBe(false)
+    }
+    expect(globToRegExp('**/node_modules/**').test('a/node_modules/b/c.test.ts')).toBe(true)
   })
 })
