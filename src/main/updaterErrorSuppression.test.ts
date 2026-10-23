@@ -40,7 +40,7 @@ vi.mock('electron', () => ({
   },
   ipcMain: { handle: (channel: string, fn: Handler) => ipcHandlers.set(channel, fn) },
   Notification: class {
-    show(): void {}
+    show = vi.fn()
   }
 }))
 vi.mock('electron-log/main', () => ({
