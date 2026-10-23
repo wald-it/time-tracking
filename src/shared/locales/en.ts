@@ -980,5 +980,28 @@ export const en: Record<TranslationKey, string> = {
   'mainError.merge.pdfTooBig': 'The PDF is too large (max. 50 MB)',
   'mainError.merge.locked': '{label} is locked by another program: {file}',
   'mainError.merge.fileLocked': 'The file is locked by another program: {file}',
-  'mainError.merge.invalidPdf': 'Invalid or encrypted PDF file'
+  'mainError.merge.invalidPdf': 'Invalid or encrypted PDF file',
+
+  // ── Main process: clients, projects, export, logo, settings (#296 part B) ─
+  'mainError.ipc.rateNegative': 'The hourly rate cannot be negative',
+  'mainError.ipc.nameEmpty': 'The name cannot be empty',
+  'mainError.ipc.nameTooLong': 'The name can be at most 100 characters long',
+  'mainError.ipc.nameReserved': '"{name}" is a reserved name',
+  'mainError.ipc.projectMissing': 'Project not found',
+  'mainError.ipc.projectMoveHasEntries':
+    'The project has entries and cannot be moved to another client',
+  'mainError.ipc.projectHasActive': 'The project still has active entries',
+  'mainError.ipc.linkNotAllowed': 'Only http:// and https:// links are allowed',
+  'mainError.export.badPdfRequest': 'Invalid PDF request',
+  'mainError.export.badCsvRequest': 'Invalid CSV request',
+  'mainError.export.badIcalRequest': 'Invalid iCal request',
+  'mainError.export.clientNotFound': 'Client {id} not found',
+  'mainError.logo.format': 'Logo format not supported: {ext}',
+  'mainError.logo.formatNone': 'Logo format not supported: (unknown)',
+  'mainError.logo.tooBig': 'The logo is larger than 1 MB ({kb} KB)',
+  'mainError.settings.hotkeyRefused': 'The hotkey "{hotkey}" could not be registered.',
+  'mainError.settings.hotkeyLost': 'The previous hotkey is no longer active either.',
+  'mainError.settings.unknownKey': 'Unknown setting: {key}',
+  'mainError.settings.badValue': 'Invalid value for {key}',
+  'mainError.analytics.badMonth': 'Invalid month'
 } as const satisfies Record<TranslationKey, string>

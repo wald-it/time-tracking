@@ -155,6 +155,19 @@ describe('settings:set allow-list', () => {
     expect(calls).toEqual(['refreshTrayLanguage()'])
   })
 
+  // #296 part B: the refusal in the app language; German as before.
+  it('words a refused key in the app language', () => {
+    expect(writeSettingFromRenderer(db, hooks(), 'something_new', 'x')).toEqual({
+      ok: false,
+      error: 'Unbekannte Einstellung: something_new'
+    })
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('language', 'en')").run()
+    expect(writeSettingFromRenderer(db, hooks(), 'something_new', 'x')).toEqual({
+      ok: false,
+      error: 'Unknown setting: something_new'
+    })
+  })
+
   it('refuses an unknown key and writes nothing', () => {
     const res = writeSettingFromRenderer(db, hooks(), 'something_new', 'x')
     expect(res.ok).toBe(false)

@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import type { IpcHooks } from './ipc'
 import type { HotkeyChange } from './hotkeySlot'
 import type { IpcResult } from '../shared/types'
+import { appLocale, dialogT, type DialogT } from './mainI18n'
 
 /**
  * #272 — the settings keys the renderer may write through `settings:set`.
@@ -63,7 +64,22 @@ function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  // The message, not `Error: <message>`: the renderer shows it (#296).
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
+}
+
+/**
+ * The texts in the app language (#296 part B). Electron-free: the setting is
+ * read from `db`, which is open here; the empty system-language list only
+ * stands in for a fallback this module has no Electron access for.
+ */
+function tFor(db: Database.Database): DialogT {
+  return dialogT(
+    appLocale(
+      () => db,
+      () => []
+    )
+  )
 }
 
 /**
@@ -84,8 +100,9 @@ function writeHotkey(
   const change: HotkeyChange =
     key === 'hotkey_toggle' ? hooks.setHotkey(value) : hooks.setMiniHotkey(value)
   if (!change.ok) {
-    const lost = change.previousKept ? '' : ' Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.'
-    return fail(`Hotkey "${value}" konnte nicht registriert werden.${lost}`)
+    const t = tFor(db)
+    const refused = t('mainError.settings.hotkeyRefused', { hotkey: value })
+    return fail(change.previousKept ? refused : `${refused} ${t('mainError.settings.hotkeyLost')}`)
   }
   try {
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
@@ -104,9 +121,9 @@ export function writeSettingFromRenderer(
   value: unknown
 ): IpcResult<void> {
   if (typeof key !== 'string' || !RENDERER_WRITABLE_SETTINGS.has(key)) {
-    return fail(`Unbekannte Einstellung: ${String(key).slice(0, 64)}`)
+    return fail(tFor(db)('mainError.settings.unknownKey', { key: String(key).slice(0, 64) }))
   }
-  if (typeof value !== 'string') return fail(`Ungültiger Wert für ${key}`)
+  if (typeof value !== 'string') return fail(tFor(db)('mainError.settings.badValue', { key }))
   try {
     if (key === 'hotkey_toggle' || key === 'mini_hotkey') return writeHotkey(db, hooks, key, value)
     db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)

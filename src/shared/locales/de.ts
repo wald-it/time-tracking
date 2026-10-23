@@ -1001,7 +1001,30 @@ export const de = {
   'mainError.merge.pdfTooBig': 'PDF zu groß (max. 50 MB)',
   'mainError.merge.locked': '{label} ist durch ein anderes Programm gesperrt: {file}',
   'mainError.merge.fileLocked': 'Datei ist durch ein anderes Programm gesperrt: {file}',
-  'mainError.merge.invalidPdf': 'Ungültige oder verschlüsselte PDF-Datei'
+  'mainError.merge.invalidPdf': 'Ungültige oder verschlüsselte PDF-Datei',
+
+  // ── Main process: clients, projects, export, logo, settings (#296 part B) ─
+  'mainError.ipc.rateNegative': 'Stundensatz darf nicht negativ sein',
+  'mainError.ipc.nameEmpty': 'Name darf nicht leer sein',
+  'mainError.ipc.nameTooLong': 'Name darf höchstens 100 Zeichen lang sein',
+  'mainError.ipc.nameReserved': '"{name}" ist ein reservierter Name',
+  'mainError.ipc.projectMissing': 'Projekt nicht gefunden',
+  'mainError.ipc.projectMoveHasEntries':
+    'Projekt hat Einträge und kann nicht zu einem anderen Kunden verschoben werden',
+  'mainError.ipc.projectHasActive': 'Projekt hat noch aktive Einträge',
+  'mainError.ipc.linkNotAllowed': 'Nur http:// und https:// Links erlaubt',
+  'mainError.export.badPdfRequest': 'Ungültige PDF-Anfrage',
+  'mainError.export.badCsvRequest': 'Ungültige CSV-Anfrage',
+  'mainError.export.badIcalRequest': 'Ungültige iCal-Anfrage',
+  'mainError.export.clientNotFound': 'Kunde {id} nicht gefunden',
+  'mainError.logo.format': 'Logo-Format nicht unterstützt: {ext}',
+  'mainError.logo.formatNone': 'Logo-Format nicht unterstützt: (unbekannt)',
+  'mainError.logo.tooBig': 'Logo überschreitet 1 MB ({kb} KB)',
+  'mainError.settings.hotkeyRefused': 'Hotkey "{hotkey}" konnte nicht registriert werden.',
+  'mainError.settings.hotkeyLost': 'Der bisherige Hotkey ist jetzt auch nicht mehr aktiv.',
+  'mainError.settings.unknownKey': 'Unbekannte Einstellung: {key}',
+  'mainError.settings.badValue': 'Ungültiger Wert für {key}',
+  'mainError.analytics.badMonth': 'Ungültige Monatsangabe'
 } as const
 
 export type TranslationKey = keyof typeof de
