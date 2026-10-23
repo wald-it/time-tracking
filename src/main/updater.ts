@@ -11,9 +11,9 @@
  * offline app start. Errors triggered by an explicit user "check now"
  * are surfaced (so the Settings UI can show "no connection").
  */
-import { BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, Notification } from 'electron'
 import log from 'electron-log/main'
-import pkg from 'electron-updater'
+import pkg, { type UpdateCheckResult } from 'electron-updater'
 const { autoUpdater } = pkg
 import type { IpcResult, UpdateStatus } from '../shared/types'
 import { isUpdateCheckEnabled, UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
@@ -37,6 +37,29 @@ interface StartupCheck {
   joined: boolean
 }
 let startupCheck: StartupCheck | null = null
+
+/**
+ * The notification `checkForUpdatesAndNotify` shows once its download is
+ * done, which the start-up check now raises itself (#309). Title and body
+ * mirror electron-updater 6.8.11's private
+ * `AppUpdater.formatDownloadNotification` default verbatim; translating it is
+ * #296. A failed download is reported through the `error` event, so its
+ * rejection is only caught here, not reported twice.
+ */
+function notifyWhenDownloaded(result: UpdateCheckResult | null): void {
+  if (!result?.downloadPromise) return
+  const { version } = result.updateInfo
+  result.downloadPromise
+    .then(
+      () =>
+        new Notification({
+          title: 'A new update is ready to install',
+          body: `${app.name} version ${version} has been downloaded and will be automatically installed on exit`
+        }).show(),
+      () => undefined
+    )
+    .catch((err: unknown) => log.warn('[updater] could not show the download notification', err))
+}
 
 function broadcastError(err: Error): void {
   broadcast(reduceUpdateStatus(lastStatus, { type: 'error', message: err.message }))
@@ -281,7 +304,10 @@ export function initAutoUpdater(opts: {
         startupCheck = null
       }
       lastCheckIso = new Date().toISOString()
-      await autoUpdater.checkForUpdates()
+      const result = await autoUpdater.checkForUpdates()
+      // A failed download reaches the UI as an `error` event; without a
+      // handler it would also land in main.log as an unhandled rejection (#309).
+      result?.downloadPromise?.catch(() => undefined)
       return ok(undefined)
     } catch (err) {
       return fail((err as Error).message)
@@ -314,8 +340,15 @@ export function initAutoUpdater(opts: {
     // electron-updater emits `error` and then rejects with the same object
     // (AppUpdater.checkForUpdates), which is how the offline case is told
     // apart from everything else that fails meanwhile.
-    autoUpdater.checkForUpdatesAndNotify().then(
-      () => settleStartupCheck(run, null),
+    // Not checkForUpdatesAndNotify: it chains `void downloadPromise.then(notify)`
+    // (electron-updater 6.8.11, AppUpdater.js:294), and that new promise
+    // rejects unhandled when the download fails, whatever we attach to
+    // downloadPromise (#309). Same check, our own notification.
+    autoUpdater.checkForUpdates().then(
+      (result) => {
+        settleStartupCheck(run, null)
+        notifyWhenDownloaded(result)
+      },
       (err: Error) => settleStartupCheck(run, err)
     )
   }
