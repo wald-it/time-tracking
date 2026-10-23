@@ -505,8 +505,10 @@ function pokePresence(): void {
       },
       getAccessToken: () => getAccessToken(account),
       getClientId: () => effectiveClientId(account),
-      // The same handle as the presence settings above, so one reconcile
-      // never reads two databases after a restore swapped them (#347).
+      // Over the same handle as the presence settings above (#347). If that
+      // handle is closed, getSetting fails before the language is asked for;
+      // appLocale's own fallbacks are not what keeps one reconcile on one
+      // database.
       getLocale: () =>
         appLocale(
           () => db,

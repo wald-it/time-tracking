@@ -52,8 +52,8 @@ export interface PresenceDeps {
   getClientId: () => string
   /**
    * The app language for the Teams status text (#347): index.ts wraps
-   * mainI18n.appLocale (over the same database handle as `getSetting`), the
-   * one way to the language in the main process.
+   * mainI18n.appLocale over the same database handle as `getSetting`. (The
+   * #296 guard in mainI18n.test.ts lists the remaining direct readers.)
    */
   getLocale: () => Locale
   fetchFn?: typeof fetch
