@@ -721,9 +721,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         if (!resolved.startsWith(defaultDir + sep) && !resolved.startsWith(configuredDir + sep)) {
           return fail('Ungültiger Backup-Pfad')
         }
-        const dbPath = getDbPath()
-        db.close()
-        const result = restoreBackupFile(filePath, dbPath)
+        // Snapshots the current DB, closes it, then replaces the file.
+        const result = restoreBackupFile(db, filePath, getDbPath())
         return ok(result)
       } catch (e) {
         return fail(e)

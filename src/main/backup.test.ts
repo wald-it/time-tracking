@@ -1,7 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, statSync, readFileSync } from 'fs'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, copyFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import type Database from 'better-sqlite3'
+import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
+
+let DatabaseImpl: DatabaseCtor
+beforeAll(async () => {
+  DatabaseImpl = await loadSqlite()
+})
 
 // Mock electron's `app.getPath('userData')` so backup.ts works in node tests.
 let userDataDir: string
@@ -33,22 +40,55 @@ function makeFile(path: string, content = 'x'): void {
   writeFileSync(path, content)
 }
 
+/**
+ * A WAL database whose last commit is still only in the `-wal` file — the
+ * state after a crash or a killed process. Auto-checkpointing is off, so the
+ * main file does not have the row until a checkpoint runs.
+ */
+function walDb(path: string, value: string): Database.Database {
+  const db = new DatabaseImpl(path)
+  db.pragma('journal_mode = WAL')
+  db.pragma('wal_autocheckpoint = 0')
+  db.exec('CREATE TABLE t (v TEXT)')
+  db.prepare('INSERT INTO t (v) VALUES (?)').run(value)
+  return db
+}
+
+function readValues(path: string): string[] {
+  const db = new DatabaseImpl(path)
+  try {
+    return (db.prepare('SELECT v FROM t ORDER BY rowid').all() as Array<{ v: string }>).map(
+      (r) => r.v
+    )
+  } finally {
+    db.close()
+  }
+}
+
 describe('createBackupSync', () => {
-  it('returns null when source DB does not exist', async () => {
-    const { createBackupSync } = await loadBackup()
-    const missing = join(userDataDir, 'nope.sqlite')
-    expect(createBackupSync(missing, 'pre-migration', 0)).toBeNull()
+  it('writes a pre-migration snapshot into the backups dir', async () => {
+    const { createBackupSync, getBackupsDir } = await loadBackup()
+    const db = walDb(join(userDataDir, 'src.sqlite'), 'data')
+    const target = createBackupSync(db, 'pre-migration', 3)
+    db.close()
+    expect(existsSync(target)).toBe(true)
+    expect(target).toContain('backup-pre-migration-v3-')
+    expect(target.startsWith(getBackupsDir())).toBe(true)
   })
 
-  it('copies file to backups dir with pre-migration naming', async () => {
-    const { createBackupSync, getBackupsDir } = await loadBackup()
+  // Owner review (release 1.22): a plain copy of the main file loses every
+  // commit that still sits in the WAL after a crash.
+  it('includes commits that are still only in the WAL', async () => {
+    const { createBackupSync } = await loadBackup()
     const src = join(userDataDir, 'src.sqlite')
-    makeFile(src, 'data')
-    const target = createBackupSync(src, 'pre-migration', 3)
-    expect(target).not.toBeNull()
-    expect(existsSync(target!)).toBe(true)
-    expect(target!).toContain('backup-pre-migration-v3-')
-    expect(target!.startsWith(getBackupsDir())).toBe(true)
+    const db = walDb(src, 'only-in-wal')
+    // Precondition: the main file alone does not have the row yet.
+    const plain = join(userDataDir, 'plain-copy.sqlite')
+    copyFileSync(src, plain)
+    expect(() => readValues(plain)).toThrow()
+    const target = createBackupSync(db, 'pre-migration', 3)
+    db.close()
+    expect(readValues(target)).toEqual(['only-in-wal'])
   })
 })
 
@@ -122,35 +162,34 @@ describe('rotateDailyBackups', () => {
 describe('restoreBackup', () => {
   it('throws when backup file does not exist', async () => {
     const { restoreBackup } = await loadBackup()
+    const db = walDb(join(userDataDir, 'db.sqlite'), 'x')
     expect(() =>
-      restoreBackup(join(userDataDir, 'missing.sqlite'), join(userDataDir, 'db.sqlite'))
+      restoreBackup(db, join(userDataDir, 'missing.sqlite'), join(userDataDir, 'db.sqlite'))
     ).toThrow(/not found/i)
+    db.close()
   })
 
-  it('overwrites current DB and creates a safety copy', async () => {
+  it('replaces the open WAL database consistently and keeps a safety snapshot', async () => {
     const { restoreBackup, listBackups } = await loadBackup()
     const currentDb = join(userDataDir, 'current.sqlite')
+    const backupSrc = walDb(join(userDataDir, 'backup.sqlite'), 'BACKUP')
+    backupSrc.close()
     const backup = join(userDataDir, 'backup.sqlite')
-    makeFile(currentDb, 'CURRENT')
-    makeFile(backup, 'BACKUP')
+    // The current DB holds its last commit only in the WAL.
+    const db = walDb(currentDb, 'CURRENT')
 
-    const { safetyBackupPath } = restoreBackup(backup, currentDb)
+    const { safetyBackupPath } = restoreBackup(db, backup, currentDb)
 
-    expect(existsSync(safetyBackupPath)).toBe(true)
+    expect(db.open).toBe(false)
     expect(safetyBackupPath).toContain('backup-pre-restore-')
-    // Current DB now holds backup contents
-    const current = readFileSync(currentDb, 'utf-8')
-    expect(current).toBe('BACKUP')
-    // Safety copy holds the prior contents
-    const safety = readFileSync(safetyBackupPath, 'utf-8')
-    expect(safety).toBe('CURRENT')
-    // Safety is listed (mtime-based, not classified as daily)
-    const list = listBackups()
-    expect(list.some((b) => b.filename.startsWith('backup-pre-restore-'))).toBe(false)
-    // Note: 'pre-restore' isn't classified by our listBackups schema, that's
-    // intentional — pre-restore safety copies are diagnostic, not user-facing.
-    // We just sanity-check the file size > 0.
-    expect(statSync(safetyBackupPath).size).toBeGreaterThan(0)
+    // The safety snapshot has the WAL-only commit.
+    expect(readValues(safetyBackupPath)).toEqual(['CURRENT'])
+    // No WAL of the old database is left to be replayed over the restored file.
+    expect(existsSync(currentDb + '-wal')).toBe(false)
+    expect(existsSync(currentDb + '-shm')).toBe(false)
+    expect(readValues(currentDb)).toEqual(['BACKUP'])
+    // pre-restore safety copies are diagnostic, not listed for the user.
+    expect(listBackups().some((b) => b.filename.startsWith('backup-pre-restore-'))).toBe(false)
   })
 })
 

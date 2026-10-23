@@ -5,7 +5,7 @@ import { mkdirSync } from 'fs'
 import { runMigrations, MigrationError } from './migrations/runner'
 import { runDailyBackupIfNeeded } from './backup'
 
-let db: Database.Database
+let db: Database.Database | undefined
 let _dbPath: string
 
 export function getDb(): Database.Database {
@@ -15,19 +15,22 @@ export function getDb(): Database.Database {
   mkdirSync(userDataPath, { recursive: true })
   _dbPath = join(userDataPath, 'timetrack.sqlite')
 
-  db = new Database(_dbPath)
-  db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
+  const conn = new Database(_dbPath)
+  conn.pragma('journal_mode = WAL')
+  conn.pragma('foreign_keys = ON')
 
-  const result = runMigrations(db, _dbPath)
+  // Assigned only after the migrations: a failed run closes the connection,
+  // and a later getDb() must not hand out that closed handle.
+  const result = runMigrations(conn, _dbPath)
+  db = conn
   if (result.applied.length > 0) {
     console.log(`[db] Applied ${result.applied.length} migration(s): ${result.applied.join(', ')}`)
   }
 
   // Daily backup is fire-and-forget — must not block startup or throw.
-  void runDailyBackupIfNeeded(db)
+  void runDailyBackupIfNeeded(conn)
 
-  return db
+  return conn
 }
 
 export function getDbPath(): string {
