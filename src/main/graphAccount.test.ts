@@ -475,4 +475,36 @@ describe('concurrent token requests share one refresh (#341)', () => {
     await expect(getAccessToken(d)).resolves.toBeNull()
     expect(existsSync(join(dir, 'graph-account.enc'))).toBe(true)
   })
+  it('a replaced grant that is itself expiring gets one refresh of its own', async () => {
+    const store = { dir, secretBox: fakeBox() }
+    const replaced = tokens({
+      accessToken: 'access-old',
+      refreshToken: 'rt-new',
+      expiresAtMs: NOW + 1000
+    })
+    const sent: string[] = []
+    const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+      const rt = new URLSearchParams(String(init?.body ?? '')).get('refresh_token') ?? ''
+      sent.push(rt)
+      if (rt === 'refresh-1') {
+        // Someone else stores another grant while the first refresh runs.
+        saveTokens(replaced, store)
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant' })
+        } as unknown as Response
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'access-3', refresh_token: 'rt-3', expires_in: 3600 })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    const d = deps({ store, auth: { now: () => NOW, fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), store)
+    await expect(getAccessToken(d)).resolves.toBe('access-3')
+    expect(sent).toEqual(['refresh-1', 'rt-new'])
+    expect(loadTokens(store)?.refreshToken).toBe('rt-3')
+  })
 })

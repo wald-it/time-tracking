@@ -140,6 +140,8 @@ export function disconnect(deps: GraphAccountDeps): AccountStatus {
  * On `invalid_grant` the stored connection is dropped: the grant is gone for
  * good (revoked, password changed, unused too long), and keeping a dead blob
  * around would make the settings page claim a connection that cannot work.
+ * Only if the store still holds the refused refresh token, though (#341): a
+ * different one is used instead, an empty or unreadable store is kept.
  * With a feature scope in the request, that holds for the calendar-only
  * retry (#308): a refused feature scope can arrive as `invalid_grant` too.
  */
@@ -156,15 +158,8 @@ export async function getAccessToken(deps: GraphAccountDeps): Promise<string | n
   const key = storeKey(deps)
   const running = inFlight.get(key)
   if (running) return running
-  const refresh = (async (): Promise<string | null> => {
-    try {
-      return await refreshAndStore(deps, tokens)
-    } finally {
-      // Before the callers see the result, so none of them can pick up a
-      // settled refresh.
-      inFlight.delete(key)
-    }
-  })()
+  const refresh = refreshAndStore(deps, tokens).finally(() => inFlight.delete(key))
+
   inFlight.set(key, refresh)
   return refresh
 }
@@ -180,7 +175,9 @@ function storeKey(deps: GraphAccountDeps): string {
 
 async function refreshAndStore(
   deps: GraphAccountDeps,
-  tokens: StoredTokens
+  tokens: StoredTokens,
+  /** One more refresh from a grant someone else stored meanwhile, not more. */
+  mayFollow = true
 ): Promise<string | null> {
   let refreshed: StoredTokens
   try {
@@ -196,7 +193,9 @@ async function refreshAndStore(
       if (current.refreshToken !== tokens.refreshToken) {
         deps.log?.('graph account: refresh token already replaced, using the stored one')
         const now = deps.auth?.now?.() ?? Date.now()
-        return needsRefresh(current, now) ? refreshAndStore(deps, current) : current.accessToken
+        return needsRefresh(current, now) && mayFollow
+          ? refreshAndStore(deps, current, false)
+          : current.accessToken
       }
       deps.log?.('graph account: grant no longer valid, connection dropped')
       clearTokens(deps.store)
