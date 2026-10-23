@@ -71,6 +71,7 @@ export const de = {
   'onboarding.client.ratePlaceholder': 'z. B. 85',
   'onboarding.client.rateUnit': '€ / Stunde',
   'onboarding.client.colorLabel': 'Farbe',
+  'onboarding.client.created': '✓ {name} angelegt.',
   'onboarding.client.create': 'Kunden anlegen',
 
   // Step 3 — Hotkey
@@ -124,6 +125,7 @@ export const de = {
   'common.close': 'Schließen',
   'common.save': 'Speichern',
   'common.saving': 'Speichert…',
+  'common.ok': 'OK',
   'common.cancel': 'Abbrechen',
   'common.delete': 'Löschen',
   'common.edit': 'Bearbeiten',
@@ -292,6 +294,7 @@ export const de = {
   'clients.color.lime': 'Lime',
 
   // ── ProjectsView (v1.9 #75 PR 2) ─────────────────────────────────────────
+  'projects.endsOn': 'bis {date}',
   'projects.addNew': 'Projekt hinzufügen',
   'projects.empty': 'Noch keine Projekte.',
   'projects.inheritedRate': '(Kundensatz)',

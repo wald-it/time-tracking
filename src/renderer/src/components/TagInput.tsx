@@ -225,7 +225,9 @@ export function TagInput({
                   e.stopPropagation()
                   removeTag(tag)
                 }}
-                className={`leading-none opacity-60 hover:opacity-100 focus-visible:opacity-100 ${FOCUS}`}
+                // 24 × 24 (WCAG 2.5.8), not 44: in a wrapping row of chips a
+                // 44 px target would cover the next chip and the text field.
+                className={`-my-1 -mr-1 grid h-6 w-6 place-items-center leading-none text-[var(--ink2)] hover:text-[var(--ink)] ${FOCUS}`}
                 aria-label={t('tags.removeAria', { tag })}
               >
                 ×

@@ -13,7 +13,6 @@ import { useClientsStore } from '../store/clientsStore'
 import { useProjectsStore } from '../store/projectsStore'
 import { useT, useLocale } from '../contexts/I18nContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
-import type { TranslationKey } from '../../../shared/locales/de'
 import * as Icons from '../components/Icons'
 import {
   FIELD_LABEL,
@@ -27,6 +26,8 @@ import {
   VIEW_TITLE
 } from '../components/instrumentClasses'
 import { Dialog } from '../components/Dialog'
+import { ColorSwatches } from '../components/ColorSwatches'
+import { CLIENT_COLORS } from '../components/clientColors'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 
 /** Lightens a hex color by the given amount (0-100) to create a visually
@@ -92,31 +93,8 @@ function formatRelativeDate(isoDate: string, locale: string): string {
   return rtf.format(Math.round(diffDays / 365), 'year')
 }
 
-const COLORS = [
-  '#6366f1', // indigo
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#f59e0b', // amber
-  '#10b981', // emerald
-  '#3b82f6', // blue
-  '#ef4444', // red
-  '#f97316', // orange
-  '#14b8a6', // teal
-  '#84cc16' // lime
-]
-
-const COLOR_NAMES_KEYS: Record<string, TranslationKey> = {
-  '#6366f1': 'clients.color.indigo',
-  '#8b5cf6': 'clients.color.violet',
-  '#ec4899': 'clients.color.pink',
-  '#f59e0b': 'clients.color.amber',
-  '#10b981': 'clients.color.emerald',
-  '#3b82f6': 'clients.color.blue',
-  '#ef4444': 'clients.color.red',
-  '#f97316': 'clients.color.orange',
-  '#14b8a6': 'clients.color.teal',
-  '#84cc16': 'clients.color.lime'
-}
+/** Status legend beside a name (paused, archived): hairline frame, table-label type. */
+const STATUS_TAG = `shrink-0 rounded-[var(--r-fine)] border border-[var(--ink3)] px-1.5 py-0.5 leading-none ${FIELD_LABEL}`
 
 export default function ClientsView(): React.JSX.Element {
   const t = useT()
@@ -548,9 +526,17 @@ function ClientItem({
           className={`h-3 w-3 shrink-0 ${dimmed ? 'opacity-40' : ''}`}
           style={{ backgroundColor: c.color }}
         />
-        <span className={`flex-1 min-w-0 ${dimmed ? 'opacity-50' : ''}`}>
-          <span className="block font-semibold" style={{ color: 'var(--ink)' }}>
-            {c.name}
+        {/* Archived: --ink3 and a legend instead of a faded row, which fell
+            below --ink3's contrast. */}
+        <span className="flex-1 min-w-0">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span
+              className="font-semibold"
+              style={{ color: dimmed ? 'var(--ink3)' : 'var(--ink)' }}
+            >
+              {c.name}
+            </span>
+            {dimmed && <span className={STATUS_TAG}>{t('clients.archived.label')}</span>}
           </span>
           {c.contact_person && (
             <span className="block text-xs" style={{ color: 'var(--ink3)' }}>
@@ -567,6 +553,7 @@ function ClientItem({
         <button
           onClick={() => onToggleActive(c)}
           title={c.active ? t('clients.action.archive') : t('clients.action.reactivate')}
+          aria-label={`${c.active ? t('clients.action.archive') : t('clients.action.reactivate')}: ${c.name}`}
           className={ICON_BTN}
         >
           {c.active ? <Icons.Archive /> : <Icons.Unarchive />}
@@ -575,6 +562,7 @@ function ClientItem({
           <button
             onClick={() => onNewProject(c.id)}
             title={t('projects.addNew')}
+            aria-label={`${t('projects.addNew')}: ${c.name}`}
             className={ICON_BTN}
           >
             <Icons.Plus />
@@ -684,6 +672,7 @@ function ProjectItem({
   const { locale } = useLocale()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const dotColor = p.color || (clientColor ? shiftColor(clientColor) : '')
+  const archived = p.status === 'archived' || (!p.status && !p.active)
   const rateLabel =
     p.rate_cent === null
       ? t('projects.inheritedRate')
@@ -712,19 +701,19 @@ function ProjectItem({
       <span className="h-2 w-2 shrink-0 self-start mt-1.5" style={{ backgroundColor: dotColor }} />
       <span className="flex-1 min-w-0">
         <span className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+          <span
+            className="text-sm font-medium"
+            style={{ color: archived ? 'var(--ink3)' : 'var(--ink)' }}
+          >
             {p.name}
             {showProjectNumber && p.external_project_number ? (
               <span style={{ color: 'var(--ink3)' }}> [{p.external_project_number}]</span>
             ) : null}
           </span>
           {p.status === 'paused' && (
-            <span
-              className={`shrink-0 rounded-[var(--r-fine)] border border-[var(--ink3)] px-1.5 py-0.5 leading-none ${FIELD_LABEL}`}
-            >
-              {t('projects.form.statusPaused')}
-            </span>
+            <span className={STATUS_TAG}>{t('projects.form.statusPaused')}</span>
           )}
+          {archived && <span className={STATUS_TAG}>{t('projects.form.statusArchived')}</span>}
         </span>
         {p.contact_person && (
           <span className="block text-xs mt-0.5" style={{ color: 'var(--ink3)' }}>
@@ -770,11 +759,12 @@ function ProjectItem({
         </span>
         {p.end_date && (
           <span className="text-xs" style={{ color: 'var(--ink3)' }}>
-            bis{' '}
-            {new Date(p.end_date).toLocaleDateString('de-DE', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric'
+            {t('projects.endsOn', {
+              // A plain date: read as local midnight, not UTC.
+              date: new Date(`${p.end_date.slice(0, 10)}T00:00:00`).toLocaleDateString(
+                locale === 'en' ? 'en-GB' : 'de-DE',
+                { day: '2-digit', month: '2-digit', year: 'numeric' }
+              )
             })}
           </span>
         )}
@@ -782,6 +772,7 @@ function ProjectItem({
       <button
         onClick={() => onArchive(p)}
         title={p.active ? t('projects.action.archive') : t('projects.action.reactivate')}
+        aria-label={`${p.active ? t('projects.action.archive') : t('projects.action.reactivate')}: ${p.name}`}
         className={`${ICON_BTN} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
       >
         {p.active ? <Icons.Archive /> : <Icons.Unarchive />}
@@ -845,7 +836,7 @@ function ArchivedProjectsSection({
         {t('projects.archivedSection', { count: String(projects.length) })}
       </button>
       {expanded && (
-        <ul className="flex flex-col opacity-60">
+        <ul className="flex flex-col">
           {projects.map((p) => (
             <ProjectItem
               key={p.id}
@@ -884,7 +875,7 @@ function ClientFormModal({
 }): React.JSX.Element {
   const t = useT()
   const [name, setName] = useState(client?.name ?? '')
-  const [color, setColor] = useState(client?.color ?? COLORS[0])
+  const [color, setColor] = useState(client?.color ?? CLIENT_COLORS[0])
   const [rateInput, setRateInput] = useState(() => formatRateInput(client?.rate_cent ?? 0))
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
@@ -956,7 +947,6 @@ function ClientFormModal({
         <div className="flex flex-col gap-1.5">
           <label className={FIELD_LABEL}>{t('clients.form.nameLabel')}</label>
           <input
-            autoFocus
             type="text"
             value={name}
             onChange={(e) => {
@@ -976,25 +966,11 @@ function ClientFormModal({
         {/* Color */}
         <div className="flex flex-col gap-1.5">
           <label className={FIELD_LABEL}>{t('clients.form.colorLabel')}</label>
-          <div className="flex gap-2 flex-wrap">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                title={t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')}
-                aria-label={t('clients.form.colorAria', {
-                  color: t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')
-                })}
-                onClick={() => setColor(c)}
-                className={`h-8 w-8 rounded-[var(--r-fine)] ${FOCUS} ${
-                  color === c
-                    ? 'ring-2 ring-[var(--ink)] ring-offset-2 ring-offset-[var(--bg)]'
-                    : 'key-hover'
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
+          <ColorSwatches
+            value={color}
+            onChange={setColor}
+            groupLabel={t('clients.form.colorLabel')}
+          />
         </div>
 
         {/* Hourly rate */}
@@ -1265,7 +1241,6 @@ function ProjectFormModal({
         <div className="flex flex-col gap-1.5">
           <label className={FIELD_LABEL}>{t('projects.form.nameLabel')}</label>
           <input
-            autoFocus
             type="text"
             value={name}
             onChange={(e) => {
@@ -1285,41 +1260,12 @@ function ProjectFormModal({
         {/* Color */}
         <div className="flex flex-col gap-1.5">
           <label className={FIELD_LABEL}>{t('projects.form.colorLabel')}</label>
-          <div className="flex gap-2 flex-wrap items-center">
-            <button
-              type="button"
-              title={t('projects.form.colorInherit')}
-              aria-label={t('projects.form.colorInherit')}
-              onClick={() => setColor('')}
-              className={`flex h-8 w-8 items-center justify-center rounded-[var(--r-fine)] border ${FOCUS} ${
-                color === ''
-                  ? 'border-[var(--ink2)] ring-2 ring-[var(--ink)] ring-offset-2 ring-offset-[var(--bg)]'
-                  : 'key-hover border-[var(--key-edge)]'
-              }`}
-              style={{ background: 'var(--key)' }}
-            >
-              <span className="text-xs" style={{ color: 'var(--ink3)' }}>
-                –
-              </span>
-            </button>
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                title={t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')}
-                aria-label={t('clients.form.colorAria', {
-                  color: t(COLOR_NAMES_KEYS[c] ?? 'clients.color.indigo')
-                })}
-                onClick={() => setColor(c)}
-                className={`h-8 w-8 rounded-[var(--r-fine)] ${FOCUS} ${
-                  color === c
-                    ? 'ring-2 ring-[var(--ink)] ring-offset-2 ring-offset-[var(--bg)]'
-                    : 'key-hover'
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
+          <ColorSwatches
+            value={color}
+            onChange={setColor}
+            inheritLabel={t('projects.form.colorInherit')}
+            groupLabel={t('projects.form.colorLabel')}
+          />
           {color === '' && (
             <p className="text-xs" style={{ color: 'var(--ink3)' }}>
               {t('projects.form.colorInherit')}

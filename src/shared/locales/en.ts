@@ -71,6 +71,7 @@ export const en: Record<TranslationKey, string> = {
   'onboarding.client.ratePlaceholder': 'e.g. 85',
   'onboarding.client.rateUnit': '€ / hour',
   'onboarding.client.colorLabel': 'Color',
+  'onboarding.client.created': '✓ {name} created.',
   'onboarding.client.create': 'Create client',
 
   // Step 3 — Hotkey
@@ -124,6 +125,7 @@ export const en: Record<TranslationKey, string> = {
   'common.close': 'Close',
   'common.save': 'Save',
   'common.saving': 'Saving…',
+  'common.ok': 'OK',
   'common.cancel': 'Cancel',
   'common.delete': 'Delete',
   'common.edit': 'Edit',
@@ -290,6 +292,7 @@ export const en: Record<TranslationKey, string> = {
   'clients.color.lime': 'Lime',
 
   // ── ProjectsView (v1.9 #75 PR 2) ──────────────────────────────────────────
+  'projects.endsOn': 'until {date}',
   'projects.addNew': 'Add project',
   'projects.empty': 'No projects yet.',
   'projects.inheritedRate': '(Client rate)',

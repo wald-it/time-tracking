@@ -1,6 +1,6 @@
 import { useContext } from 'react'
 import { FOCUS } from './instrumentClasses'
-import { ToggleLabelContext } from './toggleLabelContext'
+import { ToggleHintContext, ToggleLabelContext } from './toggleLabelContext'
 
 interface ToggleProps {
   checked: boolean
@@ -29,12 +29,14 @@ export function Toggle({
   labelledBy
 }: ToggleProps): React.JSX.Element {
   const rowLabel = useContext(ToggleLabelContext)
+  const rowHint = useContext(ToggleHintContext)
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-labelledby={labelledBy ?? rowLabel}
+      aria-describedby={rowHint}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`group -my-[11px] inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--r-key)] disabled:cursor-not-allowed ${FOCUS}`}

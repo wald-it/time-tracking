@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useT, useLocale } from '../contexts/I18nContext'
 import type { TFunction } from '../contexts/I18nContext'
 import type { Locale } from '../../../shared/i18n'
 import type { BackupInfo } from '../../../shared/types'
 import { Dialog } from './Dialog'
+import { ColorSwatches } from './ColorSwatches'
+import { CLIENT_COLORS } from './clientColors'
 import { FOCUS, INPUT, KEY, KEY_INV } from './instrumentClasses'
 
 interface Props {
@@ -12,18 +14,6 @@ interface Props {
 }
 
 const BASE_STEPS = 3
-
-// Default colors for new clients — same palette as ClientsView.
-const PRESET_COLORS = [
-  '#6366f1',
-  '#8b5cf6',
-  '#ec4899',
-  '#f59e0b',
-  '#10b981',
-  '#06b6d4',
-  '#f97316',
-  '#84cc16'
-]
 
 /**
  * Onboarding wizard (v1.5 PR E, issue #32 / v1.9.5 #79).
@@ -59,10 +49,26 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
   // Step 2 form state
   const [clientName, setClientName] = useState('')
   const [clientRate, setClientRate] = useState('')
-  const [clientColor, setClientColor] = useState(PRESET_COLORS[0])
+  const [clientColor, setClientColor] = useState(CLIENT_COLORS[0])
   const [clientBusy, setClientBusy] = useState(false)
   const [clientError, setClientError] = useState<string | null>(null)
   const [clientCreated, setClientCreated] = useState(false)
+
+  // A step change unmounts the focused control (the "Weiter" key of the
+  // previous step); without this, focus falls to <body>. The first step's
+  // focus comes from the Dialog shell.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const shownStep = useRef(step)
+  useEffect(() => {
+    if (shownStep.current === step) return
+    shownStep.current = step
+    const root = bodyRef.current
+    if (!root) return
+    const field = root.querySelector<HTMLElement>(
+      'input:not([disabled]), select:not([disabled]), textarea:not([disabled])'
+    )
+    ;(field ?? root.querySelector<HTMLElement>('button:not([disabled])'))?.focus()
+  }, [step])
 
   if (!open) return null
 
@@ -127,7 +133,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
         </button>
       }
     >
-      <div className="flex flex-col gap-6">
+      <div ref={bodyRef} className="flex flex-col gap-6">
         <StepScale step={step} total={TOTAL_STEPS} label={stepLabel} />
 
         {/* ── Step 1: Welcome + Language ── */}
@@ -187,7 +193,6 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                   onChange={(e) => setClientName(e.target.value)}
                   placeholder={t('onboarding.client.namePlaceholder')}
                   className={inputClass}
-                  autoFocus
                   disabled={clientBusy}
                 />
               </label>
@@ -217,22 +222,11 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                 <span className="font-medium" style={{ color: 'var(--ink2)' }}>
                   {t('onboarding.client.colorLabel')}
                 </span>
-                <div className="flex flex-wrap gap-2">
-                  {PRESET_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setClientColor(c)}
-                      title={c}
-                      className={`h-7 w-7 rounded-[var(--r-fine)] ${FOCUS} ${
-                        clientColor === c
-                          ? 'ring-2 ring-[var(--ink)] ring-offset-2 ring-offset-[var(--bg)]'
-                          : ''
-                      }`}
-                      style={{ background: c }}
-                    />
-                  ))}
-                </div>
+                <ColorSwatches
+                  value={clientColor}
+                  onChange={setClientColor}
+                  groupLabel={t('onboarding.client.colorLabel')}
+                />
               </div>
 
               {clientError && (
@@ -275,7 +269,7 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
 
               {clientCreated && (
                 <p className="rounded-[var(--r-key)] bg-[var(--key)] px-3 py-2 text-sm text-[var(--ink2)]">
-                  ✓ {clientName} angelegt.
+                  {t('onboarding.client.created', { name: clientName.trim() })}
                 </p>
               )}
             </div>
@@ -304,8 +298,10 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                   {t('onboarding.restore.latestLabel')}
                 </span>{' '}
                 <span className="font-num" style={{ color: 'var(--ink)' }}>
-                  {new Date(availableBackups[0].createdAt).toLocaleString('de-DE')} ·{' '}
-                  {(availableBackups[0].sizeBytes / 1024).toFixed(0)} KB
+                  {new Date(availableBackups[0].createdAt).toLocaleString(
+                    locale === 'en' ? 'en-GB' : 'de-DE'
+                  )}{' '}
+                  · {(availableBackups[0].sizeBytes / 1024).toFixed(0)} KB
                 </span>
               </div>
 

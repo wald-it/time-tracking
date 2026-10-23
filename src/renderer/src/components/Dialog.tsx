@@ -20,7 +20,53 @@ const FOCUSABLE =
  * two open dialogs (e.g. the idle prompt over the start modal) never fight
  * over focus and one Escape closes one dialog.
  */
-const openStack: symbol[] = []
+interface StackEntry {
+  /** Where focus goes back to when this dialog closes. */
+  restore: Element | null
+  /** The panel, kept for the cleanup (the ref is gone by then). */
+  root: HTMLElement | null
+}
+const openStack: StackEntry[] = []
+
+/** How long a returned focus is watched for its target being removed. */
+const RETURN_WATCH_MS = 5000
+
+/**
+ * Where focus lands when its target is gone: the view's main area (App gives
+ * it `tabIndex=-1`), so the next Tab starts in the view instead of on <body>.
+ */
+function focusFallback(): void {
+  document.querySelector<HTMLElement>('main')?.focus()
+}
+
+/**
+ * Give focus back to `target`, or to the fallback when it is gone. The target
+ * may also go a moment later: a delete confirmed in a dialog closes the dialog
+ * first and removes the row (with its delete key) only after the IPC round
+ * trip. Until focus moves on by itself, a removal still sends it to the
+ * fallback instead of <body>.
+ */
+function returnFocus(target: Element | null): void {
+  if (!(target instanceof HTMLElement) || !target.isConnected) {
+    focusFallback()
+    return
+  }
+  target.focus()
+  const stop = (): void => {
+    observer.disconnect()
+    clearTimeout(timer)
+    document.removeEventListener('focusin', stop)
+  }
+  const observer = new MutationObserver(() => {
+    if (target.isConnected) return
+    stop()
+    const active = document.activeElement
+    if (active === null || active === document.body) focusFallback()
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+  const timer = setTimeout(stop, RETURN_WATCH_MS)
+  document.addEventListener('focusin', stop)
+}
 
 interface Props {
   open: boolean
@@ -52,8 +98,11 @@ interface Props {
  * under a 2 px `--ink` rule.
  *
  * Focus management: moves focus inside on open, traps Tab/Shift+Tab inside,
- * returns focus to the previously focused element on close. Escape calls
- * `onClose`.
+ * returns focus to the previously focused element on close — only when this
+ * dialog is the top one, and to the view's main area when that element is
+ * gone. Escape calls `onClose`. The element focused at opening is what comes
+ * back, so children must not `autoFocus` (React focuses them before this
+ * effect reads it); use `initialFocusRef`.
  */
 export function Dialog({
   open,
@@ -72,11 +121,12 @@ export function Dialog({
   const titleId = useId()
   const containerRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
-  const previouslyFocused = useRef<Element | null>(null)
   // A press that starts in the panel and is released on the backdrop (a text
   // selection dragged past the edge) makes the browser fire `click` on the
-  // backdrop. Only a press that started on the backdrop may close.
+  // backdrop, and so does the reverse. Only a press that started AND ended on
+  // the backdrop may close.
   const pressOnBackdrop = useRef(false)
+  const releaseOnBackdrop = useRef(false)
   // Keep latest onClose in a ref so the focus/keydown effect doesn't re-run
   // every time the parent re-renders (which would re-focus the close button
   // on every tick — e.g. Today's running-timer pill ticks once per second).
@@ -90,8 +140,8 @@ export function Dialog({
 
   useEffect(() => {
     if (!open) return
-    const token = Symbol('dialog')
-    openStack.push(token)
+    const entry: StackEntry = { restore: document.activeElement, root: containerRef.current }
+    openStack.push(entry)
     // Paint in the same order the keyboard follows: the dialog opened last is
     // on top even when it comes earlier in the DOM (the idle prompt opening
     // over the start modal). Kept below the toasts.
@@ -100,10 +150,9 @@ export function Dialog({
         Math.min(Z_MODAL + openStack.length - 1, Z_TOAST - 1)
       )
     }
-    previouslyFocused.current = document.activeElement
 
     const handler = (e: KeyboardEvent): void => {
-      if (openStack[openStack.length - 1] !== token) return
+      if (openStack[openStack.length - 1] !== entry) return
       if (e.key === 'Escape') {
         onCloseRef.current()
         return
@@ -148,10 +197,20 @@ export function Dialog({
     })
     return () => {
       window.removeEventListener('keydown', handler)
-      const at = openStack.indexOf(token)
-      if (at !== -1) openStack.splice(at, 1)
-      const prev = previouslyFocused.current
-      if (prev instanceof HTMLElement) prev.focus()
+      const at = openStack.indexOf(entry)
+      if (at === -1) return
+      const wasTop = at === openStack.length - 1
+      openStack.splice(at, 1)
+      if (!wasTop) {
+        // A dialog under another one closed (the quick note timing out under
+        // the idle prompt): focus stays in the top one. A dialog above that
+        // would return focus into this one returns it to this one's origin.
+        for (const above of openStack.slice(at)) {
+          if (above.restore && entry.root?.contains(above.restore)) above.restore = entry.restore
+        }
+        return
+      }
+      returnFocus(entry.restore)
     }
   }, [open])
 
@@ -169,10 +228,14 @@ export function Dialog({
       onPointerDown={(e) => {
         pressOnBackdrop.current = e.target === e.currentTarget
       }}
+      onPointerUp={(e) => {
+        releaseOnBackdrop.current = e.target === e.currentTarget
+      }}
       onClick={(e) => {
-        const fromBackdrop = pressOnBackdrop.current
+        const onBackdrop = pressOnBackdrop.current && releaseOnBackdrop.current
         pressOnBackdrop.current = false
-        if (closeOnBackdrop && fromBackdrop && e.target === e.currentTarget) onClose()
+        releaseOnBackdrop.current = false
+        if (closeOnBackdrop && onBackdrop && e.target === e.currentTarget) onClose()
       }}
     >
       <div

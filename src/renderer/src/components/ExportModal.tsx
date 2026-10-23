@@ -272,6 +272,7 @@ export function ExportModal(props: Props): React.JSX.Element {
               key={tabKey}
               type="button"
               onClick={() => handleTabChange(tabKey)}
+              aria-pressed={tab === tabKey}
               className={`min-h-9 flex-1 rounded-[var(--r-fine)] text-[13px] font-semibold ${FOCUS} ${
                 tab === tabKey ? 'bg-[var(--inv)] text-[var(--inv-ink)]' : 'hover:text-[var(--ink)]'
               }`}
@@ -471,7 +472,7 @@ export function ExportModal(props: Props): React.JSX.Element {
             </span>
             <div className="flex gap-4">
               <label
-                className="flex items-center gap-2 text-sm cursor-pointer"
+                className="flex min-h-11 items-center gap-2 text-sm cursor-pointer"
                 style={{ color: 'var(--ink)' }}
               >
                 <input
@@ -494,7 +495,7 @@ export function ExportModal(props: Props): React.JSX.Element {
                 </span>
               </label>
               <label
-                className="flex items-center gap-2 text-sm cursor-pointer"
+                className="flex min-h-11 items-center gap-2 text-sm cursor-pointer"
                 style={{ color: 'var(--ink)' }}
               >
                 <input

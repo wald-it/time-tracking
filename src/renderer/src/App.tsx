@@ -60,7 +60,11 @@ function App(): React.JSX.Element {
         />
 
         {/* Content */}
-        <main className="relative z-10 flex-1 overflow-y-auto flex flex-col">
+        {/* tabIndex -1: where a dialog returns focus when its opener is gone. */}
+        <main
+          tabIndex={-1}
+          className="relative z-10 flex-1 overflow-y-auto flex flex-col outline-none"
+        >
           <div key={view} className="view-enter mi-column flex-1 flex flex-col pt-9 pb-16">
             {view === 'today' && <TodayView />}
             {view === 'calendar' && <CalendarView />}

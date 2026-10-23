@@ -260,14 +260,18 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
               className="flex flex-col gap-2 border-b border-[var(--line)] py-2.5"
             >
               <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={row.checked}
-                  disabled={row.clientId === null || phase === 'importing'}
-                  onChange={(e) => patchRow(draft.graphEventId, { checked: e.target.checked })}
-                  className={`mt-1 h-4 w-4 accent-[var(--ink)] ${FOCUS}`}
-                  aria-label={draft.description}
-                />
+                {/* 44 × 44 hit area around the 16 px box; the negative margins
+                    keep the row's layout as it was. */}
+                <label className="-mx-3.5 -mt-2.5 -mb-3.5 grid h-11 w-11 shrink-0 cursor-pointer place-items-center">
+                  <input
+                    type="checkbox"
+                    checked={row.checked}
+                    disabled={row.clientId === null || phase === 'importing'}
+                    onChange={(e) => patchRow(draft.graphEventId, { checked: e.target.checked })}
+                    className={`h-4 w-4 accent-[var(--ink)] ${FOCUS}`}
+                    aria-label={draft.description}
+                  />
+                </label>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium" style={{ color: 'var(--ink)' }}>
                     {draft.description || '—'}
@@ -339,7 +343,7 @@ export function GraphImportModal({ open, onClose, clients }: Props): React.React
                 .map((domain) => (
                   <label
                     key={domain}
-                    className="flex items-center gap-2 text-xs"
+                    className="flex min-h-11 cursor-pointer items-center gap-2 text-xs"
                     style={{ color: 'var(--ink2)' }}
                   >
                     <input

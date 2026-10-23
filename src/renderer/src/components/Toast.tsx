@@ -37,7 +37,7 @@ export function ToastTray(): React.ReactElement | null {
             <button
               type="button"
               onClick={() => void executeAction(t.id)}
-              className={`min-h-8 rounded-[var(--r-fine)] px-2 text-sm font-semibold underline hover:bg-[var(--disp-line)] ${FOCUS}`}
+              className={`-my-1.5 min-h-11 rounded-[var(--r-fine)] px-2 text-sm font-semibold underline hover:bg-[var(--disp-line)] ${FOCUS}`}
               style={{ color: 'var(--disp-ink)' }}
             >
               {t.action.label}
@@ -47,7 +47,7 @@ export function ToastTray(): React.ReactElement | null {
             type="button"
             onClick={() => dismiss(t.id)}
             aria-label={tr('common.close')}
-            className={`grid h-8 w-8 place-items-center rounded-[var(--r-fine)] hover:bg-[var(--disp-line)] hover:text-[var(--disp-ink)] ${FOCUS}`}
+            className={`-m-1.5 grid h-11 w-11 place-items-center rounded-[var(--r-fine)] hover:bg-[var(--disp-line)] hover:text-[var(--disp-ink)] ${FOCUS}`}
             style={{ color: 'var(--disp-dim)' }}
           >
             ×

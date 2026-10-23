@@ -9,6 +9,8 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { ConfirmDialog } from './ConfirmDialog'
 import { I18nProvider } from '../contexts/I18nContext'
+import { useSettingsStore } from '../store/settingsStore'
+import type { Settings } from '../../../shared/types'
 
 afterEach(cleanup)
 
@@ -89,5 +91,21 @@ describe('ConfirmDialog', () => {
     await openIt()
     fireEvent.click(screen.getByRole('alertdialog'))
     expect(screen.getByRole('alertdialog')).toBeTruthy()
+  })
+
+  it('the default key labels follow the app language', async () => {
+    useSettingsStore.setState({ settings: { language: 'en' } as Settings })
+    try {
+      render(
+        <I18nProvider>
+          <ConfirmDialog open title="Sure?" message="" onConfirm={() => {}} onCancel={() => {}} />
+        </I18nProvider>
+      )
+      await flushFocus()
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'OK' })).toBeTruthy()
+    } finally {
+      useSettingsStore.setState({ settings: null })
+    }
   })
 })

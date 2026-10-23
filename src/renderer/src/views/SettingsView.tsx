@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { useTheme, type ThemeMode } from '../contexts/ThemeContext'
 import { useRounding } from '../contexts/RoundingContext'
 import { Toggle } from '../components/Toggle'
-import { ToggleLabelContext } from '../components/toggleLabelContext'
+import { ToggleHintContext, ToggleLabelContext } from '../components/toggleLabelContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import TagManagementView from './TagManagementView'
 import { GraphAccountSection } from '../components/GraphAccountSection'
@@ -990,8 +990,9 @@ function Row({
   children: React.ReactNode
   stacked?: boolean
 }): React.JSX.Element {
-  // Names a switch in this row (Toggle reads it from context, §8).
+  // Names and describes a switch in this row (Toggle reads both from context, §8).
   const labelId = useId()
+  const hintId = useId()
   return (
     <div
       className={`flex ${stacked ? 'flex-col gap-2.5' : 'items-center justify-between gap-4'} border-b border-[var(--line)] py-3`}
@@ -1004,13 +1005,17 @@ function Row({
           {label}
         </span>
         {hint && (
-          <span className="text-xs" style={{ color: 'var(--ink3)' }}>
+          <span id={hintId} className="text-xs" style={{ color: 'var(--ink3)' }}>
             {hint}
           </span>
         )}
       </div>
       <div className={stacked ? 'w-full' : 'shrink-0'}>
-        <ToggleLabelContext.Provider value={labelId}>{children}</ToggleLabelContext.Provider>
+        <ToggleLabelContext.Provider value={labelId}>
+          <ToggleHintContext.Provider value={hint ? hintId : undefined}>
+            {children}
+          </ToggleHintContext.Provider>
+        </ToggleLabelContext.Provider>
       </div>
     </div>
   )

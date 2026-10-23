@@ -13,7 +13,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { Toggle } from './Toggle'
-import { ToggleLabelContext } from './toggleLabelContext'
+import { ToggleHintContext, ToggleLabelContext } from './toggleLabelContext'
 
 afterEach(cleanup)
 
@@ -91,5 +91,18 @@ describe('Toggle — accessible name', () => {
       </ToggleLabelContext.Provider>
     )
     expect(screen.getByRole('switch', { name: 'Aktiv' })).toBeTruthy()
+  })
+
+  it('is described by the hint of its settings row', () => {
+    render(
+      <ToggleLabelContext.Provider value="row-label">
+        <ToggleHintContext.Provider value="row-hint">
+          <span id="row-label">Autostart</span>
+          <span id="row-hint">Startet mit Windows</span>
+          <Toggle checked={false} onChange={() => {}} />
+        </ToggleHintContext.Provider>
+      </ToggleLabelContext.Provider>
+    )
+    expect(screen.getByRole('switch').getAttribute('aria-describedby')).toBe('row-hint')
   })
 })

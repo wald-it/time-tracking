@@ -7,3 +7,6 @@ import { createContext } from 'react'
  * only (fast refresh).
  */
 export const ToggleLabelContext = createContext<string | undefined>(undefined)
+
+/** Id of the hint under that label; a switch in the row is described by it. */
+export const ToggleHintContext = createContext<string | undefined>(undefined)

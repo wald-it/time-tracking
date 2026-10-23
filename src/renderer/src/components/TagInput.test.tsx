@@ -277,3 +277,12 @@ describe('TagInput — Dropdown gegen den Host-Dialog (#158)', () => {
     expect(highlightedText()).toBe('#docs')
   })
 })
+
+describe('TagInput — chip remove key', () => {
+  it('is a 24 px target (WCAG 2.5.8) with a name', async () => {
+    mockApi(KNOWN)
+    render(<Harness initial=",kunde," />)
+    const remove = screen.getByRole('button', { name: 'Tag kunde entfernen' })
+    expect(remove.className).toContain('h-6 w-6')
+  })
+})

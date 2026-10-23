@@ -1,4 +1,5 @@
 import { useId, useRef } from 'react'
+import { useT } from '../contexts/I18nContext'
 import { Dialog } from './Dialog'
 import { FOCUS, KEY, KEY_INV } from './instrumentClasses'
 
@@ -28,12 +29,13 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = 'OK',
-  cancelLabel = 'Abbrechen',
+  confirmLabel,
+  cancelLabel,
   variant = 'primary',
   onConfirm,
   onCancel
 }: Props): React.ReactElement | null {
+  const t = useT()
   const cancelRef = useRef<HTMLButtonElement>(null)
   const messageId = useId()
 
@@ -54,14 +56,14 @@ export function ConfirmDialog({
       </p>
       <div className="flex justify-end gap-2">
         <button ref={cancelRef} type="button" onClick={onCancel} className={KEY}>
-          {cancelLabel}
+          {cancelLabel ?? t('common.cancel')}
         </button>
         <button
           type="button"
           onClick={onConfirm}
           className={variant === 'danger' ? KEY_DANGER : KEY_INV}
         >
-          {confirmLabel}
+          {confirmLabel ?? t('common.ok')}
         </button>
       </div>
     </Dialog>

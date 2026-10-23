@@ -56,14 +56,14 @@ export function UpdateBanner(): React.JSX.Element | null {
             <button
               type="button"
               onClick={() => void installNow()}
-              className={`min-h-8 rounded-[var(--r-key)] bg-[var(--disp-ink)] px-3 text-xs font-semibold text-[var(--disp)] key-hover ${FOCUS}`}
+              className={`-my-1.5 min-h-11 rounded-[var(--r-key)] bg-[var(--disp-ink)] px-3 text-xs font-semibold text-[var(--disp)] key-hover ${FOCUS}`}
             >
               {t('update.ready.install')}
             </button>
             <button
               type="button"
               onClick={dismissReady}
-              className={`min-h-8 rounded-[var(--r-key)] px-2 text-xs text-[var(--disp-dim)] hover:bg-[var(--disp-line)] hover:text-[var(--disp-ink)] ${FOCUS}`}
+              className={`-my-1.5 min-h-11 rounded-[var(--r-key)] px-2 text-xs text-[var(--disp-dim)] hover:bg-[var(--disp-line)] hover:text-[var(--disp-ink)] ${FOCUS}`}
               aria-label={t('update.ready.dismiss')}
             >
               {t('update.ready.dismiss')}
