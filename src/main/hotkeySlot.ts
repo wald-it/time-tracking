@@ -87,7 +87,8 @@ export function changeHotkey(
   // Refused, and the OS did not have the previous one: nothing was given up.
   // Paused for capture, it stays the slot's and resuming registers it;
   // otherwise it was not in force before either, and the result says so.
-  if (!hadPrevious) return { ok: false, reason: 'refused', previousKept: slot.paused }
+  // (With no previous accelerator at all, nothing was lost either.)
+  if (!hadPrevious) return { ok: false, reason: 'refused', previousKept: slot.paused || !previous }
   if (tryRegister(registry, previous, slot.onPress)) {
     slot.registered = true
     return { ok: false, reason: 'refused', previousKept: true }

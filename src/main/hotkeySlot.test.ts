@@ -111,6 +111,18 @@ describe('changing a hotkey slot (#292)', () => {
     })
   })
 
+  it('refused with no previous accelerator at all: nothing is reported as lost', () => {
+    // E.g. registering it at start-up failed, so the slot is empty.
+    const registry = fakeRegistry(['Ctrl+Alt+Del'])
+    const slot = hotkeySlot(() => undefined)
+    expect(changeHotkey(registry, slot, 'Ctrl+Alt+Del', OTHER)).toEqual({
+      ok: false,
+      reason: 'refused',
+      previousKept: true
+    })
+    expect(slot).toMatchObject({ current: '', registered: false })
+  })
+
   it('taken by the other slot: nothing changes', () => {
     const registry = fakeRegistry()
     const slot = holding(registry, 'Alt+Shift+S')
