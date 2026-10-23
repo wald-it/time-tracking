@@ -37,8 +37,8 @@ Please encrypt sensitive details if you can.
 **Release artifacts are not code-signed.** The Windows installer carries no
 Authenticode signature, so Windows SmartScreen warns before running it. The
 macOS build is signed ad hoc only and not notarized, so Gatekeeper blocks the
-first start (open it via right-click → Open, or allow it under System
-Settings → Privacy & Security).
+first start. To open it on macOS 15 and later: System Settings → Privacy &
+Security → Open Anyway; on older versions: right-click → Open.
 
 What you can check instead (from 1.22.0 on):
 

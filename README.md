@@ -14,7 +14,7 @@ the running timer, hard keys, scales with ticks, in two themes (**Papier**,
 | Platform | Build | Notes |
 | -------- | ----- | ----- |
 | Windows 10/11 (x64) | NSIS installer | not code-signed — SmartScreen warns on first run |
-| macOS (Apple silicon) | DMG / ZIP (arm64) | signed ad hoc, not notarized — open via right-click → Open; Intel Macs: no build yet ([#168](https://github.com/wald-it/time-tracking/issues/168)) |
+| macOS (Apple silicon) | DMG / ZIP (arm64) | signed ad hoc, not notarized — macOS 15 and later: System Settings → Privacy & Security → Open Anyway; older versions: right-click → Open; Intel Macs: no build yet ([#168](https://github.com/wald-it/time-tracking/issues/168)) |
 
 Every release lists SHA-256 checksums and carries a build provenance
 attestation; see [SECURITY.md](SECURITY.md#release-integrity) for how to check a
@@ -33,13 +33,13 @@ download. Download: [latest release](https://github.com/wald-it/time-tracking/re
 **Calendar, analysis, export**
 - **Kalender** — month grid with day scales, week and month sums and each day's billable revenue; a day panel beside the month on wide windows (a drawer on narrow ones) with inline edit, backfill and delete with undo.
 - **Auswertung** — worked hours per month, client and weekday, revenue, and a two-band trend; the running month is compared with the same days of the previous month.
-- **PDF timesheet** (A4, logo, sender, accent colour, rounding step, optional fee and signature lines), **PDF merge** onto an existing invoice PDF, **CSV** (DE/US format), **iCal** export and a full **JSON** export of your data.
+- **PDF timesheet** (A4, logo, sender, accent colour, rounding step, optional fee and signature lines), **PDF merge** onto an existing invoice PDF, **CSV** (DE/US format), **iCal** export and a **JSON** export of your data (without stored secrets — for reading and checking, not for restoring).
 - **Clients and projects** with colours, hourly rates (project rate overrides the client rate), budgets, contact data and archive; **tags** with a central tag manager.
 
 **Integrations** (all off until you set them up)
 - **Microsoft 365 calendar import** — take appointments over as entries; the client is suggested from the attendees' e-mail domains.
 - **MCP server** for AI clients such as Claude — read your entries, and (opt-in) create or edit them with a confirmation dialog in the app. See [MCP Integration](#mcp-integration).
-- **Webhooks** — signed HTTP calls on timer start/stop and entry changes.
+- **Webhooks** — HTTP calls on timer start/stop and entry changes, signed (HMAC) when the target has a secret.
 - **iCal feed** — a local `webcal://` feed of the last 90 days for your calendar app.
 - **Stream Deck plugin** — one key per client/project, live timer state on the key; see [streamdeck-plugin/README.md](streamdeck-plugin/README.md).
 
@@ -240,7 +240,7 @@ src/
     pdf.ts       # PDF payload builder + HTML template (Stundennachweis)
     pdfWindow.ts # Hidden BrowserWindow renderer (printToPDF pipeline)
     pdfMerge.ts  # PDF merge logic (mergePdfs via pdf-lib)
-    jsonExport.ts# Full JSON export (clients + entries + settings)
+    jsonExport.ts# JSON export of your data (without stored secrets; for reading, not restoring)
     logo.ts      # Logo file -> base64 data URL for PDF embedding
     updater.ts   # electron-updater bridge + IPC handlers (auto-update)
     csvExport.ts # CSV export builder

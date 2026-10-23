@@ -78,7 +78,8 @@ no setting to turn the automatic check off; the manual check is under
   added only when the matching privacy switches under **Settings → Integrations**
   are on (**Settings → Integrations → Privacy**) — the same switches that control
   what MCP clients may read.
-- Each delivery is signed with the target's HMAC secret.
+- Each delivery is signed with the target's HMAC secret when one is set
+  (header `X-TimeTrack-Signature`).
 
 ### iCal feed
 
