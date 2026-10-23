@@ -11,11 +11,13 @@ import {
   authorizeUrl,
   buildAuthorizeUrl,
   describeAuthorizeError,
+  hasScope,
   isPersonalAccount,
   needsRefresh,
   parseCallbackQuery,
   parseErrorEnvelope,
   parseIdTokenClaims,
+  PRESENCE_SCOPE,
   redirectUriForPort,
   refreshBody,
   tokenUrl,
@@ -417,5 +419,14 @@ describe('parseErrorEnvelope', () => {
 
   it('yields nulls for a body that is not an OAuth error envelope', () => {
     expect(parseErrorEnvelope('<html>502</html>')).toEqual({ code: null, description: null })
+  })
+})
+
+describe('hasScope (#308)', () => {
+  it('a scope matches without case and without the Graph resource prefix', () => {
+    expect(hasScope(['presence.readwrite'], PRESENCE_SCOPE)).toBe(true)
+    expect(hasScope(['https://graph.microsoft.com/Presence.ReadWrite'], PRESENCE_SCOPE)).toBe(true)
+    expect(hasScope(['Presence.Read'], PRESENCE_SCOPE)).toBe(false)
+    expect(hasScope([], PRESENCE_SCOPE)).toBe(false)
   })
 })
