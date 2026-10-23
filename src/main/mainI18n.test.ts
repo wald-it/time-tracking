@@ -30,6 +30,7 @@ import {
   mcpConfirmDialog,
   migrationErrorDialog,
   readLanguage,
+  sensitiveSettingDialog,
   updateDownloadedNotification
 } from './mainI18n'
 
@@ -98,7 +99,8 @@ describe('the language of a main-process dialog', () => {
 })
 
 describe('mcpBridge.ts — the write confirmation', () => {
-  it('German, byte for byte as before; Allow stays index 1 and the default', () => {
+  // The checkbox names the bounded approval since #301 (owner-approved text).
+  it('German, byte for byte; Allow stays index 1 and the default', () => {
     expect(mcpConfirmDialog('de', 'S')).toEqual({
       type: 'question',
       buttons: ['Ablehnen', 'Erlauben'],
@@ -108,7 +110,7 @@ describe('mcpBridge.ts — the write confirmation', () => {
       title: 'TimeTrack — MCP-Schreibzugriff',
       message: 'Claude möchte eine Änderung in TimeTrack vornehmen:',
       detail: 'S',
-      checkboxLabel: 'Für diese Session merken (nicht mehr fragen)',
+      checkboxLabel: 'Start und Stopp 30 Minuten lang ohne Nachfrage erlauben',
       checkboxChecked: false
     })
   })
@@ -119,8 +121,47 @@ describe('mcpBridge.ts — the write confirmation', () => {
     expect([o.defaultId, o.cancelId]).toEqual([1, 0])
     expect(o.title).toBe('TimeTrack — MCP write access')
     expect(o.message).toBe('Claude wants to make a change in TimeTrack:')
-    expect(o.checkboxLabel).toBe('Remember for this session (stop asking)')
+    expect(o.checkboxLabel).toBe('Allow start and stop without asking for 30 minutes')
   })
+})
+
+describe('index.ts — the confirmation of a sensitive setting (#272 A3)', () => {
+  it('cancel is index 0, the default and Esc; confirm is index 1', () => {
+    const o = sensitiveSettingDialog('de', { kind: 'mcpWrite' })
+    expect(o.buttons).toEqual(['Abbrechen', 'Einschalten'])
+    expect([o.defaultId, o.cancelId]).toEqual([0, 0])
+    expect(o.title).toBe('TimeTrack — Einstellung bestätigen')
+    expect(o.message).toBe('MCP-Schreibzugriff einschalten?')
+  })
+
+  it('names every new webhook address, one per line', () => {
+    const o = sensitiveSettingDialog('de', {
+      kind: 'webhook',
+      urls: ['https://a.example', 'https://b.example']
+    })
+    expect(o.detail).toContain('\na.example — https://a.example/\nb.example — https://b.example/\n')
+    expect(o.buttons[1]).toBe('Speichern')
+  })
+
+  it('names the app id, in English too', () => {
+    const o = sensitiveSettingDialog('en', { kind: 'graphClientId', id: '1234-abcd' })
+    expect(o.message).toBe('Use a different app registration?')
+    expect(o.detail).toContain('app ID 1234-abcd')
+    expect(o.buttons).toEqual(['Cancel', 'Use'])
+  })
+
+  it.each(['mcpWrite', 'controller', 'silent'] as const)(
+    '%s has text in both languages',
+    (kind) => {
+      for (const locale of ['de', 'en'] as const) {
+        const o = sensitiveSettingDialog(locale, { kind })
+        for (const s of [o.message, o.detail, o.buttons[1]]) {
+          expect(s).toBeTruthy()
+          expect(s).not.toContain('mainDialog.')
+        }
+      }
+    }
+  )
 })
 
 describe('index.ts — the dialogs at start', () => {
@@ -406,5 +447,42 @@ describe('no dialog text is written into a call site', () => {
       if (!/new Notification\(/.test(src)) continue
       expect(literal.exec(src)?.[0], file).toBeUndefined()
     }
+  })
+})
+
+describe('sensitive setting values from the renderer are shown cleaned (#272 A3)', () => {
+  it('a webhook URL is shown as the parser reads it, without tabs or hidden marks', () => {
+    const o = sensitiveSettingDialog('de', {
+      kind: 'webhook',
+      urls: ['https://legit.example\t\t\t@evil.example/x']
+    })
+    expect(o.detail).not.toMatch(/\t/)
+    expect(o.detail).toContain('evil.example')
+  })
+
+  it('an app id cannot add lines to the dialog', () => {
+    const o = sensitiveSettingDialog('de', {
+      kind: 'graphClientId',
+      id: 'abc\n\nDas ist die Standard-ID, es ändert sich nichts.'
+    })
+    expect((o.detail ?? '').split('\n')).toHaveLength(1)
+    expect(o.detail).toContain('⏎')
+  })
+})
+
+describe('#301: the "remember" box only where it applies', () => {
+  it('can be left out', () => {
+    const o = mcpConfirmDialog('de', 'S', false)
+    expect(o.checkboxLabel).toBeUndefined()
+    expect(o.buttons).toEqual(['Ablehnen', 'Erlauben'])
+  })
+})
+
+describe('the webhook host is never cut off (review round 2)', () => {
+  it('a long address with userinfo still names the real host first', () => {
+    const url = 'https://hooks.trusted-company.example.com.' + 'a'.repeat(110) + '@evil.example/'
+    const o = sensitiveSettingDialog('de', { kind: 'webhook', urls: [url] })
+    const line = (o.detail ?? '').split('\n').find((l) => l.includes('—')) ?? ''
+    expect(line.startsWith('evil.example — ')).toBe(true)
   })
 })

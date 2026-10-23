@@ -329,6 +329,58 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     expect(running).toEqual([{ client_id: 2 }])
   })
 
+  // #272 A3 / #301: stop used to pick the running entry only when it ran, after
+  // the dialog, so a switch while the dialog was open ended an entry nobody saw.
+  it('stop_running_timer refuses when the running entry changed while the dialog was open', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'start_timer',
+      args: { client_id: 1, started_at: '2025-10-28T09:00:00+01:00' }
+    })
+    // The owner switches in the app while the MCP confirmation is open.
+    ctx.confirm = async () => {
+      db.prepare(`UPDATE entries SET stopped_at = started_at WHERE stopped_at IS NULL`).run()
+      db.prepare(
+        `INSERT INTO entries (client_id, description, started_at, heartbeat_at)
+         VALUES (2, '', '2025-10-28T08:30:00.000Z', '2025-10-28T08:30:00.000Z')`
+      ).run()
+      return true
+    }
+    const res = await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer' })
+    expect(res).toMatchObject({ ok: false, code: 'invalid' })
+    expect((res as { error: string }).error).toMatch(/seit der Vorschau geändert/)
+    const running = db.prepare(`SELECT client_id FROM entries WHERE stopped_at IS NULL`).all()
+    expect(running).toEqual([{ client_id: 2 }])
+  })
+
+  it('stop_running_timer refuses when a timer started while "none running" was shown', async () => {
+    const { ctx } = makeCtx(db)
+    ctx.confirm = async () => {
+      db.prepare(
+        `INSERT INTO entries (client_id, description, started_at, heartbeat_at)
+         VALUES (2, '', '2025-10-28T08:30:00.000Z', '2025-10-28T08:30:00.000Z')`
+      ).run()
+      return true
+    }
+    const res = await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer' })
+    expect(res).toMatchObject({ ok: false, code: 'invalid' })
+    const running = db.prepare(`SELECT client_id FROM entries WHERE stopped_at IS NULL`).all()
+    expect(running).toEqual([{ client_id: 2 }])
+  })
+
+  it('ctx.confirm learns which write it confirms (#301)', async () => {
+    const { ctx } = makeCtx(db)
+    const ops: string[] = []
+    ctx.confirm = async (_summary, _locale, op) => {
+      ops.push(op)
+      return true
+    }
+    await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer' })
+    expect(ops).toEqual(['stop_running_timer'])
+  })
+
   it('start_timer ending an entry from another day names the date', async () => {
     const { ctx, asked } = recording()
     await handleRequest(ctx, {
