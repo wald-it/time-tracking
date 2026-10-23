@@ -487,6 +487,76 @@ describe('useTimer — start/stop', () => {
     expect(hook.result.current.runningEntry?.client_id).toBe(2)
   })
 
+  // #297 Codex follow-up 2 (a): MCP or the Stream Deck started a timer during
+  // the lookup. The renderer hears it as data:changed, but the resync's
+  // getRunning reply is not back yet — the fallback must yield anyway, or
+  // main's switch ends the externally started timer.
+  it('yields to an external start announced during the lookup', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const { api, hook } = await setup({ summaryGate })
+    const entriesApi = (
+      window as unknown as { api: { entries: { getRunning: () => Promise<unknown> } } }
+    ).api.entries
+    let answerRunning: () => void = () => {}
+    entriesApi.getRunning = () =>
+      new Promise((r) => {
+        answerRunning = () => r({ ok: true as const, data: makeEntry({ id: 70, client_id: 2 }) })
+      })
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    act(() => api.listeners.dataChanged?.())
+    await act(async () => {
+      release()
+      await pending
+    })
+
+    expect(api.start).not.toHaveBeenCalled()
+    await act(async () => {
+      answerRunning()
+    })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(70))
+  })
+
+  // #297 Codex follow-up 2 (b): the lookup ending must not clear the busy
+  // flag of a quick start whose reply is still out.
+  it('leaves the busy flag to a quick start still in flight', async () => {
+    let release: () => void = () => {}
+    const summaryGate = new Promise<void>((r) => (release = r))
+    const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+    const { api, hook } = await setup({ clients, summaryGate })
+    let answerQuick: () => void = () => {}
+    api.start.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          answerQuick = () => r({ ok: true as const, data: makeEntry({ id: 50, client_id: 2 }) })
+        })
+    )
+
+    let pending: Promise<string | null> = Promise.resolve(null)
+    let quick: Promise<string | null> = Promise.resolve(null)
+    act(() => {
+      pending = hook.result.current.start()
+    })
+    act(() => {
+      quick = hook.result.current.startWithClient(2, null)
+    })
+    await act(async () => {
+      release()
+      await pending
+    })
+
+    expect(hook.result.current.isLoading).toBe(true)
+    await act(async () => {
+      answerQuick()
+      await quick
+    })
+    expect(hook.result.current.isLoading).toBe(false)
+  })
+
   // #297 review 3: a running entry whose client was archived since leaves an
   // archived selection behind; a start without a valid selection must not
   // switch away from the running timer or clear its selection.

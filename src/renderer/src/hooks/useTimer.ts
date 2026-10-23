@@ -58,6 +58,13 @@ async function pushTrayUpdate(running: boolean, label: string): Promise<void> {
  * during the lookup wins even before its reply is back (#297).
  */
 let startEpoch = 0
+/**
+ * Counts external writes (`data:changed`: MCP, Stream Deck, …), bumped as
+ * the event arrives, before the resync's reply is back. The fallback yields
+ * if it changed during the lookup: the external write may be a start main
+ * would otherwise switch away from (#297).
+ */
+let externalEpoch = 0
 
 /**
  * Run one timer IPC call with `isLoading` set, and clear it whatever happens.
@@ -151,7 +158,10 @@ function installGlobalListenersOnce(
   window.api.onHotkeyToggle(() => globalToggleRef.current())
   window.api.onTrayQuickStart((clientId) => globalQuickStartRef.current(clientId))
   window.api.onTrayStop(() => globalStopRef.current())
-  window.api.onDataChanged(() => globalResyncRef.current())
+  window.api.onDataChanged(() => {
+    externalEpoch++
+    globalResyncRef.current()
+  })
   window.api.onIdleDetected((data) => {
     if (useTimerStore.getState().runningEntry) {
       setIdleEvent(data)
@@ -342,16 +352,25 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
         // started meanwhile wins below.
         setIsLoading(true)
         const epoch = startEpoch
+        const external = externalEpoch
         let pair: Awaited<ReturnType<typeof readLastStartPair>>
         try {
           pair = await readLastStartPair()
         } finally {
-          setIsLoading(false)
+          // Only if no other start began meanwhile: then its withLoading owns
+          // the flag and clears it when its reply is back.
+          if (startEpoch === epoch) setIsLoading(false)
         }
         // Someone else started a timer while the pair resolved (a quick-start
-        // key, MCP), or began to and its reply is not back yet: theirs stands,
-        // the fallback does not switch it away.
-        if (startEpoch !== epoch || useTimerStore.getState().runningEntry) return null
+        // key, MCP, the Stream Deck), or began to and its reply is not back
+        // yet: theirs stands, the fallback does not switch it away.
+        if (
+          startEpoch !== epoch ||
+          externalEpoch !== external ||
+          useTimerStore.getState().runningEntry
+        ) {
+          return null
+        }
         if (!pair) {
           void useStartTimerModalStore.getState().openStart()
           return null
