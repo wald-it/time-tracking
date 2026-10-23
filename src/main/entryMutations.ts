@@ -86,12 +86,17 @@ export function validateManualEntry(
   }
   // Overlap: any non-deleted entry of the same client whose time range
   // intersects [start, stop). Two intervals overlap iff
-  //   existing.started_at < stop AND COALESCE(existing.stopped_at, now) > start
+  //   existing.started_at < stop AND existing.stopped_at > start,
+  // and a RUNNING entry (stopped_at NULL) counts as open-ended: it will end
+  // after now, so anything after its start overlaps it. (It used to be
+  // COALESCE(stopped_at, datetime('now')): SQLite's 'now' has a space where
+  // the stored ISO values have a `T`, so the running entry compared as
+  // already ended and a same-day backfill inside it went through.)
   const params: Array<string | number> = [input.client_id, input.stopped_at, input.started_at]
   let overlapSql = `SELECT id FROM entries
                      WHERE client_id = ? AND deleted_at IS NULL
                        AND started_at < ?
-                       AND COALESCE(stopped_at, datetime('now')) > ?`
+                       AND (stopped_at IS NULL OR stopped_at > ?)`
   if (excludeId !== undefined) {
     overlapSql += ` AND id != ?`
     params.push(excludeId)
