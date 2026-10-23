@@ -70,8 +70,8 @@ rl.on('close', () => process.exit(0))
 
 /**
  * Upper bound for one probe run: its own deadline, two process starts, and the
- * probe's 5 s kill fallback plus its 2 s drain grace at the end. Both runners
- * below kill the probe at this point.
+ * probe's 5 s kill fallback plus its 2 s drain grace at the end. `probe`
+ * kills at this point; `probeTimed` only if the verdict has not come by then.
  */
 const PROBE_LIMIT_MS = 90_000
 
@@ -130,7 +130,8 @@ function probe(
 /**
  * Like `probe`, but times the probe from the moment the fake server was up,
  * that is from the relayed `[fake] up` line (#328):
- * - `verdictMs`: until the probe's final `ERROR:` line;
+ * - `verdictMs`: until the probe's `ERROR:` line (it prints one, as its last
+ *   output, from the top-level catch);
  * - `exitMs`: until the probe process's 'exit' event.
  * Neither counts the start of the two Electron processes before that line.
  * `exitMs` does count the end of the probe's own process, which Windows can
@@ -161,7 +162,10 @@ async function probeTimed(
         const text = line.replace(/\r$/, '')
         output += text + '\n'
         if (upAt === null && text.includes('[stderr] [fake] up')) upAt = Date.now()
-        if (verdictAt === null && text.startsWith('ERROR:')) verdictAt = Date.now()
+        if (verdictAt === null && text.startsWith('ERROR:')) {
+          verdictAt = Date.now()
+          clearTimeout(killer)
+        }
       }
       // One line buffer per stream: the relayed server lines arrive on stdout,
       // the verdict on stderr, and a line cut at a chunk end must not be glued
@@ -180,13 +184,14 @@ async function probeTimed(
       }
       reader(child.stdout)
       reader(child.stderr)
-      // A probe that hangs is killed (SIGKILL), so the test fails on
-      // `timedOut` with the probe's output instead of a bare test timeout.
-      // Cleared at 'exit': a probe that has ended is not killed while the OS
-      // still tears it down.
+      // A probe that hangs before its verdict is killed (SIGKILL), so the test
+      // fails on `timedOut` with the probe's output instead of a bare test
+      // timeout. The timer stops at the verdict line, because 'exit' comes only
+      // after the OS has torn the process down, which on Windows can take as
+      // long as this limit; a probe that hangs after its verdict fails on the
+      // lifetime check outside Windows.
       const killer = setTimeout(() => {
-        timedOut = true
-        child.kill('SIGKILL')
+        timedOut = child.exitCode === null && child.signalCode === null && child.kill('SIGKILL')
       }, PROBE_LIMIT_MS)
       // An error before the process got a pid is a spawn failure. Later ones
       // (a failed kill) are not the run's result, as in the probe itself.
@@ -197,7 +202,6 @@ async function probeTimed(
       })
       child.on('exit', () => {
         exitAt = Date.now()
-        clearTimeout(killer)
       })
       child.on('close', (status) => {
         clearTimeout(killer)
