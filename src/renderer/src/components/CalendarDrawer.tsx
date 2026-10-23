@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import type { Client, Entry, Project } from '../../../shared/types'
 import { useT } from '../contexts/I18nContext'
 import { DayDetails } from './kalender/DayDetails'
+import { useModalFocus } from './modalFocus'
 
 interface Props {
   open: boolean
@@ -22,8 +23,8 @@ interface Props {
  * below 1120 px window width (HANDOFF §4.2.4). Wide windows show the same
  * content in the persistent day panel instead (`DayPanel`).
  *
- * The drawer only owns the overlay: backdrop, dialog semantics, initial focus
- * and focus restore on close. Everything inside — list, tag filter, inline
+ * The drawer only owns the overlay: backdrop, dialog semantics and the focus
+ * handling of the Dialog shell (trap, initial focus, focus restore on close). Everything inside — list, tag filter, inline
  * edit, backfill, delete with undo toast — is `DayDetails`. Escape first
  * cancels what is open in there (edit → backfill → delete question) and only
  * then closes the drawer, via `onEscape`.
@@ -40,16 +41,13 @@ export function CalendarDrawer({
   const t = useT()
   const drawerRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const previouslyFocused = document.activeElement
-    queueMicrotask(() => {
-      drawerRef.current?.querySelector<HTMLElement>('button, [tabindex]')?.focus()
-    })
-    return () => {
-      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus()
-    }
-  }, [open])
+  // The Dialog shell's focus handling: Tab stays in the drawer (the page
+  // behind is covered), focus goes back to the day cell on close. Escape is
+  // DayDetails' (it cancels an open edit first), so none here. First focus
+  // on × as before — the drawer opens on a list, not a form.
+  useModalFocus(open, drawerRef, {
+    initialFocus: () => drawerRef.current?.querySelector<HTMLElement>('button')
+  })
 
   if (!open) return null
 

@@ -111,5 +111,11 @@ body {
   animation: fadeIn 0.18s ease both;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .view-enter {
+    animation: none;
+  }
+}
+
 /* The running-indicator blink (`.tt-blink`) lives in main.css: the mini
    widget loads main.css only and needs it too. */

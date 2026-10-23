@@ -17,7 +17,7 @@ TimeTrack is a measuring instrument, not a dashboard: a solid chassis, a dark re
 
 ### Themes and tokens
 
-Two themes, **Papier** (`:root`) and **Graphit** (`.dark`), plus "System". All colours come from tokens in `src/renderer/src/assets/base.css`; components never hard-code colours or Tailwind palette classes.
+Two themes, **Papier** (`:root`) and **Graphit** (`.dark`), plus "System". All colours come from tokens in `src/renderer/src/assets/base.css`; components never hard-code colours or Tailwind palette classes. Three exceptions are deliberate: the mini widget's `var(--token, #hex)` fallbacks (its window can paint before the tokens apply), the client/project colour presets (`components/clientColors.ts` — data the user picks, not UI colour), and the PDF accent colour (a user setting, default `#4f46e5`, used only in the PDF).
 
 | Token | Use |
 |---|---|
@@ -54,8 +54,8 @@ Contrast was checked per theme (table in `design/messinstrument/tokens.css`).
 ### States and motion
 
 - Focus: 2 px `--focus` outline (`focus-visible`), never removed.
-- Hover: keys and rows lift to `--key`; selected cells add `inset 0 0 0 1px var(--ink)`.
-- Running: a blinking `--sig` square (`tt-blink`), hatched bars, a `--sig` needle at *now*. `prefers-reduced-motion` stops the blink and any animation.
+- Hover (HANDOFF §2.4): keys get a 1 px `--ink3` outline at 2 px offset (`.key-hover`), not a colour change; rows and icon buttons take the `--key` background; selected cells add `inset 0 0 0 1px var(--ink)`.
+- Running: a blinking `--sig` square (`tt-blink`), hatched bars, a `--sig` needle at *now*. `prefers-reduced-motion` stops the blink, the 180 ms view fade (`.view-enter`) and the hold-to-open fill; a test checks that every CSS animation in `base.css` and `main.css` has such a stop.
 - No transitions on layout; motion only where it carries state (blink, hold-to-open fill).
 
 ### Components (where they live)
