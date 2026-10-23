@@ -3,34 +3,15 @@ import { Dialog } from './Dialog'
 import { useT } from '../contexts/I18nContext'
 import type { LicenseEntry } from '../../../shared/types'
 import { FOCUS, KEY, LEGEND, SECTION } from './instrumentClasses'
+// The repo's LICENSE, inlined at build time. One source: an inline copy here
+// had drifted from it (#276).
+import LICENSE_TEXT from '../../../../LICENSE?raw'
 
 interface Props {
   open: boolean
   onClose: () => void
   version: string
 }
-
-const MIT_TEXT = `MIT License
-
-Copyright (c) 2026 skoedr
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.`
 
 export function AboutDialog({ open, onClose, version }: Props): React.JSX.Element | null {
   const t = useT()
@@ -81,7 +62,7 @@ export function AboutDialog({ open, onClose, version }: Props): React.JSX.Elemen
         <div className={SECTION}>
           <p className={`mb-1.5 ${LEGEND}`}>{t('about.ownLicense')}</p>
           <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-[var(--ink)]">
-            {MIT_TEXT}
+            {LICENSE_TEXT}
           </pre>
         </div>
 
