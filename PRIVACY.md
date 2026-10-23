@@ -4,7 +4,7 @@ TimeTrack stores your data **locally** on your device. It has no server of its
 own, no TimeTrack account, no telemetry and no analytics.
 
 In its basic operation it makes one kind of network request: the **update
-check** against GitHub. Everything else that leaves the device does so only
+check** against GitHub, which you can switch off. Everything else that leaves the device does so only
 through an integration **you switch on** — each is described below with what it
 sends and to whom.
 
@@ -38,9 +38,13 @@ When the installed app starts, `electron-updater` asks GitHub
 (`github.com/wald-it/time-tracking` releases) whether a new version exists and,
 if so, downloads it in the background; you decide in the app when to install.
 The request carries no user identifier, no device data and no time entries —
-GitHub sees the usual request data (IP address, user agent). There is currently
-no setting to turn the automatic check off; the manual check is under
-**Settings → About → Updates**.
+GitHub sees the usual request data (IP address, user agent).
+
+You can turn this off under **Settings → About → Updates** with **Check for
+updates automatically**. When it is off, the app makes no request at start and
+downloads nothing on its own. It contacts GitHub only when you click **Check for
+updates now**; if that check finds a new version, the app downloads it in the
+background as above. The switch applies from the next start.
 
 ## Optional integrations (all off until you set them up)
 

@@ -35,6 +35,7 @@ import {
   type WebhookEvent,
   type WebhookTarget
 } from '../../../shared/webhooks'
+import { isUpdateCheckEnabled } from '../../../shared/updateCheck'
 
 const DEFAULT_HOTKEY = 'Alt+Shift+S'
 const DEFAULT_MINI_HOTKEY = 'Alt+Shift+M'
@@ -780,7 +781,10 @@ export default function SettingsView(): React.JSX.Element {
         {tab === 'about' && (
           <>
             {/* Updates (v1.5 PR B, issue #28) */}
-            <UpdatesSection />
+            <UpdatesSection
+              autoCheck={isUpdateCheckEnabled(settings.update_check_enabled)}
+              onAutoCheckChange={(v) => void update('update_check_enabled', v ? '1' : '0')}
+            />
 
             <Section title={t('settings.section.about')}>
               <Row label={t('settings.about.version')}>
@@ -1217,8 +1221,18 @@ function SegmentedPicker<T extends string>({
  * The store auto-initializes on first mount via UpdateBanner; we still call
  * `init()` here defensively in case Settings is opened before the banner
  * has appeared in some future layout change.
+ *
+ * The automatic-check switch (#273) is a settings row like the others, so
+ * its value and writer come from SettingsView; the store only mirrors the
+ * main-process updater.
  */
-function UpdatesSection(): React.JSX.Element {
+function UpdatesSection({
+  autoCheck,
+  onAutoCheckChange
+}: {
+  autoCheck: boolean
+  onAutoCheckChange: (v: boolean) => void
+}): React.JSX.Element {
   const { status, appVersion, lastCheckedAt, checkNow, installNow, init } = useUpdateStore()
   const t = useT()
   useEffect(() => {
@@ -1273,7 +1287,13 @@ function UpdatesSection(): React.JSX.Element {
           {statusLabel}
         </p>
       </Row>
-      <Row label={t('settings.update.actions')} hint={t('settings.update.autoInfo')}>
+      <Row label={t('settings.update.autoCheck')} hint={t('settings.update.autoCheckHint')}>
+        <Toggle checked={autoCheck} onChange={onAutoCheckChange} />
+      </Row>
+      <Row
+        label={t('settings.update.actions')}
+        hint={t(autoCheck ? 'settings.update.autoInfo' : 'settings.update.manualInfo')}
+      >
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"

@@ -16,6 +16,7 @@ import log from 'electron-log/main'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 import type { IpcResult, UpdateStatus } from '../shared/types'
+import { isUpdateCheckEnabled, UPDATE_CHECK_SETTING_KEY } from '../shared/updateCheck'
 import { clearShutdown, releaseHolders, type Holder, type ReleaseOutcome } from '../mcp/holders'
 
 export type { UpdateStatus }
@@ -169,8 +170,16 @@ export async function performUpdateInstall(deps: {
  *
  * In dev mode (no packaged app) this is a no-op except for IPC handler
  * registration — `autoUpdater.checkForUpdates()` would error otherwise.
+ *
+ * `getSetting` is read once, here: the switch under Settings → About →
+ * Updates (#273) decides the check at start, so changing it takes effect at
+ * the next start. A download already running when it is switched off finishes.
  */
-export function initAutoUpdater(opts: { isDev: boolean; getEndpointDir?: () => string }): void {
+export function initAutoUpdater(opts: {
+  isDev: boolean
+  getEndpointDir?: () => string
+  getSetting: (key: string) => string | undefined
+}): void {
   // Wire up logger from PR A so updater events land in main.log.
   autoUpdater.logger = log
   autoUpdater.autoDownload = true
@@ -247,7 +256,8 @@ export function initAutoUpdater(opts: { isDev: boolean; getEndpointDir?: () => s
 
   // ── Initial silent check ──────────────────────────────────
   // Don't surface errors here — offline app starts shouldn't show a banner.
-  if (!opts.isDev) {
+  // Switched off (#273): no request to GitHub at start, so nothing to download.
+  if (!opts.isDev && isUpdateCheckEnabled(opts.getSetting(UPDATE_CHECK_SETTING_KEY))) {
     suppressNextError = true
     lastCheckIso = new Date().toISOString()
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
