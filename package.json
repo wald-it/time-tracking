@@ -30,6 +30,7 @@
     "sync-icon": "node scripts/sync-icon.mjs",
     "prebuild": "npm run sync-icon && node scripts/generate-licenses.mjs",
     "build": "npm run typecheck && npm run build:mcp && electron-vite build",
+    "postinstall": "node scripts/ensure-electron.mjs",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",

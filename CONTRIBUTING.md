@@ -66,7 +66,10 @@ outside Electron, with a hint to use `pnpm test`.
 prebuilt binaries under `node_modules/better-sqlite3/prebuilds/` that load
 under Node and Electron alike, so **nothing is compiled**: there is no
 `postinstall` rebuild, no `electron-rebuild` step in CI, and pnpm is told not
-to build the package (`pnpm.ignoredBuiltDependencies` in `package.json`). Please
+to build the package (`pnpm.ignoredBuiltDependencies` in `package.json`). The
+`postinstall` only fetches the Electron binary (`scripts/ensure-electron.mjs`):
+since Electron 42 the package no longer does that itself, and `pnpm dev` needs
+it. Please
 do not add a rebuild back: none is needed, and on a machine without Visual
 Studio (Windows) or Xcode (macOS) it makes `pnpm install` fail.
 
