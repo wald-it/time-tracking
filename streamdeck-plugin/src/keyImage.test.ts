@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { DISP, SIG, keyImage, type KeyLabel } from './keyImage'
+import {
+  DISP,
+  DISP_LINE,
+  SIG,
+  clientBarColor,
+  keyImage,
+  progressColor,
+  type KeyLabel
+} from './keyImage'
 
 const LABEL: KeyLabel = { header: 'Acme', lines: ['Rollout'] }
 
@@ -81,5 +89,19 @@ describe('keyImage name fitting (Codex on #364)', () => {
     const legendText = />([^<]*)<\/text>/.exec(svg)?.[1] ?? ''
     expect(legendText.length).toBeLessThanOrEqual(10)
     expect(legendText.endsWith('…')).toBe(true)
+  })
+})
+
+describe('keyImage follow-ups (Codex round 2 on #364)', () => {
+  it('offline keys of two projects of one client differ', () => {
+    const a = svgOf({ state: 'offline', label: { header: 'Acme', lines: ['Rollout'] } })
+    const b = svgOf({ state: 'offline', label: { header: 'Acme', lines: ['Support'] } })
+    expect(a).toContain('>Rollout<')
+    expect(a).not.toBe(b)
+  })
+
+  it('a progress fill without a client colour differs from its track', () => {
+    expect(progressColor(undefined)).not.toBe(DISP_LINE)
+    expect(progressColor('#ff8800')).toBe(clientBarColor('#ff8800'))
   })
 })

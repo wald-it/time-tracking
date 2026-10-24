@@ -27,6 +27,7 @@ import {
   OFF_INK,
   SIG,
   clientBarColor,
+  progressColor,
   escapeXml
 } from './keyImage'
 import { formatHm } from './dialModel'
@@ -229,7 +230,7 @@ function browseFace(o: {
     // meaning of orange — "this one is already going" before you press.
     (o.running ? `<rect x="177" y="72" width="9" height="9" fill="${SIG}"/>` : '') +
     `<line x1="16" y1="90" x2="184" y2="90" stroke="${DISP_LINE}" stroke-width="4"/>` +
-    `<rect x="16" y="88" width="${barW}" height="4" rx="2" fill="${bar}"/>`
+    `<rect x="16" y="88" width="${barW}" height="4" rx="2" fill="${progressColor(o.color)}"/>`
   )
 }
 
@@ -253,7 +254,7 @@ function runningFace(o: { label: DialLabel; elapsedSec: number; color?: string }
       : '') +
     readout(formatHm(sec), { x: 14, y: 60, size: 34 }) +
     text(fit(main, 22), { x: 14, y: 82, size: 11, fill: DISP_INK, weight: 500 }) +
-    secondsLine(sec, clientBarColor(o.color))
+    secondsLine(sec, progressColor(o.color))
   )
 }
 
@@ -272,7 +273,14 @@ function offlineFace(): string {
 function emptyFace(): string {
   return (
     SHELL() +
-    text('No clients yet', { x: 100, y: 48, size: 16, fill: DISP_INK, weight: 600, anchor: 'middle' }) +
+    text('No clients yet', {
+      x: 100,
+      y: 48,
+      size: 16,
+      fill: DISP_INK,
+      weight: 600,
+      anchor: 'middle'
+    }) +
     text('Add one in TimeTrack', { x: 100, y: 70, size: 11, fill: DISP_DIM, anchor: 'middle' })
   )
 }

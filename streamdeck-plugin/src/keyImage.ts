@@ -103,6 +103,15 @@ export function clientBarColor(hex?: string): string {
   return normalizeKeyColor(hex)
 }
 
+/**
+ * Fill for a progress line drawn over a `DISP_LINE` track: the client colour,
+ * or the dim display colour when there is none, never the track colour itself.
+ */
+export function progressColor(hex?: string): string {
+  const c = clientBarColor(hex)
+  return c === DISP_LINE ? DISP_DIM : c
+}
+
 // ── Typografie ─────────────────────────────────────────────────────────────
 // Im Key-SVG ist keine Font eingebettet: Archivo und IBM Plex Mono greifen nur,
 // wenn sie installiert sind, sonst die Systemschriften dahinter.
@@ -227,12 +236,18 @@ function unsetFace(): string {
 }
 
 function offlineFace(label: KeyLabel): string {
+  // Keep both client and project: two projects of one client must still look
+  // different while TimeTrack is closed.
+  const project = label.header ? (label.lines[0] ?? '') : ''
+  const name = label.header || label.lines[0] || ''
   return (
     SHELL(OFF_BG) +
-    `<circle cx="72" cy="50" r="18" fill="none" stroke="${OFF_INK}" stroke-width="4"/>` +
-    `<line x1="59" y1="63" x2="85" y2="37" stroke="${OFF_INK}" stroke-width="4" stroke-linecap="square"/>` +
-    legend('offline', 72, 96, 'middle') +
-    nameLines([label.header || label.lines[0] || ''], OFF_INK, 13, [118])
+    `<circle cx="72" cy="44" r="16" fill="none" stroke="${OFF_INK}" stroke-width="4"/>` +
+    `<line x1="60" y1="56" x2="84" y2="32" stroke="${OFF_INK}" stroke-width="4" stroke-linecap="square"/>` +
+    legend('offline', 72, 86, 'middle') +
+    (project
+      ? nameLines([name], OFF_INK, 11, [108]) + nameLines([project], DISP_DIM, 13, [125])
+      : nameLines([name], DISP_DIM, 13, [114]))
   )
 }
 
