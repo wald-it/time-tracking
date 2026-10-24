@@ -236,18 +236,17 @@ function unsetFace(): string {
 }
 
 function offlineFace(label: KeyLabel): string {
-  // Keep both client and project: two projects of one client must still look
-  // different while TimeTrack is closed.
-  const project = label.header ? (label.lines[0] ?? '') : ''
-  const name = label.header || label.lines[0] || ''
+  // Keep the client and every wrapped name line: targets must still look
+  // different while TimeTrack is closed (two projects of one client, or two
+  // clients that differ only in their last word).
+  const rows = [label.header, ...label.lines].filter((s) => s).slice(0, 3)
+  const ys = rows.length === 1 ? [112] : rows.length === 2 ? [104, 120] : [98, 112, 126]
   return (
     SHELL(OFF_BG) +
-    `<circle cx="72" cy="44" r="16" fill="none" stroke="${OFF_INK}" stroke-width="4"/>` +
-    `<line x1="60" y1="56" x2="84" y2="32" stroke="${OFF_INK}" stroke-width="4" stroke-linecap="square"/>` +
-    legend('offline', 72, 86, 'middle') +
-    (project
-      ? nameLines([name], OFF_INK, 11, [108]) + nameLines([project], DISP_DIM, 13, [125])
-      : nameLines([name], DISP_DIM, 13, [114]))
+    `<circle cx="72" cy="40" r="15" fill="none" stroke="${OFF_INK}" stroke-width="4"/>` +
+    `<line x1="61" y1="51" x2="83" y2="29" stroke="${OFF_INK}" stroke-width="4" stroke-linecap="square"/>` +
+    legend('offline', 72, 78, 'middle') +
+    nameLines(rows, DISP_DIM, 12, ys)
   )
 }
 

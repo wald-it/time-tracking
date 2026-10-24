@@ -105,3 +105,18 @@ describe('keyImage follow-ups (Codex round 2 on #364)', () => {
     expect(progressColor('#ff8800')).toBe(clientBarColor('#ff8800'))
   })
 })
+
+describe('keyImage offline names (Codex round 3 on #364)', () => {
+  it('keeps every wrapped line, so similar names stay apart', () => {
+    const north = svgOf({
+      state: 'offline',
+      label: { header: '', lines: ['Acme', 'Consulting', 'North'] }
+    })
+    const south = svgOf({
+      state: 'offline',
+      label: { header: '', lines: ['Acme', 'Consulting', 'South'] }
+    })
+    expect(north).toContain('>North<')
+    expect(north).not.toBe(south)
+  })
+})
