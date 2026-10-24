@@ -7,6 +7,12 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [1.23.1] — 2026-10-24
+
+### Changed
+
+- **The Stream Deck plugin matches the app's Messinstrument look** ([#363](https://github.com/wald-it/time-tracking/issues/363)). Keys and the dial's touch strip now look like the app's dark display window: times in a mono face with a dimmed colon, labels as small capitals, the client colour as a thin bar along the bottom instead of a lit-up key. Orange means "running" and nothing else: a small square that blinks once a second, like the running marker in the app's header. A thin line along the bottom of the touch strip shows the seconds of the current minute and replaces the ring. The plugin and action icons are new as well, the plugin icon is the app's dial with its orange needle. Nothing about what the keys and the dial do has changed. Keys cannot carry their own fonts, so on a computer without Archivo and IBM Plex Mono they fall back to Segoe UI and Consolas.
+
 ## [1.23.0] — 2026-10-24
 
 ### Breaking for MCP clients and integrations
