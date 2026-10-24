@@ -63,3 +63,23 @@ describe('keyImage (Messinstrument, #363)', () => {
     expect(svg).toContain('A &amp; &lt;B&gt;')
   })
 })
+
+describe('keyImage name fitting (Codex on #364)', () => {
+  it('keeps all three wrapped lines of a client-only name', () => {
+    const svg = svgOf({
+      state: 'idle',
+      label: { header: '', lines: ['Acme', 'Consulting', 'North'] }
+    })
+    expect(svg).toContain('>North<')
+  })
+
+  it('cuts a long client legend so it stays on the key', () => {
+    const svg = svgOf({
+      state: 'idle',
+      label: { header: 'Consulting GmbH', lines: ['Rollout'] }
+    })
+    const legendText = />([^<]*)<\/text>/.exec(svg)?.[1] ?? ''
+    expect(legendText.length).toBeLessThanOrEqual(10)
+    expect(legendText.endsWith('…')).toBe(true)
+  })
+})

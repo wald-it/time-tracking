@@ -154,6 +154,17 @@ function legend(text: string, x: number, y: number, anchor: 'start' | 'middle' =
   return `<text x="${x}" y="${y}" font-family="${FONT}" font-size="13" font-weight="600" letter-spacing="1.6" fill="${DISP_DIM}" text-anchor="${anchor}">${escapeXml(text.toUpperCase())}</text>`
 }
 
+/**
+ * Legends are capitals with 1.6 px tracking at 13 px: about 10.5 px a
+ * character, so 10 characters fit from x 16 inside the 144 px key. There are
+ * no font metrics on the deck; the budget is a character count, and a cut
+ * name gets an ellipsis rather than running off the key.
+ */
+export function fitLegend(s: string, maxChars = 10): string {
+  if (s.length <= maxChars) return s
+  return s.slice(0, Math.max(1, maxChars - 1)).trimEnd() + '…'
+}
+
 /** Namenszeilen, zentriert; Startzeile und Abstand je nach Platz. */
 function nameLines(lines: string[], fill: string, size: number, ys: number[]): string {
   return lines
@@ -191,12 +202,16 @@ function runningFace(label: KeyLabel, color: string | undefined, elapsedSec: num
 }
 
 function idleFace(label: KeyLabel, color: string | undefined): string {
-  const lines = label.lines.slice(0, 2)
+  // keyLabel() wraps a client-only name into up to three lines; all of them
+  // stay, since the last one is often what tells two clients apart.
+  const lines = label.lines.slice(0, 3)
+  const size = lines.length === 3 ? 14 : 15
+  const ys = lines.length === 1 ? [104] : lines.length === 2 ? [96, 114] : [88, 103, 118]
   return (
     SHELL() +
-    legend(label.header || 'start', 16, 27) +
-    `<polygon points="60,40 60,72 86,56" fill="none" stroke="${DISP_INK}" stroke-width="4" stroke-linejoin="miter"/>` +
-    nameLines(lines, DISP_INK, 15, lines.length === 1 ? [104] : [96, 114]) +
+    legend(fitLegend(label.header) || 'START', 16, 27) +
+    `<polygon points="60,${lines.length === 3 ? '36 60,62 82,49' : '40 60,72 86,56'}" fill="none" stroke="${DISP_INK}" stroke-width="4" stroke-linejoin="miter"/>` +
+    nameLines(lines, DISP_INK, size, ys) +
     BAR(clientBarColor(color))
   )
 }
