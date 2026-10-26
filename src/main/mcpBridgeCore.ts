@@ -403,7 +403,11 @@ function planOp(
       }
     }
     case 'update_entry_fields': {
-      const id = Number(args.id)
+      // An id from 1.x resolves to its entry; the id of a second half also
+      // names the half, so an edit through it behaves as it did in 1.x (the
+      // outer edge moves the entry, the midnight cut is refused, #372).
+      const target = resolveEntryId(db, Number(args.id))
+      const id = target.id
       // The entry with its whole range (a midnight-split entry is one entry
       // with two segments, #311), not the first row of the view.
       const current = readEntry(db, id)
@@ -420,14 +424,18 @@ function planOp(
       // Only the time fields the caller actually passed are checked; an update
       // without them keeps the stored values and is not affected by the rule.
       const written: WrittenOffsets = {}
-      let startedAt = existing.started_at
+      // Through the id of a half, an omitted time is that half's own, so it
+      // reads as "not moved" to resolveEditRange.
+      const half = target.seq === undefined ? undefined : current!.segments[target.seq]
+      if (target.seq !== undefined && !half) return { error: 'Eintrag existiert nicht' }
+      let startedAt = half?.started_at ?? existing.started_at
       if (args.started_at !== undefined) {
         const r = zonedField('started_at', args.started_at)
         if ('error' in r) return r
         startedAt = r.iso
         written.started_at = r
       }
-      let stoppedAt = existing.stopped_at ?? ''
+      let stoppedAt = half ? (half.stopped_at ?? '') : (existing.stopped_at ?? '')
       if (args.stopped_at !== undefined) {
         const r = zonedField('stopped_at', args.stopped_at)
         if ('error' in r) return r
@@ -435,8 +443,18 @@ function planOp(
         written.stopped_at = r
       }
       const hints = offsetHints(written, 'de')
+      // The version the client read; the entry moving on since refuses the
+      // edit (design 9). Without one, the version the owner is asked about.
+      const clientVersion =
+        args.expected_version === undefined ? undefined : Number(args.expected_version)
+      if (clientVersion !== undefined && clientVersion !== existing.version_no) {
+        return { error: STALE_EDIT_ERROR }
+      }
+      const reason = args.reason === undefined ? undefined : asString(args.reason).trim()
       const given: UpdateEntryInput = {
         id,
+        ...(target.seq === undefined ? {} : { segment_seq: target.seq }),
+        ...(reason ? { reason } : {}),
         client_id: args.client_id === undefined ? existing.client_id : Number(args.client_id),
         description:
           args.description === undefined ? existing.description : asString(args.description),
@@ -456,18 +474,23 @@ function planOp(
             : (existing.project_id ?? null),
         // #335 case 1: the version the owner is asked about. A delete or an
         // edit in between moves the entry on, and the write is refused.
-        expected_version: existing.version_no
+        expected_version: clientVersion ?? existing.version_no
       }
       // #311: an edit of one half of a split entry applies to the whole entry.
       // Mapped here, before the dialog and the preview, so the owner confirms
       // the change that is applied; times compare against the entry's range.
       const resolved = resolveEditRange(db, given)
       if ('error' in resolved) return { error: resolved.error }
-      const input = resolved.input as Required<
+      const was = resolved.before
+      // An edge a half-id edit leaves alone stays the entry's own.
+      const input = {
+        ...resolved.input,
+        started_at: resolved.input.started_at ?? was.started_at,
+        stopped_at: resolved.input.stopped_at ?? was.stopped_at
+      } as Required<
         Pick<UpdateEntryInput, 'client_id' | 'description' | 'started_at' | 'stopped_at'>
       > &
         UpdateEntryInput
-      const was = resolved.before
       const vErr = validateManualEntry(db, input, id)
       if (vErr) return { error: vErr }
       // Every field the commit actually changes, before → after: one line in
@@ -604,8 +627,8 @@ function planOp(
           const now = resolveEditRange(db, given)
           if ('error' in now) return { ok: false as const, error: now.error }
           if (
-            now.input.started_at !== input.started_at ||
-            now.input.stopped_at !== input.stopped_at
+            (now.input.started_at ?? now.before.started_at) !== input.started_at ||
+            (now.input.stopped_at ?? now.before.stopped_at) !== input.stopped_at
           ) {
             return { ok: false as const, error: STALE_EDIT_ERROR }
           }
@@ -960,6 +983,33 @@ async function handleControllerRequest(
  * Controller-token requests branch into `handleControllerRequest` after the
  * token check; the two token scopes never unlock each other's ops.
  */
+/**
+ * The entry an MCP id names. A current entry id is itself; an id from 1.x that
+ * is no entry id (the second half of a pair, which the migration folded into
+ * its first) resolves through `entry_legacy_id` for the whole 2.x line, with
+ * the half it stood for (the ordinal among the entry's legacy ids), so an
+ * edit through it keeps its 1.x meaning. Unknown ids stay as given and fail
+ * as "Eintrag existiert nicht".
+ */
+function resolveEntryId(db: Db, id: number): { id: number; seq?: number } {
+  if (readEntry(db, id)) return { id }
+  const row = db.prepare(`SELECT entry_id FROM entry_legacy_id WHERE legacy_id = ?`).get(id) as
+    | { entry_id: number }
+    | undefined
+  if (!row) return { id }
+  const ordinal = (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM entry_legacy_id WHERE entry_id = ? AND legacy_id < ?`)
+      .get(row.entry_id, id) as { n: number }
+  ).n
+  return { id: row.entry_id, seq: ordinal }
+}
+
+function withVersion<T>(data: T): T {
+  const d = data as { version_no?: number } | null | undefined
+  return d && typeof d.version_no === 'number' ? ({ ...d, version: d.version_no } as T) : data
+}
+
 export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise<BridgeResponse> {
   if (!req || req.v !== 1 || typeof req.op !== 'string') {
     return err('invalid', 'Ungültige Anfrage')
@@ -1002,8 +1052,10 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
   // Same emission point as the IPC handlers, one level up from the mutation.
   const events = plan.webhooks?.(result.data) ?? [[req.op as WriteOp, result.data]]
   for (const [event, entry] of events) ctx.emitWebhook?.(event, entry)
+  // 2.0: every entry the bridge returns names its version next to the stable id.
+  const data = withVersion(result.data)
   if (plan.hints && Object.keys(plan.hints).length) {
-    return { ok: true, data: { ...(result.data ?? {}), zeit_hinweise: plan.hints } }
+    return { ok: true, data: { ...(data ?? {}), zeit_hinweise: plan.hints } }
   }
-  return { ok: true, data: result.data }
+  return { ok: true, data }
 }
