@@ -43,6 +43,7 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     reference: '',
     billable: 1,
     private_note: '',
+    segment_date: '2026-04-25',
     ...overrides
   }
 }
@@ -69,11 +70,11 @@ describe('formatIcal — Gerüst', () => {
 
   it('jeder Eintrag hat UID und DTSTAMP', () => {
     const ics = formatIcal([makeEntry()], CLIENT_MAP, NO_PROJECTS, { now: FIXED_NOW })
-    expect(ics).toContain('UID:timetrack-entry-1@wald-it.com')
+    expect(ics).toContain('UID:timetrack-entry-1-2026-04-25@wald-it.com')
     expect(ics).toContain('DTSTAMP:20260401T000000Z')
   })
 
-  it('leitet die UID stabil aus der Eintrags-ID ab (Re-Import aktualisiert statt dupliziert)', () => {
+  it('leitet die UID stabil aus Eintrags-ID und Segment-Datum ab (Re-Import aktualisiert statt dupliziert)', () => {
     const a = formatIcal([makeEntry({ id: 42 })], CLIENT_MAP, NO_PROJECTS, { now: FIXED_NOW })
     const b = formatIcal(
       [makeEntry({ id: 42, description: 'geändert' })],
@@ -83,8 +84,8 @@ describe('formatIcal — Gerüst', () => {
         now: FIXED_NOW
       }
     )
-    expect(a).toContain('UID:timetrack-entry-42@wald-it.com')
-    expect(b).toContain('UID:timetrack-entry-42@wald-it.com')
+    expect(a).toContain('UID:timetrack-entry-42-2026-04-25@wald-it.com')
+    expect(b).toContain('UID:timetrack-entry-42-2026-04-25@wald-it.com')
   })
 
   it('überspringt laufende Timer (kein stopped_at)', () => {
@@ -178,24 +179,26 @@ describe('formatIcal — Privacy (nicht verhandelbar)', () => {
 })
 
 describe('formatIcal — Cross-Midnight', () => {
-  it('zwei DB-Zeilen mit gemeinsamer link_id ergeben zwei eigenständige VEVENTs (kein Merge)', () => {
+  it('zwei Segmente eines Eintrags (gleiche ID) ergeben zwei VEVENTs mit verschiedenen UIDs (kein Merge)', () => {
     const first = makeEntry({
       id: 1,
-      link_id: 'abc-uuid',
+      segment_seq: 0,
+      segment_date: '2026-04-25',
       started_at: '2026-04-25T21:00:00.000Z',
       stopped_at: '2026-04-25T23:59:59.000Z'
     })
     const second = makeEntry({
-      id: 2,
-      link_id: 'abc-uuid',
+      id: 1,
+      segment_seq: 1,
+      segment_date: '2026-04-26',
       started_at: '2026-04-26T00:00:00.000Z',
       stopped_at: '2026-04-26T01:00:00.000Z'
     })
     const ics = formatIcal([first, second], CLIENT_MAP, NO_PROJECTS, { now: FIXED_NOW })
     const events = ics.match(/BEGIN:VEVENT/g) ?? []
     expect(events).toHaveLength(2)
-    expect(ics).toContain('UID:timetrack-entry-1@wald-it.com')
-    expect(ics).toContain('UID:timetrack-entry-2@wald-it.com')
+    expect(ics).toContain('UID:timetrack-entry-1-2026-04-25@wald-it.com')
+    expect(ics).toContain('UID:timetrack-entry-1-2026-04-26@wald-it.com')
   })
 })
 

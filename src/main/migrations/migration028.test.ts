@@ -85,11 +85,10 @@ const READER_COLUMNS =
   'id, client_id, project_id, description, started_at, stopped_at, heartbeat_at, tags, reference, billable, private_note, graph_event_id'
 
 describe('migration 028', () => {
-  it('is registered as the last migration', () => {
-    const last = migrations[migrations.length - 1]
-    expect(last.version).toBe(28)
-    expect(last.name).toBe('v2-entry-lifecycle')
-    expect(last).toBe(migration028)
+  it('is registered as migration 28', () => {
+    const registered = migrations.find((m) => m.version === 28)
+    expect(registered?.name).toBe('v2-entry-lifecycle')
+    expect(registered).toBe(migration028)
     expect(LAST_V1_VERSION).toBe(27)
   })
 
@@ -155,7 +154,8 @@ describe('migration 028', () => {
       'graph_event_id',
       'segment_seq',
       'version_id',
-      'version_no'
+      'version_no',
+      'segment_count'
     ]) {
       expect(cols).toContain(c)
     }

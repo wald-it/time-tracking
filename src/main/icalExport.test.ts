@@ -165,9 +165,10 @@ describe('handleIcalExport', () => {
     const events = ics.match(/BEGIN:VEVENT/g) ?? []
     // id 1 + Cross-Midnight-Eintrag (4, zwei Segmente) = 3; laufend/gelöscht/außerhalb/fremd raus.
     expect(events).toHaveLength(3)
-    expect(ics).toContain('UID:timetrack-entry-1@wald-it.com')
-    // 2.0 P2: both segments of entry 4 share the id, so the UID repeats; it was 4 and 5 for the 1.x pair
-    expect(ics.match(/UID:timetrack-entry-4@wald-it\.com/g)).toHaveLength(2)
+    expect(ics).toMatch(/UID:timetrack-entry-1-\d{4}-\d{2}-\d{2}@wald-it\.com/)
+    // 2.0 P3: the two segments of entry 4 share the id and differ in the segment date (it was 4 and 5 for the 1.x pair)
+    expect(ics).toContain('UID:timetrack-entry-4-2026-04-14@wald-it.com')
+    expect(ics).toContain('UID:timetrack-entry-4-2026-04-15@wald-it.com')
     expect(ics).not.toContain('Läuft')
     expect(ics).not.toContain('Gelöscht')
     expect(ics).not.toContain('Fremdkunde')

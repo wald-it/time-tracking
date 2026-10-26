@@ -272,6 +272,7 @@ export type LegacyEntry = Entry & {
   segment_seq: number
   version_id: number
   version_no: number
+  segment_count: number
   segments: EntrySegmentView[]
 }
 
@@ -296,6 +297,7 @@ export function toLegacyEntry(v: EntryView): LegacyEntry {
     segment_seq: 0,
     version_id: v.version_id,
     version_no: v.version_no,
+    segment_count: v.segments.length,
     segments: v.segments
   }
 }

@@ -83,9 +83,9 @@ describe('day panel: delete and undo an entry across midnight (#323)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Löschen' }))
     const dialog = screen.getByRole('alertdialog')
-    // 2.0 P2: the question no longer says that both days go. It keyed on
-    // `link_id`, which the view always leaves NULL; the renderer learns the
-    // entry shape (`segment_seq`) in P3.
+    // #372: the question says that both days go; the view's `segment_count`
+    // tells the renderer that this row is one day of two.
+    expect(dialog.textContent).toContain('an beiden Tagen gelöscht')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Löschen' }))
 
     await waitFor(() => expect(state(db, id)).toEqual({ trashed: true, shown: 0 }))
