@@ -11,6 +11,8 @@ import type Database from 'better-sqlite3'
 import {
   createManualEntry,
   resolveEditRange,
+  readEntry,
+  toLegacyEntry,
   STALE_EDIT_ERROR,
   updateManualEntry,
   switchTimer,
@@ -389,7 +391,7 @@ function planOp(
           ...hintPreview(hints)
         },
         hints,
-        run: () => createManualEntry(db, input),
+        run: () => createManualEntry(db, input, { source: 'mcp' }),
         audit: (r) => ({
           op,
           id: r?.id ?? null,
@@ -402,9 +404,10 @@ function planOp(
     }
     case 'update_entry_fields': {
       const id = Number(args.id)
-      const existing = db
-        .prepare(`SELECT * FROM entries WHERE id = ? AND deleted_at IS NULL`)
-        .get(id) as Entry | undefined
+      // The entry with its whole range (a midnight-split entry is one entry
+      // with two segments, #311), not the first row of the view.
+      const current = readEntry(db, id)
+      const existing = current && !current.deleted ? toLegacyEntry(current) : undefined
       if (!existing) return { error: 'Eintrag existiert nicht' }
       // Running timers are excluded from update_entry_fields entirely (matches
       // the tool description). Stop the timer via stop_running_timer first.
@@ -450,16 +453,22 @@ function planOp(
         project_id:
           'project_id' in args
             ? asProjectId(args.project_id, existing.project_id ?? null)
-            : (existing.project_id ?? null)
+            : (existing.project_id ?? null),
+        // #335 case 1: the version the owner is asked about. A delete or an
+        // edit in between moves the entry on, and the write is refused.
+        expected_version: existing.version_no
       }
       // #311: an edit of one half of a split entry applies to the whole entry.
       // Mapped here, before the dialog and the preview, so the owner confirms
       // the change that is applied; times compare against the entry's range.
       const resolved = resolveEditRange(db, given)
       if ('error' in resolved) return { error: resolved.error }
-      const input = resolved.input
+      const input = resolved.input as Required<
+        Pick<UpdateEntryInput, 'client_id' | 'description' | 'started_at' | 'stopped_at'>
+      > &
+        UpdateEntryInput
       const was = resolved.before
-      const vErr = validateManualEntry(db, input, id, existing.link_id ?? undefined)
+      const vErr = validateManualEntry(db, input, id)
       if (vErr) return { error: vErr }
       // Every field the commit actually changes, before → after: one line in
       // the dialog each, and the same set under `changes` in the preview.
@@ -600,7 +609,7 @@ function planOp(
           ) {
             return { ok: false as const, error: STALE_EDIT_ERROR }
           }
-          return updateManualEntry(db, given)
+          return updateManualEntry(db, given, { source: 'mcp' })
         },
         audit: (r) => ({
           op,
@@ -718,7 +727,7 @@ function planOp(
               error: 'Der laufende Timer hat sich seit der Vorschau geändert — bitte erneut senden'
             }
           }
-          const r = switchTimer(db, input)
+          const r = switchTimer(db, input, { source: 'mcp' })
           if (!r.ok) return r
           stopped = r.data.stopped
           return { ok: true, data: r.data.entry }
@@ -758,7 +767,7 @@ function planOp(
               error: 'Der laufende Timer hat sich seit der Vorschau geändert — bitte erneut senden'
             }
           }
-          return stopRunningTimer(db)
+          return stopRunningTimer(db, { source: 'mcp' })
         },
         audit: (r) => ({ op, id: r?.id ?? null, client_id: r?.client_id ?? null })
       }
@@ -902,7 +911,7 @@ async function handleControllerRequest(
   await ctx.ensureBackup()
 
   if (matches) {
-    const r = stopRunningTimer(db)
+    const r = stopRunningTimer(db, { source: 'controller' })
     if (!r.ok) return err('invalid', r.error)
     ctx.onChange()
     ctx.audit({
@@ -918,12 +927,16 @@ async function handleControllerRequest(
   // Same switch path as the app's quick start (B1): the running entry ends
   // at the instant the new one begins, and the receiver hears
   // `timer.stopped` for it before `timer.started`.
-  const r = switchTimer(db, {
-    client_id,
-    description,
-    started_at: new Date().toISOString(),
-    project_id
-  })
+  const r = switchTimer(
+    db,
+    {
+      client_id,
+      description,
+      started_at: new Date().toISOString(),
+      project_id
+    },
+    { source: 'controller' }
+  )
   if (!r.ok) return err('invalid', r.error)
   ctx.onChange()
   ctx.audit({

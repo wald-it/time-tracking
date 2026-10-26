@@ -88,29 +88,13 @@ async function withLoading<T>(call: () => Promise<IpcResult<T>>): Promise<IpcRes
 
 /**
  * The entries:update input that stops `entry` at `stoppedAt` and otherwise
- * keeps it (entries:update trims the description, as on every write).
- * entries:update re-inserts the row and defaults every field it is not given,
- * so all of them travel along (the same rule as QuickNoteModal). Without them
- * the idle prompt dropped the project (#313). Of the optional fields, a
- * running entry today only ever carries a project — switchTimer, the one
- * writer of running rows, sets no other — but the rest travels along too, so
- * a later way to set them on a running entry is not reset here.
- * The store's running entry is current: a running entry cannot be edited (MCP
- * update_entry_fields refuses it, the app edits stopped entries only).
+ * keeps it. Since 2.0 an update is a patch (design D3): every field not sent
+ * keeps its value, so project, billable, tags, reference and note stay as
+ * they are without travelling along (#313). The source names the idle prompt
+ * on the version.
  */
 function stopAtInput(entry: Entry, stoppedAt: string): UpdateEntryInput {
-  return {
-    id: entry.id,
-    client_id: entry.client_id,
-    project_id: entry.project_id ?? null,
-    description: entry.description,
-    started_at: entry.started_at,
-    stopped_at: stoppedAt,
-    billable: entry.billable,
-    tags: entry.tags,
-    reference: entry.reference,
-    private_note: entry.private_note
-  }
+  return { id: entry.id, stopped_at: stoppedAt, source: 'idle' }
 }
 
 // Refs shared across all useTimer() instances so listeners are registered ONCE
@@ -538,7 +522,8 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
           description: 'Pause',
           started_at: ev.idleSince,
           stopped_at: new Date().toISOString(),
-          billable: 0
+          billable: 0,
+          source: 'idle'
         })
         setRunningEntry(null)
         setDescription('')

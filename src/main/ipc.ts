@@ -26,8 +26,10 @@ import {
   switchTimerAndNotify,
   stopEntry,
   deleteEntry,
-  undeleteEntry
+  undeleteEntry,
+  heartbeat
 } from './entryMutations'
+import { deleteClientGuarded, deleteProjectGuarded } from './masterDataDelete'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
@@ -267,11 +269,13 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  // 2.0: refused while any entry version points at the client (owner
+  // decision 2026-10-26, see masterDataDelete.ts).
   ipcMain.handle('clients:delete', (_e, id: number): IpcResult<void> => {
     try {
-      db.prepare(`DELETE FROM clients WHERE id = ?`).run(id)
-      hooks.refreshTrayClients()
-      return ok(undefined)
+      const res = deleteClientGuarded(db, id)
+      if (res.ok) hooks.refreshTrayClients()
+      return res
     } catch (e) {
       return fail(e)
     }
@@ -322,10 +326,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('entries:heartbeat', (_e, id: number): IpcResult<void> => {
     try {
-      db.prepare(`UPDATE entries SET heartbeat_at = ? WHERE id = ?`).run(
-        new Date().toISOString(),
-        id
-      )
+      heartbeat(db, id)
       return ok(undefined)
     } catch (e) {
       return fail(e)
@@ -571,17 +572,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  // 2.0: refused while any entry version points at the project, deleted
+  // entries included (owner decision 2026-10-26, see masterDataDelete.ts).
   ipcMain.handle('projects:delete', (_e, id: number): IpcResult<void> => {
     try {
-      const tx = db.transaction(() => {
-        const countRow = db
-          .prepare(`SELECT COUNT(*) AS n FROM entries WHERE project_id = ? AND deleted_at IS NULL`)
-          .get(id) as { n: number }
-        if (countRow.n > 0) throw new Error('Projekt hat noch aktive Einträge')
-        db.prepare('DELETE FROM projects WHERE id = ?').run(id)
-      })
-      tx()
-      return ok(undefined)
+      return deleteProjectGuarded(db, id)
     } catch (e) {
       return fail(e)
     }

@@ -12,16 +12,18 @@
  * file of its own because a TZ pin leaks into later tests of the same file.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'fs'
+import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, relative } from 'path'
+import { join } from 'path'
 import type Database from 'better-sqlite3'
 import {
+  LAST_V1_VERSION,
   createMigratedTemplate,
   loadSqlite,
   openMigratedCopy,
   type DatabaseCtor
 } from '../../test/sqlite'
+import { migrations } from '../migrations'
 import {
   generateLegacyDb,
   type GeneratedDb,
@@ -43,7 +45,9 @@ beforeAll(async () => {
   process.env.TZ = 'Europe/Berlin'
   DatabaseImpl = await loadSqlite()
   templateDir = mkdtempSync(join(tmpdir(), 'tt-v2-template-'))
-  template = createMigratedTemplate(DatabaseImpl, templateDir)
+  // A 1.x database: the function under test reads the table `entries`, which
+  // migration 028 (P2) turns into a view.
+  template = createMigratedTemplate(DatabaseImpl, templateDir, LAST_V1_VERSION)
 })
 afterAll(() => {
   rmSync(templateDir, { recursive: true, force: true })
@@ -432,24 +436,14 @@ describe('ids after the migration', () => {
   })
 })
 
-// ── T6: not registered ─────────────────────────────────────────────────────
-describe('P1 stays out of the running app', () => {
-  it('nothing outside entryLifecycle and the tests imports it, the migration runner included', () => {
-    const root = join(__dirname, '..', '..')
-    const offenders: string[] = []
-    const walk = (d: string): void => {
-      for (const name of readdirSync(d)) {
-        const p = join(d, name)
-        if (statSync(p).isDirectory()) {
-          if (name !== 'entryLifecycle' && name !== 'node_modules') walk(p)
-          continue
-        }
-        if (!/\.tsx?$/.test(name) || /\.test\.tsx?$/.test(name)) continue
-        if (relative(root, p).replace(/\\/g, '/').startsWith('test/')) continue
-        if (/entryLifecycle/.test(readFileSync(p, 'utf8'))) offenders.push(relative(root, p))
-      }
-    }
-    walk(root)
-    expect(offenders).toEqual([])
+// ── T6 (P1: not registered) became, with P2, "registered exactly once" ─────
+describe('P2 registers the migration', () => {
+  it('the runner carries it as 028 and nothing else below that version touches the new tables', () => {
+    // The P1 guard ("nothing outside entryLifecycle imports it") is replaced
+    // by the registration itself; migration028.test.ts checks the switch.
+    expect(migrations.filter((m) => m.version === 28).map((m) => m.name)).toEqual([
+      'v2-entry-lifecycle'
+    ])
+    expect(migrations.filter((m) => m.version < 28 && /entry_version/.test(m.up))).toEqual([])
   })
 })

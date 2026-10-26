@@ -12,6 +12,7 @@ import type Database from 'better-sqlite3'
 import { buildAnalyticsSummary } from './analyticsHandlers'
 import type { AnalyticsSummary } from '../shared/types'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -39,16 +40,13 @@ function addEntry(
     project_id?: number | null
   }
 ): void {
-  db.prepare(
-    `INSERT INTO entries (client_id, started_at, stopped_at, billable, project_id)
-     VALUES (?, ?, ?, ?, ?)`
-  ).run(
-    opts.client_id,
-    opts.started_at,
-    opts.stopped_at,
-    opts.billable ?? 1,
-    opts.project_id ?? null
-  )
+  seedEntry(db, {
+    client_id: opts.client_id,
+    started_at: opts.started_at,
+    stopped_at: opts.stopped_at,
+    billable: opts.billable ?? 1,
+    project_id: opts.project_id ?? null
+  })
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -273,15 +271,13 @@ describe('buildAnalyticsSummary', () => {
   // ── 11. Deleted entries are excluded ────────────────────────────────────
 
   it('excludes deleted entries from totals', () => {
-    // Insert entry + mark deleted
-    const info = db
-      .prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at) VALUES (1, '2025-09-01T08:00:00.000Z', '2025-09-01T10:00:00.000Z')`
-      )
-      .run()
-    db.prepare(`UPDATE entries SET deleted_at = datetime('now') WHERE id = ?`).run(
-      info.lastInsertRowid
-    )
+    // Insert an entry that is already in the trash
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2025-09-01T08:00:00.000Z',
+      stopped_at: '2025-09-01T10:00:00.000Z',
+      deleted_at: '2025-09-02T08:00:00.000Z'
+    })
 
     const res = buildAnalyticsSummary(db, { year: 2025, month: 9 })
     expect(res.ok).toBe(true)

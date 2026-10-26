@@ -10,6 +10,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import {
+  LAST_V1_VERSION,
   createMigratedTemplate,
   loadSqlite,
   openMigratedCopy,
@@ -27,7 +28,9 @@ beforeAll(async () => {
   process.env.TZ = 'Europe/Berlin'
   Ctor = await loadSqlite()
   templateDir = mkdtempSync(join(tmpdir(), 'tt-probe-template-'))
-  template = createMigratedTemplate(Ctor, templateDir)
+  // A 1.x "backup": the probe migrates a copy of it (migration 028 would
+  // already have turned `entries` into a view).
+  template = createMigratedTemplate(Ctor, templateDir, LAST_V1_VERSION)
 })
 afterAll(() => {
   rmSync(templateDir, { recursive: true, force: true })

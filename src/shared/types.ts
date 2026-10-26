@@ -61,6 +61,15 @@ export interface Entry {
    * v1.9 #75: optional project association. NULL means "no project / general".
    */
   project_id?: number | null
+  /**
+   * 2.0 (P2): the segment of the entry this row shows (0 = the first day of a
+   * midnight-split entry), the current version's id and number. Present on
+   * rows of the `entries` view and on what the write path returns; the edit
+   * form sends `segment_seq` back so an edit of one half maps onto the entry.
+   */
+  segment_seq?: number
+  version_id?: number
+  version_no?: number
 }
 
 // ── Projects (v1.9 #75) ───────────────────────────────────────────────────
@@ -303,24 +312,53 @@ export interface CreateManualEntryInput {
   private_note?: string
   /** v1.9 #75: optional project association. */
   project_id?: number | null
+  /**
+   * 2.0 (P2): who writes, recorded on the version (`entry_version.source`).
+   * The idle prompt's pause entry sends `idle`; everything else is `app`.
+   */
+  source?: 'idle'
 }
 
+/**
+ * An edit of an entry (2.0 P2, design section 5, D3): a PATCH. Every field
+ * but `id` is optional; a field that is left out keeps its value, it is never
+ * defaulted. The edit form sends the full set, the quick note only
+ * `description`, the idle prompt only `stopped_at` for the running entry.
+ */
 export interface UpdateEntryInput {
   id: number
-  client_id: number
-  description: string
-  started_at: string
-  stopped_at: string
-  /** Serialized tags string (e.g. `,bug,ux,`). Optional — defaults to '' */
+  client_id?: number
+  description?: string
+  started_at?: string
+  stopped_at?: string
+  /** Serialized tags string (e.g. `,bug,ux,`). */
   tags?: string
-  /** Free-text ticket/reference (e.g. 'JIRA-123'). Optional — defaults to '' */
+  /** Free-text ticket/reference (e.g. 'JIRA-123'). */
   reference?: string
-  /** 1 = billable (default), 0 = non-billable. Optional — defaults to 1 */
+  /** 1 = billable, 0 = non-billable. */
   billable?: number
-  /** Internal-only note, never exported. Optional — defaults to '' */
+  /** Internal-only note, never exported. */
   private_note?: string
   /** v1.9 #75: optional project association. */
   project_id?: number | null
+  /**
+   * The segment the caller edited (the `segment_seq` of the row it showed).
+   * With it, the times apply to that half of a midnight-split entry and an
+   * edge at the midnight cut must stay where it is (#311).
+   */
+  segment_seq?: number
+  /**
+   * Set by the edit form and the quick note, which show times cut to the
+   * minute: a time equal to the stored one to the minute is no change, so a
+   * description-only save keeps the entry's seconds (#335 case 4).
+   */
+  from_form?: boolean
+  /** The version the caller read; the write fails if the entry moved on. */
+  expected_version?: number
+  /** Who writes, recorded on the version. Default `app`. */
+  source?: 'idle' | 'quicknote'
+  /** Why (billed entries, from P5 on). */
+  reason?: string
 }
 
 export interface MonthQuery {

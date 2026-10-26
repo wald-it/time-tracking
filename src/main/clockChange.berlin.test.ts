@@ -18,6 +18,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 import {
   readRoundedTotals,
   readTodayEntries,
@@ -87,11 +88,8 @@ describe('Heute and the weekday average across the clock change (Europe/Berlin)'
     db.pragma('foreign_keys = ON')
     applyMigrations(db)
     db.prepare(`INSERT INTO clients (id, name, rate_cent) VALUES (1, 'Acme', 0)`).run()
-    const ins = db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at, billable)
-       VALUES (1, ?, ?, ?, ?, 1)`
-    )
-    for (const [start, stop, label] of ENTRIES) ins.run(label, start, stop, stop)
+    for (const [start, stop, label] of ENTRIES)
+      seedEntry(db, { client_id: 1, description: label, started_at: start, stopped_at: stop })
   })
   afterEach(() => db.close())
 

@@ -13,6 +13,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../../../test/sqlite'
 import { seed } from '../../../test/bridgeKit'
+import { seedEntry } from '../../../test/entryFixtures'
 import { createManualEntry, updateManualEntry } from '../../../main/entryMutations'
 import { buildPdfPayload } from '../../../main/pdf'
 import { localDateKey } from '../../../shared/dateRanges'
@@ -91,10 +92,15 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
     const NOW = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0)
     const startedAt = new Date(NOW.getTime() - 2 * 60 * 60_000).toISOString()
     const idleSince = new Date(NOW.getTime() - 30 * 60_000).toISOString()
-    db.prepare(
-      `INSERT INTO entries (id, client_id, description, started_at, heartbeat_at)
-       VALUES (1, 1, 'Konzept', ?, ?)`
-    ).run(startedAt, startedAt)
+    // 2.0 P2: `entries` is a read-only view; the fixture writes the entry tables.
+    seedEntry(db, {
+      id: 1,
+      client_id: 1,
+      description: 'Konzept',
+      started_at: startedAt,
+      stopped_at: null,
+      heartbeat_at: startedAt
+    })
     const { trayUpdate, idle } = installApi(db)
 
     // Fresh module instance: useTimer keeps module-level singletons.
@@ -147,7 +153,8 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
 })
 
 // #313: stopping the running entry at idleSince goes through entries:update,
-// which re-inserts the row and defaults every field it is not given. Both idle
+// which used to re-insert the row and default every field it is not given (2.0
+// P2: it is a patch now, so the fields are kept by construction). Both idle
 // actions must keep the stopped entry as it was. Of the optional fields, a
 // running entry only ever carries a project (switchTimer sets no other), so
 // the seed is a running entry with a project; the other fields are checked to
@@ -165,10 +172,16 @@ describe('idle prompt keeps the stopped entry as it was (#313)', () => {
     const startedAt = new Date(NOW.getTime() - 2 * 60 * 60_000).toISOString()
     const idleSince = new Date(NOW.getTime() - 30 * 60_000).toISOString()
     // The row switchTimer writes for a timer started on project 10.
-    db.prepare(
-      `INSERT INTO entries (id, client_id, project_id, description, started_at, heartbeat_at)
-       VALUES (1, 1, 10, 'Konzept', ?, ?)`
-    ).run(startedAt, startedAt)
+    // 2.0 P2: written through the fixture; `entries` is a read-only view.
+    seedEntry(db, {
+      id: 1,
+      client_id: 1,
+      project_id: 10,
+      description: 'Konzept',
+      started_at: startedAt,
+      stopped_at: null,
+      heartbeat_at: startedAt
+    })
     const { trayUpdate, idle } = installApi(db)
 
     vi.resetModules()

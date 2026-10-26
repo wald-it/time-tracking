@@ -4,8 +4,9 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { mkdirSync, readFileSync, rmSync } from 'fs'
 import { buildBudgetStatus } from './budgetHandlers'
-import { createManualEntry, startTimer, stopEntry, switchTimer } from './entryMutations'
+import { createManualEntry, startTimer, stopEntry, switchTimer, writeEntry } from './entryMutations'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 
 /** An ISO instant `sec` seconds before now (timer starts may not lie in the future). */
 function secondsAgo(sec: number): string {
@@ -59,14 +60,19 @@ describe('buildBudgetStatus', () => {
       `INSERT INTO projects (id, client_id, name, budget_minutes) VALUES (1, 1, 'App', 600)`
     ).run()
     // completed entries
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, rounded_min)
-       VALUES (1, 1, '2026-05-01T08:00:00Z', '2026-05-01T09:00:00Z', 60)`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, rounded_min)
-       VALUES (1, 1, '2026-05-02T08:00:00Z', '2026-05-02T09:30:00Z', 90)`
-    ).run()
+    // 2.0 P2: rounded_min (60, 90) is gone from the fixture; the view reports NULL and the sum comes from the timestamps
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 1,
+      started_at: '2026-05-01T08:00:00Z',
+      stopped_at: '2026-05-01T09:00:00Z'
+    })
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 1,
+      started_at: '2026-05-02T08:00:00Z',
+      stopped_at: '2026-05-02T09:30:00Z'
+    })
     const result = buildBudgetStatus(db, 1)
     expect(result).toEqual({ ok: true, data: { budgetMinutes: 600, usedMinutes: 150 } })
   })
@@ -76,15 +82,14 @@ describe('buildBudgetStatus', () => {
       `INSERT INTO projects (id, client_id, name, budget_minutes) VALUES (1, 1, 'App', 600)`
     ).run()
     // completed entry
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, rounded_min)
-       VALUES (1, 1, '2026-05-01T08:00:00Z', '2026-05-01T09:00:00Z', 60)`
-    ).run()
-    // running entry — no stopped_at, no rounded_min
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at)
-       VALUES (1, 1, '2026-05-02T08:00:00Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 1,
+      started_at: '2026-05-01T08:00:00Z',
+      stopped_at: '2026-05-01T09:00:00Z'
+    })
+    // running entry — no stopped_at
+    seedEntry(db, { client_id: 1, project_id: 1, started_at: '2026-05-02T08:00:00Z' })
     const result = buildBudgetStatus(db, 1)
     expect(result).toEqual({ ok: true, data: { budgetMinutes: 600, usedMinutes: 60 } })
   })
@@ -99,15 +104,20 @@ describe('buildBudgetStatus', () => {
       `INSERT INTO projects (id, client_id, name, budget_minutes) VALUES (1, 1, 'App', 600)`
     ).run()
     // completed + deleted entry — should not count
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, rounded_min, deleted_at)
-       VALUES (1, 1, '2026-05-01T08:00:00Z', '2026-05-01T09:00:00Z', 60, '2026-05-02T00:00:00Z')`
-    ).run()
-    // live completed entry — counts
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, rounded_min)
-       VALUES (1, 1, '2026-05-03T08:00:00Z', '2026-05-03T09:00:00Z', 30)`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 1,
+      started_at: '2026-05-01T08:00:00Z',
+      stopped_at: '2026-05-01T09:00:00Z',
+      deleted_at: '2026-05-02T00:00:00Z'
+    })
+    // live completed entry — counts (2.0 P2: rounded_min 30 is gone; the 60 minutes come from the timestamps, as the expectation already said)
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 1,
+      started_at: '2026-05-03T08:00:00Z',
+      stopped_at: '2026-05-03T09:00:00Z'
+    })
     const result = buildBudgetStatus(db, 1)
     expect(result).toEqual({ ok: true, data: { budgetMinutes: 600, usedMinutes: 60 } })
   })
@@ -215,12 +225,19 @@ describe('buildBudgetStatus', () => {
 
     it('counts an entry whose stop wrote only stopped_at (crash recovery)', () => {
       setStep(0)
-      db.prepare(
-        `INSERT INTO entries (client_id, project_id, started_at, heartbeat_at)
-         VALUES (1, 1, '2026-05-01T08:00:00.000Z', '2026-05-01T08:45:00.000Z')`
-      ).run()
+      const id = seedEntry(db, {
+        client_id: 1,
+        project_id: 1,
+        started_at: '2026-05-01T08:00:00.000Z',
+        heartbeat_at: '2026-05-01T08:45:00.000Z'
+      })
       // What recoverZombieEntries does: stop at the last heartbeat.
-      db.prepare(`UPDATE entries SET stopped_at = heartbeat_at WHERE stopped_at IS NULL`).run()
+      const sealed = writeEntry(
+        db,
+        { op: 'seal', id, stopped_at: '2026-05-01T08:45:00.000Z' },
+        { source: 'app' }
+      )
+      expect(sealed.ok).toBe(true)
       expect(buildBudgetStatus(db, 1)).toEqual({
         ok: true,
         data: { budgetMinutes: 600, usedMinutes: 45 }

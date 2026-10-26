@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 import {
   buildFeedResponse,
   effectiveFeedPort,
@@ -32,21 +33,31 @@ function seed(db: Database.Database): void {
   db.prepare(
     `INSERT INTO projects (id, client_id, name, status, active) VALUES (10, 1, 'Rollout', 'active', 1)`
   ).run()
+  // 2.0 P2: the fixture stores timestamps verbatim, so evaluate the relative
+  // SQLite datetimes here (same 'YYYY-MM-DD HH:MM:SS' shape the 1.x rows had).
+  // rounded_min (60/60/0) is gone: the view always reports NULL for it.
+  const at = (...mods: string[]): string =>
+    db
+      .prepare(`SELECT datetime('now'${mods.map((m) => `, '${m}'`).join('')})`)
+      .pluck()
+      .get() as string
   // Recent, completed → in the feed.
-  db.prepare(
-    `INSERT INTO entries (client_id, project_id, description, started_at, stopped_at, rounded_min)
-     VALUES (1, 10, 'Feature', datetime('now', '-2 days'), datetime('now', '-2 days', '+1 hour'), 60)`
-  ).run()
+  seedEntry(db, {
+    client_id: 1,
+    project_id: 10,
+    description: 'Feature',
+    started_at: at('-2 days'),
+    stopped_at: at('-2 days', '+1 hour')
+  })
   // Outside the 90-day window → excluded.
-  db.prepare(
-    `INSERT INTO entries (client_id, description, started_at, stopped_at, rounded_min)
-     VALUES (1, 'Ancient', datetime('now', '-120 days'), datetime('now', '-120 days', '+1 hour'), 60)`
-  ).run()
+  seedEntry(db, {
+    client_id: 1,
+    description: 'Ancient',
+    started_at: at('-120 days'),
+    stopped_at: at('-120 days', '+1 hour')
+  })
   // Running → excluded.
-  db.prepare(
-    `INSERT INTO entries (client_id, description, started_at, rounded_min)
-     VALUES (1, 'Running', datetime('now'), 0)`
-  ).run()
+  seedEntry(db, { client_id: 1, description: 'Running', started_at: at() })
 }
 
 function makeDeps(db: Database.Database, settings: Record<string, string> = {}): FeedDeps {

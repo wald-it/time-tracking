@@ -5,7 +5,7 @@ import { join } from 'path'
 import { executeMigration, migrations } from './index'
 
 import type Database from 'better-sqlite3'
-import { loadSqlite, type DatabaseCtor } from '../../test/sqlite'
+import { LAST_V1_VERSION, loadSqlite, type DatabaseCtor } from '../../test/sqlite'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -57,8 +57,13 @@ describe('migration SQL execution', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  function applyAll(): void {
-    for (const m of migrations) {
+  /**
+   * All migrations, or up to `upTo`. The tests of the 1.x table `entries`
+   * (its columns, indexes and rows) stop at LAST_V1_VERSION: since 028 the
+   * name is a read-only view over the 2.0 tables (migration028.test.ts).
+   */
+  function applyAll(upTo = Number.MAX_SAFE_INTEGER): void {
+    for (const m of migrations.filter((mm) => mm.version <= upTo)) {
       const tx = db.transaction(() => {
         executeMigration(db, m)
         db.prepare('INSERT INTO schema_version (version, name) VALUES (?, ?)').run(
@@ -71,7 +76,7 @@ describe('migration SQL execution', () => {
   }
 
   it('migration 001 creates clients, entries, settings tables', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     const tables = (
       db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as Array<{
         name: string
@@ -193,7 +198,7 @@ describe('migration SQL execution', () => {
   })
 
   it('foreign key cascade deletes entries when client is deleted', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare("INSERT INTO clients (id, name) VALUES (1, 'Acme')").run()
     db.prepare(
       "INSERT INTO entries (client_id, started_at) VALUES (1, '2026-01-01T00:00:00Z')"
@@ -210,7 +215,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 003 adds clients.rate_cent and entries.deleted_at', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     const clientCols = (
       db.prepare('PRAGMA table_info(clients)').all() as Array<{ name: string }>
     ).map((r) => r.name)
@@ -232,7 +237,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 003 backfills rounded_min for finished entries only', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare("INSERT INTO clients (id, name) VALUES (1, 'Acme')").run()
     // Finished entry without rounded_min
     db.prepare(
@@ -262,7 +267,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 003 skips clock-skew rows (stopped_at < started_at)', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare("INSERT INTO clients (id, name) VALUES (1, 'Acme')").run()
     db.prepare(
       `INSERT INTO entries (client_id, started_at, stopped_at)
@@ -335,7 +340,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 005 adds entries.link_id column (nullable)', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     const cols = db.prepare(`PRAGMA table_info(entries)`).all() as Array<{
       name: string
       notnull: number
@@ -361,7 +366,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 005 round-trips a UUID link_id on multiple rows', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     const linkId = '11111111-2222-3333-4444-555555555555'
     db.prepare(
@@ -393,7 +398,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 007 adds entries.tags column (NOT NULL, default empty string)', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     const cols = db.prepare(`PRAGMA table_info(entries)`).all() as Array<{
       name: string
       notnull: number
@@ -408,7 +413,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 007 — existing entries have empty tags by default', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(
       `INSERT INTO entries (client_id, started_at, stopped_at)
@@ -419,7 +424,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 007 — tags column stores comma-delimited values', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(
       `INSERT INTO entries (client_id, started_at, stopped_at, tags)
@@ -430,7 +435,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 007 — LIKE search finds exact tag match without false positives', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(
       `INSERT INTO entries (client_id, started_at, stopped_at, tags)
@@ -532,7 +537,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 009 adds entries.reference column (NOT NULL, default empty string)', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     const cols = db.prepare(`PRAGMA table_info(entries)`).all() as Array<{
       name: string
       notnull: number
@@ -547,7 +552,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 009 — existing entries have empty reference by default', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(
       `INSERT INTO entries (client_id, started_at, stopped_at)
@@ -558,7 +563,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 009 — reference column stores free-text values', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(
       `INSERT INTO entries (client_id, started_at, stopped_at, reference)
@@ -581,7 +586,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 012 — entries.project_id column exists and is nullable', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     const cols = db.prepare('PRAGMA table_info(entries)').all() as Array<{
       name: string
       notnull: number
@@ -647,7 +652,7 @@ describe('migration SQL execution', () => {
   })
 
   it('migration 012 — deleting project sets entries.project_id to NULL (SET NULL)', () => {
-    applyAll()
+    applyAll(LAST_V1_VERSION)
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     db.prepare(`INSERT INTO projects (id, client_id, name) VALUES (1, 1, 'App')`).run()
     db.prepare(
