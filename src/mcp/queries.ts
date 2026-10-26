@@ -605,7 +605,7 @@ export function getAnalytics(
        JOIN clients c ON c.id = e.client_id
        LEFT JOIN projects p ON p.id = e.project_id
        WHERE e.stopped_at IS NOT NULL
-         AND strftime('%Y-%m', e.started_at, 'localtime') = ?`
+         AND substr(e.segment_date, 1, 7) = ?`
     )
     .get(monthKey) as {
     total_sec: number
@@ -624,7 +624,7 @@ export function getAnalytics(
          JOIN clients c ON c.id = e.client_id
          LEFT JOIN projects p ON p.id = e.project_id
         WHERE e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
+          AND substr(e.segment_date, 1, 7) = ?
         GROUP BY c.id
         HAVING seconds > 0 OR revenue_cent > 0
         ORDER BY seconds DESC, c.name ASC`
@@ -649,7 +649,7 @@ export function getAnalytics(
          LEFT JOIN projects p ON p.id = e.project_id
          LEFT JOIN projects pr ON pr.id = e.project_id
         WHERE e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
+          AND substr(e.segment_date, 1, 7) = ?
         GROUP BY e.project_id
         HAVING seconds > 0 OR revenue_cent > 0
         ORDER BY seconds DESC, name ASC`

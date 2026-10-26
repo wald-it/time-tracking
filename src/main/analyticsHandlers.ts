@@ -113,8 +113,8 @@ export function buildAnalyticsSummary(
         JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id = e.project_id
         WHERE e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
-          AND CAST(strftime('%d', e.started_at, 'localtime') AS INTEGER) <= ?`
+          AND substr(e.segment_date, 1, 7) = ?
+          AND CAST(substr(e.segment_date, 9, 2) AS INTEGER) <= ?`
 
       // Days in selected month + days elapsed (for current month ETA)
       const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month
@@ -165,7 +165,7 @@ export function buildAnalyticsSummary(
         JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id = e.project_id
         WHERE e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
+          AND substr(e.segment_date, 1, 7) = ?
         GROUP BY c.id
         ORDER BY h DESC`
 
@@ -183,7 +183,7 @@ export function buildAnalyticsSummary(
 
       const weekSql = `
         SELECT
-          DATE(e.started_at, 'localtime', '-' || ((CAST(strftime('%w', e.started_at, 'localtime') AS INTEGER) + 6) % 7) || ' days') AS week_start,
+          DATE(e.segment_date, '-' || ((CAST(strftime('%w', e.segment_date) AS INTEGER) + 6) % 7) || ' days') AS week_start,
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN
               ${ENTRY_SEC}
@@ -201,8 +201,8 @@ export function buildAnalyticsSummary(
         JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id = e.project_id
         WHERE e.stopped_at IS NOT NULL
-          AND DATE(e.started_at, 'localtime') <= ${anchorEnd}
-          AND DATE(e.started_at, 'localtime') > DATE(${anchorEnd}, '-84 days')
+          AND e.segment_date <= ${anchorEnd}
+          AND e.segment_date > DATE(${anchorEnd}, '-84 days')
         GROUP BY week_start
         ORDER BY week_start ASC`
 
@@ -243,7 +243,7 @@ export function buildAnalyticsSummary(
 
       const monthTrendSql = `
         SELECT
-          strftime('%Y-%m', e.started_at, 'localtime') AS month_key,
+          substr(e.segment_date, 1, 7) AS month_key,
           COALESCE(SUM(
             ${ENTRY_SEC}
           ), 0) AS h,
@@ -256,8 +256,8 @@ export function buildAnalyticsSummary(
         JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id = e.project_id
         WHERE e.stopped_at IS NOT NULL
-          AND DATE(e.started_at, 'localtime') <= ${anchorEnd}
-          AND DATE(e.started_at, 'localtime') > DATE(${anchorEnd}, '-12 months')
+          AND e.segment_date <= ${anchorEnd}
+          AND e.segment_date > DATE(${anchorEnd}, '-12 months')
         GROUP BY month_key
         ORDER BY month_key ASC`
 
@@ -301,11 +301,11 @@ export function buildAnalyticsSummary(
 
       const weekdaySql = `
         SELECT
-          CAST(strftime('%w', e.started_at, 'localtime') AS INTEGER) AS dow,
+          CAST(strftime('%w', e.segment_date) AS INTEGER) AS dow,
           COALESCE(SUM(${ENTRY_SEC}), 0) AS sec
         FROM billing_lines e
         WHERE e.stopped_at IS NOT NULL
-          AND DATE(e.started_at, 'localtime') BETWEEN ? AND ?
+          AND e.segment_date BETWEEN ? AND ?
         GROUP BY dow`
 
       const weekdayRows = db.prepare(weekdaySql).all(ymd(spanStart), ymd(yesterday)) as WeekdayRow[]

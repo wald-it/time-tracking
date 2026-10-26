@@ -186,10 +186,10 @@ export function readRoundedTotals(db: Db): RoundedTotals {
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(billed_minutes), 0) * 60 AS week,
-              COALESCE(SUM(CASE WHEN DATE(started_at, 'localtime') = DATE('now', 'localtime')
+              COALESCE(SUM(CASE WHEN segment_date = DATE('now', 'localtime')
                                   OR stopped_at IS NULL THEN billed_minutes ELSE 0 END), 0) * 60 AS today
          FROM billing_lines
-        WHERE DATE(started_at, 'localtime') >= ${weekStartExpr(db)}
+        WHERE segment_date >= ${weekStartExpr(db)}
            OR stopped_at IS NULL`
     )
     .get() as { week: number; today: number }

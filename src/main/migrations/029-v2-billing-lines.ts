@@ -44,25 +44,28 @@ BEGIN
   INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (NEW.id, NEW.rate_cent, '0001-01-01');
 END;
 CREATE TRIGGER trg_rate_sync_client_update AFTER UPDATE OF rate_cent ON clients
+  WHEN OLD.rate_cent IS NOT NEW.rate_cent
 BEGIN
-  UPDATE rate SET rate_cent = NEW.rate_cent WHERE client_id = NEW.id AND valid_from = '0001-01-01';
+  -- A change applies from today (owner decision 2026-10-26): past months keep their rate.
   INSERT INTO rate (client_id, rate_cent, valid_from)
-    SELECT NEW.id, NEW.rate_cent, '0001-01-01'
-     WHERE NOT EXISTS (SELECT 1 FROM rate WHERE client_id = NEW.id AND valid_from = '0001-01-01');
+    VALUES (NEW.id, NEW.rate_cent, date('now', 'localtime'))
+    ON CONFLICT (client_id, valid_from) WHERE client_id IS NOT NULL
+    DO UPDATE SET rate_cent = excluded.rate_cent;
 END;
 CREATE TRIGGER trg_rate_sync_project_insert AFTER INSERT ON projects WHEN NEW.rate_cent IS NOT NULL
 BEGIN
   INSERT INTO rate (project_id, rate_cent, valid_from) VALUES (NEW.id, NEW.rate_cent, '0001-01-01');
 END;
 CREATE TRIGGER trg_rate_sync_project_update AFTER UPDATE OF rate_cent ON projects
+  WHEN OLD.rate_cent IS NOT NEW.rate_cent
 BEGIN
-  DELETE FROM rate WHERE project_id = NEW.id AND valid_from = '0001-01-01' AND NEW.rate_cent IS NULL;
-  UPDATE rate SET rate_cent = NEW.rate_cent
-   WHERE project_id = NEW.id AND valid_from = '0001-01-01' AND NEW.rate_cent IS NOT NULL;
+  -- From today; a NULL row hands the project back to the client rate (the
+  -- view reads the newest project row and falls through when it is NULL).
   INSERT INTO rate (project_id, rate_cent, valid_from)
-    SELECT NEW.id, NEW.rate_cent, '0001-01-01'
-     WHERE NEW.rate_cent IS NOT NULL
-       AND NOT EXISTS (SELECT 1 FROM rate WHERE project_id = NEW.id AND valid_from = '0001-01-01');
+    SELECT NEW.id, NEW.rate_cent, date('now', 'localtime')
+     WHERE NEW.rate_cent IS NOT NULL OR EXISTS (SELECT 1 FROM rate WHERE project_id = NEW.id)
+    ON CONFLICT (project_id, valid_from) WHERE project_id IS NOT NULL
+    DO UPDATE SET rate_cent = excluded.rate_cent;
 END;
 
 -- A client or project that goes takes its rate rows along (rate has no cascade).
