@@ -57,7 +57,6 @@ import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
   readRecentEntries,
-  readRoundMinutes,
   readTodayEntries,
   readTopClients30d,
   readTotals,
@@ -446,8 +445,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     'projects:getAll',
     (_e, req?: { clientId?: number | null }): IpcResult<Project[]> => {
       try {
-        // Budget use counts like the invoice (#285), same step as the PDF.
-        const roundStep = readRoundMinutes(db)
+        // Budget use counts like the invoice (#285): billing_lines.
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,
@@ -457,7 +455,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
             SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
             FROM entries WHERE deleted_at IS NULL GROUP BY project_id
           ) ec ON ec.project_id = p.id
-          LEFT JOIN (${budgetUsedMinutesSql(roundStep)}) bud ON bud.project_id = p.id`
+          LEFT JOIN (${budgetUsedMinutesSql()}) bud ON bud.project_id = p.id`
         const order = `ORDER BY CASE WHEN p.status = 'active' THEN 0 WHEN p.status = 'paused' THEN 1 ELSE 2 END, p.name`
         let query: string
         let params: unknown[]

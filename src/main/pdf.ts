@@ -12,13 +12,7 @@
  * v1.3 plan), and makes the output trivially snapshot-testable.
  */
 import type Database from 'better-sqlite3'
-import {
-  billedMinutes,
-  effectiveRateCent,
-  feeCent,
-  formatEur,
-  formatHoursMinutes
-} from '../shared/currency'
+import { formatEur, formatHoursMinutes } from '../shared/currency'
 import { localDayRange } from '../shared/dateRanges'
 import { deserializeTags } from '../shared/tags'
 import type { Client, Entry, Settings } from '../shared/types'
@@ -260,15 +254,19 @@ export function buildPdfPayload(
     settingsRows.map((r) => [r.key, r.value])
   ) as unknown as Settings
 
-  const roundStep = parseInt(settings.pdf_round_minutes ?? '0', 10) || 0
   // Local days, both inclusive: an entry started at 00:30 on the first day or
   // 23:30 on the last belongs to the attachment, wherever the user lives.
   const { start: fromTs, end: toExclusive } = localDayRange(req.fromIso, req.toIso)
 
+  // Money comes from billing_lines (design section 7): minutes, rate and fee
+  // per segment, with the client's profile and the rate valid on the day.
   const entries = db
     .prepare(
-      `SELECT e.*, p.rate_cent AS project_rate_cent, p.name AS project_name
+      `SELECT e.*, p.name AS project_name,
+              l.billed_minutes, l.rate_cent AS line_rate_cent, l.fee_cent, l.rate_is_project,
+              l.interval_min, l.alignment
          FROM entries e
+         JOIN billing_lines l ON l.version_id = e.version_id AND l.segment_seq = e.segment_seq
          LEFT JOIN projects p ON p.id = e.project_id
          WHERE e.client_id = ?
            AND e.deleted_at IS NULL
@@ -280,7 +278,15 @@ export function buildPdfPayload(
          ORDER BY e.started_at ASC, e.id ASC`
     )
     .all(client.id, fromTs, toExclusive, req.projectId ?? null, req.projectId ?? null) as Array<
-    Entry & { project_rate_cent: number | null; project_name: string | null }
+    Entry & {
+      project_name: string | null
+      billed_minutes: number
+      line_rate_cent: number
+      fee_cent: number
+      rate_is_project: number
+      interval_min: number
+      alignment: 'none' | 'grid'
+    }
   >
 
   // v1.13 #118: backward-compat — the legacy `groupByTag` boolean coerces
@@ -295,26 +301,18 @@ export function buildPdfPayload(
 
   const rows: PdfRow[] = entries.map((e) => {
     const start = new Date(e.started_at)
-    const stop = new Date(e.stopped_at as string)
-    // `billedMinutes` ceils to whole minutes, then to the step: any started
-    // step gets charged in full (shared with the calendar's day revenue).
-    const rawMs = Math.max(0, stop.getTime() - start.getTime())
-    const minutes = billedMinutes(rawMs, roundStep)
-    // v1.13 #120: project rate overrides client rate when set.
-    const effectiveRate = effectiveRateCent(e.project_rate_cent, client.rate_cent)
+    const minutes = e.billed_minutes
     // A goodwill project (explicit 0) is billed at 0 € and keeps the fee
     // column; null means no rate applies anywhere.
-    const fee =
-      effectiveRate > 0 || e.project_rate_cent === 0 ? feeCent(minutes, effectiveRate) : null
-    // When rounding is on, we also adjust the displayed times so the
-    // visible "Von / Bis / Dauer" arithmetic adds up for the recipient.
-    // Rule: snap the start to the nearest step, then derive the stop as
-    // start + roundedMinutes. For step=0 (no rounding), display the raw
-    // wall-clock times unchanged.
+    const fee = e.line_rate_cent > 0 || (e.rate_is_project === 1 && e.line_rate_cent === 0) ? e.fee_cent : null
+    // The profile's alignment `grid` adjusts the displayed times so the
+    // visible "Von / Bis / Dauer" arithmetic adds up for the recipient: snap
+    // the start to the interval, derive the stop as start + billed minutes.
+    // `none` prints the stored clock times.
     let startTime: string
     let stopTime: string
-    if (roundStep > 0) {
-      const displayedStart = snapToStepLocal(start, roundStep)
+    if (e.alignment === 'grid' && e.interval_min > 0) {
+      const displayedStart = snapToStepLocal(start, e.interval_min)
       const displayedStop = new Date(displayedStart.getTime() + minutes * 60_000)
       startTime = formatTimeDate(displayedStart)
       stopTime = formatTimeDate(displayedStop)
@@ -461,7 +459,7 @@ export function buildPdfPayload(
     accentColor: settings.pdf_accent_color || '#4f46e5',
     footerText: settings.pdf_footer_text ?? '',
     logoDataUrl,
-    roundMinutes: roundStep,
+    roundMinutes: entries.reduce((max, e) => Math.max(max, e.interval_min), 0),
     includeSignatures: req.includeSignatures === true,
     generatedAtIso,
     groups,

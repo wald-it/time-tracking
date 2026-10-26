@@ -14,7 +14,7 @@
  */
 import type Database from 'better-sqlite3'
 import { billedMinutes, effectiveRateCent, feeCent } from '../../shared/currency'
-import { readRoundMinutes } from '../dashboardTotals'
+import { BILLING_LINES_SELECT } from './billingLines'
 import { SCHEMA_V2_SQL } from './schemaV2'
 
 /** Shapes the report counts; one entry can have several (an imported pair). */
@@ -127,6 +127,15 @@ function normaliseCreatedAt(v: string): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString()
 }
 
+/** The 1.x setting `pdf_round_minutes`: what 028 turns into the default profile. */
+function readLegacyRoundSetting(db: Database.Database): number {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`).get() as
+    | { value: string }
+    | undefined
+  const n = parseInt(row?.value ?? '0', 10)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
 /** Local date (YYYY-MM-DD) in the zone the process runs in, as readers use it. */
 function localDate(isoString: string): string {
   const d = new Date(isoString)
@@ -165,7 +174,7 @@ export function migrateEntriesToV2(
   }
 
   // The 1.x step as its readers interpret it; a profile holds 1 to 60.
-  const step = readRoundMinutes(db)
+  const step = readLegacyRoundSetting(db)
   if (step > 60) {
     throw new MigrationAbortError('migration.roundingUnsupported', [`pdf_round_minutes ${step}`])
   }
@@ -438,47 +447,43 @@ function selfCheck(db: Database.Database, rows: LegacyRow[], step: number): void
     )
   }
 
-  const profile = db
-    .prepare(
-      'SELECT interval_min FROM billing_profile WHERE client_id IS NULL AND project_id IS NULL'
-    )
-    .get() as { interval_min: number }
-  const rateRow = db.prepare(
-    `SELECT rate_cent FROM rate WHERE client_id IS ? AND project_id IS ? AND valid_from <= ?
-     ORDER BY valid_from DESC LIMIT 1`
-  )
-  const rateOn = (clientId: number, projectId: number | null, date: string): number => {
-    if (projectId !== null) {
-      const p = rateRow.get(null, projectId, date) as { rate_cent: number | null } | undefined
-      if (p && p.rate_cent !== null) return p.rate_cent
-    }
-    return (rateRow.get(clientId, null, date) as { rate_cent: number } | undefined)?.rate_cent ?? 0
-  }
+  // The new side reads through billing_lines (design 10.9, P4): the same
+  // text the view is created from, as a CTE, because a fresh 1.x database runs
+  // 028 before the view exists.
   const newSums = new Map<string, Sums>()
   const segs = db
     .prepare(
-      `SELECT v.client_id, v.project_id, v.billable, s.segment_date, s.started_at, s.stopped_at
-         FROM entry e
-         JOIN entry_version v ON v.id = e.current_version_id
-         JOIN entry_segment s ON s.version_id = v.id
-        WHERE e.is_deleted = 0 AND s.stopped_at IS NOT NULL`
+      `WITH billing_lines AS (${BILLING_LINES_SELECT})
+       SELECT client_id, billable, segment_date, started_at, stopped_at, raw_min, billed_minutes,
+              rate_cent, fee_cent
+         FROM billing_lines WHERE stopped_at IS NOT NULL`
     )
     .all() as {
     client_id: number
-    project_id: number | null
     billable: number
     segment_date: string
     started_at: string
     stopped_at: string
+    raw_min: number
+    billed_minutes: number
+    rate_cent: number
+    fee_cent: number
   }[]
   for (const s of segs) {
-    addTo(
-      newSums,
-      `${s.client_id}|${s.segment_date.slice(0, 7)}|${s.billable}`,
-      Date.parse(s.stopped_at) - Date.parse(s.started_at),
-      profile.interval_min,
-      rateOn(s.client_id, s.project_id, s.segment_date)
-    )
+    const key = `${s.client_id}|${s.segment_date.slice(0, 7)}|${s.billable}`
+    const sums = newSums.get(key) ?? {
+      workedMs: 0,
+      billedMin: 0,
+      feeCent: 0,
+      feeUnroundedCent: 0,
+      segments: 0
+    }
+    sums.workedMs += Date.parse(s.stopped_at) - Date.parse(s.started_at)
+    sums.billedMin += s.billed_minutes
+    sums.feeCent += s.fee_cent
+    sums.feeUnroundedCent += feeCent(s.raw_min, s.rate_cent)
+    sums.segments++
+    newSums.set(key, sums)
   }
 
   const differences: string[] = []

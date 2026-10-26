@@ -13,7 +13,8 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
-import { billedMinutesSql, budgetUsedMinutesSql, feeCentSql } from '../shared/currency'
+import { budgetUsedMinutesSql } from '../shared/currency'
+import { readDefaultIntervalMin } from '../shared/billingProfile'
 import { localMonthRange } from '../shared/dateRanges'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
@@ -257,11 +258,7 @@ export function listProjects(
   privacy: PrivacyConfig,
   opts: ListProjectsOptions = {}
 ): McpProject[] {
-  // Budget use counts like the invoice (#285), same step as the PDF.
-  const roundRow = db
-    .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-    .get() as { value: string } | undefined
-  const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
+  // Budget use counts like the invoice (#285): billing_lines.
   const base = `
     SELECT p.*,
       COALESCE(ec.cnt, 0) AS entry_count,
@@ -272,7 +269,7 @@ export function listProjects(
       SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
       FROM entries WHERE deleted_at IS NULL GROUP BY project_id
     ) ec ON ec.project_id = p.id
-    LEFT JOIN (${budgetUsedMinutesSql(roundStep)}) bud ON bud.project_id = p.id`
+    LEFT JOIN (${budgetUsedMinutesSql()}) bud ON bud.project_id = p.id`
   const filters: string[] = []
   const params: unknown[] = []
   if (opts.clientId === null) {
@@ -587,18 +584,14 @@ export function getAnalytics(
   year: number,
   month: number
 ): McpAnalytics {
-  const roundRow = db
-    .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-    .get() as { value: string } | undefined
-  const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
 
   // Seconds are worked time, raw — the same rule as the app's Auswertung
   // (owner decision 2026-10-22). `rounded_seconds` is the month rounded per
   // entry like the invoice. Revenue follows the invoice rule (REVENUE).
   const ENTRY_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
-  const BILLED_SEC = `(${billedMinutesSql(roundStep)} * 60)`
+  const BILLED_SEC = `(e.billed_minutes * 60)`
   // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
-  const REVENUE = feeCentSql(roundStep)
+  const REVENUE = 'e.fee_cent'
   const monthKey = `${year}-${String(month).padStart(2, '0')}`
 
   const totals = db
@@ -609,10 +602,10 @@ export function getAnalytics(
          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent,
          COALESCE(SUM(${BILLED_SEC}), 0) AS billed_sec,
          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${BILLED_SEC} ELSE 0 END), 0) AS billable_billed_sec
-       FROM entries e
+       FROM billing_lines e
        JOIN clients c ON c.id = e.client_id
        LEFT JOIN projects p ON p.id = e.project_id
-       WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
+       WHERE e.stopped_at IS NOT NULL
          AND strftime('%Y-%m', e.started_at, 'localtime') = ?`
     )
     .get(monthKey) as {
@@ -628,10 +621,10 @@ export function getAnalytics(
       `SELECT c.id AS client_id, c.name, c.color,
               COALESCE(SUM(${ENTRY_SEC}), 0) AS seconds,
               COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent
-         FROM entries e
+         FROM billing_lines e
          JOIN clients c ON c.id = e.client_id
          LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
+        WHERE e.stopped_at IS NOT NULL
           AND strftime('%Y-%m', e.started_at, 'localtime') = ?
         GROUP BY c.id
         HAVING seconds > 0 OR revenue_cent > 0
@@ -652,11 +645,11 @@ export function getAnalytics(
               COALESCE(pr.name, '(kein Projekt)') AS name,
               COALESCE(SUM(${ENTRY_SEC}), 0) AS seconds,
               COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent
-         FROM entries e
+         FROM billing_lines e
          JOIN clients c ON c.id = e.client_id
          LEFT JOIN projects p ON p.id = e.project_id
          LEFT JOIN projects pr ON pr.id = e.project_id
-        WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
+        WHERE e.stopped_at IS NOT NULL
           AND strftime('%Y-%m', e.started_at, 'localtime') = ?
         GROUP BY e.project_id
         HAVING seconds > 0 OR revenue_cent > 0
@@ -677,7 +670,7 @@ export function getAnalytics(
     billable_seconds: Math.max(0, Math.floor(totals.billable_sec ?? 0)),
     rounded_seconds: Math.max(0, Math.round(totals.billed_sec ?? 0)),
     billable_rounded_seconds: Math.max(0, Math.round(totals.billable_billed_sec ?? 0)),
-    rounding_minutes: roundStep,
+    rounding_minutes: readDefaultIntervalMin(db),
     distinct_client_count: byClient.length,
     by_client: byClient.map((r) => ({
       client_id: r.client_id,

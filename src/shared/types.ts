@@ -70,6 +70,15 @@ export interface Entry {
   segment_seq?: number
   version_id?: number
   version_no?: number
+  /**
+   * 2.0 (P4): the money of this row from the view `billing_lines`, present on
+   * rows an export reads (`exportEntries`): billed minutes, the rate valid on
+   * the day, the fee, and whether the rate came from a project row.
+   */
+  billed_minutes?: number
+  rate_cent?: number | null
+  fee_cent?: number | null
+  rate_is_project?: number
 }
 
 // ── Projects (v1.9 #75) ───────────────────────────────────────────────────

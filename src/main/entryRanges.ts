@@ -40,14 +40,16 @@ export function exportEntries(db: Database.Database, req: ExportRangeRequest): E
   const { start, end } = localDayRange(req.fromIso, req.toIso)
   return db
     .prepare(
-      `SELECT * FROM entries
-         WHERE client_id = ?
-           AND started_at >= ?
-           AND started_at < ?
-           AND (? IS NULL OR project_id = ?)
-           AND deleted_at IS NULL
-           AND stopped_at IS NOT NULL
-         ORDER BY started_at ASC`
+      `SELECT e.*, l.billed_minutes, l.rate_cent, l.fee_cent, l.rate_is_project
+         FROM entries e
+         JOIN billing_lines l ON l.version_id = e.version_id AND l.segment_seq = e.segment_seq
+         WHERE e.client_id = ?
+           AND e.started_at >= ?
+           AND e.started_at < ?
+           AND (? IS NULL OR e.project_id = ?)
+           AND e.deleted_at IS NULL
+           AND e.stopped_at IS NOT NULL
+         ORDER BY e.started_at ASC`
     )
     .all(req.clientId, start, end, req.projectId ?? null, req.projectId ?? null) as Entry[]
 }
