@@ -13,7 +13,6 @@
  */
 import type Database from 'better-sqlite3'
 import { formatEur, formatHoursMinutes } from '../shared/currency'
-import { localDayRange } from '../shared/dateRanges'
 import { deserializeTags } from '../shared/tags'
 import type { Client, Entry, Settings } from '../shared/types'
 
@@ -254,9 +253,9 @@ export function buildPdfPayload(
     settingsRows.map((r) => [r.key, r.value])
   ) as unknown as Settings
 
-  // Local days, both inclusive: an entry started at 00:30 on the first day or
-  // 23:30 on the last belongs to the attachment, wherever the user lives.
-  const { start: fromTs, end: toExclusive } = localDayRange(req.fromIso, req.toIso)
+  // Local days, both inclusive, compared with the date stored with each
+  // segment: an entry at 00:30 on the first day belongs to the attachment,
+  // and a later change of the time zone moves nothing.
 
   // Money comes from billing_lines (design section 7): minutes, rate and fee
   // per segment, with the client's profile and the rate valid on the day.
@@ -272,12 +271,11 @@ export function buildPdfPayload(
            AND e.deleted_at IS NULL
            AND e.stopped_at IS NOT NULL
            AND e.billable = 1
-           AND e.started_at >= ?
-           AND e.started_at < ?
+           AND e.segment_date BETWEEN ? AND ?
            AND (? IS NULL OR e.project_id = ?)
          ORDER BY e.started_at ASC, e.id ASC`
     )
-    .all(client.id, fromTs, toExclusive, req.projectId ?? null, req.projectId ?? null) as Array<
+    .all(client.id, req.fromIso, req.toIso, req.projectId ?? null, req.projectId ?? null) as Array<
     Entry & {
       project_name: string | null
       billed_minutes: number

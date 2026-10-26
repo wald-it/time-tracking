@@ -9,7 +9,7 @@
  * after the range fell in.
  */
 import type Database from 'better-sqlite3'
-import { localDayRange, localMonthRange } from '../shared/dateRanges'
+import { localMonthRange } from '../shared/dateRanges'
 import type { Entry } from '../shared/types'
 
 /** The calendar's month (`entries:getByMonth`): every client, running ones included. */
@@ -26,7 +26,7 @@ export function monthEntries(db: Database.Database, year: number, month: number)
 
 /**
  * The entries a CSV or iCal export covers: one client, finished, not deleted,
- * optionally one project, started within the local days `fromIso`–`toIso`.
+ * optionally one project, whose stored segment date is within the local days `fromIso`–`toIso`.
  */
 export interface ExportRangeRequest {
   clientId: number
@@ -37,19 +37,23 @@ export interface ExportRangeRequest {
 }
 
 export function exportEntries(db: Database.Database, req: ExportRangeRequest): Entry[] {
-  const { start, end } = localDayRange(req.fromIso, req.toIso)
   return db
     .prepare(
       `SELECT e.*, l.billed_minutes, l.rate_cent, l.fee_cent, l.rate_is_project
          FROM entries e
          JOIN billing_lines l ON l.version_id = e.version_id AND l.segment_seq = e.segment_seq
          WHERE e.client_id = ?
-           AND e.started_at >= ?
-           AND e.started_at < ?
+           AND e.segment_date BETWEEN ? AND ?
            AND (? IS NULL OR e.project_id = ?)
            AND e.deleted_at IS NULL
            AND e.stopped_at IS NOT NULL
          ORDER BY e.started_at ASC`
     )
-    .all(req.clientId, start, end, req.projectId ?? null, req.projectId ?? null) as Entry[]
+    .all(
+      req.clientId,
+      req.fromIso,
+      req.toIso,
+      req.projectId ?? null,
+      req.projectId ?? null
+    ) as Entry[]
 }

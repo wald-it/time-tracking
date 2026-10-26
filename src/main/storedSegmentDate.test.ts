@@ -13,6 +13,8 @@ import type Database from 'better-sqlite3'
 import { buildAnalyticsSummary } from './analyticsHandlers'
 import { getAnalytics } from '../mcp/queries'
 import { writeEntry } from './entryMutations'
+import { buildPdfPayload } from './pdf'
+import { exportEntries } from './entryRanges'
 import { seedEntry } from '../test/entryFixtures'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 
@@ -90,5 +92,27 @@ describe('segment_date is stored and read back', () => {
     expect(month(2026, 11)).toBe(12000)
     expect(getAnalytics(db, SHOW, 2026, 10).revenue_cent).toBe(0)
     expect(getAnalytics(db, SHOW, 2026, 11).revenue_cent).toBe(12000)
+  })
+
+  it('PDF and CSV select by the stored date, like the analytics', () => {
+    seedEntry(db, {
+      id: 2,
+      client_id: 1,
+      started_at: '2026-10-31T10:00:00.000Z',
+      stopped_at: '2026-10-31T11:00:00.000Z',
+      segments: [
+        {
+          started_at: '2026-10-31T10:00:00.000Z',
+          stopped_at: '2026-10-31T11:00:00.000Z',
+          segment_date: '2026-11-01'
+        }
+      ]
+    })
+    const nov = { clientId: 1, fromIso: '2026-11-01', toIso: '2026-11-30' }
+    const oct = { clientId: 1, fromIso: '2026-10-01', toIso: '2026-10-31' }
+    expect(buildPdfPayload(db, nov, '').totals.feeCent).toBe(12000)
+    expect(buildPdfPayload(db, oct, '').totals.feeCent).toBe(0)
+    expect(exportEntries(db, nov).map((e) => e.id)).toEqual([2])
+    expect(exportEntries(db, oct)).toEqual([])
   })
 })
