@@ -350,6 +350,7 @@ function buildDeleteMessage(entry: Entry, client: Client | undefined, t: TFuncti
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   const name = client?.name ?? t('common.unknown')
   // One half of an entry across midnight: the delete takes both days (#323).
-  const key = (entry.segment_count ?? 1) > 1 ? 'common.deleteEntryMessageLinked' : 'common.deleteEntryMessage'
+  const key =
+    (entry.segment_count ?? 1) > 1 ? 'common.deleteEntryMessageLinked' : 'common.deleteEntryMessage'
   return t(key, { client: name, date: dateStr, duration: dur })
 }

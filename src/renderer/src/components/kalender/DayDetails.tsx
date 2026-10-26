@@ -4,6 +4,7 @@ import { useRounding } from '../../contexts/RoundingContext'
 import { formatEur } from '../../../../shared/currency'
 import { dayRevenueCent } from './dayRevenue'
 import type { Client, Entry, Project } from '../../../../shared/types'
+import { entryRowKey } from '../../../../shared/entryKey'
 import { deserializeTags, entryHasTag } from '../../../../shared/tags'
 import { useEntriesStore } from '../../store/entriesStore'
 import { useToastStore } from '../../store/toastStore'
@@ -275,7 +276,7 @@ export function DayDetails({
             const entryTags = deserializeTags(e.tags)
             if (editingId === e.id) {
               return (
-                <li key={e.id} className="border-t border-[var(--line)] py-[10px]">
+                <li key={entryRowKey(e)} className="border-t border-[var(--line)] py-[10px]">
                   <EntryEditForm
                     entry={e}
                     clients={clients}
@@ -289,7 +290,10 @@ export function DayDetails({
               )
             }
             return (
-              <li key={e.id} className="flex gap-2 border-t border-[var(--line)] py-[10px]">
+              <li
+                key={entryRowKey(e)}
+                className="flex gap-2 border-t border-[var(--line)] py-[10px]"
+              >
                 <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
                   <div className="flex justify-between gap-[10px]">
                     <span className="font-num text-[12px] text-[var(--ink2)]">
@@ -520,7 +524,8 @@ function buildDeleteMessage(
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   const name = client?.name ?? t('common.unknown')
   // One half of an entry across midnight: the delete takes both days (#323).
-  const key = (entry.segment_count ?? 1) > 1 ? 'common.deleteEntryMessageLinked' : 'common.deleteEntryMessage'
+  const key =
+    (entry.segment_count ?? 1) > 1 ? 'common.deleteEntryMessageLinked' : 'common.deleteEntryMessage'
   return t(key, { client: name, date: dateStr, duration: dur })
 }
 
