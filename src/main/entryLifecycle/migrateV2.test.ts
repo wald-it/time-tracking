@@ -162,8 +162,12 @@ function newTableSums(): Sums {
 const sorted = (m: Sums): [string, Totals][] => [...m].sort(([a], [b]) => a.localeCompare(b))
 
 // ── T1 + T2: every shape, every invariant, over many seeds ──────────────────
-// Every seed contains every shape (the generator guarantees each kind once),
-// so 20 seeds keep all migration mutants red at half the run time of 40.
+// Not every seed holds every shape (some have no running entry); the shapes
+// are checked across all seeds, and 20 seeds keep all migration mutants red.
+const seenShapes = Object.fromEntries(MIGRATION_SHAPES.map((s) => [s, 0])) as Record<
+  (typeof MIGRATION_SHAPES)[number],
+  number
+>
 const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1)
 
 describe('migrateEntriesToV2 over generated 1.x databases (#P1, test 11.9)', () => {
@@ -182,6 +186,7 @@ describe('migrateEntriesToV2 over generated 1.x databases (#P1, test 11.9)', () 
       const shapeCounts = Object.fromEntries(MIGRATION_SHAPES.map((s) => [s, 0]))
       for (const e of g.expected) for (const s of e.shapes) shapeCounts[s]++
       expect(report.shapes).toEqual(shapeCounts)
+      for (const s of MIGRATION_SHAPES) seenShapes[s] += report.shapes[s]
       expect(report.legacyRows).toBe(g.rows.length)
       expect(report.entries).toBe(g.expected.length)
       const byKey = (xs: MigrationException[]): string[] =>
@@ -254,6 +259,10 @@ describe('migrateEntriesToV2 over generated 1.x databases (#P1, test 11.9)', () 
       expect(sorted(newTableSums())).toEqual(sorted(oracleSums(g)))
     }
   )
+
+  it('every shape of section 10 appears in the reports (equal counts alone would pass at 0 = 0)', () => {
+    for (const s of MIGRATION_SHAPES) expect(seenShapes[s], `shape ${s}`).toBeGreaterThan(0)
+  })
 
   it("rates and the default profile carry today's values; the profile is German whatever the app language (decision 8)", () => {
     let seenEn = false
