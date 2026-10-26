@@ -8,6 +8,8 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { seed } from '../test/bridgeKit'
+import { seedEntry } from '../test/entryFixtures'
+import { writeEntry } from './entryMutations'
 import { decideStartRequest, readStartPair } from './startRequest'
 
 let DatabaseImpl: DatabaseCtor
@@ -31,11 +33,15 @@ function addEntry(
     started_at: string
     stopped_at?: string | null
   }
-): void {
-  db.prepare(
-    `INSERT INTO entries (client_id, project_id, description, started_at, stopped_at, heartbeat_at)
-     VALUES (?, ?, '', ?, ?, ?)`
-  ).run(e.client_id, e.project_id ?? null, e.started_at, e.stopped_at ?? null, e.started_at)
+): number {
+  // 2.0 P2: `entries` is a read-only view; the fixture writes the entry tables.
+  return seedEntry(db, {
+    client_id: e.client_id,
+    project_id: e.project_id ?? null,
+    started_at: e.started_at,
+    stopped_at: e.stopped_at ?? null,
+    heartbeat_at: e.started_at
+  })
 }
 
 describe('decideStartRequest', () => {
@@ -93,14 +99,13 @@ describe('decideStartRequest', () => {
       started_at: '2026-10-21T08:00:00.000Z',
       stopped_at: '2026-10-21T09:00:00.000Z'
     })
-    addEntry(db, {
+    const trashed = addEntry(db, {
       client_id: 1,
       started_at: '2026-10-22T08:00:00.000Z',
       stopped_at: '2026-10-22T09:00:00.000Z'
     })
-    db.prepare(
-      `UPDATE entries SET deleted_at = '2026-10-22T10:00:00.000Z' WHERE client_id = 1`
-    ).run()
+    // 2.0 P2: the trash goes through the write path (op delete), not an UPDATE.
+    expect(writeEntry(db, { op: 'delete', id: trashed }, { source: 'app' }).ok).toBe(true)
     expect(readStartPair(db)).toEqual({ clientId: 2, projectId: 20 })
     db.close()
   })

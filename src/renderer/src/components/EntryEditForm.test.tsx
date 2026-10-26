@@ -9,7 +9,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { EntryEditForm } from './EntryEditForm'
 import { I18nProvider } from '../contexts/I18nContext'
-import type { Client, Entry } from '../../../shared/types'
+import type { Client, Entry, UpdateEntryInput } from '../../../shared/types'
 
 afterEach(() => {
   cleanup()
@@ -17,6 +17,62 @@ afterEach(() => {
 })
 
 const local = (d: number, h: number, m = 0): string => new Date(2026, 5, d, h, m).toISOString()
+
+// Codex counter-check on 2.0 P2: an update is a patch, and a field left out
+// keeps its value. "No project" must therefore be sent as null, not left out,
+// or the old project stays and a client change fails on the project rule.
+describe('EntryEditForm sends "no project" as null (2.0 patch)', () => {
+  it('choosing the placeholder sends project_id: null', async () => {
+    const entry: Entry = {
+      id: 9,
+      client_id: 1,
+      description: 'Mit Projekt',
+      started_at: local(10, 9),
+      stopped_at: local(10, 10),
+      heartbeat_at: local(10, 10),
+      rounded_min: null,
+      deleted_at: null,
+      created_at: '2026-06-10 08:00:00',
+      link_id: null,
+      tags: '',
+      reference: '',
+      billable: 1,
+      private_note: '',
+      project_id: 5
+    }
+    const update = vi.fn<(input: UpdateEntryInput) => Promise<{ ok: true; data: Entry }>>(
+      async () => ({ ok: true as const, data: entry })
+    )
+    ;(window as unknown as { api: unknown }).api = {
+      entries: { update, create: vi.fn() },
+      projects: {
+        getAll: vi.fn(async () => ({
+          ok: true as const,
+          data: [{ id: 5, client_id: 1, name: 'Rollout', status: 'active', active: 1 }]
+        }))
+      },
+      tags: { getAllWithCount: vi.fn(async () => ({ ok: true as const, data: [] })) }
+    }
+    render(
+      <I18nProvider>
+        <EntryEditForm
+          entry={entry}
+          defaultDate={new Date(2026, 5, 10, 9)}
+          clients={[{ id: 1, name: 'Acme', active: 1 } as Client]}
+          onSaved={() => {}}
+          onCancel={() => {}}
+        />
+      </I18nProvider>
+    )
+    const picker = (await screen.findByDisplayValue('Rollout')) as HTMLSelectElement
+    fireEvent.change(picker, { target: { value: '' } })
+    fireEvent.submit(picker.closest('form')!)
+    await waitFor(() => expect(update).toHaveBeenCalled())
+    const sent = update.mock.calls[0][0]
+    expect(sent).toMatchObject({ id: 9, project_id: null })
+    expect('project_id' in sent).toBe(true)
+  })
+})
 
 const CLIENTS = [{ id: 1, name: 'Acme', active: 1 } as Client]
 

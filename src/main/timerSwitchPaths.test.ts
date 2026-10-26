@@ -16,7 +16,8 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
-import { countEntries, makeCtx, seed } from '../test/bridgeKit'
+import { makeCtx, seed } from '../test/bridgeKit'
+import { seedEntry } from '../test/entryFixtures'
 import { handleRequest, type BridgeRequest } from './mcpBridgeCore'
 import { switchTimerAndNotify } from './entryMutations'
 import type { IpcResult, SwitchTimerResult } from '../shared/types'
@@ -53,15 +54,34 @@ describe('timer switch paths (main process)', () => {
     startedAt: string,
     deletedAt: string | null = null
   ): void {
-    db.prepare(
-      `INSERT INTO entries (id, client_id, description, started_at, heartbeat_at, deleted_at)
-       VALUES (?, ?, '', ?, ?, ?)`
-    ).run(id, clientId, startedAt, startedAt, deletedAt)
+    // 2.0 P2: `entries` is a read-only view. A live running row is seeded
+    // with its fixed id; a trashed one is a deleted entry, which the model seals
+    // where it stood (heartbeat = start), so it is no longer "running".
+    seedEntry(db, {
+      id,
+      client_id: clientId,
+      started_at: startedAt,
+      stopped_at: null,
+      heartbeat_at: startedAt,
+      deleted_at: deletedAt
+    })
   }
   const row = (id: number): Row =>
     db
       .prepare(
         `SELECT id, client_id, started_at, stopped_at, heartbeat_at, deleted_at FROM entries WHERE id = ?`
+      )
+      .get(id) as Row
+  // 2.0 P2: a trashed entry is not in the `entries` view; read it from the
+  // entry tables (deleted_at = when the deleting version was written, heartbeat
+  // = the sealed stop, as the view reports it for ended entries).
+  const ghostRow = (id: number): Row =>
+    db
+      .prepare(
+        `SELECT e.id AS id, v.client_id AS client_id, v.started_at AS started_at,
+                v.stopped_at AS stopped_at, v.stopped_at AS heartbeat_at,
+                CASE WHEN v.deleted = 1 THEN v.written_at END AS deleted_at
+           FROM entry e JOIN entry_version v ON v.id = e.current_version_id WHERE e.id = ?`
       )
       .get(id) as Row
   const all = (): Row[] =>
@@ -77,7 +97,7 @@ describe('timer switch paths (main process)', () => {
 
   /** Assert the ghost was closed no earlier than its own start and is still deleted. */
   function expectGhostIntact(id: number, startedAt: string, deletedAt: string): void {
-    const g = row(id)
+    const g = ghostRow(id)
     expect(g.deleted_at).toBe(deletedAt)
     expect(g.started_at).toBe(startedAt)
     expect(g.stopped_at).not.toBeNull()
@@ -252,7 +272,8 @@ describe('timer switch paths (main process)', () => {
       expect(liveRunning().map((e) => e.started_at)).toEqual([iso(t - 30 * MIN)])
       // Nothing live ran, so nothing is reported as stopped.
       expect(spies.webhooks).toEqual(['start_timer'])
-      expect(countEntries(db)).toBe(2)
+      // 2.0 P2: the trashed ghost is not in the `entries` view; count the entry table.
+      expect((db.prepare(`SELECT COUNT(*) AS n FROM entry`).get() as { n: number }).n).toBe(2)
     })
   })
 })

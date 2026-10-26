@@ -1150,19 +1150,13 @@ describe('useTimer — idle transitions', () => {
       await hook.result.current.idleStopAtIdle()
     })
 
-    // The whole entry travels along: entries:update re-inserts the row and
-    // defaults every field it is not given (#313).
+    // Since 2.0 an update is a patch (design D3): only the stop time is sent,
+    // every other field keeps its value in main (#313), and the source names
+    // the idle prompt on the version.
     expect(api.update).toHaveBeenCalledWith({
       id: entry.id,
-      client_id: entry.client_id,
-      project_id: entry.project_id ?? null,
-      description: entry.description,
-      started_at: entry.started_at,
       stopped_at: IDLE.idleSince,
-      billable: entry.billable,
-      tags: entry.tags,
-      reference: entry.reference,
-      private_note: entry.private_note
+      source: 'idle'
     })
     expect(hook.result.current.runningEntry).toBeNull()
     expect(hook.result.current.idleEvent).toBeNull()
@@ -1204,7 +1198,8 @@ describe('useTimer — idle transitions', () => {
       description: 'Pause',
       started_at: IDLE.idleSince,
       stopped_at: NOW.toISOString(),
-      billable: 0
+      billable: 0,
+      source: 'idle'
     })
     expect(api.start).toHaveBeenCalledTimes(1) // startTimer() above, not the pause
     expect(api.update).toHaveBeenCalledTimes(1)
@@ -1318,12 +1313,14 @@ describe('useTimer — handleOpenStart (#297)', () => {
   })
 })
 
-// #313: the idle prompt stops the running entry through entries:update, which
-// defaults every field it is not sent. Today only the project of a running
-// entry can differ from the defaults; the other fields are sent along anyway,
-// and this pins that, so a later way to set them on a running entry is not
-// reset by the idle prompt.
-describe('useTimer — the idle prompt sends the whole running entry (#313)', () => {
+// #313: the idle prompt used to send the whole running entry, because
+// entries:update re-inserted the row and defaulted every field it was not
+// sent. Since 2.0 (design D3) an update is a patch: the prompt sends the stop
+// time only, and project, billable, tags, reference and note keep their
+// values in main (entryWrite.test.ts, "amend ... keeps every field"). This
+// pins that the prompt sends nothing but the stop, so no stale copy of a
+// field can overwrite what the entry has by then.
+describe('useTimer — the idle prompt sends only the stop time (#313, 2.0)', () => {
   const RUNNING = makeEntry({
     id: 5,
     project_id: 7,
@@ -1332,15 +1329,7 @@ describe('useTimer — the idle prompt sends the whole running entry (#313)', ()
     reference: 'JIRA-7',
     private_note: 'intern'
   })
-  const KEPT = {
-    id: 5,
-    project_id: 7,
-    billable: 0,
-    tags: ',ops,',
-    reference: 'JIRA-7',
-    private_note: 'intern',
-    stopped_at: IDLE.idleSince
-  }
+  const SENT = { id: 5, stopped_at: IDLE.idleSince, source: 'idle' }
 
   it('idleStopAtIdle()', async () => {
     const { api, hook } = await setup({ running: RUNNING })
@@ -1351,7 +1340,7 @@ describe('useTimer — the idle prompt sends the whole running entry (#313)', ()
       await hook.result.current.idleStopAtIdle()
     })
 
-    expect(api.update).toHaveBeenCalledWith(expect.objectContaining(KEPT))
+    expect(api.update).toHaveBeenCalledWith(SENT)
   })
 
   it('idleMarkPause()', async () => {
@@ -1363,6 +1352,6 @@ describe('useTimer — the idle prompt sends the whole running entry (#313)', ()
       await hook.result.current.idleMarkPause()
     })
 
-    expect(api.update).toHaveBeenNthCalledWith(1, expect.objectContaining(KEPT))
+    expect(api.update).toHaveBeenNthCalledWith(1, SENT)
   })
 })

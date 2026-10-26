@@ -1,9 +1,11 @@
 /**
- * Deleting and restoring an entry that crosses midnight (#323). Such an entry
- * is two rows sharing a `link_id`; deleting either half from Heute or the
- * calendar used to soft-delete only that half, so the other half kept
- * counting in totals, Auswertung, budget and exports. Undo must bring back
- * exactly what the delete removed.
+ * Deleting and restoring an entry that crosses midnight (#323). In 1.x such an
+ * entry was two rows sharing a `link_id`, and deleting either half from Heute
+ * or the calendar soft-deleted only that half, so the other half kept
+ * counting in totals, Auswertung, budget and exports. Since 2.0 the halves
+ * are two segments of one entry: a delete takes the entry, undo brings it
+ * back whole. The day views still hand over the id of the segment they show,
+ * which is the entry's id.
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import type Database from 'better-sqlite3'
@@ -15,8 +17,6 @@ let DatabaseImpl: DatabaseCtor
 beforeAll(async () => {
   DatabaseImpl = await loadSqlite()
 })
-
-type Row = { id: number; link_id: string | null; deleted_at: string | null }
 
 describe('deleteEntry / undeleteEntry (#323)', () => {
   let db: Database.Database
@@ -30,8 +30,8 @@ describe('deleteEntry / undeleteEntry (#323)', () => {
     ).run()
   })
 
-  /** A manual entry from local 23:00 to 01:00 the next day: two linked rows. */
-  function createPair(): Row[] {
+  /** A manual entry from local 23:00 to 01:00 the next day: one entry, two segments. */
+  function createPair(): number {
     const r = createManualEntry(db, {
       client_id: 1,
       description: 'Nacht',
@@ -39,13 +39,24 @@ describe('deleteEntry / undeleteEntry (#323)', () => {
       stopped_at: new Date(2026, 5, 11, 1, 0, 0).toISOString()
     })
     if (!r.ok) throw new Error(r.error)
-    return rowsOf(r.data.link_id!)
+    expect(segmentsShown(r.data.id)).toEqual([0, 1])
+    return r.data.id
   }
 
-  function rowsOf(linkId: string): Row[] {
-    return db
-      .prepare(`SELECT id, link_id, deleted_at FROM entries WHERE link_id = ? ORDER BY id`)
-      .all(linkId) as Row[]
+  /** The `segment_seq` of every row the view shows for the entry. */
+  function segmentsShown(id: number): number[] {
+    return (
+      db
+        .prepare(`SELECT segment_seq FROM entries WHERE id = ? ORDER BY segment_seq`)
+        .all(id) as Array<{ segment_seq: number }>
+    ).map((r) => r.segment_seq)
+  }
+
+  function trashed(id: number): boolean {
+    const row = db.prepare(`SELECT is_deleted FROM entry WHERE id = ?`).get(id) as {
+      is_deleted: number
+    }
+    return row.is_deleted === 1
   }
 
   function liveCount(): number {
@@ -56,45 +67,23 @@ describe('deleteEntry / undeleteEntry (#323)', () => {
     ).n
   }
 
-  it.each([
-    ['first', 0],
-    ['second', 1]
-  ])('deleting the %s half deletes both halves', (_label, index) => {
-    const pair = createPair()
-    expect(deleteEntry(db, pair[index].id).ok).toBe(true)
-    const after = rowsOf(pair[0].link_id!)
-    expect(after.every((r) => r.deleted_at !== null)).toBe(true)
+  it('deleting the entry by the id its halves share takes both halves', () => {
+    const id = createPair()
+    expect(deleteEntry(db, id).ok).toBe(true)
+    expect(trashed(id)).toBe(true)
+    expect(segmentsShown(id)).toEqual([])
     expect(liveCount()).toBe(0)
   })
 
-  it.each([
-    ['first', 0],
-    ['second', 1]
-  ])('undo with the id of the %s half brings both halves back', (_label, index) => {
-    const pair = createPair()
-    expect(deleteEntry(db, pair[index].id).ok).toBe(true)
-    const res = undeleteEntry(db, pair[index].id)
+  it('undo with that id brings both halves back', () => {
+    const id = createPair()
+    expect(deleteEntry(db, id).ok).toBe(true)
+    const res = undeleteEntry(db, id)
     expect(res.ok).toBe(true)
-    if (res.ok) expect(res.data.id).toBe(pair[index].id)
-    expect(rowsOf(pair[0].link_id!).every((r) => r.deleted_at === null)).toBe(true)
+    if (res.ok) expect(res.data.id).toBe(id)
+    expect(trashed(id)).toBe(false)
+    expect(segmentsShown(id)).toEqual([0, 1])
     expect(liveCount()).toBe(2)
-  })
-
-  it('undo restores only what this delete removed, not a half deleted earlier', () => {
-    // A pair left half-deleted by 1.x (the UI deleted only the clicked half).
-    const pair = createPair()
-    db.prepare(`UPDATE entries SET deleted_at = '2026-06-12T08:00:00.000Z' WHERE id = ?`).run(
-      pair[0].id
-    )
-    expect(deleteEntry(db, pair[1].id).ok).toBe(true)
-    expect(liveCount()).toBe(0)
-    // The earlier delete keeps its own timestamp.
-    expect(rowsOf(pair[0].link_id!)[0].deleted_at).toBe('2026-06-12T08:00:00.000Z')
-
-    expect(undeleteEntry(db, pair[1].id).ok).toBe(true)
-    const after = rowsOf(pair[0].link_id!)
-    expect(after[0].deleted_at).toBe('2026-06-12T08:00:00.000Z')
-    expect(after[1].deleted_at).toBeNull()
   })
 
   it('a single-day entry is deleted and restored on its own', () => {
@@ -110,20 +99,24 @@ describe('deleteEntry / undeleteEntry (#323)', () => {
     expect(liveCount()).toBe(2) // the pair is untouched
     expect(undeleteEntry(db, single.data.id).ok).toBe(true)
     expect(liveCount()).toBe(3)
-    expect(rowsOf(pair[0].link_id!).every((r) => r.deleted_at === null)).toBe(true)
+    expect(segmentsShown(pair)).toEqual([0, 1])
   })
 
-  it('refuses to delete a half that is already in the trash (a stale view), so undo cannot restore the wrong rows', () => {
-    const pair = createPair()
-    db.prepare(`UPDATE entries SET deleted_at = '2026-06-12T08:00:00.000Z' WHERE id = ?`).run(
-      pair[0].id
-    )
-    const res = deleteEntry(db, pair[0].id)
+  it('refuses to delete an entry that is already in the trash (a stale view), nothing changes', () => {
+    const id = createPair()
+    expect(deleteEntry(db, id).ok).toBe(true)
+    const version = (
+      db.prepare(`SELECT current_version_id AS v FROM entry WHERE id = ?`).get(id) as {
+        v: number
+      }
+    ).v
+    const res = deleteEntry(db, id)
     expect(res.ok).toBe(false)
-    // Nothing changed: the live half stays live, the trashed half keeps its time.
-    const after = rowsOf(pair[0].link_id!)
-    expect(after[0].deleted_at).toBe('2026-06-12T08:00:00.000Z')
-    expect(after[1].deleted_at).toBeNull()
+    // No second delete version was written.
+    expect(db.prepare(`SELECT current_version_id AS v FROM entry WHERE id = ?`).get(id)).toEqual({
+      v: version
+    })
+    expect(trashed(id)).toBe(true)
   })
 
   it('refuses an unknown id', () => {

@@ -26,6 +26,7 @@ import { migration024 } from './024-v117-presence'
 import { migration025 } from './025-v117-ical-feed'
 import { migration026 } from './026-v118-week-start'
 import { migration027 } from './027-normalise-entry-timestamps'
+import { migration028 } from './028-v2-entry-lifecycle'
 
 export interface Migration {
   /** Monotonically increasing integer. Never reused, never reordered. */
@@ -79,5 +80,6 @@ export const migrations: Migration[] = [
   migration024,
   migration025,
   migration026,
-  migration027
+  migration027,
+  migration028
 ].sort((a, b) => a.version - b.version)

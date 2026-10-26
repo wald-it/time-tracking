@@ -147,18 +147,27 @@ export function EntryEditForm({
       ? await window.api.entries.update({
           id: entry.id,
           client_id: clientId,
-          project_id: projectId ?? undefined,
+          // A patch (2.0): a field left out keeps its value, so "no project"
+          // goes as null, never as undefined.
+          project_id: projectId,
           description: description.trim(),
           started_at: start,
           stopped_at: stop,
           tags,
           reference: reference.trim(),
           billable,
-          private_note: privateNote.trim()
+          private_note: privateNote.trim(),
+          // The form shows minutes: a time sent back as displayed is no
+          // change and keeps the entry's seconds (#335 case 4). The segment
+          // tells the write which half of a midnight-split entry the times
+          // belong to (#311).
+          from_form: true,
+          segment_seq: entry.segment_seq,
+          expected_version: entry.version_no
         })
       : await window.api.entries.create({
           client_id: clientId,
-          project_id: projectId ?? undefined,
+          project_id: projectId,
           description: description.trim(),
           started_at: start,
           stopped_at: stop,

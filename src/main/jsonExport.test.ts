@@ -10,6 +10,7 @@ import type Database from 'better-sqlite3'
 import { migrations } from './migrations'
 import { buildJsonExportPayload } from './jsonExport'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -56,10 +57,12 @@ describe('buildJsonExportPayload', () => {
     db.prepare(
       `INSERT INTO clients (id, name, color, rate_cent) VALUES (1, 'Acme', '#6366f1', 8500)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, link_id)
-       VALUES (1, 'work', '2026-04-24T08:00:00.000Z', '2026-04-24T09:30:00.000Z', NULL)`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      description: 'work',
+      started_at: '2026-04-24T08:00:00.000Z',
+      stopped_at: '2026-04-24T09:30:00.000Z'
+    })
     const payload = buildJsonExportPayload(db, '1.3.0')
     expect(payload.clients).toHaveLength(1)
     expect(payload.clients[0].rate_cent).toBe(8500)
@@ -67,33 +70,61 @@ describe('buildJsonExportPayload', () => {
     expect(payload.entries[0].description).toBe('work')
     // Verify the v1.3 link_id field is present (even when null).
     expect(payload.entries[0]).toHaveProperty('link_id')
+    for (const col of [
+      'id',
+      'client_id',
+      'started_at',
+      'stopped_at',
+      'heartbeat_at',
+      'rounded_min',
+      'deleted_at',
+      'created_at',
+      'tags',
+      'reference',
+      'billable',
+      'private_note',
+      'project_id'
+    ]) {
+      expect(payload.entries[0]).toHaveProperty(col)
+    }
   })
 
-  it('preserves cross-midnight linked halves verbatim', () => {
+  it('exports the two segments of a cross-midnight entry as two rows of one entry', () => {
+    // 2.0 P2: the halves are segments of one entry (same id, segment_seq 0
+    // and 1), no longer two rows linked by a UUID; link_id is always null.
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
-    const linkId = '11111111-2222-3333-4444-555555555555'
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, link_id)
-       VALUES (1, 'late', '2026-04-24T23:30:00.000Z', '2026-04-25T00:00:00.000Z', ?)`
-    ).run(linkId)
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, link_id)
-       VALUES (1, 'late', '2026-04-25T00:00:00.000Z', '2026-04-25T01:15:00.000Z', ?)`
-    ).run(linkId)
+    // Segments are cut at local midnight (one segment per local date).
+    const local = (d: number, h: number, m = 0): string => new Date(2026, 3, d, h, m).toISOString()
+    const id = seedEntry(db, {
+      client_id: 1,
+      description: 'late',
+      segments: [
+        { started_at: local(24, 23, 30), stopped_at: local(25, 0) },
+        { started_at: local(25, 0), stopped_at: local(25, 1, 15) }
+      ]
+    })
     const payload = buildJsonExportPayload(db, '1.3.0')
     expect(payload.entries).toHaveLength(2)
-    expect(payload.entries.every((e) => e.link_id === linkId)).toBe(true)
+    expect(payload.entries.map((e) => [e.id, e.segment_seq, e.link_id])).toEqual([
+      [id, 0, null],
+      [id, 1, null]
+    ])
   })
 
   it('includes soft-deleted entries (audit trail / undo recovery)', () => {
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, deleted_at)
-       VALUES (1, 'oops', '2026-04-24T08:00:00.000Z', '2026-04-24T09:00:00.000Z', '2026-04-24T10:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      description: 'oops',
+      started_at: '2026-04-24T08:00:00.000Z',
+      stopped_at: '2026-04-24T09:00:00.000Z',
+      deleted_at: '2026-04-24T10:00:00.000Z'
+    })
     const payload = buildJsonExportPayload(db, '1.3.0')
     expect(payload.entries).toHaveLength(1)
     expect(payload.entries[0].deleted_at).toBe('2026-04-24T10:00:00.000Z')
+    // The view, by contrast, hides it.
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM entries`).get()).toEqual({ n: 0 })
   })
 
   describe('secrets are left out', () => {

@@ -12,6 +12,7 @@ import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { buildPdfPayload, buildPdfHtml } from './pdf'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -58,24 +59,29 @@ describe('buildPdfPayload', () => {
   })
 
   it('omits fee column for clients with rate_cent = 0', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (2, '2026-04-15T08:00:00.000Z', '2026-04-15T09:30:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 2,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:30:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 2, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.totals.feeCent).toBeNull()
     expect(p.rows[0].feeCent).toBeNull()
   })
 
   it('aggregates minutes and fee for paid clients', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at)
-       VALUES (1, 'work', '2026-04-15T08:00:00.000Z', '2026-04-15T09:30:00.000Z')`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at)
-       VALUES (1, 'more work', '2026-04-16T10:00:00.000Z', '2026-04-16T11:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      description: 'work',
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:30:00.000Z'
+    })
+    seedEntry(db, {
+      client_id: 1,
+      description: 'more work',
+      started_at: '2026-04-16T10:00:00.000Z',
+      stopped_at: '2026-04-16T11:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows).toHaveLength(2)
     expect(p.totals.minutes).toBe(150) // 90 + 60
@@ -85,11 +91,13 @@ describe('buildPdfPayload', () => {
 
   it('respects pdf_round_minutes setting', () => {
     db.prepare(`UPDATE settings SET value='15' WHERE key='pdf_round_minutes'`).run()
-    db.prepare(
-      // 23 minutes raw — should round to 30 with step=15
-      `INSERT INTO entries (client_id, description, started_at, stopped_at)
-       VALUES (1, 'short task', '2026-04-15T08:00:00.000Z', '2026-04-15T08:23:00.000Z')`
-    ).run()
+    // 23 minutes raw — should round to 30 with step=15
+    seedEntry(db, {
+      client_id: 1,
+      description: 'short task',
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T08:23:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].minutes).toBe(30)
     expect(p.totals.minutes).toBe(30)
@@ -107,14 +115,8 @@ describe('buildPdfPayload', () => {
     // Local 18:55 → 19:25 (raw 30 min, stays 30 with step=30) → 19:00 – 19:30
     const b1 = new Date(2026, 3, 25, 18, 55, 0).toISOString()
     const b2 = new Date(2026, 3, 25, 19, 25, 0).toISOString()
-    db.prepare(`INSERT INTO entries (client_id, started_at, stopped_at) VALUES (1, ?, ?)`).run(
-      a1,
-      a2
-    )
-    db.prepare(`INSERT INTO entries (client_id, started_at, stopped_at) VALUES (1, ?, ?)`).run(
-      b1,
-      b2
-    )
+    seedEntry(db, { client_id: 1, started_at: a1, stopped_at: a2 })
+    seedEntry(db, { client_id: 1, started_at: b1, stopped_at: b2 })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].startTime).toBe('19:00')
     expect(p.rows[0].stopTime).toBe('19:30')
@@ -129,10 +131,7 @@ describe('buildPdfPayload', () => {
     // 18:54 → 19:18 (raw 24 min, rounds to 25 with step=5) → 18:55 – 19:20
     const a1 = new Date(2026, 3, 24, 18, 54, 0).toISOString()
     const a2 = new Date(2026, 3, 24, 19, 18, 0).toISOString()
-    db.prepare(`INSERT INTO entries (client_id, started_at, stopped_at) VALUES (1, ?, ?)`).run(
-      a1,
-      a2
-    )
+    seedEntry(db, { client_id: 1, started_at: a1, stopped_at: a2 })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].startTime).toBe('18:55')
     expect(p.rows[0].stopTime).toBe('19:20')
@@ -143,10 +142,7 @@ describe('buildPdfPayload', () => {
     // pdf_round_minutes default is '0'
     const a1 = new Date(2026, 3, 24, 18, 54, 0).toISOString()
     const a2 = new Date(2026, 3, 24, 19, 18, 0).toISOString()
-    db.prepare(`INSERT INTO entries (client_id, started_at, stopped_at) VALUES (1, ?, ?)`).run(
-      a1,
-      a2
-    )
+    seedEntry(db, { client_id: 1, started_at: a1, stopped_at: a2 })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].startTime).toBe('18:54')
     expect(p.rows[0].stopTime).toBe('19:18')
@@ -154,19 +150,18 @@ describe('buildPdfPayload', () => {
   })
 
   it('excludes soft-deleted entries', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at, deleted_at)
-       VALUES (1, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z', '2026-04-15T10:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z',
+      deleted_at: '2026-04-15T10:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows).toHaveLength(0)
   })
 
   it('excludes running entries (stopped_at IS NULL)', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (1, '2026-04-15T08:00:00.000Z', NULL)`
-    ).run()
+    seedEntry(db, { client_id: 1, started_at: '2026-04-15T08:00:00.000Z', stopped_at: null })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows).toHaveLength(0)
   })
@@ -174,27 +169,36 @@ describe('buildPdfPayload', () => {
   it('range is inclusive — captures entries on the last LOCAL day, not the day after', () => {
     // 22:00–23:00 local on 30 Apr is in; 00:30 local on 1 May is not. (The
     // old fixture used 22:00Z, which is already 1 May in Berlin.)
-    const insert = db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at) VALUES (1, ?, ?)`
-    )
-    insert.run(
-      new Date(2026, 3, 30, 22, 0).toISOString(),
-      new Date(2026, 3, 30, 23, 0).toISOString()
-    )
-    insert.run(new Date(2026, 4, 1, 0, 30).toISOString(), new Date(2026, 4, 1, 1, 0).toISOString())
+    seedEntry(db, {
+      client_id: 1,
+      started_at: new Date(2026, 3, 30, 22, 0).toISOString(),
+      stopped_at: new Date(2026, 3, 30, 23, 0).toISOString()
+    })
+    seedEntry(db, {
+      client_id: 1,
+      started_at: new Date(2026, 4, 1, 0, 30).toISOString(),
+      stopped_at: new Date(2026, 4, 1, 1, 0).toISOString()
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows).toHaveLength(1)
   })
 
-  it('includes cross-midnight halves as separate rows (link_id preserved by data layer)', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at, link_id)
-       VALUES (1, '2026-04-24T22:00:00.000Z', '2026-04-25T00:00:00.000Z', 'aaa')`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at, link_id)
-       VALUES (1, '2026-04-25T00:00:00.000Z', '2026-04-25T01:30:00.000Z', 'aaa')`
-    ).run()
+  it('includes cross-midnight halves as separate rows (two segments of one entry)', () => {
+    // 2.0 P2: a 1.x linked pair is one entry with two segments; the view shows two rows.
+    // Local times, so the split sits on a local midnight in any zone (one segment per local day).
+    seedEntry(db, {
+      client_id: 1,
+      segments: [
+        {
+          started_at: new Date(2026, 3, 24, 22, 0).toISOString(),
+          stopped_at: new Date(2026, 3, 25, 0, 0).toISOString()
+        },
+        {
+          started_at: new Date(2026, 3, 25, 0, 0).toISOString(),
+          stopped_at: new Date(2026, 3, 25, 1, 30).toISOString()
+        }
+      ]
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-24', toIso: '2026-04-25' }, '')
     expect(p.rows).toHaveLength(2)
   })
@@ -250,14 +254,20 @@ describe('buildPdfPayload', () => {
   // ── v1.13 #120: billable filter + project rate override ─────────────────
 
   it('excludes non-billable entries (billable = 0)', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable)
-       VALUES (1, 'billable', '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z', 1)`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable)
-       VALUES (1, 'non-billable', '2026-04-16T08:00:00.000Z', '2026-04-16T09:00:00.000Z', 0)`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      description: 'billable',
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z',
+      billable: 1
+    })
+    seedEntry(db, {
+      client_id: 1,
+      description: 'non-billable',
+      started_at: '2026-04-16T08:00:00.000Z',
+      stopped_at: '2026-04-16T09:00:00.000Z',
+      billable: 0
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows).toHaveLength(1)
     expect(p.rows[0].description).toBe('billable')
@@ -270,10 +280,13 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (20, 1, 'BigDeal', '#6366f1', 'active', 12000)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, description, started_at, stopped_at)
-       VALUES (1, 20, 'project work', '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 20,
+      description: 'project work',
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     // 60 min × 12000 cent/h ÷ 60 = 12000 cent — client rate (8500) is ignored
     expect(p.rows[0].feeCent).toBe(12000)
@@ -285,10 +298,13 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (21, 1, 'NoRate', '#6366f1', 'active', NULL)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, description, started_at, stopped_at)
-       VALUES (1, 21, 'fallback', '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 21,
+      description: 'fallback',
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].feeCent).toBe(8500)
   })
@@ -299,15 +315,18 @@ describe('buildPdfPayload', () => {
        VALUES (22, 1, 'Premium', '#6366f1', 'active', 12000)`
     ).run()
     // Row A: uses project rate
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (1, 22, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 22,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     // Row B: no project → client rate
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (1, '2026-04-16T08:00:00.000Z', '2026-04-16T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-16T08:00:00.000Z',
+      stopped_at: '2026-04-16T09:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows).toHaveLength(2)
     expect(p.rows[0].feeCent).toBe(12000)
@@ -321,10 +340,12 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (23, 2, 'PaidGig', '#10b981', 'active', 9000)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (2, 23, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 2,
+      project_id: 23,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 2, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].feeCent).toBe(9000)
     expect(p.totals.feeCent).toBe(9000)
@@ -335,10 +356,12 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (24, 1, 'Kulanz', '#10b981', 'active', 0)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (1, 24, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 24,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].feeCent).toBe(0)
     expect(p.totals.feeCent).toBe(0)
@@ -350,10 +373,12 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (25, 2, 'Kulanz', '#10b981', 'active', 0)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (2, 25, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 2,
+      project_id: 25,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 2, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].feeCent).toBe(0)
     expect(p.totals.feeCent).toBe(0)
@@ -362,10 +387,12 @@ describe('buildPdfPayload', () => {
   // ── v1.13 #118: grouping dropdown ────────────────────────────────────────
 
   it('legacy groupByTag still coerces to groupBy=tag', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at, tags)
-       VALUES (1, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z', ',bug,')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z',
+      tags: ',bug,'
+    })
     const p = buildPdfPayload(
       db,
       { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30', groupByTag: true },
@@ -384,18 +411,23 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (31, 1, 'Bravo', '#6366f1', 'active', 0)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (1, 30, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (1, 31, '2026-04-16T08:00:00.000Z', '2026-04-16T09:00:00.000Z')`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (1, '2026-04-17T08:00:00.000Z', '2026-04-17T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 30,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 31,
+      started_at: '2026-04-16T08:00:00.000Z',
+      stopped_at: '2026-04-16T09:00:00.000Z'
+    })
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-17T08:00:00.000Z',
+      stopped_at: '2026-04-17T09:00:00.000Z'
+    })
     const p = buildPdfPayload(
       db,
       { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30', groupBy: 'project' },
@@ -411,18 +443,24 @@ describe('buildPdfPayload', () => {
   })
 
   it('groupBy=reference groups rows by entry reference, "Sonstiges" last', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at, reference)
-       VALUES (1, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z', 'JIRA-1')`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at, reference)
-       VALUES (1, '2026-04-16T08:00:00.000Z', '2026-04-16T09:00:00.000Z', 'JIRA-2')`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at, reference)
-       VALUES (1, '2026-04-17T08:00:00.000Z', '2026-04-17T09:00:00.000Z', '')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z',
+      reference: 'JIRA-1'
+    })
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-16T08:00:00.000Z',
+      stopped_at: '2026-04-16T09:00:00.000Z',
+      reference: 'JIRA-2'
+    })
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-17T08:00:00.000Z',
+      stopped_at: '2026-04-17T09:00:00.000Z',
+      reference: ''
+    })
     const p = buildPdfPayload(
       db,
       { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30', groupBy: 'reference' },
@@ -433,10 +471,12 @@ describe('buildPdfPayload', () => {
   })
 
   it('groupBy=none keeps groups null even with tagged rows', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at, tags)
-       VALUES (1, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z', ',bug,')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z',
+      tags: ',bug,'
+    })
     const p = buildPdfPayload(
       db,
       { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30', groupBy: 'none' },
@@ -448,10 +488,11 @@ describe('buildPdfPayload', () => {
   // ── v1.13 #118: hideFeeColumn ────────────────────────────────────────────
 
   it('hideFeeColumn=true propagates to payload', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (1, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     const p = buildPdfPayload(
       db,
       { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30', hideFeeColumn: true },
@@ -469,14 +510,17 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (40, 1, 'Alpha', '#6366f1', 'active', 0)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (1, 40, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (1, '2026-04-16T08:00:00.000Z', '2026-04-16T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 40,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-04-16T08:00:00.000Z',
+      stopped_at: '2026-04-16T09:00:00.000Z'
+    })
     const p = buildPdfPayload(db, { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }, '')
     expect(p.rows[0].projectName).toBe('Alpha')
     expect(p.rows[1].projectName).toBeUndefined()
@@ -487,10 +531,12 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (41, 1, 'Alpha', '#6366f1', 'active', 0)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (1, 41, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 41,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     const p = buildPdfPayload(
       db,
       { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30', projectId: 41 },
@@ -504,10 +550,12 @@ describe('buildPdfPayload', () => {
       `INSERT INTO projects (id, client_id, name, color, status, rate_cent)
        VALUES (42, 1, 'Alpha', '#6366f1', 'active', 0)`
     ).run()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at)
-       VALUES (1, 42, '2026-04-15T08:00:00.000Z', '2026-04-15T09:00:00.000Z')`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 42,
+      started_at: '2026-04-15T08:00:00.000Z',
+      stopped_at: '2026-04-15T09:00:00.000Z'
+    })
     const p = buildPdfPayload(
       db,
       { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30', groupBy: 'project' },

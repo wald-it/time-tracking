@@ -39,7 +39,6 @@ import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
 import { guardWindowLinks } from './externalLinks'
-import { localDateKey } from '../shared/dateRanges'
 import {
   WINDOW_BOUNDS_KEY,
   createWindowStateKeeper,
@@ -641,42 +640,46 @@ app.whenReady().then(async () => {
       const { buildPdfPayload, buildPdfHtml } = await import('./pdf')
       const { renderPdfBuffer } = await import('./pdfWindow')
       let pdfBytes = 0
-      try {
+      // No clean-up afterwards: the DB is a throwaway in the temp userData,
+      // and since 2.0 entries are never deleted physically (design D5), nor
+      // is a client that has versions (owner decision 2026-10-26).
+      {
         db.prepare(
           `INSERT OR IGNORE INTO clients (id, name, color, rate_cent)
              VALUES (9999, '__smoke__', '#4f46e5', 0)`
         ).run()
-        // 08:00–09:00 local today, asked for as today's local day: the PDF
-        // range is local, so the row lands in the attachment in any zone.
-        const now = new Date()
-        const today = localDateKey(now)
-        const startIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8).toISOString()
-        const stopIso = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9).toISOString()
-        db.prepare(
-          `INSERT INTO entries (client_id, description, started_at, stopped_at)
-             VALUES (9999, 'smoke', ?, ?)`
-        ).run(startIso, stopIso)
+        // 08:00–09:00 local yesterday, asked for as that local day: the PDF
+        // range is local, so the row lands in the attachment in any zone, and
+        // the range is in the past at any hour (smokeSeed.test.ts).
+        const { smokeEntryRange } = await import('./smokeSeed')
+        const { startIso, stopIso, dayKey } = smokeEntryRange(new Date())
+        const { writeEntry } = await import('./entryMutations')
+        const seeded = writeEntry(
+          db,
+          {
+            op: 'create',
+            fields: {
+              client_id: 9999,
+              description: 'smoke',
+              started_at: startIso,
+              stopped_at: stopIso
+            }
+          },
+          { source: 'app' }
+        )
+        if (!seeded.ok) throw new Error(`smoke entry: ${seeded.error}`)
         const payload = buildPdfPayload(
           db,
           {
             clientId: 9999,
-            fromIso: today,
-            toIso: today
+            fromIso: dayKey,
+            toIso: dayKey
           },
           ''
         )
         const html = buildPdfHtml(payload)
         const buf = await renderPdfBuffer({ html })
         pdfBytes = buf.length
-      } finally {
-        // Always clean up. The DB is a throwaway in the temp userData, so
-        // this only keeps the run self-contained.
-        try {
-          db.prepare(`DELETE FROM entries WHERE client_id = 9999`).run()
-          db.prepare(`DELETE FROM clients WHERE id = 9999`).run()
-        } catch {
-          /* best-effort */
-        }
       }
 
       const result = {

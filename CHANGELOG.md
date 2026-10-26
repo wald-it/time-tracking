@@ -7,6 +7,15 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Breaking for MCP clients and integrations
+
+- **2.0: entries keep their history, and an edit keeps the entry's id.** Every entry is now stored as an entry with versions and segments (`entry`, `entry_version`, `entry_segment`); the old table is kept read-only as `entries_v1`, and `entries` is a read-only view over the current versions, one row per segment. An edit, a delete and a restore each write a new version instead of replacing the row, so the entry's id, creation time and calendar link never change, and `update_entry_fields` no longer saves the edited entry under a new id. An entry across midnight is one entry with two segments that share its id; `list_entries` shows one row per segment with the same `id` until the next release gives it one item per entry. `link_id` is always null, and `rounded_min` is null (it has had no reader since #285). Deleting a client or project that any entry version refers to, deleted entries and earlier versions included, is refused with a message instead of failing ([#321](https://github.com/wald-it/time-tracking/issues/321), design `docs/design/2.0-entry-lifecycle.md`, P2).
+
+### Changed
+
+- **The quick note and the idle prompt send only what changed.** The quick note sends the description, the idle prompt the stop time; every other field keeps the value it has in the database, so nothing a stale copy of the entry could overwrite travels along ([#313](https://github.com/wald-it/time-tracking/issues/313), 2.0).
+- **A calendar entry that was edited and then trashed can be re-imported; restoring the old one is then refused** with an explanation, because the meeting now belongs to the new entry ([#299](https://github.com/wald-it/time-tracking/issues/299), 2.0).
+
 ## [1.23.2] — 2026-10-26
 
 ### Changed

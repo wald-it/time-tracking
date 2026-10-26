@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 import {
   durationSeconds,
   listClients,
@@ -51,15 +52,23 @@ function seed(db: Database.Database): void {
 
   // Entries in June 2026: two completed (client 1), one non-billable, one
   // soft-deleted (must be ignored), plus a running timer.
-  const ins = db.prepare(
-    `INSERT INTO entries
-       (id, client_id, project_id, description, started_at, stopped_at, tags,
-        reference, billable, private_note, deleted_at)
-     VALUES (@id, @client_id, @project_id, @description, @started_at, @stopped_at,
-        @tags, @reference, @billable, @private_note, @deleted_at)`
-  )
+  const ins = (e: {
+    id: number
+    client_id: number
+    project_id: number | null
+    description: string
+    started_at: string
+    stopped_at: string | null
+    tags: string
+    reference: string
+    billable: number
+    private_note: string
+    deleted_at: string | null
+  }): void => {
+    seedEntry(db, e)
+  }
   // 1h billable, project 10, tagged bug
-  ins.run({
+  ins({
     id: 100,
     client_id: 1,
     project_id: 10,
@@ -73,7 +82,7 @@ function seed(db: Database.Database): void {
     deleted_at: null
   })
   // 30m non-billable, no project
-  ins.run({
+  ins({
     id: 101,
     client_id: 1,
     project_id: null,
@@ -87,7 +96,7 @@ function seed(db: Database.Database): void {
     deleted_at: null
   })
   // soft-deleted — must never appear
-  ins.run({
+  ins({
     id: 102,
     client_id: 1,
     project_id: 10,
@@ -101,7 +110,7 @@ function seed(db: Database.Database): void {
     deleted_at: '2026-06-12T12:00:00.000Z'
   })
   // running (no stopped_at)
-  ins.run({
+  ins({
     id: 103,
     client_id: 1,
     project_id: null,
@@ -178,15 +187,21 @@ describe('query layer', () => {
       `INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', '15')`
     ).run()
     // Non-billable 20 minutes on the same project: not billed, not counted.
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, billable)
-       VALUES (1, 10, '2026-06-14T09:00:00.000Z', '2026-06-14T09:20:00.000Z', 0)`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 10,
+      started_at: '2026-06-14T09:00:00.000Z',
+      stopped_at: '2026-06-14T09:20:00.000Z',
+      billable: 0
+    })
     // Billable 7:40 → 8 started minutes → 15.
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, billable)
-       VALUES (1, 10, '2026-06-15T09:00:00.000Z', '2026-06-15T09:07:40.000Z', 1)`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 10,
+      started_at: '2026-06-15T09:00:00.000Z',
+      stopped_at: '2026-06-15T09:07:40.000Z',
+      billable: 1
+    })
     const website = listProjects(sdb, HIDE, { clientId: 1 }).find((p) => p.id === 10)!
     // Entry 100 (1 h) + 15; entry 102 is soft-deleted, 103 runs on no project.
     expect(website.used_minutes).toBe(75)
@@ -398,12 +413,14 @@ describe('query layer', () => {
     // worked time everywhere; the per-entry rounded figure has its own field.
     db.prepare(`UPDATE settings SET value = '15' WHERE key = 'pdf_round_minutes'`).run()
     // 10 completed minutes → rounded up to one 15-minute step.
-    db.prepare(
-      `INSERT INTO entries (id, client_id, project_id, description, started_at, stopped_at,
-                            tags, reference, billable, private_note)
-       VALUES (104, 1, 10, 'Kurz', '2026-06-14T09:00:00.000Z', '2026-06-14T09:10:00.000Z',
-               '', '', 1, '')`
-    ).run()
+    seedEntry(db, {
+      id: 104,
+      client_id: 1,
+      project_id: 10,
+      description: 'Kurz',
+      started_at: '2026-06-14T09:00:00.000Z',
+      stopped_at: '2026-06-14T09:10:00.000Z'
+    })
     const a = getAnalytics(sdb, HIDE, 2026, 6)
     expect(a.rounding_minutes).toBe(15)
     // 60min + 30min + 10min, raw — the same as list_entries for the window.
@@ -427,12 +444,13 @@ describe('query layer', () => {
     // Zeta (client 2) gets a rate and a 400 ms entry: no whole second, but the
     // invoice bills one minute, so the breakdown must not drop it.
     db.prepare(`UPDATE clients SET rate_cent = 6000 WHERE id = 2`).run()
-    db.prepare(
-      `INSERT INTO entries (id, client_id, description, started_at, stopped_at,
-                            tags, reference, billable, private_note)
-       VALUES (105, 2, 'Blitz', '2026-06-15T09:00:00.000Z', '2026-06-15T09:00:00.400Z',
-               '', '', 1, '')`
-    ).run()
+    seedEntry(db, {
+      id: 105,
+      client_id: 2,
+      description: 'Blitz',
+      started_at: '2026-06-15T09:00:00.000Z',
+      stopped_at: '2026-06-15T09:00:00.400Z'
+    })
     const a = getAnalytics(sdb, SHOW, 2026, 6)
     const zeta = a.by_client.find((c) => c.client_id === 2)
     expect(zeta?.seconds).toBe(0)

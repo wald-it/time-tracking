@@ -1,9 +1,10 @@
 /**
- * 2.0 entry lifecycle, P1 (docs/design/2.0-entry-lifecycle.md, sections 4
- * and 10): the tables a 1.x database is migrated into. Created by
- * `migrateEntriesToV2`; NOT registered in the migration runner yet, so the
- * app still runs on `entries` (P2 registers it, renames `entries` to
- * `entries_v1` and adds the view and the trigger on sealed versions).
+ * 2.0 entry lifecycle (docs/design/2.0-entry-lifecycle.md, sections 4, 5, 6
+ * and 10): the tables a 1.x database is migrated into (P1, created by
+ * `migrateEntriesToV2`) and, since P2, the view `entries` over them plus the
+ * triggers that make the rules hold without discipline. Migration 028 runs
+ * the P1 function, renames `entries` to `entries_v1` and then executes
+ * VIEW_V2_SQL.
  *
  * Times are UTC ISO with milliseconds and `Z`, as in `entries`. A segment's
  * `segment_date` is the local date (YYYY-MM-DD) of its start in the zone the
@@ -94,4 +95,86 @@ CREATE UNIQUE INDEX idx_billing_profile_client
   ON billing_profile (client_id) WHERE client_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_billing_profile_project
   ON billing_profile (project_id) WHERE project_id IS NOT NULL;
+`
+
+/** The message a write against the view `entries` fails with (D5). */
+export const ENTRIES_VIEW_READ_ONLY = 'entries is a read-only view: write through writeEntry'
+
+/**
+ * P2 (sections 4.2, 5, 6, 10.8): run after `entries` was renamed to
+ * `entries_v1`.
+ *
+ * - The view `entries` shows one row per current segment of every live
+ *   entry with today's column names: `id` is the entry id, `link_id` and
+ *   `deleted_at` are always NULL, `rounded_min` (no reader since #285) is
+ *   NULL, `created_at` comes from the entry, `heartbeat_at` from the entry
+ *   while the version is open and equals `stopped_at` once sealed (what
+ *   1.x wrote at every stop); plus `segment_seq`, `version_id`, `version_no`.
+ *   Money columns follow in P4.
+ * - INSTEAD OF triggers refuse every write to the view with a message, so a
+ *   forgotten direct writer fails in tests instead of bypassing the history.
+ * - A sealed version is immutable: UPDATE on it and UPDATE/DELETE of its
+ *   segments are refused; versions are never deleted.
+ * - An entry never loses `id`, `created_at`, `created_source` or
+ *   `graph_event_id` (4.1: the anchor belongs to the entry, #299), and is
+ *   never hard-deleted.
+ * - `entries_v1` stays read-only for the 2.x line (10.8).
+ */
+export const VIEW_V2_SQL = `
+CREATE VIEW entries AS
+  SELECT e.id AS id,
+         v.client_id,
+         v.description,
+         s.started_at,
+         s.stopped_at,
+         CASE WHEN v.state = 'open' THEN e.heartbeat_at ELSE s.stopped_at END AS heartbeat_at,
+         NULL AS rounded_min,
+         e.created_at,
+         NULL AS deleted_at,
+         NULL AS link_id,
+         v.tags,
+         v.reference,
+         v.billable,
+         v.private_note,
+         v.project_id,
+         e.graph_event_id,
+         s.seq AS segment_seq,
+         v.id AS version_id,
+         v.version_no
+    FROM entry e
+    JOIN entry_version v ON v.id = e.current_version_id
+    JOIN entry_segment s ON s.version_id = v.id
+   WHERE e.is_deleted = 0;
+
+CREATE TRIGGER trg_entries_view_insert INSTEAD OF INSERT ON entries
+BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
+CREATE TRIGGER trg_entries_view_update INSTEAD OF UPDATE ON entries
+BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
+CREATE TRIGGER trg_entries_view_delete INSTEAD OF DELETE ON entries
+BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
+
+CREATE TRIGGER trg_entry_version_sealed BEFORE UPDATE ON entry_version
+  WHEN OLD.state = 'sealed'
+BEGIN SELECT RAISE(ABORT, 'entry_version: a sealed version is immutable'); END;
+CREATE TRIGGER trg_entry_version_no_delete BEFORE DELETE ON entry_version
+BEGIN SELECT RAISE(ABORT, 'entry_version is append-only'); END;
+
+CREATE TRIGGER trg_entry_segment_sealed_update BEFORE UPDATE ON entry_segment
+  WHEN (SELECT state FROM entry_version WHERE id = OLD.version_id) = 'sealed'
+BEGIN SELECT RAISE(ABORT, 'entry_segment: the segments of a sealed version are immutable'); END;
+CREATE TRIGGER trg_entry_segment_sealed_delete BEFORE DELETE ON entry_segment
+  WHEN (SELECT state FROM entry_version WHERE id = OLD.version_id) = 'sealed'
+BEGIN SELECT RAISE(ABORT, 'entry_segment: the segments of a sealed version are immutable'); END;
+
+CREATE TRIGGER trg_entry_fixed_columns BEFORE UPDATE OF id, created_at, created_source, graph_event_id ON entry
+BEGIN SELECT RAISE(ABORT, 'entry: id, created_at, created_source and graph_event_id never change'); END;
+CREATE TRIGGER trg_entry_no_delete BEFORE DELETE ON entry
+BEGIN SELECT RAISE(ABORT, 'entry is never hard-deleted'); END;
+
+CREATE TRIGGER trg_entries_v1_insert BEFORE INSERT ON entries_v1
+BEGIN SELECT RAISE(ABORT, 'entries_v1 is read-only'); END;
+CREATE TRIGGER trg_entries_v1_update BEFORE UPDATE ON entries_v1
+BEGIN SELECT RAISE(ABORT, 'entries_v1 is read-only'); END;
+CREATE TRIGGER trg_entries_v1_delete BEFORE DELETE ON entries_v1
+BEGIN SELECT RAISE(ABORT, 'entries_v1 is read-only'); END;
 `

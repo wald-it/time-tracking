@@ -58,13 +58,21 @@ export async function loadSqlite(): Promise<DatabaseCtor> {
 }
 
 /**
+ * The last 1.x schema version: `entries` is still a table here. Suites that
+ * write 1.x rows (the legacy generator, the migration-027 tests, the 028
+ * tests themselves) migrate up to this version and no further.
+ */
+export const LAST_V1_VERSION = 27
+
+/**
  * Bring an empty database up to the current schema by running every migration
- * in order, exactly as `runMigrations` does in production.
+ * in order, exactly as `runMigrations` does in production. `upTo` stops after
+ * that version (see LAST_V1_VERSION).
  *
  * Deliberately does not touch `PRAGMA foreign_keys`: some suites enable it and
  * some rely on it being off, so that stays with the caller.
  */
-export function applyMigrations(db: Database.Database): void {
+export function applyMigrations(db: Database.Database, upTo = Number.MAX_SAFE_INTEGER): void {
   db.exec(
     `CREATE TABLE IF NOT EXISTS schema_version (
        version INTEGER PRIMARY KEY,
@@ -72,7 +80,7 @@ export function applyMigrations(db: Database.Database): void {
        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
      )`
   )
-  for (const m of migrations) {
+  for (const m of migrations.filter((mm) => mm.version <= upTo)) {
     db.transaction(() => {
       executeMigration(db, m)
       db.prepare('INSERT INTO schema_version (version, name) VALUES (?, ?)').run(m.version, m.name)
@@ -91,11 +99,15 @@ export function applyMigrations(db: Database.Database): void {
  * duplicate safely. Do not switch the template to WAL, or a copy could miss
  * pages still sitting in the `-wal` file.
  */
-export function createMigratedTemplate(Ctor: DatabaseCtor, dir: string): string {
+export function createMigratedTemplate(
+  Ctor: DatabaseCtor,
+  dir: string,
+  upTo = Number.MAX_SAFE_INTEGER
+): string {
   const path = join(dir, 'template.sqlite')
   const db = new Ctor(path)
   try {
-    applyMigrations(db)
+    applyMigrations(db, upTo)
   } finally {
     db.close()
   }
