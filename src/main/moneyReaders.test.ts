@@ -41,7 +41,9 @@ describe('all money readers agree with the hand-computed month', () => {
     db.prepare(
       `INSERT INTO clients (id, name, color, rate_cent) VALUES (1, 'A', '#111', 9000), (2, 'B', '#222', 6000)`
     ).run()
-    db.prepare(`INSERT INTO projects (id, client_id, name, budget_minutes) VALUES (10, 1, 'PA', 600)`).run()
+    db.prepare(
+      `INSERT INTO projects (id, client_id, name, budget_minutes) VALUES (10, 1, 'PA', 600)`
+    ).run()
     db.prepare(
       `INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (1, 12000, '2026-10-15')`
     ).run()

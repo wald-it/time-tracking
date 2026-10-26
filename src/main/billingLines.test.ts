@@ -42,7 +42,9 @@ describe('the rule, with values worked out by hand', () => {
       const db = new DatabaseImpl(':memory:')
       const raw = ms > 0 ? Math.ceil(ms / MIN) : 0
       const row = db
-        .prepare(`SELECT ${billedMinutesRuleSql('CAST(@raw AS INTEGER)', 'CAST(@interval AS INTEGER)', 'CAST(@unit AS INTEGER)')} AS m`)
+        .prepare(
+          `SELECT ${billedMinutesRuleSql('CAST(@raw AS INTEGER)', 'CAST(@interval AS INTEGER)', 'CAST(@unit AS INTEGER)')} AS m`
+        )
         .get({ raw, interval, unit }) as { m: number }
       expect(row.m).toBe(expected)
       expect(billedMinutesRule(raw, interval, unit)).toBe(expected)
@@ -59,13 +61,23 @@ function seedDb(): Database.Database {
   // Client 2 (rate 60 €/h): no profile of its own, follows the default (off).
   db.prepare('INSERT INTO clients (id, name, rate_cent) VALUES (2, ?, 6000)').run('B')
   // Project 1 of client 1 overrides only the interval (10), keeps min unit 30.
-  db.prepare('INSERT INTO projects (id, client_id, name, rate_cent) VALUES (1, 1, ?, NULL)').run('P')
+  db.prepare('INSERT INTO projects (id, client_id, name, rate_cent) VALUES (1, 1, ?, NULL)').run(
+    'P'
+  )
   db.prepare('DELETE FROM rate').run()
-  db.prepare("INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (1, 9000, '0001-01-01')").run()
-  db.prepare("INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (1, 12000, '2026-10-15')").run()
-  db.prepare("INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (2, 6000, '0001-01-01')").run()
-  db.prepare("INSERT INTO billing_profile (client_id, interval_min, min_unit_min) VALUES (1, 15, 30)").run()
-  db.prepare("INSERT INTO billing_profile (project_id, interval_min) VALUES (1, 10)").run()
+  db.prepare(
+    "INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (1, 9000, '0001-01-01')"
+  ).run()
+  db.prepare(
+    "INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (1, 12000, '2026-10-15')"
+  ).run()
+  db.prepare(
+    "INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (2, 6000, '0001-01-01')"
+  ).run()
+  db.prepare(
+    'INSERT INTO billing_profile (client_id, interval_min, min_unit_min) VALUES (1, 15, 30)'
+  ).run()
+  db.prepare('INSERT INTO billing_profile (project_id, interval_min) VALUES (1, 10)').run()
   return db
 }
 
@@ -78,7 +90,9 @@ interface Line {
 const lines = (db: Database.Database): Map<number, Line> =>
   new Map(
     (
-      db.prepare('SELECT entry_id, billed_minutes, rate_cent, fee_cent FROM billing_lines').all() as Line[]
+      db
+        .prepare('SELECT entry_id, billed_minutes, rate_cent, fee_cent FROM billing_lines')
+        .all() as Line[]
     ).map((l) => [l.entry_id, l])
   )
 
@@ -116,9 +130,19 @@ describe('billing_lines', () => {
 
   it('a project rate NULL from a date inherits the client rate, an older project row does not apply', () => {
     const db = seedDb()
-    db.prepare("INSERT INTO rate (project_id, rate_cent, valid_from) VALUES (1, 3000, '0001-01-01')").run()
-    db.prepare("INSERT INTO rate (project_id, rate_cent, valid_from) VALUES (1, NULL, '2026-10-10')").run()
-    seedEntry(db, { id: 1, client_id: 1, project_id: 1, started_at: T0, stopped_at: plus(30 * MIN) })
+    db.prepare(
+      "INSERT INTO rate (project_id, rate_cent, valid_from) VALUES (1, 3000, '0001-01-01')"
+    ).run()
+    db.prepare(
+      "INSERT INTO rate (project_id, rate_cent, valid_from) VALUES (1, NULL, '2026-10-10')"
+    ).run()
+    seedEntry(db, {
+      id: 1,
+      client_id: 1,
+      project_id: 1,
+      started_at: T0,
+      stopped_at: plus(30 * MIN)
+    })
     seedEntry(db, {
       id: 2,
       client_id: 1,
@@ -133,8 +157,16 @@ describe('billing_lines', () => {
 
   it('a deliberate project rate of 0 bills 0 €', () => {
     const db = seedDb()
-    db.prepare("INSERT INTO rate (project_id, rate_cent, valid_from) VALUES (1, 0, '0001-01-01')").run()
-    seedEntry(db, { id: 1, client_id: 1, project_id: 1, started_at: T0, stopped_at: plus(30 * MIN) })
+    db.prepare(
+      "INSERT INTO rate (project_id, rate_cent, valid_from) VALUES (1, 0, '0001-01-01')"
+    ).run()
+    seedEntry(db, {
+      id: 1,
+      client_id: 1,
+      project_id: 1,
+      started_at: T0,
+      stopped_at: plus(30 * MIN)
+    })
     expect(lines(db).get(1)).toMatchObject({ rate_cent: 0, fee_cent: 0 })
   })
 
@@ -151,7 +183,13 @@ describe('billing_lines', () => {
 
   it('a deleted entry has no line', () => {
     const db = seedDb()
-    seedEntry(db, { id: 1, client_id: 2, started_at: T0, stopped_at: plus(MIN), deleted_at: plus(2 * MIN) })
+    seedEntry(db, {
+      id: 1,
+      client_id: 2,
+      started_at: T0,
+      stopped_at: plus(MIN),
+      deleted_at: plus(2 * MIN)
+    })
     expect(lines(db).size).toBe(0)
   })
 })

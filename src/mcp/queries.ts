@@ -584,7 +584,6 @@ export function getAnalytics(
   year: number,
   month: number
 ): McpAnalytics {
-
   // Seconds are worked time, raw — the same rule as the app's Auswertung
   // (owner decision 2026-10-22). `rounded_seconds` is the month rounded per
   // entry like the invoice. Revenue follows the invoice rule (REVENUE).

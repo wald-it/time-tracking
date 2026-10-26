@@ -20,8 +20,7 @@ import { billedMinutesRuleSql, rawMinutesSql } from '../../shared/currency'
  * - `billed_run_id`, `billed_version_id`: NULL until billing runs (P5).
  */
 const NOW_ISO = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
-const PROFILE = (col: string): string =>
-  `COALESCE(pp.${col}, pc.${col}, pd.${col})`
+const PROFILE = (col: string): string => `COALESCE(pp.${col}, pc.${col}, pd.${col})`
 
 export const BILLING_LINES_SELECT = `
 SELECT l.*,

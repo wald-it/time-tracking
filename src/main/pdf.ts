@@ -304,7 +304,10 @@ export function buildPdfPayload(
     const minutes = e.billed_minutes
     // A goodwill project (explicit 0) is billed at 0 € and keeps the fee
     // column; null means no rate applies anywhere.
-    const fee = e.line_rate_cent > 0 || (e.rate_is_project === 1 && e.line_rate_cent === 0) ? e.fee_cent : null
+    const fee =
+      e.line_rate_cent > 0 || (e.rate_is_project === 1 && e.line_rate_cent === 0)
+        ? e.fee_cent
+        : null
     // The profile's alignment `grid` adjusts the displayed times so the
     // visible "Von / Bis / Dauer" arithmetic adds up for the recipient: snap
     // the start to the interval, derive the stop as start + billed minutes.

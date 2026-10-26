@@ -38,9 +38,7 @@ export function buildBudgetStatus(
 
     // Billed like the invoice: the view billing_lines.
     const usedRow = db
-      .prepare(
-        `SELECT used_minutes FROM (${budgetUsedMinutesSql()}) WHERE project_id = ?`
-      )
+      .prepare(`SELECT used_minutes FROM (${budgetUsedMinutesSql()}) WHERE project_id = ?`)
       .get(projectId) as { used_minutes: number } | undefined
 
     return ok({

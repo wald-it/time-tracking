@@ -357,7 +357,9 @@ describe('buildWebhookPayload', () => {
 
   it('bills revenue like the invoice: minutes rounded up to the step', () => {
     // 16 min at 90 €/h with a 15-min step bills 30 min = 45,00 €, not 24,00 €.
-    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', '15')`).run()
+    db.prepare(
+      `INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', '15')`
+    ).run()
     const r = createManualEntry(db, {
       client_id: 1,
       project_id: 1,
