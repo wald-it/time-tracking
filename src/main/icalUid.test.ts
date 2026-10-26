@@ -5,6 +5,7 @@
  * leaves the UID of the existing day alone.
  */
 import { beforeAll, describe, expect, it } from 'vitest'
+import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { seed } from '../test/bridgeKit'
 import { formatIcal } from '../shared/ical'
@@ -16,7 +17,7 @@ beforeAll(async () => {
   Ctor = await loadSqlite()
 })
 
-const uidsOf = (db: ReturnType<typeof seed>): string[] => {
+const uidsOf = (db: Database.Database): string[] => {
   const rows = db.prepare(`SELECT * FROM entries ORDER BY id, segment_seq`).all() as Entry[]
   const clients = new Map<number, Client>(
     (db.prepare(`SELECT * FROM clients`).all() as Client[]).map((c) => [c.id, c])
