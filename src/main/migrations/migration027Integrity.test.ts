@@ -377,28 +377,36 @@ describe('migration 027 on a 1.21.0 database (schema 26)', () => {
       })
     })
 
-    it('PDF time sheet: canonical client unchanged, rewritten client totals by the parsed instants', () => {
+    it('PDF time sheet: both clients total by the parsed instants', () => {
+      // The PDF reads billing_lines (2.0), which exists only after the later
+      // migrations: apply them on top of 027, then compare with the oracle.
       const req = (clientId: number): Parameters<typeof buildPdfPayload>[1] => ({
         clientId,
         fromIso: '2026-09-01',
         toIso: '2026-11-30'
       })
       const generated = '2026-11-01T00:00:00.000Z'
-      const canonicalBefore = buildPdfPayload(db, req(1), '', generated)
       apply27()
-      expect(buildPdfPayload(db, req(1), '', generated)).toEqual(canonicalBefore)
+      for (const m of migrations.filter((mm) => mm.version > 27)) {
+        db.transaction(() => executeMigration(db, m))()
+      }
 
-      const after = buildPdfPayload(db, req(2), '', generated)
-      const expectedIds = oracleIdsIn(localDayRange('2026-09-01', '2026-11-30'), 2).filter(
-        (id) => SEEDS.find((s) => s.id === id)!.stopped_at !== null
-      )
-      const expectedMinutes = expectedIds.map((id) => {
-        const s = SEEDS.find((x) => x.id === id)!
-        return billedMinutes(oracleMs(s.stopped_at!) - oracleMs(s.started_at), 0)
-      })
-      expect(after.rows.map((r) => r.description)).toEqual(expectedIds.map((id) => `row ${id}`))
-      expect(after.rows.map((r) => r.minutes)).toEqual(expectedMinutes)
-      expect(after.totals.minutes).toBe(expectedMinutes.reduce((a, b) => a + b, 0))
+      for (const clientId of [1, 2]) {
+        const after = buildPdfPayload(db, req(clientId), '', generated)
+        const expectedIds = oracleIdsIn(localDayRange('2026-09-01', '2026-11-30'), clientId).filter(
+          (id) => SEEDS.find((s) => s.id === id)!.stopped_at !== null
+        )
+        const expectedMinutes = expectedIds.map((id) => {
+          const s = SEEDS.find((x) => x.id === id)!
+          return billedMinutes(oracleMs(s.stopped_at!) - oracleMs(s.started_at), 0)
+        })
+        expect(
+          after.rows.map((r) => r.description),
+          `client ${clientId}`
+        ).toEqual(expectedIds.map((id) => `row ${id}`))
+        expect(after.rows.map((r) => r.minutes)).toEqual(expectedMinutes)
+        expect(after.totals.minutes).toBe(expectedMinutes.reduce((a, b) => a + b, 0))
+      }
     })
   })
 })
