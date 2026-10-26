@@ -845,11 +845,17 @@ function patchEntry(
   return ok(tx())
 }
 
+/** A refused write inside a transaction: thrown to roll it back, caught at its edge. */
+class RefusedWrite extends Error {}
+
 /**
  * A delete is a version with `deleted = 1` that carries the previous content
- * (4.2). A running entry is sealed at the instant of the delete first: a
- * version in the trash is never open, as crash recovery and the migration
- * (L5) handle it.
+ * (4.2). A running entry is sealed at the instant of the delete first, in the
+ * same transaction, so that no version of an entry in the trash is ever
+ * open: the open version itself gets sealed (4.2: "a version is open or
+ * sealed, and only the open one changes"), then the delete version is
+ * appended with the same content. Crash recovery and the migration (L5)
+ * treat the shape the same way.
  */
 function deleteVersion(
   db: Db,
@@ -858,32 +864,40 @@ function deleteVersion(
   ctx: WriteCtx,
   now: string
 ): IpcResult<EntryView> {
-  const cur = readEntry(db, id)
+  const open = readEntry(db, id)
   // An entry already in the trash (a view that has not refreshed) is not
   // deleted again. The answer is the same as MCP gives for a trashed entry.
-  if (!cur || cur.deleted) return fail('Eintrag existiert nicht')
-  const stale = checkExpectedVersion(cur, expected)
+  if (!open || open.deleted) return fail('Eintrag existiert nicht')
+  const stale = checkExpectedVersion(open, expected)
   if (stale) return fail(stale)
-  const content = contentOf(cur)
-  let segments: SegmentBounds[]
-  if (cur.state === 'open') {
-    const stop = Date.parse(now) < Date.parse(cur.started_at) ? cur.started_at : now
-    content.stopped_at = stop
-    segments = rangeSegments(cur.started_at, stop)
-  } else {
-    segments = cur.segments.map((s) => ({ started_at: s.started_at, stopped_at: s.stopped_at }))
-  }
   const tx = db.transaction((): EntryView => {
+    let cur = open
+    if (cur.state === 'open') {
+      const stop = Date.parse(now) < Date.parse(cur.started_at) ? cur.started_at : now
+      const sealed = sealEntry(db, id, stop, ctx, now)
+      if (!sealed.ok) throw new RefusedWrite(sealed.error)
+      cur = sealed.data
+    }
     appendVersion(
       db,
       cur,
-      content,
-      { deleted: true, segments, source: ctx.source, reason: ctx.reason ?? null },
+      contentOf(cur),
+      {
+        deleted: true,
+        segments: cur.segments.map((s) => ({ started_at: s.started_at, stopped_at: s.stopped_at })),
+        source: ctx.source,
+        reason: ctx.reason ?? null
+      },
       now
     )
     return readEntry(db, id)!
   })
-  return ok(tx())
+  try {
+    return ok(tx())
+  } catch (e) {
+    if (e instanceof RefusedWrite) return fail(e.message)
+    throw e
+  }
 }
 
 /**
@@ -1050,23 +1064,33 @@ export function updateManualEntry(
     if (started_at !== undefined && toIso(started_at) !== cur.started_at) {
       return fail(RUNNING_EDIT_ERROR)
     }
-    const tx = db.transaction((): IpcResult<EntryView> => {
-      let view: IpcResult<EntryView> = ok(cur)
+    // Amend and seal are one write: a refused stop time rolls the amend back
+    // (the transaction rolls back on a throw), so nothing is written on a
+    // refusal (Codex counter-check on P2).
+    const tx = db.transaction((): EntryView => {
+      let view: EntryView = cur
       if (Object.keys(fields).length > 0) {
-        view = writeEntry(
+        const amended = writeEntry(
           db,
           { op: 'amend', id: cur.id, patch: fields, expected_version: given.expected_version },
           wctx
         )
-        if (!view.ok) return view
+        if (!amended.ok) throw new RefusedWrite(amended.error)
+        view = amended.data
       }
       if (stopped_at !== undefined) {
-        view = writeEntry(db, { op: 'seal', id: cur.id, stopped_at }, wctx)
+        const sealed = writeEntry(db, { op: 'seal', id: cur.id, stopped_at }, wctx)
+        if (!sealed.ok) throw new RefusedWrite(sealed.error)
+        view = sealed.data
       }
       return view
     })
-    const res = tx()
-    return res.ok ? ok(toLegacyEntry(res.data)) : res
+    try {
+      return ok(toLegacyEntry(tx()))
+    } catch (e) {
+      if (e instanceof RefusedWrite) return fail(e.message)
+      throw e
+    }
   }
   const res = writeEntry(
     db,

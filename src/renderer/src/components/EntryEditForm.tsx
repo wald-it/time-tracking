@@ -147,7 +147,9 @@ export function EntryEditForm({
       ? await window.api.entries.update({
           id: entry.id,
           client_id: clientId,
-          project_id: projectId ?? undefined,
+          // A patch (2.0): a field left out keeps its value, so "no project"
+          // goes as null, never as undefined.
+          project_id: projectId,
           description: description.trim(),
           started_at: start,
           stopped_at: stop,
@@ -165,7 +167,7 @@ export function EntryEditForm({
         })
       : await window.api.entries.create({
           client_id: clientId,
-          project_id: projectId ?? undefined,
+          project_id: projectId,
           description: description.trim(),
           started_at: start,
           stopped_at: stop,

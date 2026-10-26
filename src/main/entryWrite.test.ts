@@ -661,3 +661,69 @@ describe('the view and the triggers (D5, 4.2)', () => {
     })
   })
 })
+
+// Codex counter-check on P2 (round 1): three ways the write path could leave
+// the database in a state the design rules out.
+describe('Codex counter-check on P2 (round 1)', () => {
+  it('a patch with project_id null clears the project; a patch without it keeps it', () => {
+    const { single } = generatedSet()
+    expect(single.project_id).toBe(10)
+    const kept = must(writeEntry(db, { op: 'patch', id: single.id, patch: { tags: ',k,' } }, app))
+    expect(kept.project_id).toBe(10)
+    const cleared = must(
+      writeEntry(db, { op: 'patch', id: single.id, patch: { project_id: null } }, app)
+    )
+    expect(cleared.project_id).toBeNull()
+    // The drawer's case: another client and "no project" in one save.
+    const moved = must(
+      updateManualEntry(db, { id: single.id, client_id: 2, project_id: null, from_form: true })
+    )
+    expect([moved.client_id, moved.project_id]).toEqual([2, null])
+  })
+
+  it('an update of a running entry with a field change and a stop before its start writes nothing', () => {
+    const { running } = generatedSet()
+    const before = readEntry(db, running.id)!
+    const res = updateManualEntry(db, {
+      id: running.id,
+      description: 'Umbenannt',
+      stopped_at: local(13, 7),
+      source: 'idle'
+    })
+    expect(res).toEqual({ ok: false, error: 'Endzeit liegt vor der Startzeit' })
+    const after = readEntry(db, running.id)!
+    expect(after.description).toBe(before.description)
+    expect(after.state).toBe('open')
+    expect(after.heartbeat_at).toBe(before.heartbeat_at)
+    expect(after.version_no).toBe(before.version_no)
+  })
+
+  it('deleting a running entry seals its open version first; no version stays open (4.2)', () => {
+    const { running } = generatedSet()
+    const now = local(13, 9, 30)
+    const gone = must(writeEntry(db, { op: 'delete', id: running.id }, { ...app, now }))
+    expect(gone.deleted).toBe(true)
+    const versions = db
+      .prepare(
+        `SELECT version_no, state, deleted, stopped_at FROM entry_version WHERE entry_id = ?
+          ORDER BY version_no`
+      )
+      .all(running.id)
+    expect(versions).toEqual([
+      { version_no: 1, state: 'sealed', deleted: 0, stopped_at: now },
+      { version_no: 2, state: 'sealed', deleted: 1, stopped_at: now }
+    ])
+    expect(
+      db.prepare(`SELECT COUNT(*) AS n FROM entry_version WHERE state = 'open'`).get()
+    ).toEqual({ n: 0 })
+    expect(
+      db.prepare(`SELECT COUNT(*) AS n FROM entry_segment WHERE stopped_at IS NULL`).get()
+    ).toEqual({ n: 0 })
+    // Restored, the entry is sealed at the delete instant and runs no more.
+    const back = must(writeEntry(db, { op: 'undelete', id: running.id }, app))
+    expect([back.state, back.stopped_at, back.version_no]).toEqual(['sealed', now, 3])
+    expect(db.prepare(`SELECT heartbeat_at FROM entry WHERE id = ?`).get(running.id)).toEqual({
+      heartbeat_at: null
+    })
+  })
+})
