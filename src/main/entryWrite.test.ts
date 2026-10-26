@@ -727,3 +727,110 @@ describe('Codex counter-check on P2 (round 1)', () => {
     })
   })
 })
+
+// Codex counter-check on P2 (round 3): what a copied version must keep of its
+// segments, and what the overlap check must look at.
+describe('Codex counter-check on P2 (round 3)', () => {
+  const segmentDates = (versionId: number): string[] =>
+    (
+      db
+        .prepare(`SELECT segment_date FROM entry_segment WHERE version_id = ? ORDER BY seq`)
+        .all(versionId) as Array<{ segment_date: string }>
+    ).map((r) => r.segment_date)
+
+  // A pair cut at midnight in another zone: in this zone both starts fall on
+  // one local date (midday UTC lands on the same day from UTC-10 to UTC+11).
+  // Copying the segments with a recomputed date would hit
+  // UNIQUE(version_id, segment_date); design 4.3 copies them as they are.
+  it('an unchanged segment keeps its stored segment_date across a patch, a delete and an undelete', () => {
+    const id = seedEntry(db, {
+      client_id: 1,
+      description: 'Zoned',
+      segments: [
+        {
+          started_at: '2026-06-10T10:00:00.000Z',
+          stopped_at: '2026-06-10T11:00:00.000Z',
+          segment_date: '2026-06-10'
+        },
+        {
+          started_at: '2026-06-10T11:00:00.000Z',
+          stopped_at: '2026-06-10T12:00:00.000Z',
+          segment_date: '2026-06-11'
+        }
+      ]
+    })
+    const patched = must(
+      writeEntry(db, { op: 'patch', id, patch: { description: 'Zoned (edited)' } }, app)
+    )
+    expect(segmentDates(patched.version_id)).toEqual(['2026-06-10', '2026-06-11'])
+    const gone = must(writeEntry(db, { op: 'delete', id }, app))
+    expect(segmentDates(gone.version_id)).toEqual(['2026-06-10', '2026-06-11'])
+    const back = must(writeEntry(db, { op: 'undelete', id }, app))
+    expect(segmentDates(back.version_id)).toEqual(['2026-06-10', '2026-06-11'])
+    // A changed range is cut anew, in this zone.
+    const moved = must(
+      writeEntry(
+        db,
+        { op: 'patch', id, patch: { started_at: local(20, 9), stopped_at: local(20, 10) } },
+        app
+      )
+    )
+    expect(segmentDates(moved.version_id)).toEqual(['2026-06-20'])
+  })
+
+  // An entry with a gap (a migrated three-parter whose middle part was
+  // deleted in 1.x): another entry of the client sits in the gap. The check
+  // must look at the segments, not at the outer range.
+  function gapEntry(client_id: number, deleted_at?: string): number {
+    return seedEntry(db, {
+      client_id,
+      description: 'Mit Lücke',
+      segments: [
+        { started_at: local(10, 23), stopped_at: local(11, 0) },
+        { started_at: local(12, 0), stopped_at: local(12, 1) }
+      ],
+      deleted_at
+    })
+  }
+  const inTheGap = (client_id: number): number =>
+    seedEntry(db, {
+      client_id,
+      description: 'In der Lücke',
+      started_at: local(11, 10),
+      stopped_at: local(11, 11)
+    })
+
+  it('undelete of an entry with a gap goes through when another entry sits in the gap', () => {
+    const id = gapEntry(1, local(13, 9))
+    inTheGap(1)
+    const back = must(writeEntry(db, { op: 'undelete', id }, app))
+    expect(back.deleted).toBe(false)
+    expect(back.segments).toHaveLength(2)
+  })
+
+  it('moving an entry with a gap to a client that has an entry in the gap goes through', () => {
+    const id = gapEntry(1)
+    inTheGap(2)
+    const moved = must(writeEntry(db, { op: 'patch', id, patch: { client_id: 2 } }, app))
+    expect(moved.client_id).toBe(2)
+    expect(moved.segments.map((s) => [s.started_at, s.stopped_at])).toEqual([
+      [local(10, 23), local(11, 0)],
+      [local(12, 0), local(12, 1)]
+    ])
+  })
+
+  it('an entry that overlaps one of the segments still refuses both', () => {
+    const trashed = gapEntry(1, local(13, 9))
+    const live = gapEntry(2)
+    // Overlaps the second segment (0:00 to 1:00 on the 12th) of either entry.
+    seedEntry(db, { client_id: 1, started_at: local(12, 0, 30), stopped_at: local(12, 2) })
+    expect(writeEntry(db, { op: 'undelete', id: trashed }, app)).toEqual({
+      ok: false,
+      error: OVERLAP_ERROR
+    })
+    expect(writeEntry(db, { op: 'patch', id: live, patch: { client_id: 1 } }, app)).toEqual({
+      ok: false,
+      error: OVERLAP_ERROR
+    })
+  })
+})

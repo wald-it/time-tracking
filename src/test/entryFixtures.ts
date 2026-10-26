@@ -19,6 +19,8 @@ export interface SeedSegment {
   started_at: string
   /** null for the open segment of a running entry (only the last one). */
   stopped_at: string | null
+  /** The stored local date; default: the start's date in this zone. Set it to seed a cut made in another zone. */
+  segment_date?: string
 }
 
 export interface SeedEntryInput {
@@ -109,7 +111,8 @@ export function seedEntry(db: Database.Database, input: SeedEntryInput): number 
       // the migration does it (decision L5).
       const segs = segments.map((s) => ({
         started_at: s.started_at,
-        stopped_at: s.stopped_at ?? (deleted ? (input.heartbeat_at ?? s.started_at) : null)
+        stopped_at: s.stopped_at ?? (deleted ? (input.heartbeat_at ?? s.started_at) : null),
+        segment_date: s.segment_date ?? localDateOf(s.started_at)
       }))
       const state = open && !deleted ? 'open' : 'sealed'
       const versionId = Number(
@@ -132,7 +135,7 @@ export function seedEntry(db: Database.Database, input: SeedEntryInput): number 
         ).lastInsertRowid
       )
       segs.forEach((s, seq) =>
-        insSegment.run(versionId, seq, localDateOf(s.started_at), s.started_at, s.stopped_at)
+        insSegment.run(versionId, seq, s.segment_date, s.started_at, s.stopped_at)
       )
       return versionId
     }

@@ -431,7 +431,12 @@ export function validateProjectForClient(
 
 // ── writing ─────────────────────────────────────────────────────────────────
 
-type SegmentBounds = { started_at: string; stopped_at: string | null }
+type SegmentBounds = {
+  started_at: string
+  stopped_at: string | null
+  /** Set on a segment copied from a stored version; a new cut has none. */
+  segment_date?: string
+}
 
 /**
  * The day segments of a sealed range, from `splitAtMidnight` as today. A
@@ -514,11 +519,52 @@ const insertVersionSql = `
 const insertSegmentSql = `
   INSERT INTO entry_segment (version_id, seq, segment_date, started_at, stopped_at) VALUES (?, ?, ?, ?, ?)`
 
+/**
+ * A segment cut anew gets its local date from this zone; a segment copied
+ * from the current version keeps the date it was stored with (4.3: the copy
+ * takes the segments "as they are"). Recomputing it after a zone change
+ * could give two segments of one version the same date and fail on
+ * UNIQUE(version_id, segment_date) for a description change or a delete.
+ */
 function writeSegments(db: Db, versionId: number, segments: SegmentBounds[]): void {
   const ins = db.prepare(insertSegmentSql)
   segments.forEach((s, seq) =>
-    ins.run(versionId, seq, localDateKey(new Date(s.started_at)), s.started_at, s.stopped_at)
+    ins.run(
+      versionId,
+      seq,
+      s.segment_date ?? localDateKey(new Date(s.started_at)),
+      s.started_at,
+      s.stopped_at
+    )
   )
+}
+
+/** The current version's segments, to be copied unchanged into the next version. */
+function copiedSegments(cur: EntryView): SegmentBounds[] {
+  return cur.segments.map((s) => ({
+    started_at: s.started_at,
+    stopped_at: s.stopped_at,
+    segment_date: s.segment_date
+  }))
+}
+
+/**
+ * The overlap check of an entry whose segments stay as they are (a client
+ * change without a time change, an undelete): segment by segment, so an
+ * entry with a gap between its segments (a migrated three-parter whose
+ * middle part was deleted in 1.x) is not refused for an entry in that gap.
+ */
+function checkOverlapOfSegments(
+  db: Db,
+  client_id: number,
+  segments: ReadonlyArray<SegmentBounds>,
+  excludeId: number
+): string | null {
+  for (const s of segments) {
+    const err = checkOverlap(db, client_id, s.started_at, s.stopped_at ?? '', excludeId)
+    if (err) return err
+  }
+  return null
 }
 
 /** Append a version to an existing entry and make it current. Caller holds the transaction. */
@@ -824,14 +870,14 @@ function patchEntry(
       checkFieldLimits(merged) ??
       checkClientAndProject(db, merged.client_id, merged.project_id) ??
       (merged.client_id !== cur.client_id
-        ? checkOverlap(db, merged.client_id, cur.started_at, cur.stopped_at!, cur.id)
+        ? checkOverlapOfSegments(db, merged.client_id, cur.segments, cur.id)
         : null)
     if (err) return fail(err)
   }
   if (sameContent(merged, contentOf(cur))) return ok(cur)
   const segments: SegmentBounds[] = timesChanged
     ? rangeSegments(merged.started_at, merged.stopped_at!)
-    : cur.segments.map((s) => ({ started_at: s.started_at, stopped_at: s.stopped_at }))
+    : copiedSegments(cur)
   const tx = db.transaction((): EntryView => {
     appendVersion(
       db,
@@ -884,7 +930,7 @@ function deleteVersion(
       contentOf(cur),
       {
         deleted: true,
-        segments: cur.segments.map((s) => ({ started_at: s.started_at, stopped_at: s.stopped_at })),
+        segments: copiedSegments(cur),
         source: ctx.source,
         reason: ctx.reason ?? null
       },
@@ -918,7 +964,7 @@ function undeleteVersion(
   if (!cur.deleted) return ok(cur)
   const stale = checkExpectedVersion(cur, expected)
   if (stale) return fail(stale)
-  const overlap = checkOverlap(db, cur.client_id, cur.started_at, cur.stopped_at!, cur.id)
+  const overlap = checkOverlapOfSegments(db, cur.client_id, cur.segments, cur.id)
   if (overlap) return fail(overlap)
   if (cur.graph_event_id !== null) {
     const taken = db
@@ -926,7 +972,7 @@ function undeleteVersion(
       .get(cur.graph_event_id, cur.id)
     if (taken) return fail(ANCHOR_REUSED_ERROR)
   }
-  const segments = cur.segments.map((s) => ({ started_at: s.started_at, stopped_at: s.stopped_at }))
+  const segments = copiedSegments(cur)
   const tx = db.transaction((): EntryView => {
     appendVersion(
       db,
