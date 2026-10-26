@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { detectFilePurpose } from './pdfMergeUtils'
+import { exportFileName, mergedFileName } from '../../../main/mainI18n'
 
 describe('detectFilePurpose', () => {
   it('identifies Stundennachweis filename', () => {
@@ -32,5 +33,16 @@ describe('detectFilePurpose', () => {
 
   it('returns null for empty string', () => {
     expect(detectFilePurpose('')).toBeNull()
+  })
+
+  // #296: the names the app itself writes are recognized in both languages,
+  // straight from the generators, so a renamed file cannot slip past.
+  it.each(['de', 'en'] as const)('recognizes the timesheet names the app writes (%s)', (locale) => {
+    const pdf = exportFileName(locale, 'pdf', { client: 'Acme', month: '2026-04' })
+    expect(detectFilePurpose(pdf)).toBe('sn')
+    expect(detectFilePurpose(mergedFileName(locale, 'Invoice-17'))).toBe('sn')
+    expect(detectFilePurpose(mergedFileName(locale, 'Invoice-17', '2026-04-30T10-00-00'))).toBe(
+      'sn'
+    )
   })
 })

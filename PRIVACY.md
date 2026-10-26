@@ -24,8 +24,9 @@ include the iCal feed token and the webhook targets with their secrets. The JSON
 export leaves those secrets out.
 
 **Logs:** `main.log` (app events and errors, including messages from the user
-interface; with **Mirror Teams status** on, also the Teams status message as
-Teams stored it, which names the client and project when you show them), `webhooks.log` (per delivery only the target host and, on failure,
+interface; with **Mirror Teams status** on, also whether Teams holds
+TimeTrack's status message, never the message text), `webhooks.log` (per
+delivery only the target host and, on failure,
 the kind of error — never the payload or a secret) and `mcp-writes.log` (one line
 per write through MCP: operation, entry and client id, times — never the content
 of an internal note and never the token).
@@ -64,9 +65,13 @@ finds a new version, the app downloads it in the background as above.
   events in the chosen date range — subject, start, end, all-day/cancelled flags,
   free/busy status, organizer, attendees and your response. Attendee e-mail
   domains are used locally to suggest the client; the domain-to-client mappings
-  you confirm are stored in the database. With **Mirror Teams status** on,
-  TimeTrack also reads your account ID once per run and your Teams presence
-  after each change it makes, to log what Teams stored.
+  you confirm are stored in the database. With **Mirror Teams status** on, and
+  after you switch it off for as long as a clean-up is still due, TimeTrack
+  also reads your account ID once per run and your Teams presence: after it
+  sets the status, to check what Teams stored; before it clears the status
+  message, to see whether it is still TimeTrack's; and once per run, at the
+  first status update with the feature on (signed in), to find a status
+  message a previous run left behind.
 - **What is sent to Microsoft:** a calendar import only reads; its request
   names the date range you chose. With **Mirror Teams status** on (work or
   school accounts only), TimeTrack sets your Teams presence to Busy, with the
@@ -78,17 +83,49 @@ finds a new version, the app downloads it in the background as above.
   message and the Busy status in Teams. TimeTrack updates both when you start
   or stop a timer and when the message text changes (for example another client
   or project, or another app language), and renews them about every 25 minutes
-  while a timer runs, so they also show when you work. An availability you set yourself in Teams
-  takes precedence over the Busy status.
-  Descriptions, notes, tags and rates are never sent.
+  while a timer runs, so they also show when you work. An availability you set
+  yourself in Teams takes precedence over the Busy status. Descriptions, notes,
+  tags and rates are never sent.
 - **When it is removed:** when the timer stops, or when you switch **Mirror
-  Teams status** off, TimeTrack clears the status message (including one you
-  wrote yourself while the timer ran) and the Busy status. If clearing fails
-  (offline, for example), the message, the Busy status or both stay until
-  TimeTrack tries again at its next status update. If the app quits or crashes,
-  or you disconnect the account while a timer runs, nothing clears them, also
-  not after a restart, until TimeTrack sets your status again or they expire:
-  the Busy status after at most an hour, the message after 12 hours.
+  Teams status** off, TimeTrack ends the Busy status and clears the status
+  message if it is still TimeTrack's. A message you wrote in Teams after
+  TimeTrack last set its own stays; while the timer runs, TimeTrack replaces it
+  whenever it renews or changes its status (about every 25 minutes, and on
+  another client, project or app language). TimeTrack counts a message as its
+  own from the moment it sends it, also when the answer from Teams is lost, so
+  a failed request does not leave it behind. If the presence cannot be read,
+  TimeTrack still ends the Busy status and leaves the message until it can
+  check it. If clearing fails (offline, for example), what is left stays until
+  TimeTrack tries again at its next status update, even after you switch
+  **Mirror Teams status** off. Status updates come with timer changes from any
+  source (the app, the tray, the mini widget, hotkeys, MCP, the Stream Deck)
+  and with changes to the Teams settings in TimeTrack, not on a schedule while
+  no timer runs; signed out, TimeTrack sends nothing. If the app quits or
+  crashes while a timer runs, TimeTrack withdraws its own message at the next
+  start, or later in that run when you first switch **Mirror Teams status** on:
+  at the first status update with the feature on it reads your presence. If no
+  timer runs then, it clears a message in its own form and ends its own Busy
+  status, whether Teams shows it or not, because an availability you set in
+  Teams can hide it; if a timer runs, it sets its status, which replaces both.
+  If the feature stays off for the whole run, none of this happens. It also
+  recognises a message by its form ("🔴 Fokus" or "🔴 Focus", alone or followed
+  by a colon and a client) when it has lost track of the exact text after many
+  failed requests in a row. So a message you typed in exactly that form
+  yourself can be cleared too. If it cannot reach Teams at that start, it tries again at the next status
+  update. If you disconnect the account while a timer runs, nothing clears them
+  until you reconnect and the next status update comes, TimeTrack sets your
+  status again, or they expire: the Busy status after at most an hour, the
+  message after 12 hours.
+- **On several devices:** use **Mirror Teams status** on one device at a time.
+  Teams knows one presence session per app ("Provide the ID of the application
+  as sessionId", Microsoft Graph documentation), so all devices signed in to
+  the same account share it and write the same status message, so they get
+  in each other's way. A device that starts a timer replaces the other's
+  status. A device that stops one ends the shared Busy status, and if both
+  devices show the same text (client not shown), it clears the message too;
+  either way the other device shows less than it should until it renews its
+  status, within about 25 minutes. A device that starts up takes another
+  device's live status for a leftover of its own and clears it.
 - **Tokens:** stored in a separate file in the data folder, encrypted by the
   operating system (DPAPI / Keychain), not part of backups or exports.
   **Disconnect** deletes that file; revoking the app's access in your Microsoft

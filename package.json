@@ -1,6 +1,6 @@
 {
   "name": "time-tracking",
-  "version": "1.22.0",
+  "version": "1.23.2",
   "description": "Lean desktop time tracker for Windows and macOS — local, no cloud.",
   "main": "./out/main/index.js",
   "author": "wald-it",
@@ -30,7 +30,7 @@
     "sync-icon": "node scripts/sync-icon.mjs",
     "prebuild": "npm run sync-icon && node scripts/generate-licenses.mjs",
     "build": "npm run typecheck && npm run build:mcp && electron-vite build",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "node scripts/ensure-electron.mjs",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
@@ -42,7 +42,7 @@
     "@fontsource-variable/archivo": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^13.0.3",
     "date-fns": "^4.1.0",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.11",
@@ -59,12 +59,12 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.19.1",
+    "@types/node": "^24.9.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/ui": "^4.1.5",
-    "electron": "^39.8.10",
+    "electron": "^44.9.3",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.1",
@@ -84,11 +84,11 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "electron",
       "esbuild"
     ],
     "ignoredBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
       "electron-winstaller"
     ]
   }

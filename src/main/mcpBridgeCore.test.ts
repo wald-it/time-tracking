@@ -120,6 +120,25 @@ describe('handleRequest', () => {
     expect(row.started_at).toBe('2026-06-10T09:00:00.000Z') // untouched
   })
 
+  it('update_entry_fields keeps the import anchor and created_at (#299)', async () => {
+    const { ctx } = makeCtx(db)
+    await handleRequest(ctx, CREATE)
+    const id = (db.prepare(`SELECT id FROM entries LIMIT 1`).get() as { id: number }).id
+    db.prepare(
+      `UPDATE entries SET graph_event_id = 'EVT-9', created_at = '2026-01-02 08:00:00' WHERE id = ?`
+    ).run(id)
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, description: 'Renamed' }
+    })
+    expect(res.ok).toBe(true)
+    expect(db.prepare(`SELECT graph_event_id, created_at FROM entries`).all()).toEqual([
+      { graph_event_id: 'EVT-9', created_at: '2026-01-02 08:00:00' }
+    ])
+  })
+
   it('update_entry_fields refuses a running entry even if stopped_at is supplied', async () => {
     const { ctx } = makeCtx(db)
     await handleRequest(ctx, {

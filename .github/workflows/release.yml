@@ -229,25 +229,16 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # #269: no native rebuild step — better-sqlite3 is N-API and ships its
+      # prebuilt binaries (see test.yml).
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # #151: install-app-deps decides via the .forge-meta marker, which can
-      # disagree with the binary beside it (pnpm caches native build side effects
-      # across runs). Force the rebuild so both the tests and the packaged app get
-      # the real Electron ABI — a stale marker here would ship a broken binary.
-      - name: Ensure better-sqlite3 matches the Electron ABI (forced)
-        run: pnpm exec electron-rebuild -f -w better-sqlite3
 
       - name: Typecheck
         run: pnpm typecheck
 
-      # #151: `pnpm test` runs Vitest on the Electron binary in Node mode, so it
-      # uses the same binary the installer will ship. The rebuild-for-Node /
-      # rebuild-back-for-Electron round-trip that used to bracket this step is
-      # gone; the single forced rebuild after install replaces it. That also
-      # removes the old failure mode where packaging inherited a Node-ABI binary
-      # because the second rebuild silently no-oped.
+      # #151/#269: `pnpm test` runs Vitest on the Electron binary in Node mode,
+      # the runtime the installer ships.
       - name: Test
         run: pnpm test
 
@@ -332,22 +323,13 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # #269: no native rebuild step (see the Windows job).
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # #151: install-app-deps decides via the .forge-meta marker, which can
-      # disagree with the binary beside it (pnpm caches native build side effects
-      # across runs). Force the rebuild so both the tests and the packaged app get
-      # the real Electron ABI — a stale marker here would ship a broken binary.
-      - name: Ensure better-sqlite3 matches the Electron ABI (forced)
-        run: pnpm exec electron-rebuild -f -w better-sqlite3
 
       - name: Typecheck
         run: pnpm typecheck
 
-      # #151: see the note in the Windows job — Vitest runs on Electron now, so
-      # the ABI round-trip around this step is replaced by the single forced
-      # rebuild after install.
       - name: Test
         run: pnpm test
 

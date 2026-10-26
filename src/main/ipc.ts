@@ -7,28 +7,45 @@ import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
+import { createBackup, listBackups, restoreListedBackupOrReport } from './backup'
 import {
-  createBackup,
-  listBackups,
-  restoreListedBackupOrReport,
-  RESTORE_FAILED_TITLE
-} from './backup'
-import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
+  readSettingSync,
+  writeSettingFromRenderer,
+  type SensitiveSettingChange
+} from './settingsWrite'
+import {
+  MAIN_ONLY_SETTING_KEYS,
+  rememberPickedPdf,
+  ShellTargets,
+  SHELL_REFUSED_MESSAGE,
+  unpickedPdfError
+} from './handedOutPaths'
 import {
   createManualEntry,
   updateManualEntry,
   switchTimerAndNotify,
-  stopEntry
+  stopEntry,
+  deleteEntry,
+  undeleteEntry
 } from './entryMutations'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 import { buildPdfHtml, buildPdfPayload, type PdfRequest } from './pdf'
 import { renderPdfBuffer } from './pdfWindow'
 import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
 import { handleCsvExport, type CsvRequest } from './csvExport'
 import { handleIcalExport, type IcalRequest } from './icalExport'
-import { mergeExportHandler, mergeOnlyHandler, pdfInfoHandler } from './pdfMergeHandlers'
+import {
+  mergeExportHandler,
+  mergeOnlyHandler,
+  pdfInfoHandler,
+  realFsDeps,
+  saveDialogIn
+} from './pdfMergeHandlers'
+import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
+import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { budgetUsedMinutesSql } from '../shared/currency'
@@ -37,6 +54,7 @@ import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
+  readRecentEntries,
   readRoundMinutes,
   readTodayEntries,
   readTopClients30d,
@@ -63,14 +81,17 @@ import type {
   LicenseEntry
 } from '../shared/types'
 import { monthEntries } from './entryRanges'
+import type { HotkeyChange } from './hotkeySlot'
 
 export interface IpcHooks {
   refreshTrayClients(): void
-  setHotkey(accelerator: string): boolean
+  /** Rebuild tray menu and tooltip after the app language changed (#296). */
+  refreshTrayLanguage(): void
+  setHotkey(accelerator: string): HotkeyChange
   setAutoStart(enabled: boolean): void
   setIdleThreshold(minutes: number): void
   setMiniEnabled(enabled: boolean): void
-  setMiniHotkey(accelerator: string): boolean
+  setMiniHotkey(accelerator: string): HotkeyChange
   setMcpWriteEnabled(enabled: boolean): void
   setControllerEnabled(enabled: boolean): void
   /** Re-run the presence reconciler (#132) after a relevant settings change. */
@@ -79,6 +100,13 @@ export interface IpcHooks {
   setIcalFeedEnabled(enabled: boolean): void
   /** Restart the feed server after a port/token change (no-op when disabled). */
   restartIcalFeed(): void
+  /**
+   * #272 (A3): ask natively before a settings change that widens access to the
+   * user's data (settingsWrite.ts → sensitiveSettingChange). True = go ahead.
+   */
+  confirmSensitiveSetting(change: SensitiveSettingChange): Promise<boolean>
+  /** #301: end any MCP start/stop approval (the confirm mode changed). */
+  forgetMcpApproval(): void
 }
 
 function ok<T>(data: T): IpcResult<T> {
@@ -118,6 +146,51 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+  // Native dialogs, file names and cancel texts follow the app language
+  // (#270, #296). Never throws (mainI18n.appLocale): with the handle closed
+  // after a restore attempt, the language last read in this run, the same
+  // answer the tray gets. The restore reads it once, before it can close the
+  // handle.
+  const dialogLocale = (): Locale =>
+    appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
+  const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
+
+  /**
+   * The app's own locations, without touching the file system (no mkdir of a
+   * possibly dead network share). The shell helpers accept these, plus the
+   * default backup folder and the files a merge wrote. `paths:get` reports
+   * them too, with its own `backups` value (which creates the folder).
+   */
+  function appLocations(): { db: string; backups: string; logs: string; logFile: string } {
+    // electron-log returns a File transport whose `getFile()` resolves
+    // the on-disk log path lazily; the directory is its parent.
+    const logFile = log.transports.file.getFile().path
+    return {
+      db: getDbPath(),
+      backups: readBackupPathSetting(db) ?? getDefaultBackupsDir(),
+      logs: dirname(logFile),
+      logFile
+    }
+  }
+
+  /** #272: why a PDF request is refused, or null. A DB error refuses too. */
+  function pdfRequestRefusal(req: unknown): string | null {
+    try {
+      return unpickedPdfError(db, req)
+    } catch (e) {
+      return String(e)
+    }
+  }
+
+  // #272: what the shell helpers may open or reveal. The default backup
+  // folder stays allowed while a custom one is set (Settings falls back to it).
+  const shellTargets = new ShellTargets(() => [
+    ...Object.values(appLocations()),
+    getDefaultBackupsDir()
+  ])
 
   // ── Clients ──────────────────────────────────────────────────
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
@@ -318,25 +391,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   /**
    * Soft-delete: flip deleted_at instead of removing the row, so the Toast
    * "Rückgängig" path can restore the SAME id (preserves future PDF FKs — E10).
-   *
-   * v1.3 PR B: when `cascadeLinked` is true and the row has a `link_id`,
-   * all rows sharing that id are soft-deleted in one transaction (used by
-   * the Drawer's "auch zweite Hälfte löschen" confirm).
+   * Either half of an entry across midnight deletes the whole entry, and undo
+   * brings back what that delete removed (#323, see `deleteEntry`).
    */
-  ipcMain.handle('entries:delete', (_e, id: number, cascadeLinked = false): IpcResult<void> => {
+  ipcMain.handle('entries:delete', (_e, id: number): IpcResult<void> => {
     try {
-      const now = new Date().toISOString()
-      if (cascadeLinked) {
-        const row = db.prepare(`SELECT link_id FROM entries WHERE id = ?`).get(id) as
-          | { link_id: string | null }
-          | undefined
-        if (row?.link_id) {
-          db.prepare(`UPDATE entries SET deleted_at = ? WHERE link_id = ?`).run(now, row.link_id)
-          return ok(undefined)
-        }
-      }
-      db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(now, id)
-      return ok(undefined)
+      return deleteEntry(db, id)
     } catch (e) {
       return fail(e)
     }
@@ -344,9 +404,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('entries:undelete', (_e, id: number): IpcResult<Entry> => {
     try {
-      db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(id)
-      const row = db.prepare(`SELECT * FROM entries WHERE id = ?`).get(id) as Entry
-      return ok(row)
+      return undeleteEntry(db, id)
     } catch (e) {
       return fail(e)
     }
@@ -570,13 +628,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         // the Stream Deck dial can never drift apart (#186).
         const totals = readTotals(db)
 
-        const recentEntries = db
-          .prepare(
-            `SELECT * FROM entries
-               WHERE deleted_at IS NULL
-               ORDER BY started_at DESC LIMIT 5`
-          )
-          .all() as Entry[]
+        const recentEntries = readRecentEntries(db, 5)
 
         return {
           todaySeconds: totals.today_seconds,
@@ -600,17 +652,20 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         key: string
         value: string
       }[]
-      const settings = Object.fromEntries(rows.map((r) => [r.key, r.value])) as unknown as Settings
+      const settings = Object.fromEntries(
+        rows.filter((r) => !MAIN_ONLY_SETTING_KEYS.has(r.key)).map((r) => [r.key, r.value])
+      ) as unknown as Settings
       return ok(settings)
     } catch (e) {
       return fail(e)
     }
   })
 
-  // #272: only keys on the renderer allow-list (see settingsWrite.ts).
+  // #272: only keys on the renderer allow-list, sensitive ones after a native
+  // confirmation (see settingsWrite.ts).
   ipcMain.handle(
     'settings:set',
-    (_e, key: unknown, value: unknown): IpcResult<void> =>
+    (_e, key: unknown, value: unknown): Promise<IpcResult<void>> =>
       writeSettingFromRenderer(db, hooks, key, value)
   )
 
@@ -681,19 +736,24 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle(
     'backup:restore',
     (_e, filename: unknown): IpcResult<{ safetyBackupPath: string }> => {
+      const locale = dialogLocale()
       try {
         return restoreListedBackupOrReport(
           db,
           filename,
           getBackupPathSetting() || undefined,
           getDbPath(),
+          locale,
           (title, message) => dialog.showErrorBox(title, message)
         )
       } catch (e) {
         // Same rule as inside: the renderer relaunches next, so say it here.
-        const message = `Wiederherstellung nicht durchgeführt: ${e instanceof Error ? e.message : String(e)}`
+        const t = dialogT(locale)
+        const message = t('mainDialog.restore.failed', {
+          cause: e instanceof Error ? e.message : String(e)
+        })
         try {
-          dialog.showErrorBox(RESTORE_FAILED_TITLE, message)
+          dialog.showErrorBox(t('mainDialog.restore.title'), message)
         } catch {
           // The dialog itself may be what failed; still answer the renderer.
         }
@@ -706,7 +766,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openDirectory', 'createDirectory'],
-        title: 'Backup-Pfad wählen'
+        title: tDialog('mainDialog.backupPath.title')
       })
       if (canceled || filePaths.length === 0) return ok('')
       const dir = filePaths[0]
@@ -769,8 +829,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   })
 
   // ── Shell helpers ────────────────────────────────
-  ipcMain.handle('shell:openPath', async (_e, path: string): Promise<IpcResult<void>> => {
-    const err = await shell.openPath(path)
+  // #272: only the app's own locations and files it wrote (handedOutPaths.ts).
+  ipcMain.handle('shell:openPath', async (_e, path: unknown): Promise<IpcResult<void>> => {
+    if (!shellTargets.allows(path)) return fail(SHELL_REFUSED_MESSAGE)
+    const err = await shell.openPath(path as string)
     if (err) return fail(err)
     return ok(undefined)
   })
@@ -781,8 +843,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     return ok(undefined)
   })
 
-  ipcMain.handle('shell:showItemInFolder', (_e, path: string): IpcResult<void> => {
-    shell.showItemInFolder(path)
+  ipcMain.handle('shell:showItemInFolder', (_e, path: unknown): IpcResult<void> => {
+    if (!shellTargets.allows(path)) return fail(SHELL_REFUSED_MESSAGE)
+    shell.showItemInFolder(path as string)
     return ok(undefined)
   })
 
@@ -796,20 +859,16 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       logFile: string
       mcp: McpRegistration
     }> => {
-      // electron-log returns a File transport whose `getFile()` resolves
-      // the on-disk log path lazily; the directory is its parent.
-      const logFile = log.transports.file.getFile().path
-      let backupsDir: string
+      // Settings opens the backup folder from here, so create it if missing.
+      let backups: string
       try {
-        backupsDir = getBackupsDir(getBackupPathSetting() || undefined)
+        backups = getBackupsDir(getBackupPathSetting() || undefined)
       } catch {
-        backupsDir = getDefaultBackupsDir()
+        backups = getDefaultBackupsDir()
       }
       return ok({
-        db: getDbPath(),
-        backups: backupsDir,
-        logs: dirname(logFile),
-        logFile,
+        ...appLocations(),
+        backups,
         // Settings → Integrationen renders this as a copy-paste `.mcp.json`.
         mcp: buildMcpRegistration(process.execPath, app.getAppPath())
       })
@@ -834,17 +893,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('export:json', async (): Promise<IpcResult<{ path: string; bytes: number }>> => {
     try {
       const today = new Date().toISOString().slice(0, 10)
+      const locale = dialogLocale()
       const result = await dialog.showSaveDialog({
-        title: 'Datenexport speichern',
-        defaultPath: `timetrack-export-${today}.json`,
+        title: dialogT(locale)('mainDialog.exportJson.title'),
+        defaultPath: await exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
-        return fail('Export abgebrochen')
+        return cancelledResult(locale, 'mainError.exportCancelled')
       }
       const payload = buildJsonExportPayload(db, app.getVersion())
       const json = JSON.stringify(payload, null, 2)
       writeFileSync(result.filePath, json, 'utf8')
+      rememberExportFolder(db, 'json', result.filePath)
       return ok({ path: result.filePath, bytes: Buffer.byteLength(json, 'utf8') })
     } catch (e) {
       return fail(e)
@@ -868,26 +929,29 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           | undefined
         if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
 
-        const monthHint = req.fromIso.slice(0, 7) // YYYY-MM
-        // Strip filesystem-hostile chars from the client name for the suggested filename.
-        const safeName = client.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Kunde'
-        // v1.9 #75: append project name when filtered to a single project.
-        let projectSuffix = ''
-        if (req.projectId != null) {
-          const proj = db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
-            | { name: string }
-            | undefined
-          if (proj) {
-            projectSuffix = `-${proj.name.replace(/[\\/:*?"<>|]/g, '_').trim()}`
-          }
-        }
+        // v1.9 #75: the project name goes into the file name when filtered to one.
+        const proj =
+          req.projectId != null
+            ? (db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
+                | { name: string }
+                | undefined)
+            : undefined
+        const locale = dialogLocale()
         const result = await dialog.showSaveDialog({
-          title: 'Stundennachweis speichern',
-          defaultPath: `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`,
+          title: dialogT(locale)('mainDialog.pdf.saveTitle'),
+          defaultPath: await exportDefaultPath(
+            db,
+            'pdf',
+            exportFileName(locale, 'pdf', {
+              client: client.name,
+              project: proj?.name ?? null,
+              month: req.fromIso.slice(0, 7) // YYYY-MM
+            })
+          ),
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
         if (result.canceled || !result.filePath) {
-          return fail('Export abgebrochen')
+          return cancelledResult(locale, 'mainError.exportCancelled')
         }
 
         const settingsRows = db.prepare(`SELECT key, value FROM settings`).all() as Array<{
@@ -903,6 +967,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const html = buildPdfHtml(payload)
         const buf = await renderPdfBuffer({ html })
         writeFileSync(result.filePath, buf)
+        rememberExportFolder(db, 'pdf', result.filePath)
         return ok({ path: result.filePath })
       } catch (e) {
         return fail(e)
@@ -916,15 +981,44 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // <stem>_inkl_Stundennachweis.pdf. Falls back to a save dialog when the
   // target directory is not writable (e.g. a corporate archive folder).
   // Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-export', (_e, req) => mergeExportHandler(db, req))
+  // #272: every input PDF must have been picked in pdf:open-pdf-dialog, and the
+  // written file becomes a path the shell helpers may reveal.
+  ipcMain.handle('pdf:merge-export', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await mergeExportHandler(db, req, realFsDeps, saveDialogIn(dialogLocale))
+    if (res.ok) shellTargets.rememberWritten(res.data.path)
+    return res
+  })
 
   // PDF merge-only: merges two existing PDFs (Stundennachweis + invoice) without
   // re-rendering. Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-only', (_e, req) => mergeOnlyHandler(req))
+  ipcMain.handle('pdf:merge-only', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await mergeOnlyHandler(req, realFsDeps, saveDialogIn(dialogLocale))
+    if (res.ok) shellTargets.rememberWritten(res.data.path)
+    return res
+  })
 
   // PDF info: returns page count for a given PDF path. Used by the renderer to
   // show page counts before confirming a merge.
-  ipcMain.handle('pdf:pdf-info', (_e, req) => pdfInfoHandler(req))
+  // The PDF it read is refreshed in the pick list, so a selection the merge
+  // dialog keeps using never ages out. A failing refresh does not fail the read.
+  ipcMain.handle('pdf:pdf-info', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await pdfInfoHandler(req)
+    const filePath = (req as { filePath?: unknown }).filePath
+    if (res.ok && typeof filePath === 'string') {
+      try {
+        rememberPickedPdf(db, filePath)
+      } catch (e) {
+        log.warn('[pdf:pdf-info] could not refresh the pick list:', e)
+      }
+    }
+    return res
+  })
 
   // PDF open dialog: opens a native file picker and returns the selected path.
   // Safer than relying on file.path in the renderer (not available with contextIsolation).
@@ -933,11 +1027,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     async (): Promise<IpcResult<{ filePath: string } | null>> => {
       try {
         const result = await dialog.showOpenDialog({
-          title: 'PDF auswählen',
+          title: tDialog('mainDialog.pdf.openTitle'),
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
           properties: ['openFile']
         })
         if (result.canceled || !result.filePaths[0]) return ok(null)
+        rememberPickedPdf(db, result.filePaths[0])
         return ok({ filePath: result.filePaths[0] })
       } catch (e) {
         return fail(e)
@@ -949,13 +1044,17 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // and persists the path into settings.pdf_logo_path.
   ipcMain.handle('logo:set', async (): Promise<IpcResult<{ path: string }>> => {
     try {
+      const locale = dialogLocale()
+      const t = dialogT(locale)
       const result = await dialog.showOpenDialog({
-        title: 'Logo auswählen',
+        title: t('mainDialog.logo.title'),
         properties: ['openFile'],
-        filters: [{ name: 'Bilder', extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }]
+        filters: [
+          { name: t('mainDialog.logo.filter'), extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }
+        ]
       })
       if (result.canceled || result.filePaths.length === 0) {
-        return fail('Auswahl abgebrochen')
+        return cancelledResult(locale, 'mainError.selectionCancelled')
       }
       const userDataDir = app.getPath('userData')
       const target = saveLogo(result.filePaths[0], userDataDir)

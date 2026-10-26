@@ -9,12 +9,14 @@
  * Kept separate from ipc.ts to mirror the pattern used by pdf.ts /
  * jsonExport.ts — easier to unit-test in isolation.
  */
-import { dialog } from 'electron'
+import { app, dialog } from 'electron'
 import { writeFileSync } from 'fs'
 import type Database from 'better-sqlite3'
 import { formatCsv, type CsvOptions } from '../shared/csv'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
+import { appLocale, cancelledResult, dialogT, exportFileName } from './mainI18n'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 
 export interface CsvRequest {
   clientId: number
@@ -55,27 +57,33 @@ export async function handleCsvExport(
 
     const entries = exportEntries(db, req)
 
-    const rangeHint = `${req.fromIso.slice(0, 7)}`
-    const safeName = client.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Kunde'
+    // When filtered by project, the project name goes into the file name.
+    const proj =
+      req.projectId != null
+        ? (db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
+            | { name: string }
+            | undefined)
+        : undefined
 
-    // When filtered by project, append the project name to the filename.
-    let projectSuffix = ''
-    if (req.projectId != null) {
-      const proj = db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
-        | { name: string }
-        | undefined
-      if (proj) {
-        projectSuffix = `-${proj.name.replace(/[\\/:*?"<>|]/g, '_').trim()}`
-      }
-    }
-
+    const locale = appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
     const result = await dialog.showSaveDialog({
-      title: 'CSV speichern',
-      defaultPath: `Zeiterfassung-${safeName}${projectSuffix}-${rangeHint}.csv`,
+      title: dialogT(locale)('mainDialog.csv.title'),
+      defaultPath: await exportDefaultPath(
+        db,
+        'csv',
+        exportFileName(locale, 'csv', {
+          client: client.name,
+          project: proj?.name ?? null,
+          month: req.fromIso.slice(0, 7)
+        })
+      ),
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (result.canceled || !result.filePath) {
-      return fail('Export abgebrochen')
+      return cancelledResult(locale, 'mainError.exportCancelled')
     }
 
     // Amounts follow the invoice rule: rounding step and project rates.
@@ -99,6 +107,7 @@ export async function handleCsvExport(
     const csv = formatCsv(entries, clientMap, opts)
 
     writeFileSync(result.filePath, csv, 'utf8')
+    rememberExportFolder(db, 'csv', result.filePath)
     return ok({ path: result.filePath })
   } catch (e) {
     return fail(e)

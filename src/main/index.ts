@@ -18,6 +18,17 @@ import trayRunningIcon from '../../resources/tray-running.png?asset'
 import trayStoppedIcon from '../../resources/tray-stopped.png?asset'
 import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
 import {
+  dbErrorDialog,
+  hotkeyConflictDialog,
+  localeFromSystem,
+  migrationErrorDialog,
+  appLocale,
+  sensitiveSettingDialog,
+  trayLabels,
+  trayTooltip
+} from './mainI18n'
+import type { Locale } from '../shared/i18n'
+import {
   assertSmokeUserDataIsolated,
   parseSmokeOutPath,
   removeSmokeUserDataDir,
@@ -43,14 +54,24 @@ import {
   clearWriteToken,
   generateControllerToken,
   clearControllerToken,
+  forgetMcpApproval,
   type BridgeDeps
 } from './mcpBridge'
 import { initAutoUpdater } from './updater'
+import {
+  changeHotkey,
+  hotkeySlot,
+  resumeHotkeys,
+  suspendHotkeys,
+  type HotkeyChange,
+  type HotkeySlot
+} from './hotkeySlot'
 import { readRunning } from './mcpBridgeCore'
 import { reconcilePresence, type PresenceDeps } from './graphPresence'
 import { graphAccountDepsFor } from './graphHandlers'
 import { effectiveClientId, getAccessToken, getStatus } from './graphAccount'
 import { applyMiniEnabled, destroyMini, pushMiniState, toggleMini } from './miniWindow'
+import { decideStartRequest } from './startRequest'
 import {
   generateFeedToken,
   restartFeedServer,
@@ -149,9 +170,7 @@ if (isSecondInstance) {
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
+      bringWindowForward(mainWindow)
     } else {
       // Startup race: second launch arrived before createWindow ran.
       log.info('second-instance signal received before main window exists — ignored')
@@ -162,8 +181,9 @@ if (isSecondInstance) {
 // ── Hotkey registration state ────────────────────────────────────
 // Tracked per-slot so `registerHotkey` and `registerMiniHotkey` can update
 // independently without clobbering each other (no more `unregisterAll`).
-let currentToggleHotkey = ''
-let currentMiniHotkey = ''
+// The start hotkey takes the same handler as the mini play key (#297).
+const toggleSlot: HotkeySlot = hotkeySlot(onStartKey)
+const miniSlot: HotkeySlot = hotkeySlot(() => toggleMini())
 
 // ── State for tray quick-start ──────────────────────────────────
 let cachedActiveClients: Client[] = []
@@ -192,18 +212,29 @@ function refreshActiveClients(): void {
   }
 }
 
-function buildTrayMenu(): Menu {
+/**
+ * The app language for everything index.ts shows: tray, start-up dialogs, the
+ * update notification (#296). The shared rule that never throws and keeps the
+ * last language while the handle is closed after a restore attempt
+ * (mainI18n.appLocale), the same answer the IPC dialogs get.
+ */
+function appLanguage(): Locale {
+  return appLocale(getDb, () => app.getPreferredSystemLanguages())
+}
+
+function buildTrayMenu(locale: Locale = appLanguage()): Menu {
   const items: MenuItemConstructorOptions[] = []
+  const text = trayLabels(locale)
 
   items.push({
-    label: isTimerRunning ? `● ${runningLabel}` : 'Kein Timer aktiv',
+    label: isTimerRunning ? `● ${runningLabel}` : text.idle,
     enabled: false
   })
   items.push({ type: 'separator' })
 
   if (isTimerRunning) {
     items.push({
-      label: 'Stop',
+      label: text.stop,
       click: () => mainWindow?.webContents.send('timer:tray-stop')
     })
   } else if (cachedActiveClients.length > 0) {
@@ -213,15 +244,15 @@ function buildTrayMenu(): Menu {
         label: `▶ ${c.name}`,
         click: () => mainWindow?.webContents.send('timer:tray-quick-start', c.id)
       }))
-    items.push({ label: 'Quick-Start', enabled: false })
+    items.push({ label: text.quickStart, enabled: false })
     items.push(...quickStart)
   } else {
-    items.push({ label: 'Keine aktiven Kunden', enabled: false })
+    items.push({ label: text.noClients, enabled: false })
   }
 
   items.push({ type: 'separator' })
   items.push({
-    label: 'Fenster anzeigen',
+    label: text.showWindow,
     click: () => {
       mainWindow?.show()
       mainWindow?.focus()
@@ -229,7 +260,7 @@ function buildTrayMenu(): Menu {
   })
   items.push({ type: 'separator' })
   items.push({
-    label: 'Beenden',
+    label: text.quit,
     click: () => {
       isQuitting = true
       app.quit()
@@ -248,38 +279,54 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   // grey clock when idle. Both files live in resources/ and are bundled by
   // electron-vite's `?asset` resolver.
   tray.setImage(running ? trayRunningIcon : trayStoppedIcon)
-  // Tooltip format (v1.2 #31):
-  //   running: `● {client} · {HH:MM} · Heute {HH:MM}`
+  // Tooltip format (v1.2 #31), in the app language since #296:
+  //   running: `● {client} · Heute {HH:MM}`
   //   idle:    `TimeTrack — Heute {HH:MM}`
-  // (i18n in tooltip deferred to v1.4 — see DESIGN.md known limitations.)
-  tray.setToolTip(
-    running
-      ? `● ${label} · Heute ${fmtHHMM(todaySeconds)}`
-      : `TimeTrack — Heute ${fmtHHMM(todaySeconds)}`
-  )
-  tray.setContextMenu(buildTrayMenu())
+  const locale = appLanguage()
+  tray.setToolTip(trayTooltip(locale, running, label, fmtHHMM(todaySeconds)))
+  tray.setContextMenu(buildTrayMenu(locale))
 }
 
-function registerHotkey(accelerator: string): boolean {
-  // Cross-slot collision check (v1.4 PR B). Without this, suspending
-  // shortcuts during capture would let the user silently steal the
-  // mini-widget's accelerator, since the OS-level register call would
-  // succeed while the other slot is paused.
-  if (accelerator && accelerator === currentMiniHotkey) {
-    console.warn(`[hotkey] ${accelerator} is already bound to mini_hotkey`)
-    return false
+/**
+ * The global start hotkey and the mini widget's play key (#297). The only
+ * place that sends `timer:open-start` and brings the window forward for it:
+ * an explicit press, never a background event (startRequest.test.ts pins
+ * that). Everything else goes the old way, `timer:hotkey-toggle`.
+ */
+function onStartKey(): void {
+  if (!mainWindow) return
+  if (decideStartRequest(getDb()) === 'open-start') {
+    bringWindowForward(mainWindow)
+    mainWindow.webContents.send('timer:open-start')
+    return
   }
-  if (currentToggleHotkey) {
-    globalShortcut.unregister(currentToggleHotkey)
-    currentToggleHotkey = ''
+  mainWindow.webContents.send('timer:hotkey-toggle')
+}
+
+/** Restore, show and focus the main window: a second launch, or a start key press. */
+function bringWindowForward(win: BrowserWindow): void {
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+/** Log a refused change; the slot itself is left as `changeHotkey` says. */
+function logHotkeyChange(tag: string, accelerator: string, change: HotkeyChange): HotkeyChange {
+  if (!change.ok) {
+    console.warn(
+      `[${tag}] ${accelerator} not registered (${change.reason}); ` +
+        (change.previousKept ? 'previous kept' : 'previous lost as well')
+    )
   }
-  if (!accelerator) return false
-  const ok = globalShortcut.register(accelerator, () => {
-    mainWindow?.webContents.send('timer:hotkey-toggle')
-  })
-  if (ok) currentToggleHotkey = accelerator
-  else console.warn(`[hotkey] Could not register ${accelerator}`)
-  return ok
+  return change
+}
+
+function registerHotkey(accelerator: string): HotkeyChange {
+  return logHotkeyChange(
+    'hotkey',
+    accelerator,
+    changeHotkey(globalShortcut, toggleSlot, accelerator, miniSlot.current)
+  )
 }
 
 /**
@@ -287,22 +334,12 @@ function registerHotkey(accelerator: string): boolean {
  * enabled in Settings). Tracked separately from `hotkey_toggle` so changing
  * one doesn't clobber the other (we used to call `unregisterAll`).
  */
-function registerMiniHotkey(accelerator: string): boolean {
-  if (accelerator && accelerator === currentToggleHotkey) {
-    console.warn(`[mini-hotkey] ${accelerator} is already bound to hotkey_toggle`)
-    return false
-  }
-  if (currentMiniHotkey) {
-    globalShortcut.unregister(currentMiniHotkey)
-    currentMiniHotkey = ''
-  }
-  if (!accelerator) return false
-  const ok = globalShortcut.register(accelerator, () => {
-    toggleMini()
-  })
-  if (ok) currentMiniHotkey = accelerator
-  else console.warn(`[mini-hotkey] Could not register ${accelerator}`)
-  return ok
+function registerMiniHotkey(accelerator: string): HotkeyChange {
+  return logHotkeyChange(
+    'mini-hotkey',
+    accelerator,
+    changeHotkey(globalShortcut, miniSlot, accelerator, toggleSlot.current)
+  )
 }
 
 /**
@@ -312,20 +349,12 @@ function registerMiniHotkey(accelerator: string): boolean {
  * Restored via {@link resumeGlobalShortcuts}.
  */
 function suspendGlobalShortcuts(): void {
-  if (currentToggleHotkey) globalShortcut.unregister(currentToggleHotkey)
-  if (currentMiniHotkey) globalShortcut.unregister(currentMiniHotkey)
+  suspendHotkeys(globalShortcut, [toggleSlot, miniSlot])
 }
 
 function resumeGlobalShortcuts(): void {
-  if (currentToggleHotkey) {
-    globalShortcut.register(currentToggleHotkey, () => {
-      mainWindow?.webContents.send('timer:hotkey-toggle')
-    })
-  }
-  if (currentMiniHotkey) {
-    globalShortcut.register(currentMiniHotkey, () => {
-      toggleMini()
-    })
+  for (const accelerator of resumeHotkeys(globalShortcut, [toggleSlot, miniSlot])) {
+    console.warn(`[hotkey] ${accelerator} could not be registered again after capture`)
   }
 }
 
@@ -360,19 +389,14 @@ function loadStartupSettings(): void {
     applyAutoStart(auto)
     // v1.4 PR B — mini-widget hotkey + restore visibility from last session.
     const miniHotkey = map.mini_hotkey ?? 'Alt+Shift+M'
-    const miniHotkeyOk = registerMiniHotkey(miniHotkey)
+    const miniHotkeyOk = registerMiniHotkey(miniHotkey).ok
     if (!miniHotkeyOk && map.mini_enabled === '1') {
       // Surface the conflict at startup so the user knows their hotkey
       // is silently dead. Non-blocking dialog — the app continues to work,
       // toggling via Settings still works.
       dialog.showMessageBox({
         type: 'warning',
-        title: 'TimeTrack — Hotkey-Konflikt',
-        message: `Der Mini-Widget-Hotkey "${miniHotkey}" konnte nicht registriert werden.`,
-        detail:
-          'Eine andere Anwendung verwendet diese Tastenkombination bereits.\n\n' +
-          'Du kannst in den Einstellungen einen anderen Hotkey wählen.',
-        buttons: ['OK']
+        ...hotkeyConflictDialog(appLanguage(), miniHotkey)
       })
     }
     if (map.mini_enabled === '1') applyMiniEnabled(true)
@@ -504,6 +528,15 @@ function pokePresence(): void {
       },
       getAccessToken: () => getAccessToken(account),
       getClientId: () => effectiveClientId(account),
+      // Over the same handle as the presence settings above (#347). If that
+      // handle is closed, getSetting fails before the language is asked for;
+      // appLocale's own fallbacks are not what keeps one reconcile on one
+      // database.
+      getLocale: () =>
+        appLocale(
+          () => db,
+          () => app.getPreferredSystemLanguages()
+        ),
       log: (m) => log.info(m)
     }
     void reconcilePresence(deps, readRunning(db))
@@ -566,10 +599,10 @@ app.whenReady().then(async () => {
   // Smoke-test mode (CI release pipeline). When invoked with
   // `--smoke-test=<path>`, open a fresh DB in the temp userData set up
   // at module load (never the user's live DB), which runs migrations against
-  // the Electron-ABI better-sqlite3 binary), write a JSON status to
+  // the packaged better-sqlite3 binary), write a JSON status to
   // <path>, and exit. No window, no tray, no IPC handlers.
   // This is the v1.2 packaged-binary smoke check (E11) that catches
-  // ABI / native-module regressions before we publish a release.
+  // native-module and packaging regressions — on every PR since #269.
   if (smokeTestArg !== undefined) {
     const outPath = parseSmokeOutPath(smokeTestArg)
     let smokeDb: ReturnType<typeof getDb> | undefined
@@ -675,20 +708,19 @@ app.whenReady().then(async () => {
   try {
     getDb()
   } catch (err) {
-    if (err instanceof MigrationError) {
-      dialog.showErrorBox(
-        'TimeTrack — Datenbank-Migration fehlgeschlagen',
-        `Migration #${err.migration.version} (${err.migration.name}) ist fehlgeschlagen:\n\n` +
-          `${err.cause.message}\n\n` +
-          `Deine Datenbank wurde aus dem Pre-Migration-Backup wiederhergestellt:\n${err.backupPath}\n\n` +
-          `Die App wird jetzt beendet. Bitte melde diesen Fehler.`
-      )
-    } else {
-      dialog.showErrorBox(
-        'TimeTrack — Datenbankfehler',
-        `Datenbank konnte nicht geöffnet werden:\n\n${(err as Error).message}`
-      )
-    }
+    // The language setting lives in the database that just failed to open,
+    // so these two follow the system language (#270).
+    const locale = localeFromSystem(app.getPreferredSystemLanguages())
+    const box =
+      err instanceof MigrationError
+        ? migrationErrorDialog(locale, {
+            version: err.migration.version,
+            name: err.migration.name,
+            cause: err.cause.message,
+            backupPath: err.backupPath
+          })
+        : dbErrorDialog(locale, (err as Error).message)
+    dialog.showErrorBox(box.title, box.message)
     isQuitting = true
     app.quit()
     return
@@ -699,6 +731,9 @@ app.whenReady().then(async () => {
       refreshActiveClients()
       tray?.setContextMenu(buildTrayMenu())
     },
+    // #296: menu and tooltip in the new language right away, not at the next
+    // timer event.
+    refreshTrayLanguage: () => updateTray(isTimerRunning, runningLabel, lastTodaySeconds),
     setHotkey: (accelerator) => registerHotkey(accelerator),
     setAutoStart: (enabled) => applyAutoStart(enabled),
     setIdleThreshold: (minutes) => setIdleThresholdMinutes(minutes),
@@ -710,6 +745,9 @@ app.whenReady().then(async () => {
         startMcpBridge(mcpBridgeDeps())
       } else {
         clearWriteToken()
+        // #301: switching write access off ends any approval, also while the
+        // controller keeps the bridge running.
+        forgetMcpApproval()
         // The bridge socket stays up while the controller scope needs it.
         if (mcpBridgeDeps().getSetting('controller_enabled') !== '1') stopMcpBridge()
       }
@@ -736,6 +774,14 @@ app.whenReady().then(async () => {
       if (icalFeedDeps().getSetting('ical_feed_enabled') === '1') {
         restartFeedServer(icalFeedDeps())
       }
+    },
+    forgetMcpApproval,
+    // #272 (A3): the native confirmation for a setting that widens access.
+    confirmSensitiveSetting: async (change) => {
+      const opts = sensitiveSettingDialog(appLanguage(), change)
+      const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+      const res = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
+      return res.response === 1
     }
   })
   createWindow()
@@ -774,7 +820,9 @@ app.whenReady().then(async () => {
   initAutoUpdater({
     isDev: is.dev,
     getEndpointDir: () => dirname(getDbPath()),
-    getSetting: (key) => mcpBridgeDeps().getSetting(key)
+    getSetting: (key) => mcpBridgeDeps().getSetting(key),
+    // #296: the same never-throwing app language as tray and dialogs.
+    getLocale: appLanguage
   })
 
   refreshActiveClients()
@@ -834,11 +882,9 @@ app.whenReady().then(async () => {
   ipcMain.on('mini:request-stop', () => {
     mainWindow?.webContents.send('timer:tray-stop')
   })
-  ipcMain.on('mini:request-start', () => {
-    // hotkey-toggle starts when no timer is running and falls back to the
-    // first active client — exactly what we want for the play button.
-    mainWindow?.webContents.send('timer:hotkey-toggle')
-  })
+  // The play button does what the start hotkey does (#297): start the last
+  // pair, or open the START dialog when there is none.
+  ipcMain.on('mini:request-start', onStartKey)
 
   // Settings view → main: pause/resume registered global shortcuts during
   // hotkey capture so the user can rebind a key (e.g. Alt+Shift+S) without

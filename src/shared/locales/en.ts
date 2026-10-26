@@ -27,6 +27,10 @@ export const en: Record<TranslationKey, string> = {
   'update.ready.text': 'Version {version} ready — restart now?',
   'update.ready.install': 'Restart now',
   'update.ready.dismiss': 'Not now',
+  // System notification after a download (main process, #309). {button} is 'update.ready.install'.
+  'mainNotification.update.title': 'A new update is ready to install',
+  'mainNotification.update.body':
+    'TimeTrack {version} has been downloaded. To install it, click "{button}" in the banner at the top of the TimeTrack window.',
   'update.error.text': 'Update error: {message}',
   'update.error.details': 'Details in Settings',
 
@@ -140,6 +144,8 @@ export const en: Record<TranslationKey, string> = {
   'common.deleteEntryTitle': 'Delete entry?',
   'common.deleteEntryMessage':
     '{client} · {date} · {duration} — Really delete? You can undo for 5 seconds.',
+  'common.deleteEntryMessageLinked':
+    '{client} · {date} · {duration} — This entry runs past midnight and is deleted on both days. Really delete? You can undo for 5 seconds.',
   'common.stopRunningFirst': 'Stop the running timer first',
   'common.error': 'Error: {error}',
 
@@ -677,7 +683,9 @@ export const en: Record<TranslationKey, string> = {
   'settings.mcp.confirmMode': 'Confirmation',
   'settings.mcp.confirmModeHint': 'How a write action is confirmed in the app.',
   'settings.mcp.confirmPerWrite': 'Ask on every change',
-  'settings.mcp.confirmSession': 'Once per session',
+  'settings.mcp.confirmSession': 'Release start and stop for 30 minutes',
+  'settings.mcp.confirmSessionHint':
+    'Adding and changing entries always asks. After 30 minutes or 20 writes, TimeTrack asks again.',
   'settings.mcp.confirmSilent': "Don't ask",
   'settings.mcp.auditLog': 'Audit log',
   'settings.mcp.auditLogHint': 'Every executed write action is logged to mcp-writes.log.',
@@ -848,5 +856,101 @@ export const en: Record<TranslationKey, string> = {
 
   // ── TagInput — closed system (v1.12 #107) ─────────────────────────────────
   'tags.createOption': "+ Create '{tag}'",
-  'tags.manageLink': 'Manage tags →'
+  'tags.manageLink': 'Manage tags →',
+
+  // ── Native dialogs of the main process (#270) ─────────────────────────────
+  // Same meaning as the German texts, which are the owner's wording.
+  'mainDialog.mcp.title': 'TimeTrack — MCP write access',
+  'mainDialog.mcp.message': 'Claude wants to make a change in TimeTrack:',
+  'mainDialog.mcp.deny': 'Deny',
+  'mainDialog.mcp.allow': 'Allow',
+  'mainDialog.mcp.remember': 'Allow start and stop without asking for 30 minutes',
+  'mainDialog.mcp.create': 'Add entry — client {client}, {span} ({minutes} min)',
+  'mainDialog.mcp.update': 'Change entry #{id} — before {before}, after {after}',
+  'mainDialog.mcp.start': 'Start timer — client {client}, {from}{ends}',
+  'mainDialog.mcp.startFrom': 'from {moment}',
+  'mainDialog.mcp.startNow': 'from now',
+  'mainDialog.mcp.startEnds': '; ends #{id} ({client}) at {time}',
+  'mainDialog.mcp.stop': 'Stop the running timer (entry #{id})',
+  'mainDialog.mcp.stopNone': 'Stop the running timer (none running)',
+  'mainDialog.mcp.field.start': 'Start',
+  'mainDialog.mcp.field.end': 'End',
+  'mainDialog.mcp.field.client': 'Client',
+  'mainDialog.mcp.field.project': 'Project',
+  'mainDialog.mcp.field.billable': 'billable',
+  'mainDialog.mcp.field.description': 'Description',
+  'mainDialog.mcp.field.tags': 'Tags',
+  'mainDialog.mcp.field.reference': 'Reference',
+  'mainDialog.mcp.field.privateNote': 'private note',
+  'mainDialog.mcp.noProject': 'No project',
+  'mainDialog.mcp.empty': '(empty)',
+  'mainDialog.mcp.yes': 'yes',
+  'mainDialog.mcp.no': 'no',
+  'mainDialog.mcp.offsetHint':
+    'Note: {offset} is not the local offset on {day} ({local}). Saved as {time} local time.',
+  'mainDialog.settingConfirm.title': 'TimeTrack — Confirm setting',
+  'mainDialog.settingConfirm.cancel': 'Cancel',
+  'mainDialog.settingConfirm.mcpWrite.message': 'Turn on MCP write access?',
+  'mainDialog.settingConfirm.mcpWrite.detail':
+    'An AI program with access to TimeTrack can then add and change entries and start and stop timers. How often TimeTrack asks first is set under “Confirmation”.',
+  'mainDialog.settingConfirm.mcpWrite.confirm': 'Turn on',
+  'mainDialog.settingConfirm.controller.message': 'Allow hardware keys?',
+  'mainDialog.settingConfirm.controller.detail':
+    'Stream Deck and similar devices can then start, stop and switch timers. A key press counts as confirmation; TimeTrack does not ask.',
+  'mainDialog.settingConfirm.controller.confirm': 'Allow',
+  'mainDialog.settingConfirm.silent.message': 'Allow writes without asking?',
+  'mainDialog.settingConfirm.silent.detail':
+    'An AI program with access to TimeTrack can then add and change entries and control timers without TimeTrack asking.',
+  'mainDialog.settingConfirm.silent.confirm': 'Allow without asking',
+  'mainDialog.settingConfirm.webhook.message': 'Save webhook target?',
+  'mainDialog.settingConfirm.webhook.detail':
+    'Whenever a timer starts or stops and whenever an entry is added or changed, depending on the events you chose, TimeTrack then sends the entry’s data to:\n{urls}\nThis includes client, project, times, description, tags and reference; the hourly rate and the internal note only if you released them under “Integrations”.\nOnly save if you trust this address.',
+  'mainDialog.settingConfirm.webhook.confirm': 'Save',
+  'mainDialog.settingConfirm.graphClientId.message': 'Use a different app registration?',
+  'mainDialog.settingConfirm.graphClientId.detail':
+    'Microsoft sign-in then runs through app ID {id} instead of TimeTrack’s own. Only change this if your IT requires it.',
+  'mainDialog.settingConfirm.graphClientId.confirm': 'Use',
+  'mainDialog.hotkey.title': 'TimeTrack — Hotkey conflict',
+  'mainDialog.hotkey.message': 'The mini widget hotkey "{hotkey}" could not be registered.',
+  'mainDialog.hotkey.detail':
+    'Another application already uses this key combination.\n\nYou can choose a different hotkey in Settings.',
+  'mainDialog.ok': 'OK',
+  'mainDialog.migration.title': 'TimeTrack — Database migration failed',
+  'mainDialog.migration.message':
+    'Migration #{version} ({name}) failed:\n\n{cause}\n\nYour database was restored from the pre-migration backup:\n{backupPath}\n\nThe app will now quit. Please report this error.',
+  'mainDialog.dbError.title': 'TimeTrack — Database error',
+  'mainDialog.dbError.message': 'The database could not be opened:\n\n{cause}',
+  'mainDialog.restore.title': 'TimeTrack — Backup not restored',
+  'mainDialog.restore.inUse':
+    'Backup not restored: the database is still open in another program (for example an MCP client such as Claude Desktop). Quit that program and try again.',
+  'mainDialog.restore.failed': 'Backup not restored: {cause}',
+  'mainDialog.restore.unknown': 'Backup not restored: this backup file is not in the backup list.',
+  'mainDialog.backupPath.title': 'Choose backup folder',
+  'mainDialog.exportJson.title': 'Save data export',
+  'mainDialog.pdf.saveTitle': 'Save timesheet',
+  'mainDialog.pdf.openTitle': 'Choose PDF',
+  'mainDialog.pdf.mergeSaveTitle': 'Save merged PDF',
+  'mainDialog.logo.title': 'Choose logo',
+  'mainDialog.logo.filter': 'Images',
+  'mainDialog.csv.title': 'Save CSV',
+  'mainDialog.ical.title': 'Save iCal',
+
+  // ── Main process: tray, default file names, cancel results (#296) ─────────
+  'mainTray.idle': 'No timer running',
+  'mainTray.stop': 'Stop',
+  'mainTray.quickStart': 'Quick start',
+  'mainTray.noClients': 'No active clients',
+  'mainTray.showWindow': 'Show window',
+  'mainTray.quit': 'Quit',
+  'mainTray.tooltipRunning': '● {label} · Today {today}',
+  'mainTray.tooltipIdle': 'TimeTrack — Today {today}',
+  'mainFile.pdf': 'Timesheet-{client}{project}-{month}.pdf',
+  'mainFile.csv': 'Time-entries-{client}{project}-{month}.csv',
+  'mainFile.ical': 'Time-entries-{client}{project}-{month}.ics',
+  'mainFile.merged': '{name}_incl_Timesheet.pdf',
+  'mainFile.mergedStamped': '{name}_incl_Timesheet_{stamp}.pdf',
+  'mainFile.fallbackClient': 'Client',
+  'mainError.exportCancelled': 'Export cancelled',
+  'mainError.selectionCancelled': 'Selection cancelled',
+  'mainError.saveCancelled': 'Saving cancelled'
 } as const satisfies Record<TranslationKey, string>

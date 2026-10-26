@@ -3,15 +3,25 @@
  *
  * All comparisons are intentionally LOCAL-time (`getYear/getMonth/getDate`)
  * so a 23:30→00:30 entry is correctly flagged as cross-midnight regardless
- * of the user's timezone. v1.2 rejects cross-midnight entries; v1.3 will
- * lift the restriction and split such entries.
+ * of the user's timezone. Entries across midnight are stored split at local
+ * midnight (shared/midnightSplit); a form edits one of those halves.
  */
+
+import { localMidnightAfter } from './midnightSplit'
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 function toDate(input: string | Date): Date {
-  return input instanceof Date ? input : new Date(input)
+  if (input instanceof Date) return input
+  // A bare date (what <input type="date"> gives) is a local calendar day.
+  // `new Date('2026-06-10')` would read it as UTC midnight, which is the day
+  // before everywhere west of UTC, and the form saved entries a day early.
+  const day = DATE_ONLY_RE.exec(input)
+  if (day) return new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]))
+  return new Date(input)
 }
+
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 
 /**
  * True iff `a` and `b` fall on the same calendar day in the host's local
@@ -41,6 +51,33 @@ export function parseTimeToDate(dateISO: string | Date, time: string): Date {
   return out
 }
 
+/**
+ * The stop of a form that edits one day (#334): like `parseTimeToDate`, except
+ * on an entry that ends at the next midnight (`untilMidnight`), where the time
+ * of that midnight is that midnight. That is how the first half of an entry
+ * across midnight (20:00 to 00:00) reads, and a whole day from 00:00 to
+ * 00:00. The boundary is the one the split uses (`localMidnightAfter`), so it
+ * also holds where the clock jumps from 00:00 to 01:00 and the form shows
+ * 01:00 (there, a stop of 01:00 on such an entry always means the boundary,
+ * since that time exists only once). A new entry, or any other stop, stays on
+ * the same day, so a stop before the start is still refused instead of
+ * becoming an overnight entry.
+ */
+export function parseStopToDate(
+  dateISO: string | Date,
+  stopTime: string,
+  untilMidnight: boolean
+): Date {
+  const stop = parseTimeToDate(dateISO, stopTime)
+  if (!untilMidnight) return stop
+  const next = localMidnightAfter(stop)
+  return formatTimeHHMM(next) === stopTime ? next : stop
+}
+
+/** True when `stop` is exactly the local midnight after the day of `start`. */
+export function endsAtNextMidnight(start: string | Date, stop: string | Date): boolean {
+  return toDate(stop).getTime() === localMidnightAfter(toDate(start)).getTime()
+}
 /** Format a date as "HH:MM" in the host's local timezone. */
 export function formatTimeHHMM(date: string | Date): string {
   const d = toDate(date)

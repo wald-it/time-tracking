@@ -4,10 +4,9 @@
  * reject any write at the driver level, which is the core safety guarantee of
  * the read-only MVP (see issue: MCP-Server Read-only).
  *
- * NOTE ON NATIVE ABI: this repo's postinstall rebuilds better-sqlite3 for
- * Electron's ABI (`electron-builder install-app-deps`), so the module will NOT
- * load under a plain Node runtime without a Node-ABI rebuild. See the README
- * "MCP-Integration" section for how to run the server.
+ * The server runs on the app's Electron binary in Node mode; see
+ * `src/main/mcpLaunch.ts` and the README "MCP integration" section for how
+ * it is launched.
  */
 import Database from 'better-sqlite3'
 import { existsSync } from 'fs'

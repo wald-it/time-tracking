@@ -61,7 +61,8 @@ function mockFs(files: Record<string, Buffer | 'EBUSY' | 'EPERM'>): FsDeps {
 
 const noDialog: DialogDeps = {
   // Electron liefert bei Abbruch einen leeren `filePath` (nicht undefined).
-  showSaveDialog: async () => ({ canceled: true, filePath: '' })
+  showSaveDialog: async () => ({ canceled: true, filePath: '' }),
+  locale: () => 'de'
 }
 
 // ── mergeOnlyHandler tests ────────────────────────────────────────────────────
@@ -201,7 +202,8 @@ describe('mergeOnlyHandler', () => {
       }
     }
     const mockDialog: DialogDeps = {
-      showSaveDialog: async () => ({ canceled: false, filePath: 'C:/fallback_merged.pdf' })
+      showSaveDialog: async () => ({ canceled: false, filePath: 'C:/fallback_merged.pdf' }),
+      locale: () => 'de'
     }
     const res = await mergeOnlyHandler(
       { stundennachweisPath: 'C:/sn.pdf', invoicePath: 'C:/inv.pdf' },
@@ -228,6 +230,8 @@ describe('mergeOnlyHandler', () => {
     )
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/abgebrochen/)
+    // #296: the renderer acts on the code, not on the wording.
+    expect(res).toMatchObject({ ok: false, code: 'cancelled' })
   })
 })
 
@@ -579,8 +583,14 @@ describe('mergeExportHandler — successful merge', () => {
         }
       }
     }
+    // #270/#296: the fallback dialog and the suggested name follow the language.
+    const asked: Array<[string | undefined, string | undefined]> = []
     const dialogDeps: DialogDeps = {
-      showSaveDialog: async () => ({ canceled: false, filePath: fallbackPath })
+      showSaveDialog: async (o) => {
+        asked.push([o.title, o.defaultPath])
+        return { canceled: false, filePath: fallbackPath }
+      },
+      locale: () => 'en'
     }
     const res = await mergeExportHandler(
       mockDb(),
@@ -591,6 +601,7 @@ describe('mergeExportHandler — successful merge', () => {
     )
     expect(res.ok).toBe(true)
     expect(unwrapData(res).path).toBe(fallbackPath)
+    expect(asked).toEqual([['Save merged PDF', 'rechnung_incl_Timesheet.pdf']])
   })
 
   it('returns error when dialog is canceled after EPERM', async () => {
@@ -612,5 +623,7 @@ describe('mergeExportHandler — successful merge', () => {
     )
     expect(res.ok).toBe(false)
     expect(unwrapErr(res)).toMatch(/abgebrochen/)
+    // #296: the renderer acts on the code, not on the wording.
+    expect(res).toMatchObject({ ok: false, code: 'cancelled' })
   })
 })

@@ -15,6 +15,7 @@ import {
   switchTimerAndNotify,
   validateProjectForClient
 } from './entryMutations'
+import { importCalendarEntries, importedEventIds } from './graphImport'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -494,5 +495,184 @@ describe('overlap with a running entry', () => {
       stopped_at: at(-1 * H)
     })
     expect(res).toMatchObject({ ok: false, error: /überlappt/ })
+  })
+})
+
+// #299: an edit is saved as delete + reinsert (new id). The reinsert used to
+// drop the calendar import anchor — the next import preview offered the
+// meeting again — and the original creation time. Both now survive the edit.
+describe('updateManualEntry keeps the import anchor and created_at (#299)', () => {
+  let db: Database.Database
+  const CREATED = '2026-01-02 08:00:00'
+  // Built from local parts: splitAtMidnight cuts at local midnight, so a
+  // single entry stays single and the pair below has two halves in any zone.
+  const local = (d: number, h: number, m = 0): string => new Date(2026, 5, d, h, m).toISOString()
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+  })
+
+  /** An entry imported from the calendar, written a while ago. */
+  function imported(startedAt: string, stoppedAt: string): number {
+    const res = importCalendarEntries(db, [
+      { graphEventId: 'EVT-1', description: 'Termin', startedAt, stoppedAt, clientId: 1 }
+    ])
+    if (res.created !== 1) throw new Error(`setup: ${JSON.stringify(res.failed)}`)
+    db.prepare(`UPDATE entries SET created_at = ?`).run(CREATED)
+    return (
+      db.prepare(`SELECT id FROM entries WHERE graph_event_id = 'EVT-1'`).get() as { id: number }
+    ).id
+  }
+
+  function edit(id: number, startedAt: string, stoppedAt: string): number {
+    const res = updateManualEntry(db, {
+      id,
+      client_id: 1,
+      description: 'Termin (korrigiert)',
+      started_at: startedAt,
+      stopped_at: stoppedAt
+    })
+    if (!res.ok) throw new Error(res.error)
+    return res.data.id
+  }
+
+  const rows = (): Array<{ id: number; graph_event_id: string | null; created_at: string }> =>
+    db
+      .prepare(`SELECT id, graph_event_id, created_at FROM entries ORDER BY started_at`)
+      .all() as Array<{ id: number; graph_event_id: string | null; created_at: string }>
+
+  it('an edited imported entry still counts as imported', () => {
+    const id = imported(local(10, 9), local(10, 10))
+    const newId = edit(id, local(10, 9, 15), local(10, 10))
+    expect(newId).not.toBe(id) // still delete + reinsert; only the two fields carry over
+    expect(rows()).toEqual([{ id: newId, graph_event_id: 'EVT-1', created_at: CREATED }])
+    // The dedupe input of the import preview — the meeting is not offered again.
+    expect([...importedEventIds(db)]).toEqual(['EVT-1'])
+  })
+
+  it('a plain manual entry keeps its created_at and gains no anchor', () => {
+    const made = createManualEntry(db, {
+      client_id: 1,
+      description: 'Feature',
+      started_at: local(10, 9),
+      stopped_at: local(10, 10)
+    })
+    if (!made.ok) throw new Error(made.error)
+    db.prepare(`UPDATE entries SET created_at = ?`).run(CREATED)
+    const newId = edit(made.data.id, local(10, 9), local(10, 11))
+    expect(rows()).toEqual([{ id: newId, graph_event_id: null, created_at: CREATED }])
+  })
+
+  const SPLIT: [string, string] = [local(10, 20), local(11, 4)]
+
+  it('a midnight-split pair keeps created_at on both halves, the anchor on the first', () => {
+    const id = imported(...SPLIT)
+    expect(rows()).toHaveLength(2)
+    // The first half's start is the entry's start (#311: the 0:00 edge stays).
+    edit(id, local(10, 20, 30), local(11, 0))
+    const after = rows()
+    expect(after.map((r) => r.created_at)).toEqual([CREATED, CREATED])
+    expect(after.map((r) => r.graph_event_id)).toEqual(['EVT-1', null])
+  })
+
+  it('editing the second half of a pair keeps the anchor too', () => {
+    imported(...SPLIT)
+    const second = rows()[1].id
+    edit(second, local(11, 0), local(11, 3))
+    expect(rows().map((r) => r.graph_event_id)).toEqual(['EVT-1', null])
+    expect([...importedEventIds(db)]).toEqual(['EVT-1'])
+  })
+
+  it('a single entry edited into a pair, and the pair edited again, keeps both fields', () => {
+    const id = imported(local(10, 9), local(10, 10))
+    const pairId = edit(id, ...SPLIT)
+    expect(rows().map((r) => [r.graph_event_id, r.created_at])).toEqual([
+      ['EVT-1', CREATED],
+      [null, CREATED]
+    ])
+    edit(pairId, local(10, 21), local(11, 0))
+    expect(rows().map((r) => [r.graph_event_id, r.created_at])).toEqual([
+      ['EVT-1', CREATED],
+      [null, CREATED]
+    ])
+  })
+})
+
+// An edit writes the entry anew (delete + reinsert). Every column it does not
+// pass on is reset — that is how #299 lost graph_event_id and created_at. This
+// guard turns red for the next column: each one must be classified here, and
+// an edit that changes nothing must keep every value the entry owns.
+describe('an edit keeps every column of the entry (guard)', () => {
+  /** Where updateManualEntry gets each column's value from. */
+  const COLUMNS: Record<string, 'input' | 'carried' | 'rebuilt'> = {
+    client_id: 'input',
+    description: 'input',
+    started_at: 'input',
+    stopped_at: 'input',
+    tags: 'input',
+    reference: 'input',
+    billable: 'input',
+    private_note: 'input',
+    project_id: 'input',
+    graph_event_id: 'carried',
+    created_at: 'carried',
+    // New rows: a new id and link_id, heartbeat = stop, minutes from the
+    // range, and a live row is not deleted.
+    id: 'rebuilt',
+    link_id: 'rebuilt',
+    heartbeat_at: 'rebuilt',
+    rounded_min: 'rebuilt',
+    deleted_at: 'rebuilt'
+  }
+
+  it('every column of entries is classified', () => {
+    const db = new DatabaseImpl(':memory:')
+    seed(db)
+    const names = (db.prepare(`PRAGMA table_info(entries)`).all() as Array<{ name: string }>)
+      .map((c) => c.name)
+      .sort()
+    expect(names, 'classify the new column in COLUMNS and carry it in updateManualEntry').toEqual(
+      Object.keys(COLUMNS).sort()
+    )
+  })
+
+  it('an edit that changes nothing keeps every value the entry owns', () => {
+    const db = new DatabaseImpl(':memory:')
+    seed(db)
+    const made = createManualEntry(db, {
+      client_id: 1,
+      project_id: 10,
+      description: 'Alles gesetzt',
+      started_at: new Date(2026, 5, 10, 9).toISOString(),
+      stopped_at: new Date(2026, 5, 10, 10, 30).toISOString(),
+      tags: ',a,',
+      reference: 'REF-1',
+      billable: 0,
+      private_note: 'intern'
+    })
+    if (!made.ok) throw new Error(made.error)
+    db.prepare(
+      `UPDATE entries SET graph_event_id = 'EVT-G', created_at = '2026-01-02 08:00:00'`
+    ).run()
+    const before = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
+    const res = updateManualEntry(db, {
+      id: before.id as number,
+      client_id: before.client_id as number,
+      project_id: before.project_id as number,
+      description: before.description as string,
+      started_at: before.started_at as string,
+      stopped_at: before.stopped_at as string,
+      tags: before.tags as string,
+      reference: before.reference as string,
+      billable: before.billable as number,
+      private_note: before.private_note as string
+    })
+    if (!res.ok) throw new Error(res.error)
+    const after = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
+    const owned = Object.keys(COLUMNS).filter((c) => COLUMNS[c] !== 'rebuilt')
+    expect(Object.fromEntries(owned.map((c) => [c, after[c]]))).toEqual(
+      Object.fromEntries(owned.map((c) => [c, before[c]]))
+    )
   })
 })

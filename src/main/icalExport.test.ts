@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, dirname, join } from 'path'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 
@@ -155,6 +155,29 @@ describe('handleIcalExport', () => {
   beforeEach(() => {
     db = new DatabaseImpl(':memory:')
     seed(db)
+  })
+
+  // #270: the save dialog follows the app language.
+  it('titles the save dialog in the app language', async () => {
+    const { dialog } = await import('electron')
+    const save = vi.mocked(dialog.showSaveDialog)
+    save.mockClear()
+    await run(db)
+    db.prepare(`UPDATE settings SET value = 'en' WHERE key = 'language'`).run()
+    await run(db)
+    expect(save.mock.calls.map((c) => (c[0] as Electron.SaveDialogOptions).title)).toEqual([
+      'iCal speichern',
+      'Save iCal'
+    ])
+    // #296: the suggested name too; German as the app always wrote it.
+    const paths = save.mock.calls.map((c) => (c[0] as Electron.SaveDialogOptions).defaultPath ?? '')
+    expect(paths.map((p) => basename(p))).toEqual([
+      'Zeiterfassung-Acme-2026-04.ics',
+      'Time-entries-Acme-2026-04.ics'
+    ])
+    // #269: the second dialog starts in the folder the first export went to.
+    expect(paths[0]).toBe('Zeiterfassung-Acme-2026-04.ics')
+    expect(paths[1]).toBe(join(dirname(saveTargetPath), 'Time-entries-Acme-2026-04.ics'))
   })
 
   it('exportiert nur abgeschlossene, nicht gelöschte Einträge im Zeitraum + Kunde', async () => {
