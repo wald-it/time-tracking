@@ -111,6 +111,44 @@ describe('buildJsonExportPayload', () => {
     ])
   })
 
+  it('exports every version and every segment of every entry, and the 2.0 side tables', () => {
+    db.prepare(
+      `INSERT INTO clients (id, name, color, rate_cent) VALUES (1, 'Acme', '#6366f1', 8500)`
+    ).run()
+    const midnight = seedEntry(db, {
+      client_id: 1,
+      segments: [
+        { started_at: '2026-06-20T20:00:00.000Z', stopped_at: '2026-06-20T22:00:00.000Z' },
+        { started_at: '2026-06-20T22:00:00.000Z', stopped_at: '2026-06-21T02:00:00.000Z' }
+      ]
+    })
+    const trashed = seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-06-02T08:00:00.000Z',
+      stopped_at: '2026-06-02T09:00:00.000Z',
+      deleted_at: '2026-06-03T10:00:00.000Z'
+    })
+    db.prepare(`INSERT INTO entry_legacy_id (legacy_id, entry_id) VALUES (?, ?)`).run(77, trashed)
+    db.prepare(
+      `INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (1, 8500, '2026-01-01')`
+    ).run()
+
+    const payload = buildJsonExportPayload(db, '2.0.0')
+    expect(payload.entry.map((e) => e.id)).toEqual([midnight, trashed])
+    // The trashed entry has two versions (live, deleted); the midnight entry one.
+    expect(payload.entry_version.map((v) => [v.entry_id, v.version_no])).toEqual([
+      [midnight, 1],
+      [trashed, 1],
+      [trashed, 2]
+    ])
+    // Segments: two for the midnight entry, one per version of the trashed entry.
+    expect(payload.entry_segment).toHaveLength(4)
+    expect(payload.entry_legacy_id).toEqual([{ legacy_id: 77, entry_id: trashed }])
+    expect(payload.rate).toHaveLength(1)
+    // The migration seeds the default profile (client and project both null).
+    expect(payload.billing_profile).toHaveLength(1)
+  })
+
   it('includes soft-deleted entries (audit trail / undo recovery)', () => {
     db.prepare(`INSERT INTO clients (id, name) VALUES (1, 'Acme')`).run()
     seedEntry(db, {
