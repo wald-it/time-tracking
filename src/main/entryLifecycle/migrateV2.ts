@@ -128,7 +128,7 @@ function normaliseCreatedAt(v: string): string | null {
 }
 
 /** Local date (YYYY-MM-DD) in the zone the process runs in, as readers use it. */
-export function localDate(isoString: string): string {
+function localDate(isoString: string): string {
   const d = new Date(isoString)
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`

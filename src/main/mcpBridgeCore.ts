@@ -40,7 +40,6 @@ import {
 } from '../shared/zonedTimestamp'
 import { roundDuration } from '../shared/duration'
 import { deserializeTags } from '../shared/tags'
-import { localDate } from './entryLifecycle/migrateV2'
 import type { Locale } from '../shared/i18n'
 import { dialogT, dialogText, readLanguage, type DialogT } from './mainI18n'
 
@@ -1006,7 +1005,7 @@ async function handleControllerRequest(
  * The entry an MCP id names. A current entry id is itself; an id from 1.x that
  * is no entry id (the second half of a pair, which the migration folded into
  * its first) resolves through `entry_legacy_id` for the whole 2.x line, with
- * the half it stood for (the day its 1.x row started on, else the ordinal
+ * the half it stood for (the day of that segment in the first version, else the ordinal
  * among the entry's legacy ids), so an edit through it keeps its 1.x meaning. Unknown ids stay as given and fail
  * as "Eintrag existiert nicht".
  */
@@ -1021,17 +1020,18 @@ function resolveEntryId(db: Db, id: number): { id: number; seq?: number; date?: 
       .prepare(`SELECT COUNT(*) AS n FROM entry_legacy_id WHERE entry_id = ? AND legacy_id < ?`)
       .get(row.entry_id, id) as { n: number }
   ).n
-  // The day the 1.x row stood for survives in `entries_v1`; it names the half
-  // even after an edit dropped or added a day in front. Without that row the
-  // ordinal is all there is.
-  const v1 = db.prepare(`SELECT started_at FROM entries_v1 WHERE id = ?`).get(id) as
-    | { started_at: string }
-    | undefined
-  return {
-    id: row.entry_id,
-    seq: ordinal,
-    ...(v1 ? { date: localDate(v1.started_at) } : {})
-  }
+  // The day that segment stood for is kept in the entry's first version, which
+  // never changes (and was cut in the zone of the migration); it names the half
+  // even after an edit dropped or added a day in front. Without that segment
+  // the ordinal is all there is.
+  const first = db
+    .prepare(
+      `SELECT s.segment_date FROM entry_segment s
+         JOIN entry_version v ON v.id = s.version_id
+        WHERE v.entry_id = ? AND v.version_no = 1 AND s.seq = ?`
+    )
+    .get(row.entry_id, ordinal) as { segment_date: string } | undefined
+  return { id: row.entry_id, seq: ordinal, ...(first ? { date: first.segment_date } : {}) }
 }
 
 function withVersion<T>(data: T): T {
