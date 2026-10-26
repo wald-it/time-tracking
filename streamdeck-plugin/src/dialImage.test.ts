@@ -13,6 +13,11 @@ import { dialImage, fit, wrapTwo, FEEDBACK_KEY, type DialFace } from './dialImag
 
 const LABEL = { client: 'Acme', project: 'Rollout' }
 
+/** The text a viewer reads: tags (incl. the colon's <tspan>) removed. */
+function visible(svg: string): string {
+  return svg.replace(/<[^>]+>/g, '')
+}
+
 function svgOf(face: DialFace): string {
   const url = dialImage(face)
   expect(url.startsWith('data:image/svg+xml;base64,')).toBe(true)
@@ -89,17 +94,19 @@ describe('dialImage', () => {
     })
     expect(svg).toContain('>TODAY<')
     expect(svg).toContain('>WEEK<')
-    expect(svg).toContain('>3:25<')
-    expect(svg).toContain('>21:00<')
+    // Readouts dim the colon in a <tspan> (#363): compare the visible text.
+    expect(visible(svg)).toContain('3:25')
+    expect(visible(svg)).toContain('21:00')
     expect(svg).toContain('Acme · Rollout')
     expect(svg).toContain('>2/17<')
   })
 
   it('running face shows client, project and elapsed time', () => {
     const svg = svgOf({ state: 'running', label: LABEL, elapsedSec: 3 * 3600 + 7 * 60, color: '#ff8800' })
-    expect(svg).toContain('>Acme<')
+    // The client above a project is a legend, set in capitals (#363).
+    expect(svg).toContain('>ACME<')
     expect(svg).toContain('>Rollout<')
-    expect(svg).toContain('>3:07<')
+    expect(visible(svg)).toContain('3:07')
   })
 
   it('a client-only target shows the client as the main line, without a header', () => {
@@ -113,28 +120,29 @@ describe('dialImage', () => {
     expect(svg.match(/>Beta</g)).toHaveLength(1)
   })
 
-  it('the ring advances with the minute and stays inside its own length', () => {
-    const at0 = svgOf({ state: 'running', label: LABEL, elapsedSec: 0 })
-    const at30 = svgOf({ state: 'running', label: LABEL, elapsedSec: 30 })
-    const at59 = svgOf({ state: 'running', label: LABEL, elapsedSec: 59 })
-    // No progress path at all in the first half second of a minute.
-    expect(at0).not.toContain('stroke-dasharray')
-    const dash = (svg: string): number => Number(/stroke-dasharray="([\d.]+) /.exec(svg)?.[1])
-    expect(dash(at30)).toBeGreaterThan(250)
-    expect(dash(at30)).toBeLessThan(280)
-    expect(dash(at59)).toBeGreaterThan(dash(at30))
-    // Ring length ≈ 547.4 — the dash must never exceed a full lap.
-    expect(dash(at59)).toBeLessThan(548)
+  it('the seconds line grows within the minute and stays inside its track', () => {
+    const width = (sec: number): number | undefined => {
+      const m = /<rect x="14" y="90" width="(\d+)" height="2"/.exec(
+        svgOf({ state: 'running', label: LABEL, elapsedSec: sec })
+      )
+      return m ? Number(m[1]) : undefined
+    }
+    // Nothing filled at the top of a minute, only the track.
+    expect(width(0)).toBeUndefined()
+    expect(width(30)).toBe(86)
+    expect(width(59) as number).toBeGreaterThan(86)
+    // The track is 172 wide; the fill never reaches past it.
+    expect(width(59) as number).toBeLessThan(172)
   })
 
-  it('the pulse breathes over four seconds and returns to its start', () => {
+  it('the running square blinks with the tick and returns to its start', () => {
     const opacity = (sec: number): string =>
-      /<circle cx="178" cy="74" r="5" fill="#ffffff" opacity="([\d.]+)"/.exec(
+      /<rect x="14" y="13" width="9" height="9" fill="#e2551f" opacity="([\d.]+)"/.exec(
         svgOf({ state: 'running', label: LABEL, elapsedSec: sec })
       )?.[1] as string
-    expect(opacity(0)).toBe('1.00')
-    expect(opacity(2)).toBe('0.35')
-    expect(opacity(4)).toBe(opacity(0))
+    expect(opacity(0)).toBe('1')
+    expect(opacity(1)).toBe('0.35')
+    expect(opacity(2)).toBe(opacity(0))
   })
 
   it('browse face marks a target that is already running', () => {
@@ -152,8 +160,9 @@ describe('dialImage', () => {
       progress: 0,
       running: true
     })
-    expect(idle).not.toContain('#4ade80')
-    expect(live).toContain('#4ade80')
+    // Orange means "running" and nothing else (Messinstrument, #363).
+    expect(idle).not.toContain('#e2551f')
+    expect(live).toContain('#e2551f')
   })
 
   it('browse position bar grows with the progress and never leaves the track', () => {

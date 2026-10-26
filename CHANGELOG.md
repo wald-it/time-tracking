@@ -7,6 +7,20 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [1.23.2] — 2026-10-26
+
+### Changed
+
+- **The app icon is the Messinstrument dial** ([#365](https://github.com/wald-it/time-tracking/issues/365)). The exe, the desktop shortcut, the taskbar and the window now show the same dial with the orange needle as the app header and the Stream Deck plugin, on the dark display tile, instead of the old purple glass clock. The tray icon follows: running shows the needle, stopped shows an empty hub, so the two differ in shape and not only in colour. Below 32 px the tick marks are left out and the strokes are heavier. The Windows icon now also carries the 20 and 40 px sizes that 125 % display scaling asks for. On macOS the icon is derived from the same artwork. Windows caches shortcut icons, so the new one may show only after a reinstall.
+
+## [1.23.1] — 2026-10-24
+
+### Changed
+
+- **The Stream Deck plugin matches the app's Messinstrument look** ([#363](https://github.com/wald-it/time-tracking/issues/363)). Keys and the dial's touch strip now look like the app's dark display window: times in a mono face with a dimmed colon, labels as small capitals, the client colour as a thin bar along the bottom instead of a lit-up key. Orange means "running" and nothing else: a small square that blinks once a second, like the running marker in the app's header. A thin line along the bottom of the touch strip shows the seconds of the current minute and replaces the ring. The plugin and action icons are new as well, the plugin icon is the app's dial with its orange needle. Nothing about what the keys and the dial do has changed. Keys cannot carry their own fonts, so on a computer without Archivo and IBM Plex Mono they fall back to Segoe UI and Consolas.
+
+## [1.23.0] — 2026-10-24
+
 ### Breaking for MCP clients and integrations
 
 If you call TimeTrack's MCP tools from your own scripts or agents, or receive its webhooks, check these before updating.
@@ -67,6 +81,7 @@ If you call TimeTrack's MCP tools from your own scripts or agents, or receive it
 - **Every pull request now builds and tests the packaged app (#269).** A new `package-smoke` job in the test workflow packages the app on Windows and macOS, checks what the package contains, runs the app's `--smoke-test` and starts the bundled MCP server from it (initialize, `tools/list`, one tool call that has to reach SQLite). On Windows it builds the real NSIS installer, so `build/installer.nsh` is compiled on every PR; the installer is built, not run. Until now only the release workflow packaged anything, so a broken package first showed up after the tag was pushed.
 - **Release workflow tests no longer wait for process teardown** — The tests of the two release scripts started a separate process 27 times and waited each time until Windows had finished tearing it down, which under heavy load took up to 64.6 s for a single call against a 60 s budget. They now run the unchanged scripts in a worker thread with the same inputs and outputs; one test still starts the release plan as a real process, so its command-line path stays covered. No change to the scripts or the release workflow ([#290](https://github.com/wald-it/time-tracking/issues/290)).
 - **The smoke cleaner checks the same prefix the app uses** — The detached cleaner that removes a smoke run's temp userData had its own copy of the `timetrack-smoke-` prefix; the script is now built with `SMOKE_DIR_PREFIX`, so its prefix check and the app's directory names cannot drift apart, and a test fails if they ever do ([#289](https://github.com/wald-it/time-tracking/issues/289)).
+- **The package-smoke orphan test measures the probe, not process teardown** — The test that guards "the MCP probe does not wait for a descendant holding its pipes" timed the whole probe process, including two Electron starts and the probe's own exit, which Windows can stretch under load (it once took 90 s). It now measures from the fake server's first line to the probe's verdict line (and, outside Windows, to the probe's exit), against 60 s, with the descendant holding the pipes for 75 s. This replaces the interim fix in #269, under which a correct run that took over 90 s under load still failed ([#328](https://github.com/wald-it/time-tracking/issues/328)).
 - **CLAUDE.md points to the roadmap page** — A new section names the owner's roadmap page, the generator that builds it from the brain vault, and the duty to refresh it at the end of every session that merges PRs or changes issues.
 - **No native rebuild step any more (#269).** better-sqlite3 13 is an N-API module and ships prebuilt binaries that load under Node and Electron alike, so `pnpm install` compiles nothing. The `postinstall` rebuild and the forced `electron-rebuild` steps in CI are gone, and pnpm no longer builds better-sqlite3 or electron itself. The `postinstall` now only fetches the Electron binary, which Electron 42 and later no longer do on install and which `pnpm dev` needs. `pnpm test` still runs on Electron's own Node; calling `vitest` directly now stops with a hint instead of running on the system Node. After pulling this, run `pnpm install` once.
 

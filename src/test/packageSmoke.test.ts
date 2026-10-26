@@ -13,13 +13,27 @@
  * it has no test here; its checks mirror the release jobs.
  */
 import { describe, it, expect } from 'vitest'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(__dirname, '..', '..')
 const SCRIPT = join(REPO_ROOT, 'scripts', 'package-smoke.mjs')
+
+/**
+ * The orphan test (#328): the probe must reach its verdict, and outside
+ * Windows end its process, within ORPHAN_LIMIT_MS after the fake server was
+ * up. 60 s, because the time measured still contains the fake server's own
+ * end, which the probe has to wait for: up to 4.8 s measured under the swarm's
+ * load, and #286 measured that kind of Windows teardown at up to 32 s.
+ */
+const ORPHAN_LIMIT_MS = 60_000
+/**
+ * How long the orphan's descendant holds the pipes. Must exceed
+ * ORPHAN_LIMIT_MS, or a probe that waits for the descendant would still pass.
+ */
+const ORPHAN_LIFETIME_MS = 75_000
 
 const FAKE_SERVER = `
 const { existsSync } = require('fs')
@@ -29,9 +43,8 @@ process.stderr.write('[fake] up\\n')
 if (mode === 'orphan') {
   // Dies at start but leaves a descendant holding its stdout and stderr, the
   // way a helper process of a packaged app can. It outlives the test's limit
-  // for the whole probe run (PROBE_LIMIT_MS), so only a probe that lets go of
-  // the pipes ends before that limit kills it.
-  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 150000)'], {
+  // (ORPHAN_LIMIT_MS), so only a probe that lets go of the pipes stays under it.
+  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, ${ORPHAN_LIFETIME_MS})'], {
     stdio: ['ignore', 'inherit', 'inherit']
   })
   process.exit(1)
@@ -71,9 +84,43 @@ rl.on('close', () => process.exit(0))
 
 /**
  * Upper bound for one probe run: its own deadline, two process starts, and the
- * probe's 5 s kill fallback plus its 2 s drain grace at the end.
+ * probe's 5 s kill fallback plus its 2 s drain grace at the end. `probe`
+ * kills at this point; `probeTimed` only if the verdict has not come by then.
  */
 const PROBE_LIMIT_MS = 90_000
+
+/** Writes the fake server and its source into `dir`; returns the probe's argv and env. */
+function probeCommand(
+  dir: string,
+  mode: string,
+  tools: string[],
+  opts: { source?: string; exe?: string }
+): { args: string[]; env: NodeJS.ProcessEnv } {
+  const server = join(dir, 'server.js')
+  const source = join(dir, 'server.ts')
+  writeFileSync(server, FAKE_SERVER)
+  writeFileSync(
+    source,
+    tools.map((n) => `server.registerTool(\n  '${n}',\n  {},\n  async () => ({})\n)\n`).join('')
+  )
+  // The suite runs on the Electron binary in Node mode, so process.execPath
+  // stands in for the packaged app binary; the probe sets Node mode itself.
+  const args = [
+    SCRIPT,
+    'mcp',
+    '--exe',
+    opts.exe ?? process.execPath,
+    '--entry',
+    server,
+    '--server-source',
+    opts.source ?? source,
+    '--timeout-ms',
+    // Short only where the deadline is the point: a cold Electron start
+    // on a busy runner can take several seconds before it answers.
+    mode === 'silent' ? '3000' : '20000'
+  ]
+  return { args, env: { ...process.env, FAKE_MODE: mode, FAKE_TOOLS: tools.join(',') } }
+}
 
 function probe(
   mode: string,
@@ -82,40 +129,113 @@ function probe(
 ): { status: number | null; output: string } {
   const dir = mkdtempSync(join(tmpdir(), 'package-smoke-test-'))
   try {
-    const server = join(dir, 'server.js')
-    const source = join(dir, 'server.ts')
-    writeFileSync(server, FAKE_SERVER)
-    writeFileSync(
-      source,
-      tools.map((n) => `server.registerTool(\n  '${n}',\n  {},\n  async () => ({})\n)\n`).join('')
-    )
-    // The suite runs on the Electron binary in Node mode, so process.execPath
-    // stands in for the packaged app binary; the probe sets Node mode itself.
-    const proc = spawnSync(
-      process.execPath,
-      [
-        SCRIPT,
-        'mcp',
-        '--exe',
-        opts.exe ?? process.execPath,
-        '--entry',
-        server,
-        '--server-source',
-        opts.source ?? source,
-        '--timeout-ms',
-        // Short only where the deadline is the point: a cold Electron start
-        // on a busy runner can take several seconds before it answers.
-        mode === 'silent' ? '3000' : '20000'
-      ],
-      {
-        env: { ...process.env, FAKE_MODE: mode, FAKE_TOOLS: tools.join(',') },
-        encoding: 'utf8',
-        timeout: PROBE_LIMIT_MS
-      }
-    )
+    const { args, env } = probeCommand(dir, mode, tools, opts)
+    const proc = spawnSync(process.execPath, args, {
+      env,
+      encoding: 'utf8',
+      timeout: PROBE_LIMIT_MS
+    })
     return { status: proc.status, output: `${proc.stdout}\n${proc.stderr}` }
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Like `probe`, but times the probe from the moment the fake server was up,
+ * that is from the relayed `[fake] up` line (#328):
+ * - `verdictMs`: until the probe's `ERROR:` line (it prints one, as its last
+ *   output, from the top-level catch);
+ * - `exitMs`: until the probe process's 'exit' event.
+ * Neither counts the start of the two Electron processes before that line.
+ * `exitMs` does count the end of the probe's own process, which Windows can
+ * stretch by tens of seconds under load (#264, #286); see the orphan test for
+ * where it is used.
+ */
+async function probeTimed(
+  mode: string,
+  tools: string[]
+): Promise<{
+  status: number | null
+  output: string
+  timedOut: boolean
+  verdictMs: number | null
+  exitMs: number | null
+}> {
+  const dir = mkdtempSync(join(tmpdir(), 'package-smoke-test-'))
+  try {
+    const { args, env } = probeCommand(dir, mode, tools, {})
+    return await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, args, { env })
+      let output = ''
+      let upAt: number | null = null
+      let verdictAt: number | null = null
+      let exitAt: number | null = null
+      let timedOut = false
+      const take = (line: string): void => {
+        const text = line.replace(/\r$/, '')
+        output += text + '\n'
+        if (upAt === null && text.includes('[stderr] [fake] up')) upAt = Date.now()
+        if (verdictAt === null && text.startsWith('ERROR:')) {
+          verdictAt = Date.now()
+          clearTimeout(killer)
+        }
+      }
+      // One line buffer per stream: the relayed server lines arrive on stdout,
+      // the verdict on stderr, and a line cut at a chunk end must not be glued
+      // to the other stream.
+      const reader = (stream: NodeJS.ReadableStream): void => {
+        let partial = ''
+        stream.setEncoding('utf8')
+        stream.on('data', (chunk: string) => {
+          const lines = (partial + chunk).split('\n')
+          partial = lines.pop() ?? ''
+          lines.forEach(take)
+        })
+        stream.on('end', () => {
+          if (partial) take(partial)
+        })
+      }
+      reader(child.stdout)
+      reader(child.stderr)
+      // A probe that hangs before its verdict is killed (SIGKILL), so the test
+      // fails on `timedOut` with the probe's output instead of a bare test
+      // timeout. The timer stops at the verdict line, because 'exit' comes only
+      // after the OS has torn the process down, which on Windows can take as
+      // long as this limit; a probe that hangs after its verdict fails on the
+      // lifetime check outside Windows.
+      const killer = setTimeout(() => {
+        timedOut = child.exitCode === null && child.signalCode === null && child.kill('SIGKILL')
+      }, PROBE_LIMIT_MS)
+      // An error before the process got a pid is a spawn failure. Later ones
+      // (a failed kill) are not the run's result, as in the probe itself.
+      child.on('error', (e) => {
+        if (child.pid !== undefined) return
+        clearTimeout(killer)
+        reject(e)
+      })
+      child.on('exit', () => {
+        exitAt = Date.now()
+      })
+      child.on('close', (status) => {
+        clearTimeout(killer)
+        const since = (at: number | null): number | null =>
+          upAt !== null && at !== null ? at - upAt : null
+        resolve({
+          status,
+          output,
+          timedOut,
+          verdictMs: since(verdictAt),
+          exitMs: since(exitAt)
+        })
+      })
+    })
+  } finally {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    } catch {
+      // A temp dir a stray handle still holds is not the test's result.
+    }
   }
 }
 
@@ -159,13 +279,24 @@ describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => 
   // 'close' waits for it. On Windows 'close' follows 'exit' at once even then
   // (measured 2026-10-23: 18 ms with the descendant alive), so this test is
   // green there with or without the pipe release; it guards on the macOS job.
-  it('ends when the server is gone even if a descendant keeps its pipes open', () => {
-    const r = probe('orphan', TOOLS)
-    // A probe that waited for the descendant (150 s) would be killed by the
-    // PROBE_LIMIT_MS timeout: status null and none of its own output. No
-    // stopwatch here — under load a correct run can take many seconds.
+  it('ends when the server is gone even if a descendant keeps its pipes open', async () => {
+    const r = await probeTimed('orphan', TOOLS)
+    expect(r.timedOut, r.output).toBe(false)
     expect(r.status).toBe(1)
     expect(r.output).toContain('before answering initialize')
+    // The probe must neither wait for the descendant before its verdict nor
+    // stay alive for it afterwards (the pipe release in giveUpOnPipes). Timed
+    // from the server's first line, not around the whole probe process, which
+    // also counts two Electron starts and the probe's own end (#328).
+    expect(r.verdictMs).not.toBeNull()
+    expect(r.verdictMs!).toBeLessThan(ORPHAN_LIMIT_MS)
+    // The probe's lifetime can only hang on the pipes on POSIX (see above). On
+    // Windows its 'exit' event also waits for the OS to tear the process down,
+    // which took up to 90 s under load, so it is not asserted there.
+    if (process.platform !== 'win32') {
+      expect(r.exitMs).not.toBeNull()
+      expect(r.exitMs!).toBeLessThan(ORPHAN_LIMIT_MS)
+    }
   })
 
   it('fails with a plain message when the binary is not where the job expects it', () => {
