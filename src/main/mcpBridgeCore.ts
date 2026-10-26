@@ -1022,15 +1022,25 @@ function resolveEntryId(db: Db, id: number): { id: number; seq?: number; date?: 
   ).n
   // The day that segment stood for is kept in the entry's first version, which
   // never changes (and was cut in the zone of the migration); it names the half
-  // even after an edit dropped or added a day in front. Without that segment
-  // the ordinal is all there is.
-  const first = db
+  // even after an edit dropped or added a day in front. The segment is found by
+  // the start of the 1.x row, which `entries_v1` keeps; ids need not run in time
+  // order. Without that row the ordinal among the legacy ids is all there is.
+  const byStart = db
+    .prepare(
+      `SELECT s.segment_date FROM entry_segment s
+         JOIN entry_version v ON v.id = s.version_id
+        WHERE v.entry_id = ? AND v.version_no = 1
+          AND s.started_at = (SELECT started_at FROM entries_v1 WHERE id = ?)`
+    )
+    .get(row.entry_id, id) as { segment_date: string } | undefined
+  const byOrdinal = db
     .prepare(
       `SELECT s.segment_date FROM entry_segment s
          JOIN entry_version v ON v.id = s.version_id
         WHERE v.entry_id = ? AND v.version_no = 1 AND s.seq = ?`
     )
     .get(row.entry_id, ordinal) as { segment_date: string } | undefined
+  const first = byStart ?? byOrdinal
   return { id: row.entry_id, seq: ordinal, ...(first ? { date: first.segment_date } : {}) }
 }
 

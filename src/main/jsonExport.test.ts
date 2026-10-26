@@ -118,8 +118,16 @@ describe('buildJsonExportPayload', () => {
     const midnight = seedEntry(db, {
       client_id: 1,
       segments: [
-        { started_at: '2026-06-20T20:00:00.000Z', stopped_at: '2026-06-20T22:00:00.000Z' },
-        { started_at: '2026-06-20T22:00:00.000Z', stopped_at: '2026-06-21T02:00:00.000Z' }
+        {
+          started_at: '2026-06-20T20:00:00.000Z',
+          stopped_at: '2026-06-20T22:00:00.000Z',
+          segment_date: '2026-06-20'
+        },
+        {
+          started_at: '2026-06-20T22:00:00.000Z',
+          stopped_at: '2026-06-21T02:00:00.000Z',
+          segment_date: '2026-06-21'
+        }
       ]
     })
     const trashed = seedEntry(db, {

@@ -257,6 +257,26 @@ describe('MCP contracts (2.0 P3)', () => {
       expect(rangeOf(id)).toEqual({ started_at: local(21, 1), stopped_at: local(21, 5) })
     })
 
+    it('a legacy id whose number runs against the time order still names its own half', async () => {
+      // Row 10 was the 21st, row 11 the 20th (a restored half); the migration put
+      // them in time order, so row 11 is the first segment although it ranks second.
+      const id = legacyPair()
+      db.exec('DROP TRIGGER trg_entries_v1_insert') // read-only for the app, not for this fixture
+      const v1 = db.prepare(
+        `INSERT INTO entries_v1 (id, client_id, started_at, stopped_at) VALUES (?, 1, ?, ?)`
+      )
+      v1.run(10, local(21, 0), local(21, 4))
+      v1.run(11, local(20, 20), local(21, 0))
+      const { ctx } = makeCtx(db)
+      // Row 11 is the first day, so its start is the outer edge and may move.
+      const res = await handleRequest(
+        ctx,
+        req('update_entry_fields', { id: 11, started_at: local(20, 19) })
+      )
+      expect(res.ok).toBe(true)
+      expect(rangeOf(id)).toEqual({ started_at: local(20, 19), stopped_at: local(21, 4) })
+    })
+
     it('an id that is neither an entry nor a legacy id is refused', async () => {
       const { ctx } = makeCtx(db)
       const res = await handleRequest(
