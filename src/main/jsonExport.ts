@@ -6,6 +6,16 @@ export interface JsonExportPayload {
   meta: { schemaVersion: number; exportedAt: string; appVersion: string }
   clients: Client[]
   entries: Entry[]
+  /**
+   * 2.0 P3: the tables behind `entries`, verbatim, so the export holds every
+   * version and segment of every entry, not only the current one.
+   */
+  entry: Array<Record<string, unknown>>
+  entry_version: Array<Record<string, unknown>>
+  entry_segment: Array<Record<string, unknown>>
+  entry_legacy_id: Array<Record<string, unknown>>
+  rate: Array<Record<string, unknown>>
+  billing_profile: Array<Record<string, unknown>>
   settings: Array<{ key: string; value: string }>
 }
 
@@ -59,8 +69,8 @@ export function buildJsonExportPayload(
   const clients = db.prepare(`SELECT * FROM clients ORDER BY id ASC`).all() as Client[]
   // 2.0 P2: the view `entries` shows live entries only; the export keeps the
   // soft-deleted ones (its contract above), so it reads the current version
-  // of every entry, one row per segment, in today's shape. P3 exports the
-  // tables themselves (versions, segments).
+  // of every entry, one row per segment, in today's shape. The tables
+  // themselves (versions, segments) follow below.
   const entries = db
     .prepare(
       `SELECT e.id, v.client_id, v.description, s.started_at, s.stopped_at,
@@ -75,6 +85,8 @@ export function buildJsonExportPayload(
         ORDER BY s.started_at ASC, e.id ASC, s.seq ASC`
     )
     .all() as Entry[]
+  const table = (sql: string): Array<Record<string, unknown>> =>
+    db.prepare(sql).all() as Array<Record<string, unknown>>
   const settings = db.prepare(`SELECT key, value FROM settings ORDER BY key ASC`).all() as Array<{
     key: string
     value: string
@@ -87,6 +99,12 @@ export function buildJsonExportPayload(
     },
     clients,
     entries,
+    entry: table(`SELECT * FROM entry ORDER BY id ASC`),
+    entry_version: table(`SELECT * FROM entry_version ORDER BY entry_id ASC, version_no ASC`),
+    entry_segment: table(`SELECT * FROM entry_segment ORDER BY version_id ASC, seq ASC`),
+    entry_legacy_id: table(`SELECT * FROM entry_legacy_id ORDER BY legacy_id ASC`),
+    rate: table(`SELECT * FROM rate ORDER BY id ASC`),
+    billing_profile: table(`SELECT * FROM billing_profile ORDER BY id ASC`),
     settings: exportableSettings(settings)
   }
 }

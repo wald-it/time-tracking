@@ -13,6 +13,7 @@ import {
   listClients,
   listProjects,
   listEntries,
+  getEntryHistory,
   getRunningTimer,
   getAnalytics,
   getSetting,
@@ -218,6 +219,105 @@ describe('query layer', () => {
     const running = res.entries!.find((e) => e.id === 103)!
     expect(running.running).toBe(true)
     expect(running.stopped_at).toBeNull()
+  })
+
+  describe('one item per entry (OQ7, 2.0 P3)', () => {
+    // 20:00 to 04:00 local across 20/21 June, plus an entry across the month
+    // boundary 30 June 22:00 to 1 July 02:00 (local, whatever the zone).
+    const local = (m: number, d: number, h: number): string =>
+      new Date(2026, m - 1, d, h, 0, 0).toISOString()
+    const nowMs = Date.parse('2026-08-01T00:00:00.000Z')
+
+    it('a midnight entry is one item with the whole range, its version, source and segments', () => {
+      const id = seedEntry(db, {
+        client_id: 1,
+        description: 'Nachtschicht',
+        source: 'mcp',
+        segments: [
+          { started_at: local(6, 20, 20), stopped_at: local(6, 21, 0) },
+          { started_at: local(6, 21, 0), stopped_at: local(6, 21, 4) }
+        ]
+      })
+      const res = listEntries(sdb, HIDE, { from: local(6, 20, 0), to: local(6, 22, 0) }, nowMs)
+      const items = res.entries!.filter((e) => e.id === id)
+      expect(items).toHaveLength(1)
+      const item = items[0]
+      expect(item.started_at).toBe(local(6, 20, 20))
+      expect(item.stopped_at).toBe(local(6, 21, 4))
+      expect(item.duration_seconds).toBe(8 * 3600)
+      expect(item.version).toBe(1)
+      expect(item.source).toBe('mcp')
+      expect(item.billed).toBeNull()
+      expect(typeof item.created_at).toBe('string')
+      expect(item.segments).toEqual([
+        {
+          seq: 0,
+          segment_date: '2026-06-20',
+          started_at: local(6, 20, 20),
+          stopped_at: local(6, 21, 0),
+          duration_seconds: 4 * 3600
+        },
+        {
+          seq: 1,
+          segment_date: '2026-06-21',
+          started_at: local(6, 21, 0),
+          stopped_at: local(6, 21, 4),
+          duration_seconds: 4 * 3600
+        }
+      ])
+    })
+
+    it('a single-day entry has no segments array', () => {
+      const res = listEntries(sdb, HIDE, { year: 2026, month: 6 }, nowMs)
+      expect(res.entries!.find((e) => e.id === 100)!.segments).toBeUndefined()
+    })
+
+    it('counts an entry once and keeps the whole range when only its second day is in the window', () => {
+      const id = seedEntry(db, {
+        client_id: 1,
+        segments: [
+          { started_at: local(6, 20, 20), stopped_at: local(6, 21, 0) },
+          { started_at: local(6, 21, 0), stopped_at: local(6, 21, 4) }
+        ]
+      })
+      const res = listEntries(sdb, HIDE, { from: local(6, 21, 0), to: local(6, 22, 0) }, nowMs)
+      const items = res.entries!.filter((e) => e.id === id)
+      expect(items).toHaveLength(1)
+      expect(items[0].started_at).toBe(local(6, 20, 20))
+      expect(items[0].stopped_at).toBe(local(6, 21, 4))
+      // Only the day inside the window counts towards the total.
+      expect(res.total_seconds).toBe(4 * 3600)
+      expect(res.count).toBe(1)
+    })
+
+    it('an entry over a month boundary shows in both months; each month totals its own part', () => {
+      const id = seedEntry(db, {
+        client_id: 1,
+        segments: [
+          { started_at: local(6, 30, 22), stopped_at: local(7, 1, 0) },
+          { started_at: local(7, 1, 0), stopped_at: local(7, 1, 2) }
+        ]
+      })
+      const june = listEntries(sdb, HIDE, { year: 2026, month: 6, clientId: 1 }, nowMs)
+      const july = listEntries(sdb, HIDE, { year: 2026, month: 7 }, nowMs)
+      expect(june.entries!.filter((e) => e.id === id)).toHaveLength(1)
+      expect(july.entries!.filter((e) => e.id === id)).toHaveLength(1)
+      expect(july.count).toBe(1)
+      expect(july.total_seconds).toBe(2 * 3600)
+      expect(june.entries!.find((e) => e.id === id)!.duration_seconds).toBe(4 * 3600)
+    })
+
+    it('a running entry has one segment and no money, as before', () => {
+      const res = listEntries(
+        sdb,
+        HIDE,
+        { year: 2026, month: 6 },
+        Date.parse('2026-06-13T09:30:00.000Z')
+      )
+      const running = res.entries!.find((e) => e.id === 103)!
+      expect(running.segments).toBeUndefined()
+      expect(running.version).toBe(1)
+    })
   })
 
   it('listEntries hides private_note by default, exposes when enabled', () => {
@@ -465,6 +565,59 @@ describe('query layer', () => {
 
     db.prepare(`UPDATE settings SET value = '1' WHERE key = 'mcp_expose_rates'`).run()
     expect(readStoredPrivacy(sdb)).toEqual({ exposeRates: true, exposePrivateNotes: false })
+  })
+})
+
+describe('getEntryHistory (2.0 P3)', () => {
+  let db: Database.Database
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+  })
+
+  it('returns every version of a trashed entry, oldest first, with source and written_at', () => {
+    const id = seedEntry(db, {
+      client_id: 1,
+      description: 'Konzept',
+      private_note: 'intern',
+      source: 'mcp',
+      started_at: '2026-06-02T08:00:00.000Z',
+      stopped_at: '2026-06-02T09:00:00.000Z',
+      deleted_at: '2026-06-03T10:00:00.000Z'
+    })
+    const h = getEntryHistory(db, HIDE, id)!
+    expect(h.id).toBe(id)
+    expect(h.versions.map((v) => [v.version, v.deleted])).toEqual([
+      [1, false],
+      [2, true]
+    ])
+    expect(h.versions[0].source).toBe('mcp')
+    expect(h.versions[0].description).toBe('Konzept')
+    expect(typeof h.versions[0].written_at).toBe('string')
+    expect(h.versions[0].reason).toBeNull()
+    expect(h.versions[0].private_note).toBeUndefined()
+  })
+
+  it('shows the private note only when the privacy gate is open', () => {
+    const id = seedEntry(db, {
+      client_id: 1,
+      private_note: 'intern',
+      started_at: '2026-06-02T08:00:00.000Z',
+      stopped_at: '2026-06-02T09:00:00.000Z'
+    })
+    const open = { exposeRates: false, exposePrivateNotes: true }
+    expect(getEntryHistory(db, open, id)!.versions[0].private_note).toBe('intern')
+  })
+
+  it('resolves a 1.x id through entry_legacy_id and returns null for an unknown id', () => {
+    const id = seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-06-02T08:00:00.000Z',
+      stopped_at: '2026-06-02T09:00:00.000Z'
+    })
+    db.prepare(`INSERT INTO entry_legacy_id (legacy_id, entry_id) VALUES (?, ?)`).run(9001, id)
+    expect(getEntryHistory(db, HIDE, 9001)!.id).toBe(id)
+    expect(getEntryHistory(db, HIDE, 424242)).toBeNull()
   })
 })
 

@@ -70,6 +70,10 @@ export interface Entry {
   segment_seq?: number
   version_id?: number
   version_no?: number
+  /** 2.0 (P3, #372): how many day segments the entry has; > 1 across midnight. */
+  segment_count?: number
+  /** 2.0 (P3): the stored local date (YYYY-MM-DD) of the segment this row shows. */
+  segment_date?: string
 }
 
 // ── Projects (v1.9 #75) ───────────────────────────────────────────────────
