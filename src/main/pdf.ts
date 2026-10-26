@@ -322,7 +322,10 @@ export function buildPdfPayload(
       stopTime = formatTime(e.stopped_at as string)
     }
     return {
-      date: formatDate(e.started_at),
+      // The day stored with the segment, as the range filter used it.
+      date: e.segment_date
+        ? e.segment_date.split('-').reverse().join('.')
+        : formatDate(e.started_at),
       startTime,
       stopTime,
       description: e.description ?? '',

@@ -114,5 +114,6 @@ describe('segment_date is stored and read back', () => {
     expect(buildPdfPayload(db, oct, '').totals.feeCent).toBe(0)
     expect(exportEntries(db, nov).map((e) => e.id)).toEqual([2])
     expect(exportEntries(db, oct)).toEqual([])
+    expect(buildPdfPayload(db, nov, '').rows[0].date).toBe('01.11.2026')
   })
 })

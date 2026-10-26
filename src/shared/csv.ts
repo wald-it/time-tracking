@@ -156,7 +156,11 @@ function buildEntryRow(
   const reference = entry.reference ?? ''
 
   return [
-    escapeField(formatDate(start), sep),
+    escapeField(
+      // The stored day when there is one, so the column matches the range filter.
+      entry.segment_date ? entry.segment_date.split('-').reverse().join('.') : formatDate(start),
+      sep
+    ),
     escapeField(formatTimeHHMM(start), sep),
     escapeField(formatTimeHHMM(stop), sep),
     escapeField(formatDuration(durationSec), sep),
