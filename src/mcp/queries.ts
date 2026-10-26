@@ -77,6 +77,24 @@ export interface McpEntry {
   billable: boolean
   /** Only present when TIMETRACK_MCP_EXPOSE_PRIVATE_NOTES is enabled. */
   private_note?: string
+  /** 2.0: the entry's current version; pass it back as `expected_version`. */
+  version: number
+  /** 2.0: what wrote the current version (`app`, `mcp`, `idle`, …). */
+  source: string
+  created_at: string
+  /** 2.0: run numbers once an entry is billed (billing runs come with P5); null until then. */
+  billed: string[] | null
+  /** 2.0: the day segments of an entry across midnight; absent when there is only one. */
+  segments?: McpEntrySegment[]
+}
+
+export interface McpEntrySegment {
+  seq: number
+  /** The stored local date the segment belongs to. */
+  segment_date: string
+  started_at: string
+  stopped_at: string | null
+  duration_seconds: number
 }
 
 // ── Raw row types (as stored) ───────────────────────────────────────────────
@@ -119,6 +137,11 @@ interface EntryRow {
   reference: string
   billable: number
   private_note: string
+  segment_seq: number
+  segment_date: string
+  version_no: number
+  source: string
+  created_at: string
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────
@@ -201,22 +224,45 @@ function shapeProject(row: ProjectRow, privacy: PrivacyConfig): McpProject {
   return out
 }
 
-function shapeEntry(row: EntryRow, privacy: PrivacyConfig, nowMs: number): McpEntry {
+/**
+ * One item per entry (OQ7): `rows` are the segments of one entry in day order.
+ * The item carries the entry's whole range and the sum of its segments'
+ * seconds, so a client that reads it and writes the times back changes
+ * nothing (#372: an id shared by two half-day rows let an update shorten the
+ * whole entry).
+ */
+function shapeEntry(rows: EntryRow[], privacy: PrivacyConfig, nowMs: number): McpEntry {
+  const first = rows[0]
+  const last = rows[rows.length - 1]
+  const segmentSeconds = rows.map((r) => durationSeconds(r.started_at, r.stopped_at ?? null, nowMs))
   const out: McpEntry = {
-    id: row.id,
-    client_id: row.client_id,
-    project_id: row.project_id ?? null,
-    description: row.description,
-    started_at: row.started_at,
-    stopped_at: row.stopped_at ?? null,
-    duration_seconds: durationSeconds(row.started_at, row.stopped_at ?? null, nowMs),
-    running: row.stopped_at == null,
-    rounded_min: row.rounded_min ?? null,
-    tags: deserializeTags(row.tags),
-    reference: row.reference ?? '',
-    billable: row.billable === 1
+    id: first.id,
+    client_id: first.client_id,
+    project_id: first.project_id ?? null,
+    description: first.description,
+    started_at: first.started_at,
+    stopped_at: last.stopped_at ?? null,
+    duration_seconds: segmentSeconds.reduce((a, b) => a + b, 0),
+    running: last.stopped_at == null,
+    rounded_min: first.rounded_min ?? null,
+    tags: deserializeTags(first.tags),
+    reference: first.reference ?? '',
+    billable: first.billable === 1,
+    version: first.version_no,
+    source: first.source,
+    created_at: first.created_at,
+    billed: null
   }
-  if (privacy.exposePrivateNotes) out.private_note = row.private_note ?? ''
+  if (rows.length > 1) {
+    out.segments = rows.map((r, i) => ({
+      seq: r.segment_seq,
+      segment_date: r.segment_date,
+      started_at: r.started_at,
+      stopped_at: r.stopped_at ?? null,
+      duration_seconds: segmentSeconds[i]
+    }))
+  }
+  if (privacy.exposePrivateNotes) out.private_note = first.private_note ?? ''
   return out
 }
 
@@ -413,24 +459,77 @@ export function listEntries(
   // drift from that sum (a millisecond-exact julianday expression would be
   // needed should personal-scale DBs ever outgrow this scan). Only the
   // returned slice pays the shaping cost; summary-only shapes nothing.
+  //
+  // An entry matches when any of its segments does (the window and the
+  // filters see segments), and then comes back whole, once, with all its
+  // segments. Its total counts only the segments inside the window, so a
+  // month's total agrees with the calendar and the PDF (owner decision
+  // 2026-10-26); an entry that lies wholly inside the window adds exactly its
+  // `duration_seconds`.
   const rows = db
     .prepare(
-      `SELECT * FROM entries WHERE ${filters.join(' AND ')}
-       ORDER BY started_at ASC`
+      `SELECT e.*, v.source AS source
+         FROM entries e JOIN entry_version v ON v.id = e.version_id
+        WHERE e.id IN (SELECT id FROM entries WHERE ${filters.join(' AND ')})
+        ORDER BY e.id, e.segment_seq`
     )
     .all(...params) as EntryRow[]
 
-  const total_seconds = rows.reduce(
-    (sum, r) => sum + durationSeconds(r.started_at, r.stopped_at ?? null, nowMs),
+  const groups: EntryRow[][] = []
+  for (const r of rows) {
+    const g = groups[groups.length - 1]
+    if (g && g[0].id === r.id) g.push(r)
+    else groups.push([r])
+  }
+  groups.sort((x, y) =>
+    x[0].started_at < y[0].started_at
+      ? -1
+      : x[0].started_at > y[0].started_at
+        ? 1
+        : x[0].id - y[0].id
+  )
+
+  const inWindow = (r: EntryRow): boolean =>
+    (from === undefined || r.started_at >= from) && (to === undefined || r.started_at < to)
+  const total_seconds = groups.reduce(
+    (sum, g) =>
+      sum +
+      g
+        .filter(inWindow)
+        .reduce((s2, r) => s2 + durationSeconds(r.started_at, r.stopped_at ?? null, nowMs), 0),
     0
   )
-  if (opts.summaryOnly) return { count: rows.length, total_seconds }
+  if (opts.summaryOnly) return { count: groups.length, total_seconds }
   const limit = Math.min(Math.max(1, opts.limit ?? 1000), 10000)
   return {
-    count: rows.length,
+    count: groups.length,
     total_seconds,
-    entries: rows.slice(0, limit).map((r) => shapeEntry(r, privacy, nowMs))
+    entries: groups.slice(0, limit).map((g) => shapeEntry(g, privacy, nowMs))
   }
+}
+
+/** The given entries, whole and in the given order, one item each. */
+function loadEntries(
+  db: SqliteDb,
+  privacy: PrivacyConfig,
+  ids: number[],
+  nowMs: number
+): McpEntry[] {
+  if (ids.length === 0) return []
+  const rows = db
+    .prepare(
+      `SELECT e.*, v.source AS source
+         FROM entries e JOIN entry_version v ON v.id = e.version_id
+        WHERE e.id IN (${ids.map(() => '?').join(', ')})
+        ORDER BY e.id, e.segment_seq`
+    )
+    .all(...ids) as EntryRow[]
+  const byId = new Map<number, EntryRow[]>()
+  for (const r of rows) byId.set(r.id, [...(byId.get(r.id) ?? []), r])
+  return ids.flatMap((id) => {
+    const g = byId.get(id)
+    return g ? [shapeEntry(g, privacy, nowMs)] : []
+  })
 }
 
 export function getRunningTimer(
@@ -438,14 +537,108 @@ export function getRunningTimer(
   privacy: PrivacyConfig,
   nowMs: number
 ): McpEntry | null {
-  const row = db
+  // One statement, so the entry found and the rows shaped come from the same
+  // snapshot: the app may stop or delete the timer at any moment.
+  const rows = db
     .prepare(
-      `SELECT * FROM entries
-       WHERE stopped_at IS NULL AND deleted_at IS NULL
-       ORDER BY started_at DESC LIMIT 1`
+      `SELECT e.*, v.source AS source
+         FROM entries e JOIN entry_version v ON v.id = e.version_id
+        WHERE e.id = (SELECT id FROM entries
+                       WHERE stopped_at IS NULL AND deleted_at IS NULL
+                       ORDER BY started_at DESC LIMIT 1)
+        ORDER BY e.segment_seq`
     )
-    .get() as EntryRow | undefined
-  return row ? shapeEntry(row, privacy, nowMs) : null
+    .all() as EntryRow[]
+  return rows.length ? shapeEntry(rows, privacy, nowMs) : null
+}
+
+export interface McpEntryVersion {
+  /** The version number; pass the newest one back as `expected_version`. */
+  version: number
+  state: 'open' | 'sealed'
+  deleted: boolean
+  source: string
+  written_at: string
+  reason: string | null
+  client_id: number
+  project_id: number | null
+  description: string
+  started_at: string
+  stopped_at: string | null
+  tags: string[]
+  reference: string
+  billable: boolean
+  /** Only present when TIMETRACK_MCP_EXPOSE_PRIVATE_NOTES is enabled. */
+  private_note?: string
+}
+
+export interface McpEntryHistory {
+  id: number
+  versions: McpEntryVersion[]
+}
+
+interface EntryVersionRow {
+  version_no: number
+  state: 'open' | 'sealed'
+  deleted: number
+  source: string
+  written_at: string
+  reason: string | null
+  client_id: number
+  project_id: number | null
+  description: string
+  started_at: string
+  stopped_at: string | null
+  tags: string
+  reference: string
+  billable: number
+  private_note: string
+}
+
+/**
+ * Every version of one entry, oldest first. The id is an entry id; a 1.x id
+ * from before the migration resolves through `entry_legacy_id`. Null when no
+ * such entry exists. A deleted entry keeps its history.
+ */
+export function getEntryHistory(
+  db: SqliteDb,
+  privacy: PrivacyConfig,
+  id: number
+): McpEntryHistory | null {
+  let entryId: number | undefined = (
+    db.prepare(`SELECT id FROM entry WHERE id = ?`).get(id) as { id: number } | undefined
+  )?.id
+  if (entryId === undefined) {
+    entryId = (
+      db.prepare(`SELECT entry_id FROM entry_legacy_id WHERE legacy_id = ?`).get(id) as
+        | { entry_id: number }
+        | undefined
+    )?.entry_id
+  }
+  if (entryId === undefined) return null
+  const rows = db
+    .prepare(`SELECT * FROM entry_version WHERE entry_id = ? ORDER BY version_no`)
+    .all(entryId) as EntryVersionRow[]
+  return {
+    id: entryId,
+    versions: rows.map((r) => ({
+      version: r.version_no,
+      state: r.state,
+      deleted: r.deleted === 1,
+      source: r.source,
+      written_at: r.written_at,
+      reason: r.reason,
+      client_id: r.client_id,
+      project_id: r.project_id,
+      description: r.description,
+      started_at: r.started_at,
+      stopped_at: r.stopped_at,
+      tags: deserializeTags(r.tags),
+      reference: r.reference,
+      billable: r.billable === 1,
+      ...(privacy.exposePrivateNotes ? { private_note: r.private_note } : {})
+    }))
+  }
 }
 
 export interface McpDashboard {
@@ -488,12 +681,12 @@ export function getDashboard(db: SqliteDb, privacy: PrivacyConfig, nowMs: number
     )
     .get() as { seconds: number }
 
-  const recentRows = db
+  const recentIds = db
     .prepare(
-      `SELECT * FROM entries WHERE deleted_at IS NULL
-       ORDER BY started_at DESC LIMIT 5`
+      `SELECT id FROM entries WHERE deleted_at IS NULL
+       GROUP BY id ORDER BY MIN(started_at) DESC LIMIT 5`
     )
-    .all() as EntryRow[]
+    .all() as Array<{ id: number }>
 
   const topRows = db
     .prepare(
@@ -519,7 +712,12 @@ export function getDashboard(db: SqliteDb, privacy: PrivacyConfig, nowMs: number
   return {
     today_seconds: Math.max(0, Math.floor(today.seconds ?? 0)),
     week_seconds: Math.max(0, Math.floor(week.seconds ?? 0)),
-    recent_entries: recentRows.map((r) => shapeEntry(r, privacy, nowMs)),
+    recent_entries: loadEntries(
+      db,
+      privacy,
+      recentIds.map((r) => r.id),
+      nowMs
+    ),
     top_clients_30d: topRows.map((r) => ({
       client_id: r.client_id,
       name: r.name,

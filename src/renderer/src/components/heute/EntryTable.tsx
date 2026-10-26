@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import type { Client, Entry, Project } from '../../../../shared/types'
+import { entryRowKey } from '../../../../shared/entryKey'
 import { roundDuration } from '../../../../shared/duration'
 import { deserializeTags } from '../../../../shared/tags'
 import { useT } from '../../contexts/I18nContext'
@@ -97,7 +98,7 @@ export function EntryTable({
             <tbody>
               {entries.map((e) => (
                 <EntryRow
-                  key={e.id}
+                  key={entryRowKey(e)}
                   entry={e}
                   client={clientsById.get(e.client_id)}
                   project={e.project_id != null ? projectsById.get(e.project_id) : undefined}

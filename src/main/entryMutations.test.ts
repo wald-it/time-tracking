@@ -669,6 +669,9 @@ describe('an edit keeps every column of the entry (guard)', () => {
     // link_id, rounded_min and deleted_at are NULL in every row of the view.
     version_id: 'rebuilt',
     version_no: 'rebuilt',
+    // Derived from the new version's segments (2.0 P3).
+    segment_count: 'rebuilt',
+    segment_date: 'rebuilt',
     link_id: 'rebuilt',
     heartbeat_at: 'rebuilt',
     rounded_min: 'rebuilt',

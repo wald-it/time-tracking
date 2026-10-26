@@ -12,8 +12,8 @@ import { BILLING_LINES_VIEW_SQL } from '../entryLifecycle/billingLines'
  * the statements below bring `rate` and the default profile back to what the
  * 1.x columns and the setting say today, once.
  */
-export const migration029: Migration = {
-  version: 29,
+export const migration030: Migration = {
+  version: 30,
   name: 'v2-billing-lines',
   up: `
 -- Clients without a rate row, or whose open-ended row differs from the column.

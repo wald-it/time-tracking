@@ -109,7 +109,10 @@ export const ENTRIES_VIEW_READ_ONLY = 'entries is a read-only view: write throug
  *   `deleted_at` are always NULL, `rounded_min` (no reader since #285) is
  *   NULL, `created_at` comes from the entry, `heartbeat_at` from the entry
  *   while the version is open and equals `stopped_at` once sealed (what
- *   1.x wrote at every stop); plus `segment_seq`, `version_id`, `version_no`.
+ *   1.x wrote at every stop); plus `segment_seq`, `version_id`, `version_no`
+ *   and (P3, migration 029) `segment_count`, the number of segments of the
+ *   current version, which tells a renderer that a row is one day of several,
+ *   and `segment_date`, the stored local date of the segment (iCal UIDs).
  *   Money columns follow in P4.
  * - INSTEAD OF triggers refuse every write to the view with a message, so a
  *   forgotten direct writer fails in tests instead of bypassing the history.
@@ -120,7 +123,7 @@ export const ENTRIES_VIEW_READ_ONLY = 'entries is a read-only view: write throug
  *   never hard-deleted.
  * - `entries_v1` stays read-only for the 2.x line (10.8).
  */
-export const VIEW_V2_SQL = `
+export const ENTRIES_VIEW_SQL = `
 CREATE VIEW entries AS
   SELECT e.id AS id,
          v.client_id,
@@ -139,8 +142,10 @@ CREATE VIEW entries AS
          v.project_id,
          e.graph_event_id,
          s.seq AS segment_seq,
+         s.segment_date AS segment_date,
          v.id AS version_id,
-         v.version_no
+         v.version_no,
+         (SELECT COUNT(*) FROM entry_segment n WHERE n.version_id = v.id) AS segment_count
     FROM entry e
     JOIN entry_version v ON v.id = e.current_version_id
     JOIN entry_segment s ON s.version_id = v.id
@@ -152,6 +157,9 @@ CREATE TRIGGER trg_entries_view_update INSTEAD OF UPDATE ON entries
 BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
 CREATE TRIGGER trg_entries_view_delete INSTEAD OF DELETE ON entries
 BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
+`
+
+export const VIEW_V2_SQL = `${ENTRIES_VIEW_SQL}
 
 CREATE TRIGGER trg_entry_version_sealed BEFORE UPDATE ON entry_version
   WHEN OLD.state = 'sealed'

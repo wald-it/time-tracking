@@ -7,7 +7,7 @@
  * token, confirmation, backup and audit guards (v1.14 #127).
  *
  * Read tools:
- *   list_clients · list_projects · list_entries · get_running_timer
+ *   list_clients · list_projects · list_entries · get_entry_history · get_running_timer
  *   get_dashboard · get_analytics
  * Write tools (require write mode enabled in the app; each supports preview):
  *   create_manual_entry · update_entry_fields · start_timer · stop_running_timer
@@ -27,6 +27,7 @@ import {
   listClients,
   listProjects,
   listEntries,
+  getEntryHistory,
   getRunningTimer,
   getDashboard,
   getAnalytics,
@@ -97,8 +98,8 @@ const writeTool = (destructiveHint: boolean) =>
 const WRITE_TOOL_ANNOTATIONS = {
   /** Only adds: a new, finished entry. */
   create_manual_entry: writeTool(false),
-  /** Deletes the entry's rows (every linked midnight segment) and inserts the
-   * edited range under a new id; the old id is gone afterwards. */
+  /** Seals the current version and writes a new one; the id stays. An edit to
+   * the range replaces the entry's segments, a stale expected_version is refused. */
   update_entry_fields: writeTool(true),
   /** Ends every entry still without a stop time at the new start, which may
    * lie in the past or up to a minute ahead. */
@@ -205,7 +206,10 @@ export function buildServer(): McpServer {
       annotations: READ_TOOL_ANNOTATIONS,
       title: 'Zeiteinträge auflisten',
       description:
-        'Zeiteinträge in einem Zeitraum — entweder per year+month (lokaler Kalendermonat, ' +
+        'Zeiteinträge in einem Zeitraum, ein Item pro Eintrag mit der ganzen Spanne, version, ' +
+        'source und created_at (ein Eintrag über Mitternacht trägt zusätzlich segments). Ein ' +
+        'Eintrag erscheint, wenn irgendein Segment im Zeitraum beginnt; count zählt Einträge, ' +
+        'total_seconds nur die Segmente im Zeitraum. Zeitraum entweder per year+month (lokaler Kalendermonat, ' +
         'wie im Kalender der App) oder per from/to ' +
         '(ISO-Zeitstempel, from inklusive, to exklusiv). Zusätzliche Filter: client_id, ' +
         'project_id, tag. count und total_seconds decken immer ALLE Treffer ab, auch wenn ' +
@@ -267,6 +271,31 @@ export function buildServer(): McpServer {
           )
         )
         return jsonResult(result)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'get_entry_history',
+    {
+      annotations: READ_TOOL_ANNOTATIONS,
+      title: 'Versionen eines Eintrags',
+      description:
+        'Alle Versionen eines Eintrags, älteste zuerst: version, source, written_at, reason und ' +
+        'die damals gültigen Felder. Die höchste version ist die aktuelle; sie gehört als ' +
+        'expected_version in update_entry_fields. Auch für gelöschte Einträge; eine 1.x-ID ' +
+        'aus der Zeit vor der Umstellung wird aufgelöst.',
+      inputSchema: {
+        id: z.number().int().describe('ID des Eintrags')
+      }
+    },
+    async ({ id }) => {
+      try {
+        const history = withDb((db, privacy) => getEntryHistory(db, privacy, id))
+        if (!history) return errorResult(`Kein Eintrag mit der ID ${id}`)
+        return jsonResult(history)
       } catch (e) {
         return errorResult(e)
       }
@@ -434,6 +463,14 @@ export function buildServer(): McpServer {
       description: `Ändert Felder eines bestehenden Eintrags (nur angegebene Felder). Laufende Timer sind ausgenommen. ${WRITE_HINT}`,
       inputSchema: {
         id: z.number().int().describe('ID des Eintrags'),
+        expected_version: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            'Version aus list_entries/get_entry_history, auf der die Änderung beruht; ist der Eintrag inzwischen geändert worden, wird der Aufruf abgelehnt'
+          ),
+        reason: z.string().optional().describe('Grund der Änderung, wird an der Version vermerkt'),
         client_id: z.number().int().optional().describe('Neuer Kunde'),
         description: z.string().optional().describe('Neue Beschreibung. Max. 500 Zeichen.'),
         started_at: z.string().optional().describe(`Neue Startzeit: ${ZONED}.`),
@@ -457,6 +494,8 @@ export function buildServer(): McpServer {
         'update_entry_fields',
         {
           id: a.id,
+          expected_version: a.expected_version,
+          reason: a.reason,
           client_id: a.client_id,
           description: a.description,
           started_at: a.started_at,
