@@ -550,6 +550,95 @@ export function getRunningTimer(
   return row ? loadEntries(db, privacy, [row.id], nowMs)[0] : null
 }
 
+export interface McpEntryVersion {
+  /** The version number; pass the newest one back as `expected_version`. */
+  version: number
+  state: 'open' | 'sealed'
+  deleted: boolean
+  source: string
+  written_at: string
+  reason: string | null
+  client_id: number
+  project_id: number | null
+  description: string
+  started_at: string
+  stopped_at: string | null
+  tags: string[]
+  reference: string
+  billable: boolean
+  /** Only present when TIMETRACK_MCP_EXPOSE_PRIVATE_NOTES is enabled. */
+  private_note?: string
+}
+
+export interface McpEntryHistory {
+  id: number
+  versions: McpEntryVersion[]
+}
+
+interface EntryVersionRow {
+  version_no: number
+  state: 'open' | 'sealed'
+  deleted: number
+  source: string
+  written_at: string
+  reason: string | null
+  client_id: number
+  project_id: number | null
+  description: string
+  started_at: string
+  stopped_at: string | null
+  tags: string
+  reference: string
+  billable: number
+  private_note: string
+}
+
+/**
+ * Every version of one entry, oldest first. The id is an entry id; a 1.x id
+ * from before the migration resolves through `entry_legacy_id`. Null when no
+ * such entry exists. A deleted entry keeps its history.
+ */
+export function getEntryHistory(
+  db: SqliteDb,
+  privacy: PrivacyConfig,
+  id: number
+): McpEntryHistory | null {
+  let entryId: number | undefined = (
+    db.prepare(`SELECT id FROM entry WHERE id = ?`).get(id) as { id: number } | undefined
+  )?.id
+  if (entryId === undefined) {
+    entryId = (
+      db.prepare(`SELECT entry_id FROM entry_legacy_id WHERE legacy_id = ?`).get(id) as
+        | { entry_id: number }
+        | undefined
+    )?.entry_id
+  }
+  if (entryId === undefined) return null
+  const rows = db
+    .prepare(`SELECT * FROM entry_version WHERE entry_id = ? ORDER BY version_no`)
+    .all(entryId) as EntryVersionRow[]
+  return {
+    id: entryId,
+    versions: rows.map((r) => ({
+      version: r.version_no,
+      state: r.state,
+      deleted: r.deleted === 1,
+      source: r.source,
+      written_at: r.written_at,
+      reason: r.reason,
+      client_id: r.client_id,
+      project_id: r.project_id,
+      description: r.description,
+      started_at: r.started_at,
+      stopped_at: r.stopped_at,
+      tags: deserializeTags(r.tags),
+      reference: r.reference,
+      billable: r.billable === 1,
+      ...(privacy.exposePrivateNotes ? { private_note: r.private_note } : {})
+    }))
+  }
+}
+
 export interface McpDashboard {
   today_seconds: number
   week_seconds: number
