@@ -173,6 +173,23 @@ describe('buildWebhookPayload (fake DB, runs everywhere)', () => {
     expect('private_note' in p.entry).toBe(false)
   })
 
+  it('carries the entry version next to the stable id, and omits it when there is none', () => {
+    const db = fakeDb({ client, project })
+    const privacy = { exposeRates: false, exposePrivateNotes: false }
+    const opts = { deliveryId: 'd', now: Date.now() }
+    const withVersion = buildWebhookPayload(
+      db,
+      'entry.updated',
+      stoppedEntryObj({ version_no: 3 }),
+      privacy,
+      opts
+    )
+    expect(withVersion.entry.id).toBe(stoppedEntryObj().id)
+    expect(withVersion.entry.version).toBe(3)
+    const without = buildWebhookPayload(db, 'entry.updated', stoppedEntryObj(), privacy, opts)
+    expect('version' in without.entry).toBe(false)
+  })
+
   it('exposes project rate (overriding client) + revenue + private note when on', () => {
     const db = fakeDb({ client, project })
     const p = buildWebhookPayload(

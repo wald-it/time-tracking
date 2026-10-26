@@ -33,7 +33,10 @@ type Db = Database.Database
 // ── payload ────────────────────────────────────────────────────────────────
 
 interface PayloadEntry {
+  /** The stable entry id; it does not change with an edit. */
   id: number
+  /** 2.0: the entry's version this delivery describes; absent when the caller has none. */
+  version?: number
   description: string
   started_at: string
   stopped_at: string | null
@@ -106,6 +109,7 @@ export function buildWebhookPayload(
 
   const payloadEntry: PayloadEntry = {
     id: entry.id,
+    ...(entry.version_no === undefined ? {} : { version: entry.version_no }),
     description: entry.description,
     started_at: entry.started_at,
     stopped_at: entry.stopped_at ?? null,
