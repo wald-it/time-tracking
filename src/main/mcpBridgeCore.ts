@@ -427,7 +427,20 @@ function planOp(
       // Through the id of a half, an omitted time is that half's own, so it
       // reads as "not moved" to resolveEditRange.
       const half = target.seq === undefined ? undefined : current!.segments[target.seq]
-      if (target.seq !== undefined && !half) return { error: 'Eintrag existiert nicht' }
+      // The entry shrank since (an edit dropped the day this id stood for): the
+      // id still names the entry, so a change of its fields goes through, but a
+      // time cannot be placed on a half that no longer exists.
+      if (
+        target.seq !== undefined &&
+        !half &&
+        (args.started_at !== undefined || args.stopped_at !== undefined)
+      ) {
+        return {
+          error:
+            'Die Tageshälfte, für die diese Id stand, gibt es nicht mehr — Zeiten über die Id des Eintrags ändern'
+        }
+      }
+      const seq = half ? target.seq : undefined
       let startedAt = half?.started_at ?? existing.started_at
       if (args.started_at !== undefined) {
         const r = zonedField('started_at', args.started_at)
@@ -453,7 +466,7 @@ function planOp(
       const reason = args.reason === undefined ? undefined : asString(args.reason).trim()
       const given: UpdateEntryInput = {
         id,
-        ...(target.seq === undefined ? {} : { segment_seq: target.seq }),
+        ...(seq === undefined ? {} : { segment_seq: seq }),
         ...(reason ? { reason } : {}),
         client_id: args.client_id === undefined ? existing.client_id : Number(args.client_id),
         description:

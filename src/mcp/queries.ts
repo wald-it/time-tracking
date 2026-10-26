@@ -540,14 +540,19 @@ export function getRunningTimer(
   privacy: PrivacyConfig,
   nowMs: number
 ): McpEntry | null {
-  const row = db
+  // One statement, so the entry found and the rows shaped come from the same
+  // snapshot: the app may stop or delete the timer at any moment.
+  const rows = db
     .prepare(
-      `SELECT id FROM entries
-       WHERE stopped_at IS NULL AND deleted_at IS NULL
-       ORDER BY started_at DESC LIMIT 1`
+      `SELECT e.*, v.source AS source
+         FROM entries e JOIN entry_version v ON v.id = e.version_id
+        WHERE e.id = (SELECT id FROM entries
+                       WHERE stopped_at IS NULL AND deleted_at IS NULL
+                       ORDER BY started_at DESC LIMIT 1)
+        ORDER BY e.segment_seq`
     )
-    .get() as { id: number } | undefined
-  return row ? loadEntries(db, privacy, [row.id], nowMs)[0] : null
+    .all() as EntryRow[]
+  return rows.length ? shapeEntry(rows, privacy, nowMs) : null
 }
 
 export interface McpEntryVersion {

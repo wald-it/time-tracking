@@ -218,6 +218,27 @@ describe('MCP contracts (2.0 P3)', () => {
       expect(rangeOf(id)).toEqual({ started_at: local(20, 20), stopped_at: local(21, 5) })
     })
 
+    it('after the entry shrank to one day, the id of the dropped half still edits the entry fields but not its times', async () => {
+      const id = legacyPair()
+      const { ctx } = makeCtx(db)
+      const shrunk = await handleRequest(
+        ctx,
+        req('update_entry_fields', { id, started_at: local(20, 20), stopped_at: local(20, 23) })
+      )
+      expect(shrunk.ok).toBe(true)
+      const fields = await handleRequest(
+        ctx,
+        req('update_entry_fields', { id: 11, description: 'nach dem Kürzen' })
+      )
+      expect(fields.ok && fields.data).toMatchObject({ id })
+      const times = await handleRequest(
+        ctx,
+        req('update_entry_fields', { id: 11, stopped_at: local(20, 22) })
+      )
+      expect(times).toMatchObject({ ok: false, code: 'invalid' })
+      expect(rangeOf(id)).toEqual({ started_at: local(20, 20), stopped_at: local(20, 23) })
+    })
+
     it('an id that is neither an entry nor a legacy id is refused', async () => {
       const { ctx } = makeCtx(db)
       const res = await handleRequest(
