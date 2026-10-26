@@ -40,6 +40,7 @@ import {
 } from '../shared/zonedTimestamp'
 import { roundDuration } from '../shared/duration'
 import { deserializeTags } from '../shared/tags'
+import { localDate } from './entryLifecycle/migrateV2'
 import type { Locale } from '../shared/i18n'
 import { dialogT, dialogText, readLanguage, type DialogT } from './mainI18n'
 
@@ -426,12 +427,17 @@ function planOp(
       const written: WrittenOffsets = {}
       // Through the id of a half, an omitted time is that half's own, so it
       // reads as "not moved" to resolveEditRange.
-      const half = target.seq === undefined ? undefined : current!.segments[target.seq]
+      const half =
+        target.date !== undefined
+          ? current!.segments.find((s) => s.segment_date === target.date)
+          : target.seq === undefined
+            ? undefined
+            : current!.segments[target.seq]
       // The entry shrank since (an edit dropped the day this id stood for): the
       // id still names the entry, so a change of its fields goes through, but a
       // time cannot be placed on a half that no longer exists.
       if (
-        target.seq !== undefined &&
+        (target.seq !== undefined || target.date !== undefined) &&
         !half &&
         (args.started_at !== undefined || args.stopped_at !== undefined)
       ) {
@@ -440,7 +446,7 @@ function planOp(
             'Die Tageshälfte, für die diese Id stand, gibt es nicht mehr — Zeiten über die Id des Eintrags ändern'
         }
       }
-      const seq = half ? target.seq : undefined
+      const seq = half?.seq
       let startedAt = half?.started_at ?? existing.started_at
       if (args.started_at !== undefined) {
         const r = zonedField('started_at', args.started_at)
@@ -1000,11 +1006,11 @@ async function handleControllerRequest(
  * The entry an MCP id names. A current entry id is itself; an id from 1.x that
  * is no entry id (the second half of a pair, which the migration folded into
  * its first) resolves through `entry_legacy_id` for the whole 2.x line, with
- * the half it stood for (the ordinal among the entry's legacy ids), so an
- * edit through it keeps its 1.x meaning. Unknown ids stay as given and fail
+ * the half it stood for (the day its 1.x row started on, else the ordinal
+ * among the entry's legacy ids), so an edit through it keeps its 1.x meaning. Unknown ids stay as given and fail
  * as "Eintrag existiert nicht".
  */
-function resolveEntryId(db: Db, id: number): { id: number; seq?: number } {
+function resolveEntryId(db: Db, id: number): { id: number; seq?: number; date?: string } {
   if (readEntry(db, id)) return { id }
   const row = db.prepare(`SELECT entry_id FROM entry_legacy_id WHERE legacy_id = ?`).get(id) as
     | { entry_id: number }
@@ -1015,7 +1021,17 @@ function resolveEntryId(db: Db, id: number): { id: number; seq?: number } {
       .prepare(`SELECT COUNT(*) AS n FROM entry_legacy_id WHERE entry_id = ? AND legacy_id < ?`)
       .get(row.entry_id, id) as { n: number }
   ).n
-  return { id: row.entry_id, seq: ordinal }
+  // The day the 1.x row stood for survives in `entries_v1`; it names the half
+  // even after an edit dropped or added a day in front. Without that row the
+  // ordinal is all there is.
+  const v1 = db.prepare(`SELECT started_at FROM entries_v1 WHERE id = ?`).get(id) as
+    | { started_at: string }
+    | undefined
+  return {
+    id: row.entry_id,
+    seq: ordinal,
+    ...(v1 ? { date: localDate(v1.started_at) } : {})
+  }
 }
 
 function withVersion<T>(data: T): T {

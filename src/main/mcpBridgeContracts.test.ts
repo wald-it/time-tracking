@@ -239,6 +239,30 @@ describe('MCP contracts (2.0 P3)', () => {
       expect(rangeOf(id)).toEqual({ started_at: local(20, 20), stopped_at: local(20, 23) })
     })
 
+    it('the id of the second half follows its day when an edit drops the first day', async () => {
+      const id = legacyPair()
+      // The 1.x rows stay in entries_v1; row 11 started on the 21st.
+      db.exec('DROP TRIGGER trg_entries_v1_insert') // read-only for the app, not for this fixture
+      const v1 = db.prepare(
+        `INSERT INTO entries_v1 (id, client_id, started_at, stopped_at) VALUES (?, 1, ?, ?)`
+      )
+      v1.run(10, local(20, 20), local(21, 0))
+      v1.run(11, local(21, 0), local(21, 4))
+      const { ctx } = makeCtx(db)
+      // Drop the 20th: the 21st is now the entry's only segment, at seq 0.
+      const cut = await handleRequest(
+        ctx,
+        req('update_entry_fields', { id, started_at: local(21, 1), stopped_at: local(21, 4) })
+      )
+      expect(cut.ok).toBe(true)
+      const res = await handleRequest(
+        ctx,
+        req('update_entry_fields', { id: 11, stopped_at: local(21, 5) })
+      )
+      expect(res.ok).toBe(true)
+      expect(rangeOf(id)).toEqual({ started_at: local(21, 1), stopped_at: local(21, 5) })
+    })
+
     it('an id that is neither an entry nor a legacy id is refused', async () => {
       const { ctx } = makeCtx(db)
       const res = await handleRequest(
