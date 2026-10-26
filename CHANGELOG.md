@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **The app icon is the Messinstrument dial** ([#365](https://github.com/wald-it/time-tracking/issues/365)). The exe, the desktop shortcut, the taskbar and the window now show the same dial with the orange needle as the app header and the Stream Deck plugin, on the dark display tile, instead of the old purple glass clock. The tray icon follows: running shows the needle, stopped shows an empty hub, so the two differ in shape and not only in colour. Below 32 px the tick marks are left out and the strokes are heavier. The Windows icon now also carries the 20 and 40 px sizes that 125 % display scaling asks for. On macOS the icon is derived from the same artwork. Windows caches shortcut icons, so the new one may show only after a reinstall.
+
 ## [1.23.1] — 2026-10-24
 
 ### Changed

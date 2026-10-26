@@ -1,58 +1,49 @@
-// Syncs the manually maintained resources/icon.png into build/ so that
-// electron-builder picks it up as the app/installer/exe icon.
-// - build/icon.png  → 1024×1024 PNG (macOS / Linux / fallback)
-// - build/icon.ico  → multi-resolution Windows icon (16/24/32/48/64/128/256)
+// Renders the app and tray icons from the SVG sources in build/icon-src/.
+// - resources/icon.png            1024 px, Linux window icon
+// - build/icon.png                1024 px, electron-builder (also the macOS source:
+//                                 with no build/icon.icns it derives one from this)
+// - build/icon.ico                16/20/24/32/40/48/64/128/256 (20 and 40 are the
+//                                 sizes Windows asks for at 125 % scaling)
+// - resources/tray-*.png          32 px, @2x 64 px
 //
-// Run automatically via the `prebuild` npm hook. The source of truth is
-// resources/icon.png — replace that file to update the app icon.
+// app-small.svg is its own drawing (no tick marks, heavier strokes) and is used
+// up to 24 px, where the ticks would only turn to mush. Run automatically via
+// the `prebuild` hook; the generated files are committed.
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 import pngToIco from 'png-to-ico'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const source = join(root, 'resources', 'icon.png')
+const src = join(root, 'build', 'icon-src')
+const read = (name) => readFileSync(join(src, name))
 
-if (!existsSync(source)) {
-  console.error(`[sync-icon] missing source: ${source}`)
-  process.exit(1)
+// Rasterise large, then Lanczos down: the same path for every size.
+async function render(svg, size) {
+  const big = await sharp(svg, { density: 288 }).resize(1024, 1024).png().toBuffer()
+  return size === 1024 ? big : sharp(big).resize(size, size).png({ compressionLevel: 9 }).toBuffer()
 }
 
-const buildDir = join(root, 'build')
-mkdirSync(buildDir, { recursive: true })
+mkdirSync(join(root, 'build'), { recursive: true })
 
-const srcBuf = readFileSync(source)
+const app = read('app.svg')
+const appSmall = read('app-small.svg')
 
-// 1) build/icon.png — square 1024×1024 with transparent padding if needed.
-const png1024 = await sharp(srcBuf)
-  .resize({
-    width: 1024,
-    height: 1024,
-    fit: 'contain',
-    background: { r: 0, g: 0, b: 0, alpha: 0 }
-  })
-  .png({ compressionLevel: 9 })
-  .toBuffer()
-writeFileSync(join(buildDir, 'icon.png'), png1024)
-console.log('[sync-icon] build/icon.png written (1024×1024)')
+const png1024 = await render(app, 1024)
+writeFileSync(join(root, 'resources', 'icon.png'), png1024)
+writeFileSync(join(root, 'build', 'icon.png'), png1024)
+console.log('[sync-icon] resources/icon.png + build/icon.png written (1024×1024)')
 
-// 2) build/icon.ico — multi-resolution from the same source.
-const sizes = [16, 24, 32, 48, 64, 128, 256]
-const icoPngs = await Promise.all(
-  sizes.map((size) =>
-    sharp(srcBuf)
-      .resize({
-        width: size,
-        height: size,
-        fit: 'contain',
-        background: { r: 0, g: 0, b: 0, alpha: 0 }
-      })
-      .png({ compressionLevel: 9 })
-      .toBuffer()
-  )
-)
-const ico = await pngToIco(icoPngs)
-writeFileSync(join(buildDir, 'icon.ico'), ico)
+const sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
+const frames = await Promise.all(sizes.map((n) => render(n <= 24 ? appSmall : app, n)))
+writeFileSync(join(root, 'build', 'icon.ico'), await pngToIco(frames))
 console.log(`[sync-icon] build/icon.ico written (${sizes.join('/')})`)
+
+for (const state of ['running', 'stopped']) {
+  const svg = read(`tray-${state}.svg`)
+  writeFileSync(join(root, 'resources', `tray-${state}.png`), await render(svg, 32))
+  writeFileSync(join(root, 'resources', `tray-${state}@2x.png`), await render(svg, 64))
+}
+console.log('[sync-icon] resources/tray-{running,stopped}[@2x].png written')
