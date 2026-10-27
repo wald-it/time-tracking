@@ -5,7 +5,7 @@ import { join } from 'path'
 import { executeMigration, migrations } from './index'
 
 import type Database from 'better-sqlite3'
-import { LAST_V1_VERSION, loadSqlite, type DatabaseCtor } from '../../test/sqlite'
+import { LAST_V1_VERSION, loadSqlite, openScratchDb, type DatabaseCtor } from '../../test/sqlite'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -40,7 +40,7 @@ describe('migration SQL execution', () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-migrations-'))
     const dbPath = join(tmpDir, 'test.sqlite')
-    db = new DatabaseImpl(dbPath)
+    db = openScratchDb(DatabaseImpl, dbPath)
     db.pragma('foreign_keys = ON')
     db.exec(
       `CREATE TABLE IF NOT EXISTS schema_version (

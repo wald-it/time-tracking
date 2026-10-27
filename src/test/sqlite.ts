@@ -138,3 +138,18 @@ export function openMigratedCopy(
   db.pragma('synchronous = OFF')
   return db
 }
+
+/**
+ * Open a throwaway database file for a suite that migrates it step by step
+ * itself (one transaction per migration) instead of through
+ * {@link applyMigrations} or a template copy (#381). Testdatenbanken sind
+ * Wegwerfdateien: with the default `synchronous` every commit is an fsync,
+ * about 20 ms on the Windows runner (#378), and 28 migrations per test added
+ * up to 110 s for migrations.test.ts. Only for suites that do not test
+ * journal or WAL behaviour; those open their handle themselves.
+ */
+export function openScratchDb(Ctor: DatabaseCtor, path: string): Database.Database {
+  const db = new Ctor(path)
+  db.pragma('synchronous = OFF')
+  return db
+}
