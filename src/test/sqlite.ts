@@ -73,6 +73,12 @@ export const LAST_V1_VERSION = 27
  * some rely on it being off, so that stays with the caller.
  */
 export function applyMigrations(db: Database.Database, upTo = Number.MAX_SAFE_INTEGER): void {
+  // Test databases are disposable files: each commit's fsync costs about 20 ms
+  // on the Windows runner (#378). Keep handles already in WAL mode untouched,
+  // so suites that enable WAL before calling us still exercise WAL backups.
+  if (db.pragma('journal_mode', { simple: true }) !== 'wal') {
+    db.pragma('synchronous = OFF')
+  }
   db.exec(
     `CREATE TABLE IF NOT EXISTS schema_version (
        version INTEGER PRIMARY KEY,
@@ -126,5 +132,9 @@ export function openMigratedCopy(
 ): Database.Database {
   const path = join(dir, 'test.sqlite')
   copyFileSync(templatePath, path)
-  return new Ctor(path)
+  const db = new Ctor(path)
+  // Test databases are disposable files: each commit's fsync costs about 20 ms
+  // on the Windows runner (#378). The template uses rollback journaling.
+  db.pragma('synchronous = OFF')
+  return db
 }
