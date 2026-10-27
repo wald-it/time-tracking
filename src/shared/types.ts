@@ -72,13 +72,19 @@ export interface Entry {
   version_no?: number
   /**
    * 2.0 (P4): the money of this row from the view `billing_lines`, present on
-   * rows an export reads (`exportEntries`): billed minutes, the rate valid on
+   * rows of the view `entries` (calendar, Heute, export): billed minutes, the rate valid on
    * the day, the fee, and whether the rate came from a project row.
    */
   billed_minutes?: number
   rate_cent?: number | null
   fee_cent?: number | null
   rate_is_project?: number
+  /**
+   * 2.0 (P4, #374): the profile values `billed_minutes` was computed with, so a
+   * running segment can tick by the rule of `currency.ts`. 0 = off.
+   */
+  interval_min?: number
+  min_unit_min?: number
   /** 2.0 (P3, #372): how many day segments the entry has; > 1 across midnight. */
   segment_count?: number
   /** 2.0 (P3): the stored local date (YYYY-MM-DD) of the segment this row shows. */

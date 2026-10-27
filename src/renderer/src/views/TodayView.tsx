@@ -21,7 +21,7 @@ import type { TFunction } from '../contexts/I18nContext'
 import { useT } from '../contexts/I18nContext'
 import { useRounding } from '../contexts/RoundingContext'
 import { useNow } from '../contexts/NowContext'
-import { billedMinutes } from '../../../shared/currency'
+import { entryRounds, entryShownSeconds } from '../../../shared/entryMoney'
 
 /**
  * `Heute` — the Messinstrument layout (HANDOFF §4.1):
@@ -116,14 +116,22 @@ export default function TodayView(): React.JSX.Element {
     return summary.weekDaySeconds.map((s, i) => (i === todayIndex ? s + liveDelta : s))
   }, [summary, todayIndex, liveDelta])
 
-  // Today as the invoice bills it: each entry rounded up to the step.
+  // Today as the invoice bills it: the billed minutes of the rows from the view,
+  // the running one ticking by the rule. Undefined when nothing rounds today.
   const todayRoundedSeconds = useMemo(() => {
-    if (!summary || roundMinutes <= 0) return undefined
-    return summary.todayEntries.reduce((sum, e) => {
-      const stop = e.stopped_at ? Date.parse(e.stopped_at) : nowMs
-      return sum + billedMinutes(Math.max(0, stop - Date.parse(e.started_at)), roundMinutes) * 60
-    }, 0)
-  }, [summary, roundMinutes, nowMs])
+    if (!summary || !summary.todayEntries.some(entryRounds)) return undefined
+    return summary.todayEntries.reduce((sum, e) => sum + entryShownSeconds(e, nowMs), 0)
+  }, [summary, nowMs])
+
+  // The running entry the timer returned lacks the money columns; the summary row has them.
+  const runningRow = useMemo(
+    () =>
+      runningEntry
+        ? (summary?.todayEntries.find((e) => e.id === runningEntry.id && e.stopped_at === null) ??
+          runningEntry)
+        : null,
+    [runningEntry, summary]
+  )
 
   const runningClient = runningEntry ? clientsById.get(runningEntry.client_id) : undefined
   const runningProject =
@@ -153,7 +161,7 @@ export default function TodayView(): React.JSX.Element {
       <div className="flex flex-wrap items-stretch gap-6">
         <div className="flex min-w-0 flex-[999_1_520px]">
           <TimerDisplay
-            runningEntry={runningEntry}
+            runningEntry={runningRow}
             client={runningClient}
             project={runningProject}
             nowMs={nowMs}
@@ -242,7 +250,6 @@ export default function TodayView(): React.JSX.Element {
               clientsById={clientsById}
               projectsById={projectsById}
               nowMs={nowMs}
-              roundMinutes={roundMinutes}
               showProjectNumber={showProjectNumber}
               onEdit={(e) => setEditEntry(e)}
               onDelete={(e) => setDeleteCandidate(e)}

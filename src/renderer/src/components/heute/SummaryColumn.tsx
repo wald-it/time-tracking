@@ -1,5 +1,4 @@
 import { useT } from '../../contexts/I18nContext'
-import { roundDuration } from '../../../../shared/duration'
 import { formatHoursMinutes } from '../../../../shared/currency'
 import { Readout } from './Readout'
 import { WeekMeter } from './WeekMeter'
@@ -26,18 +25,16 @@ export function SummaryColumn({
   todayIndex: number
   roundMinutes: number
   /**
-   * Today's total as the invoice bills it (each entry rounded up to the
-   * step). Omitted ⇒ the day total is rounded as a whole.
+   * Today's total as the invoice bills it (the billed minutes of the rows).
+   * Omitted ⇒ nothing rounds today and no sub-line is shown.
    */
   todayRoundedSeconds?: number
 }): React.JSX.Element {
   const t = useT()
   const roundedSub =
-    roundMinutes > 0
+    todayRoundedSeconds !== undefined
       ? t('today.summary.rounded', {
-          total: formatHoursMinutes(
-            Math.floor((todayRoundedSeconds ?? roundDuration(todaySeconds, roundMinutes)) / 60)
-          ),
+          total: formatHoursMinutes(Math.floor(todayRoundedSeconds / 60)),
           step: roundMinutes
         })
       : undefined

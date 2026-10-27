@@ -39,9 +39,7 @@ export interface ExportRangeRequest {
 export function exportEntries(db: Database.Database, req: ExportRangeRequest): Entry[] {
   return db
     .prepare(
-      `SELECT e.*, l.billed_minutes, l.rate_cent, l.fee_cent, l.rate_is_project
-         FROM entries e
-         JOIN billing_lines l ON l.version_id = e.version_id AND l.segment_seq = e.segment_seq
+      `SELECT e.* FROM entries e
          WHERE e.client_id = ?
            AND e.segment_date BETWEEN ? AND ?
            AND (? IS NULL OR e.project_id = ?)

@@ -1,6 +1,6 @@
 import { useT } from '../../contexts/I18nContext'
 import { useUiPrefsStore } from '../../store/uiPrefsStore'
-import { roundDuration } from '../../../../shared/duration'
+import { entryBilledMinutes } from '../../../../shared/entryMoney'
 import { formatHoursMinutes } from '../../../../shared/currency'
 import { formatTimeHHMM } from '../../../../shared/date'
 import { deserializeTags } from '../../../../shared/tags'
@@ -47,10 +47,12 @@ export function TimerDisplay({
   const ss = pad2(elapsed % 60)
 
   let rightHint: string | null = null
-  if (running && roundMinutes > 0) {
+  // The running segment ticks by the rule of currency.ts with the profile values of its row.
+  const billedNow = runningEntry ? entryBilledMinutes(runningEntry, nowMs) : null
+  if (running && billedNow !== null) {
     rightHint = t('today.display.rounding', {
       step: roundMinutes,
-      total: formatHoursMinutes(Math.floor(roundDuration(elapsed, roundMinutes) / 60))
+      total: formatHoursMinutes(billedNow)
     })
   } else if (!running && hotkey) {
     rightHint = t('today.display.hotkeyHint', { hotkey: formatHotkey(hotkey) })

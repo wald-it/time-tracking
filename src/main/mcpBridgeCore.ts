@@ -38,7 +38,6 @@ import {
   toLocalIso,
   zonedTimestampError
 } from '../shared/zonedTimestamp'
-import { roundDuration } from '../shared/duration'
 import { deserializeTags } from '../shared/tags'
 import type { Locale } from '../shared/i18n'
 import { dialogT, dialogText, readLanguage, type DialogT } from './mainI18n'
@@ -880,9 +879,9 @@ async function handleControllerRequest(
   // - `*_rounded_seconds`: as the invoice bills it — each entry rounded up to
   //   `pdf_round_minutes` (readRoundedTotals), the same number as Heute's
   //   "gerundet … h". One rounding rule in the product.
-  // - `*_display_seconds`: LEGACY, unchanged meaning — the total rounded in
-  //   one piece, as the page showed it before. Kept only for plugin builds
-  //   that already read it (the plugin ships separately); not the invoice rule.
+  // The legacy `*_display_seconds` (the total rounded in one piece) are gone
+  // (2.0, #374): a plugin build that still reads them gets undefined and falls
+  // back to the raw seconds.
   if (op === 'get_summary') {
     const totals = readTotals(db)
     const round_minutes = readRoundMinutes(db)
@@ -892,10 +891,7 @@ async function handleControllerRequest(
         running: readRunning(db),
         ...totals,
         round_minutes,
-        ...readRoundedTotals(db),
-        // Legacy: the total rounded in one piece — see above.
-        today_display_seconds: roundDuration(totals.today_seconds, round_minutes),
-        week_display_seconds: roundDuration(totals.week_seconds, round_minutes)
+        ...readRoundedTotals(db)
       }
     }
   }

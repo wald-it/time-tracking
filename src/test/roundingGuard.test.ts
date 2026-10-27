@@ -14,19 +14,9 @@ const PATTERN = /Math\.ceil|roundDuration|snapToStep|\bCEIL\(/
 
 const ALLOWED: Record<string, string> = {
   'shared/currency.ts': 'the rule itself (JS side)',
-  'shared/duration.ts':
-    'legacy display rounding (roundDuration), used only by Heute and the Stream Deck display seconds',
-  'main/mcpBridgeCore.ts': 'legacy *_display_seconds for the Stream Deck',
-  'main/dashboardTotals.ts': 'comment naming roundDuration as legacy',
   'main/pdf.ts': 'snapToStepLocal: grid alignment of the displayed start time, set by the profile',
   'main/analyticsHandlers.ts': 'ISO week number, not billing',
-  'renderer/src/components/auswertung/ClientHours.tsx': 'chart axis maximum, not billing',
-  'renderer/src/components/heute/EntryTable.tsx':
-    'Heute display rounding, to be moved onto the rule (P4 renderer part)',
-  'renderer/src/components/heute/SummaryColumn.tsx':
-    'Heute display rounding, to be moved onto the rule (P4 renderer part)',
-  'renderer/src/components/heute/TimerDisplay.tsx':
-    'Heute display rounding, to be moved onto the rule (P4 renderer part)'
+  'renderer/src/components/auswertung/ClientHours.tsx': 'chart axis maximum, not billing'
 }
 
 function sourceFiles(dir: string): string[] {

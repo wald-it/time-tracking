@@ -94,6 +94,35 @@ const AUGUST_ENTRIES: Entry[] = [
   })
 ]
 
+/**
+ * A row as the view `entries` delivers it with money (2.0 #374): the numbers
+ * the calendar shows come with the row, hand-set here, not worked out from a
+ * client rate in the test.
+ */
+function priced(
+  e: Entry,
+  minutes: number,
+  rateCent: number,
+  profile: { interval_min?: number; min_unit_min?: number } = {}
+): Entry {
+  return {
+    ...e,
+    billed_minutes: minutes,
+    rate_cent: rateCent,
+    fee_cent: Math.round((rateCent * minutes) / 60),
+    interval_min: 0,
+    min_unit_min: 0,
+    ...profile
+  }
+}
+
+// AUGUST_ENTRIES at 100 EUR/h: 1:30, 1:00 and 2:00.
+const AUGUST_PRICED: Entry[] = [
+  priced(AUGUST_ENTRIES[0], 90, 10000),
+  priced(AUGUST_ENTRIES[1], 60, 10000),
+  priced(AUGUST_ENTRIES[2], 120, 10000)
+]
+
 interface Setup {
   getByMonth: ReturnType<typeof vi.fn>
 }
@@ -300,12 +329,19 @@ describe('CalendarView — day revenue', () => {
     expect(within(cell('2026-08-10')).queryByTestId('day-revenue')).toBeNull()
   })
 
-  it('sums billable entries per day at the client rate', async () => {
-    await setup({ byMonth: { '2026-8': AUGUST_ENTRIES }, clients: RATED })
+  it('sums the fee of the billable rows per day', async () => {
+    await setup({ byMonth: { '2026-8': AUGUST_PRICED }, clients: RATED })
     // 1:30 + 1:00 at 100 €/h
     expect(within(cell('2026-08-10')).getByTestId('day-revenue').textContent).toBe('250,00 €')
     expect(within(cell('2026-08-12')).getByTestId('day-revenue').textContent).toBe('200,00 €')
     expect(within(cell('2026-08-11')).queryByTestId('day-revenue')).toBeNull()
+  })
+
+  it('shows the fee of the row, not a figure worked out from the client rate', async () => {
+    // A rate rise since the day: the client list says 100 €/h, the row says 60 €/h.
+    const old = [priced(AUGUST_ENTRIES[1], 60, 6000)]
+    await setup({ byMonth: { '2026-8': old }, clients: RATED })
+    expect(within(cell('2026-08-10')).getByTestId('day-revenue').textContent).toBe('60,00 €')
   })
 
   it('leaves non-billable entries out and lets a project rate win', async () => {
@@ -319,8 +355,8 @@ describe('CalendarView — day revenue', () => {
       created_at: '2026-01-01T00:00:00.000Z'
     }
     const entries = [
-      { ...AUGUST_ENTRIES[0], project_id: 7 }, // 1:30 at 150 €/h = 225 €
-      { ...AUGUST_ENTRIES[1], billable: 0 } // excluded
+      { ...priced(AUGUST_ENTRIES[0], 90, 15000), project_id: 7 }, // 1:30 at 150 €/h = 225 €
+      { ...priced(AUGUST_ENTRIES[1], 60, 10000), billable: 0 } // excluded
     ]
     await setup({ byMonth: { '2026-8': entries }, clients: RATED, projects: [project] })
     await waitFor(() =>
@@ -441,7 +477,17 @@ describe('CalendarView — totals', () => {
 
   it('shows the day total raw, not rounded', async () => {
     useSettingsStore.setState({ settings: { pdf_round_minutes: '15' } as unknown as never })
-    const odd = [makeEntry({ id: 21, started_at: local(10, 9, 0), stopped_at: local(10, 9, 7) })]
+    // The row carries the billed 15 minutes of its 15-minute profile.
+    const odd = [
+      priced(
+        makeEntry({ id: 21, started_at: local(10, 9, 0), stopped_at: local(10, 9, 7) }),
+        15,
+        0,
+        {
+          interval_min: 15
+        }
+      )
+    ]
     await setup({ byMonth: { '2026-8': odd } })
     const total = within(cell('2026-08-10')).getByTestId('day-total')
     expect(total.textContent).toBe('0:07')
@@ -558,7 +604,7 @@ describe('CalendarView — review fixes (PR 3)', () => {
 
   it("the cell's accessible name carries the amount (narrow cells hide the euro line)", async () => {
     await setup({
-      byMonth: { '2026-8': AUGUST_ENTRIES },
+      byMonth: { '2026-8': AUGUST_PRICED },
       clients: [{ ...CLIENTS[0], rate_cent: 10000 }]
     })
     expect(cell('2026-08-10').getAttribute('aria-label')).toContain('250,00 €')
@@ -568,7 +614,7 @@ describe('CalendarView — review fixes (PR 3)', () => {
 describe('CalendarView — day details', () => {
   it("shows the day's amount in the details (narrow cells hide it)", async () => {
     await setup({
-      byMonth: { '2026-8': AUGUST_ENTRIES },
+      byMonth: { '2026-8': AUGUST_PRICED },
       clients: [{ ...CLIENTS[0], rate_cent: 10000 }]
     })
     fireEvent.click(cell('2026-08-10'))
@@ -604,9 +650,9 @@ describe('CalendarView — final review fixes (PR 3)', () => {
   }
   // 10 Aug on the goodwill project (no amount), 12 Aug at the client rate.
   const MIXED = [
-    { ...AUGUST_ENTRIES[0], project_id: 8 },
-    { ...AUGUST_ENTRIES[1], project_id: 8 },
-    AUGUST_ENTRIES[2]
+    { ...priced(AUGUST_ENTRIES[0], 90, 0), project_id: 8 },
+    { ...priced(AUGUST_ENTRIES[1], 60, 0), project_id: 8 },
+    AUGUST_PRICED[2]
   ]
 
   function breakdown(): HTMLElement {
@@ -630,7 +676,7 @@ describe('CalendarView — final review fixes (PR 3)', () => {
     expect(screen.getByTestId('month-total').textContent).toBe('0:00')
   })
 
-  it('prices no day before the project rates are known', async () => {
+  it('prices a day from its rows, without waiting for the project rates', async () => {
     let release!: () => void
     const projectsGate = new Promise<void>((r) => (release = r))
     await setup({
@@ -639,10 +685,10 @@ describe('CalendarView — final review fixes (PR 3)', () => {
       projects: [GOODWILL],
       projectsGate
     })
-    // Without the project rates the goodwill day would read as 250 € at the
-    // client rate. The hours do not wait for them.
+    // The goodwill day carries a fee of 0 in its rows, so the order of the
+    // loads cannot price it at the client rate (before 2.0 it could).
     expect(within(cell('2026-08-10')).queryByTestId('day-revenue')).toBeNull()
-    expect(within(cell('2026-08-12')).queryByTestId('day-revenue')).toBeNull()
+    expect(within(cell('2026-08-12')).getByTestId('day-revenue').textContent).toBe('200,00 €')
     expect(within(cell('2026-08-10')).getByTestId('day-total').textContent).toBe('2:30')
     expect(screen.getByTestId('month-total').textContent).toBe('4:30')
 
@@ -653,17 +699,18 @@ describe('CalendarView — final review fixes (PR 3)', () => {
     expect(within(cell('2026-08-10')).queryByTestId('day-revenue')).toBeNull()
   })
 
-  it('a failed project load keeps the hours, drops the amounts and says so', async () => {
+  it('a failed project load keeps the hours and the amounts of the rows and says so', async () => {
     await setup({ byMonth: { '2026-8': MIXED }, clients: RATED, projectsFail: true })
     await waitFor(() => expect(screen.getByText('Fehler beim Laden')).toBeTruthy())
     expect(screen.getByTestId('month-total').textContent).toBe('4:30')
     expect(within(cell('2026-08-12')).getByTestId('day-total').textContent).toBe('2:00')
-    expect(within(cell('2026-08-12')).queryByTestId('day-revenue')).toBeNull()
-    expect(cell('2026-08-12').getAttribute('aria-label')).not.toContain('€')
+    // The amount comes with the rows (2.0), it no longer depends on the project rates.
+    expect(within(cell('2026-08-12')).getByTestId('day-revenue').textContent).toBe('200,00 €')
+    expect(cell('2026-08-12').getAttribute('aria-label')).toContain('200,00 €')
 
     fireEvent.click(cell('2026-08-12'))
     const drawer = screen.getByRole('dialog', { name: 'Einträge für 12.08.2026' })
-    expect(within(drawer).queryByTestId('details-revenue')).toBeNull()
+    expect(within(drawer).getByTestId('details-revenue').textContent).toBe('200,00 €')
   })
 
   it('the day panel prices a goodwill day right from the first render', async () => {
@@ -679,8 +726,8 @@ describe('CalendarView — final review fixes (PR 3)', () => {
 
   it('under a tag filter the amount covers the same entries as the hours', async () => {
     const tagged = [
-      { ...AUGUST_ENTRIES[0], tags: ',konzept,' }, // 1:30 = 150 €
-      AUGUST_ENTRIES[1] // 1:00 = 100 €
+      { ...AUGUST_PRICED[0], tags: ',konzept,' }, // 1:30 = 150 €
+      AUGUST_PRICED[1] // 1:00 = 100 €
     ]
     await setup({ byMonth: { '2026-8': tagged }, clients: RATED })
     fireEvent.click(cell('2026-08-10'))
