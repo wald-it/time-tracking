@@ -29,7 +29,11 @@ CREATE TABLE billing_run (
   invoice_ref TEXT NOT NULL DEFAULT '',
   rule_snapshot TEXT NOT NULL,
   html_sha256 TEXT NOT NULL,
-  pdf_sha256 TEXT NOT NULL
+  pdf_sha256 TEXT NOT NULL,
+  CHECK (
+    (status = 'active' AND released_at IS NULL AND release_reason IS NULL)
+    OR (status = 'released' AND released_at IS NOT NULL AND length(trim(release_reason)) > 0)
+  )
 );
 CREATE TABLE billing_run_item (
   run_id INTEGER NOT NULL REFERENCES billing_run(id),
@@ -66,6 +70,22 @@ WHEN NEW.run_id IS NOT OLD.run_id OR NEW.entry_id IS NOT OLD.entry_id
   OR NEW.segment_date IS NOT OLD.segment_date OR NEW.billed_minutes IS NOT OLD.billed_minutes
   OR NEW.rate_cent IS NOT OLD.rate_cent OR NEW.fee_cent IS NOT OLD.fee_cent
 BEGIN SELECT RAISE(ABORT, 'billing_run_item immutable'); END;
+CREATE TRIGGER trg_billing_run_insert BEFORE INSERT ON billing_run
+WHEN NEW.status IS NOT 'active'
+BEGIN SELECT RAISE(ABORT, 'billing_run must start active'); END;
+CREATE TRIGGER trg_billing_run_release_oneway BEFORE UPDATE ON billing_run
+WHEN OLD.status = 'released'
+  AND (NEW.status IS NOT OLD.status OR NEW.released_at IS NOT OLD.released_at
+    OR NEW.release_reason IS NOT OLD.release_reason)
+BEGIN SELECT RAISE(ABORT, 'billing_run release is one-way'); END;
+CREATE TRIGGER trg_billing_run_item_insert BEFORE INSERT ON billing_run_item
+WHEN NEW.active IS NOT 1
+  OR (SELECT status FROM billing_run WHERE id = NEW.run_id) IS NOT 'active'
+BEGIN SELECT RAISE(ABORT, 'billing_run_item must start active in an active run'); END;
+CREATE TRIGGER trg_billing_run_item_active_oneway BEFORE UPDATE OF active ON billing_run_item
+WHEN NEW.active IS NOT OLD.active
+  AND (OLD.active = 0 OR (SELECT status FROM billing_run WHERE id = NEW.run_id) IS NOT 'released')
+BEGIN SELECT RAISE(ABORT, 'billing_run_item active is one-way and follows the release'); END;
 CREATE TRIGGER trg_billing_run_document_update BEFORE UPDATE ON billing_run_document
 BEGIN SELECT RAISE(ABORT, 'billing_run_document immutable'); END;
 CREATE TRIGGER trg_billing_run_delete BEFORE DELETE ON billing_run

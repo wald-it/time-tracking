@@ -278,6 +278,53 @@ describe('P5 billing run lifecycle (design 11.6)', () => {
       expect(() => db.exec(sql)).toThrow(/immutable/)
   })
 
+  it('enforces one-way release in the database', async () => {
+    const db = setup()
+    entry(db)
+    const first = await run(db)
+    // Not yet released: no half-release, no item deactivation without the release.
+    expect(() => db.exec("UPDATE billing_run SET released_at = 'x'")).toThrow(/CHECK/)
+    expect(() => db.exec("UPDATE billing_run SET status = 'released'")).toThrow(/CHECK/)
+    expect(() => db.exec('UPDATE billing_run_item SET active = 0')).toThrow(/follows the release/)
+    releaseRun(db, first.id, 'Correction')
+    for (const sql of [
+      "UPDATE billing_run SET status = 'active', released_at = NULL, release_reason = NULL",
+      "UPDATE billing_run SET status = 'active'",
+      'UPDATE billing_run SET released_at = NULL',
+      "UPDATE billing_run SET released_at = '2030-01-01T00:00:00.000Z'",
+      'UPDATE billing_run SET release_reason = NULL',
+      "UPDATE billing_run SET release_reason = 'other'",
+      'UPDATE billing_run_item SET active = 1'
+    ])
+      expect(() => db.exec(sql), sql).toThrow(/one-way|CHECK/)
+    // Inserts: a run starts active, items only join an active run and start active.
+    expect(() =>
+      db.exec(
+        `INSERT INTO billing_run_item SELECT run_id, entry_id, version_id, seq, segment_date, billed_minutes, rate_cent, fee_cent, 1 FROM billing_run_item`
+      )
+    ).toThrow(/active run/)
+    expect(() =>
+      db.exec(
+        `INSERT INTO billing_run (number, client_id, period_from, period_to, created_at, status, released_at, release_reason, rule_snapshot, html_sha256, pdf_sha256)
+         VALUES ('X', 1, '2026-10-01', '2026-10-31', 'now', 'released', 'now', 'r', '{}', 'h', 'p')`
+      )
+    ).toThrow(/start active/)
+    // Positive: invoice_ref stays editable, re-billing works, and the state is untouched.
+    db.exec("UPDATE billing_run SET invoice_ref = 'RE-1'")
+    const second = await createRun(db, { ...req, replacesRunId: first.id }, renderer)
+    expect(second.status).toBe('active')
+    expect(
+      db
+        .prepare(
+          'SELECT status, active FROM billing_run r JOIN billing_run_item i ON i.run_id = r.id ORDER BY r.id'
+        )
+        .all()
+    ).toEqual([
+      { status: 'released', active: 0 },
+      { status: 'active', active: 1 }
+    ])
+  })
+
   it('detects corrupt archived bytes before returning them', async () => {
     const db = setup()
     entry(db)
