@@ -56,9 +56,7 @@ export interface DayWeekTotals {
  * large and the rounded value only as a sub-line ("gerundet … h"); the dial
  * mirrors the raw number. That rounded value follows the invoice rule — each
  * entry rounded up (`readRoundedTotals`, `billedMinutes`) — and travels in
- * `get_summary` as `*_rounded_seconds`. The legacy `*_display_seconds` there
- * round the total in one piece (`roundDuration`) and exist only for older
- * plugin builds.
+ * `get_summary` as `*_rounded_seconds`.
  */
 export function readRoundMinutes(db: Db): number {
   return readDefaultIntervalMin(db)

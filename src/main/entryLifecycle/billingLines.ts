@@ -1,4 +1,5 @@
 import { billedMinutesRuleSql, rawMinutesSql } from '../../shared/currency'
+import { ENTRIES_VIEW_READ_ONLY, ENTRIES_VIEW_SELECT } from './schemaV2'
 
 /**
  * 2.0 P4 (docs/design/2.0-entry-lifecycle.md section 7): money in one place.
@@ -65,3 +66,45 @@ SELECT l.*,
   ) l`
 
 export const BILLING_LINES_VIEW_SQL = `CREATE VIEW billing_lines AS${BILLING_LINES_SELECT}`
+
+/**
+ * 2.0 (P4 renderer part, #374): the view `entries` again, now with the money
+ * of its segment from `billing_lines` (design section 6): `billed_minutes`,
+ * `rate_cent`, `fee_cent` and `rate_is_project`, plus the profile values
+ * `interval_min` and `min_unit_min` the segment was computed with, so the
+ * renderer can tick a running segment by the rule of `currency.ts`. The
+ * columns of 028/029 are unchanged; the money columns come last. A running
+ * segment has `rate_cent` and `fee_cent` NULL and a provisional `billed_minutes`.
+ *
+ * The join is an inner join on purpose: `billing_lines` has exactly one row per
+ * current segment of a live entry, the same rows as the view, so no row is lost,
+ * and SQLite can then fold `billing_lines` into the query. As a LEFT JOIN it
+ * materialised every segment of the database for each query on `entries`
+ * (measured: 20 000 entries, 56 ms for a lookup by id against 3 ms).
+ *
+ * Kept apart from `ENTRIES_VIEW_SQL`: 028 creates that view on a fresh
+ * database before `billing_lines` exists (030). Dropping the view drops its
+ * three INSTEAD OF triggers, which are created again here.
+ */
+export const ENTRIES_VIEW_MONEY_SQL = `
+CREATE VIEW entries AS
+  ${ENTRIES_VIEW_SELECT},
+         l.billed_minutes AS billed_minutes,
+         l.rate_cent AS rate_cent,
+         l.fee_cent AS fee_cent,
+         l.rate_is_project AS rate_is_project,
+         l.interval_min AS interval_min,
+         l.min_unit_min AS min_unit_min
+    FROM entry e
+    JOIN entry_version v ON v.id = e.current_version_id
+    JOIN entry_segment s ON s.version_id = v.id
+    JOIN billing_lines l ON l.version_id = v.id AND l.segment_seq = s.seq
+   WHERE e.is_deleted = 0;
+
+CREATE TRIGGER trg_entries_view_insert INSTEAD OF INSERT ON entries
+BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
+CREATE TRIGGER trg_entries_view_update INSTEAD OF UPDATE ON entries
+BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
+CREATE TRIGGER trg_entries_view_delete INSTEAD OF DELETE ON entries
+BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
+`

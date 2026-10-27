@@ -19,9 +19,8 @@ import { EntryTable } from '../components/heute/EntryTable'
 import { QuickStart } from '../components/heute/QuickStart'
 import type { TFunction } from '../contexts/I18nContext'
 import { useT } from '../contexts/I18nContext'
-import { useRounding } from '../contexts/RoundingContext'
 import { useNow } from '../contexts/NowContext'
-import { billedMinutes } from '../../../shared/currency'
+import { rowsBilledSeconds, uniformStepMin } from '../../../shared/entryMoney'
 
 /**
  * `Heute` — the Messinstrument layout (HANDOFF §4.1):
@@ -37,7 +36,6 @@ import { billedMinutes } from '../../../shared/currency'
  */
 export default function TodayView(): React.JSX.Element {
   const t = useT()
-  const { roundMinutes } = useRounding()
   const { runningEntry, clients, startWithClient, switchTo, stop } = useTimer()
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
@@ -116,14 +114,26 @@ export default function TodayView(): React.JSX.Element {
     return summary.weekDaySeconds.map((s, i) => (i === todayIndex ? s + liveDelta : s))
   }, [summary, todayIndex, liveDelta])
 
-  // Today as the invoice bills it: each entry rounded up to the step.
-  const todayRoundedSeconds = useMemo(() => {
-    if (!summary || roundMinutes <= 0) return undefined
-    return summary.todayEntries.reduce((sum, e) => {
-      const stop = e.stopped_at ? Date.parse(e.stopped_at) : nowMs
-      return sum + billedMinutes(Math.max(0, stop - Date.parse(e.started_at)), roundMinutes) * 60
-    }, 0)
-  }, [summary, roundMinutes, nowMs])
+  // Today as the invoice bills it: the billed minutes of the rows from the view,
+  // the running one ticking by the rule. Undefined when nothing rounds today.
+  const todayRoundedSeconds = useMemo(
+    () => (summary ? rowsBilledSeconds(summary.todayEntries, nowMs) : undefined),
+    [summary, nowMs]
+  )
+  const todayStepMin = useMemo(
+    () => (summary ? uniformStepMin(summary.todayEntries) : null),
+    [summary]
+  )
+
+  // The running entry the timer returned lacks the money columns; the summary row has them.
+  const runningRow = useMemo(
+    () =>
+      runningEntry
+        ? (summary?.todayEntries.find((e) => e.id === runningEntry.id && e.stopped_at === null) ??
+          runningEntry)
+        : null,
+    [runningEntry, summary]
+  )
 
   const runningClient = runningEntry ? clientsById.get(runningEntry.client_id) : undefined
   const runningProject =
@@ -153,11 +163,10 @@ export default function TodayView(): React.JSX.Element {
       <div className="flex flex-wrap items-stretch gap-6">
         <div className="flex min-w-0 flex-[999_1_520px]">
           <TimerDisplay
-            runningEntry={runningEntry}
+            runningEntry={runningRow}
             client={runningClient}
             project={runningProject}
             nowMs={nowMs}
-            roundMinutes={roundMinutes}
             hotkey={hotkey}
           />
         </div>
@@ -177,7 +186,7 @@ export default function TodayView(): React.JSX.Element {
             weekDaySeconds={weekDaySeconds}
             weekNumber={weekNumberOf(new Date(nowMs), weekStart)}
             todayIndex={todayIndex}
-            roundMinutes={roundMinutes}
+            stepMin={todayStepMin}
             todayRoundedSeconds={todayRoundedSeconds}
           />
         ) : (
@@ -242,7 +251,6 @@ export default function TodayView(): React.JSX.Element {
               clientsById={clientsById}
               projectsById={projectsById}
               nowMs={nowMs}
-              roundMinutes={roundMinutes}
               showProjectNumber={showProjectNumber}
               onEdit={(e) => setEditEntry(e)}
               onDelete={(e) => setDeleteCandidate(e)}

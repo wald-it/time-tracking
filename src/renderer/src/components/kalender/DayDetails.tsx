@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNow } from '../../contexts/NowContext'
-import { useRounding } from '../../contexts/RoundingContext'
 import { formatEur } from '../../../../shared/currency'
 import { dayRevenueCent } from './dayRevenue'
 import type { Client, Entry, Project } from '../../../../shared/types'
@@ -62,7 +61,6 @@ export function DayDetails({
   const t = useT()
   const { locale } = useLocale()
   const nowMs = useNow()
-  const { roundMinutes } = useRounding()
   const sectionRef = useRef<HTMLElement>(null)
   const headingId = useId()
   const [tagFilter, setTagFilter] = useState<string | null>(null)
@@ -187,9 +185,7 @@ export function DayDetails({
   const totalSeconds = filteredEntries.reduce((sum, e) => sum + durationSeconds(e, nowMs), 0)
   // Same entries as the hours beside it: under a tag filter both show the
   // filtered part of the day, never hours of one set next to euros of another.
-  const revenueCent = projects
-    ? dayRevenueCent(filteredEntries, clients, projects, roundMinutes, nowMs)
-    : 0
+  const revenueCent = dayRevenueCent(filteredEntries)
 
   return (
     <section

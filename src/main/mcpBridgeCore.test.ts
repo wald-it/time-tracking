@@ -532,10 +532,10 @@ describe('handleRequest — controller scope', () => {
     // Exact now that the fixture is exact — the old range only existed to
     // absorb the drift of measuring against `now` (#213).
     expect(data.today_seconds).toBe(6 * 3600 + 24 * 60)
+    // 1.23.0 promised the old names stay. Since #374 they carry the billed
+    // minutes of billing_lines (per segment), the same number as *_rounded_seconds.
     expect(data.today_display_seconds).toBe(6 * 3600 + 30 * 60)
     expect(data.week_display_seconds).toBe(6 * 3600 + 30 * 60)
-    // The rounded pair under names that say what it is; *_display_seconds
-    // keeps its meaning for plugins that already read it.
     const named = res.data as { today_rounded_seconds: number; week_rounded_seconds: number }
     expect(named.today_rounded_seconds).toBe(6 * 3600 + 30 * 60)
     expect(named.week_rounded_seconds).toBe(6 * 3600 + 30 * 60)
@@ -554,7 +554,12 @@ describe('handleRequest — controller scope', () => {
     const res = await handleRequest(ctx, ctl('get_summary'))
     expect(res.ok).toBe(true)
     if (!res.ok) return
-    const data = res.data as { today_seconds: number; today_display_seconds: number }
+    const data = res.data as {
+      today_seconds: number
+      today_rounded_seconds: number
+      today_display_seconds: number
+    }
+    expect(data.today_rounded_seconds).toBe(data.today_seconds)
     expect(data.today_display_seconds).toBe(data.today_seconds)
   })
 

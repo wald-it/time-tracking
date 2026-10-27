@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import type { Client, Entry, Project } from '../../../../shared/types'
 import { entryRowKey } from '../../../../shared/entryKey'
-import { roundDuration } from '../../../../shared/duration'
+import { entryBilledMinutes } from '../../../../shared/entryMoney'
 import { deserializeTags } from '../../../../shared/tags'
 import { useT } from '../../contexts/I18nContext'
 
@@ -19,7 +19,6 @@ export function EntryTable({
   clientsById,
   projectsById,
   nowMs,
-  roundMinutes,
   showProjectNumber,
   onEdit,
   onDelete,
@@ -29,7 +28,6 @@ export function EntryTable({
   clientsById: Map<number, Client>
   projectsById: Map<number, Project>
   nowMs: number
-  roundMinutes: number
   showProjectNumber: boolean
   onEdit: (e: Entry) => void
   onDelete: (e: Entry) => void
@@ -103,7 +101,6 @@ export function EntryTable({
                   client={clientsById.get(e.client_id)}
                   project={e.project_id != null ? projectsById.get(e.project_id) : undefined}
                   nowMs={nowMs}
-                  roundMinutes={roundMinutes}
                   showProjectNumber={showProjectNumber}
                   onEdit={onEdit}
                   onDelete={onDelete}
@@ -122,7 +119,6 @@ function EntryRow({
   client,
   project,
   nowMs,
-  roundMinutes,
   showProjectNumber,
   onEdit,
   onDelete
@@ -131,7 +127,6 @@ function EntryRow({
   client: Client | undefined
   project: Project | undefined
   nowMs: number
-  roundMinutes: number
   showProjectNumber: boolean
   onEdit: (e: Entry) => void
   onDelete: (e: Entry) => void
@@ -154,7 +149,9 @@ function EntryRow({
     durationText = formatHMMSS(secondsBetween(entry.started_at, nowMs))
   } else {
     const raw = secondsBetween(entry.started_at, new Date(entry.stopped_at as string).getTime())
-    const shown = roundDuration(raw, roundMinutes)
+    // The billed minutes of the view when the profile rounds; the raw time otherwise.
+    const billed = entryBilledMinutes(entry, nowMs)
+    const shown = billed !== null ? billed * 60 : raw
     durationText = formatHMM(shown)
     durationTitle = shown !== raw ? formatHMM(raw) : undefined
   }

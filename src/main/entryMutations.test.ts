@@ -672,6 +672,14 @@ describe('an edit keeps every column of the entry (guard)', () => {
     // Derived from the new version's segments (2.0 P3).
     segment_count: 'rebuilt',
     segment_date: 'rebuilt',
+    // The money of the segment from billing_lines (2.0 #374): worked out again
+    // from the new version, never carried.
+    billed_minutes: 'rebuilt',
+    rate_cent: 'rebuilt',
+    fee_cent: 'rebuilt',
+    rate_is_project: 'rebuilt',
+    interval_min: 'rebuilt',
+    min_unit_min: 'rebuilt',
     link_id: 'rebuilt',
     heartbeat_at: 'rebuilt',
     rounded_min: 'rebuilt',
