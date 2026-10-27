@@ -17,6 +17,9 @@ import { deserializeTags } from '../shared/tags'
 import type { Client, Entry, Settings } from '../shared/types'
 
 export interface PdfRequest {
+  markAsBilled?: boolean
+  replacesRunId?: number
+
   clientId: number
   /** ISO-date strings, inclusive. e.g. '2026-04-01' to '2026-04-30'. */
   fromIso: string
@@ -95,6 +98,8 @@ export interface PdfGroup {
 }
 
 export interface PdfPayload {
+  runNumber?: string
+
   client: Pick<
     Client,
     | 'id'
@@ -218,6 +223,46 @@ export function buildPdfPayload(
   logoDataUrl: string,
   generatedAtIso: string = new Date().toISOString()
 ): PdfPayload {
+  const context = readPdfSourceContext(db, req, logoDataUrl, generatedAtIso)
+  // Local days, both inclusive, compared with the date stored with each
+  // segment: an entry at 00:30 on the first day belongs to the attachment,
+  // and a later change of the time zone moves nothing.
+
+  // Money comes from billing_lines (design section 7): minutes, rate and fee
+  // per segment, with the client's profile and the rate valid on the day.
+  const entries = db
+    .prepare(
+      `SELECT e.*, p.name AS project_name,
+              l.billed_minutes, l.rate_cent AS line_rate_cent, l.fee_cent, l.rate_is_project,
+              l.interval_min, l.alignment
+         FROM entries e
+         JOIN billing_lines l ON l.version_id = e.version_id AND l.segment_seq = e.segment_seq
+         LEFT JOIN projects p ON p.id = e.project_id
+         WHERE e.client_id = ?
+           AND e.deleted_at IS NULL
+           AND e.stopped_at IS NOT NULL
+           AND e.billable = 1
+           AND e.segment_date BETWEEN ? AND ?
+           AND (? IS NULL OR e.project_id = ?)
+         ORDER BY e.started_at ASC, e.id ASC`
+    )
+    .all(
+      req.clientId,
+      req.fromIso,
+      req.toIso,
+      req.projectId ?? null,
+      req.projectId ?? null
+    ) as PdfSourceRow[]
+
+  return buildPdfPayloadFromData(context, req, entries)
+}
+/** Read all non-row HTML inputs once, before rendering. */
+export function readPdfSourceContext(
+  db: Database.Database,
+  req: PdfRequest,
+  logoDataUrl: string,
+  generatedAtIso: string
+): PdfSourceContext {
   const client = db
     .prepare(
       `SELECT id, name, rate_cent,
@@ -253,40 +298,63 @@ export function buildPdfPayload(
     settingsRows.map((r) => [r.key, r.value])
   ) as unknown as Settings
 
-  // Local days, both inclusive, compared with the date stored with each
-  // segment: an entry at 00:30 on the first day belongs to the attachment,
-  // and a later change of the time zone moves nothing.
+  // v1.9 #75: load project name when filtered to a specific project
+  // v1.12 #105: also load project.contact_person for the recipient fallback
+  let projectName: string | undefined
+  let projectContactPerson: string | null | undefined
+  if (req.projectId != null) {
+    const proj = db
+      .prepare(`SELECT name, contact_person FROM projects WHERE id = ?`)
+      .get(req.projectId) as { name: string; contact_person: string | null } | undefined
+    projectName = proj?.name
+    projectContactPerson = proj?.contact_person ?? null
+  }
 
-  // Money comes from billing_lines (design section 7): minutes, rate and fee
-  // per segment, with the client's profile and the rate valid on the day.
-  const entries = db
-    .prepare(
-      `SELECT e.*, p.name AS project_name,
-              l.billed_minutes, l.rate_cent AS line_rate_cent, l.fee_cent, l.rate_is_project,
-              l.interval_min, l.alignment
-         FROM entries e
-         JOIN billing_lines l ON l.version_id = e.version_id AND l.segment_seq = e.segment_seq
-         LEFT JOIN projects p ON p.id = e.project_id
-         WHERE e.client_id = ?
-           AND e.deleted_at IS NULL
-           AND e.stopped_at IS NOT NULL
-           AND e.billable = 1
-           AND e.segment_date BETWEEN ? AND ?
-           AND (? IS NULL OR e.project_id = ?)
-         ORDER BY e.started_at ASC, e.id ASC`
-    )
-    .all(client.id, req.fromIso, req.toIso, req.projectId ?? null, req.projectId ?? null) as Array<
-    Entry & {
-      project_name: string | null
-      billed_minutes: number
-      line_rate_cent: number
-      fee_cent: number
-      rate_is_project: number
-      interval_min: number
-      alignment: 'none' | 'grid'
-    }
-  >
+  // v1.12 #105: project contact person overrides client contact person
+  const effectiveContactPerson =
+    req.projectId != null ? (projectContactPerson ?? client.contact_person) : client.contact_person
 
+  return {
+    client,
+    sender: {
+      name: settings.company_name ?? '',
+      address: settings.pdf_sender_address ?? '',
+      taxId: settings.pdf_tax_id ?? ''
+    },
+    fromIso: req.fromIso,
+    toIso: req.toIso,
+    accentColor: settings.pdf_accent_color || '#4f46e5',
+    footerText: settings.pdf_footer_text ?? '',
+    logoDataUrl,
+    includeSignatures: req.includeSignatures === true,
+    generatedAtIso,
+    projectName,
+    effectiveContactPerson,
+    hideFeeColumn: req.hideFeeColumn === true
+  }
+}
+
+export type PdfSourceContext = Omit<PdfPayload, 'rows' | 'totals' | 'groups' | 'roundMinutes'>
+export type PdfSourceRow = Pick<
+  Entry,
+  'id' | 'started_at' | 'stopped_at' | 'segment_date' | 'description' | 'tags' | 'reference'
+> & {
+  project_name: string | null
+  billed_minutes: number
+  line_rate_cent: number
+  fee_cent: number
+  rate_is_project: number
+  interval_min: number
+  alignment: 'none' | 'grid'
+}
+
+/** Shared pure assembly: live export and immutable run inputs use the same formatters. */
+export function buildPdfPayloadFromData(
+  context: PdfSourceContext,
+  req: PdfRequest,
+  entries: PdfSourceRow[]
+): PdfPayload {
+  const { client } = context
   // v1.13 #118: backward-compat — the legacy `groupByTag` boolean coerces
   // to the new enum when the caller hasn't migrated yet.
   const groupBy: 'none' | 'tag' | 'project' | 'reference' =
@@ -433,43 +501,12 @@ export function buildPdfPayload(
     })
   }
 
-  // v1.9 #75: load project name when filtered to a specific project
-  // v1.12 #105: also load project.contact_person for the recipient fallback
-  let projectName: string | undefined
-  let projectContactPerson: string | null | undefined
-  if (req.projectId != null) {
-    const proj = db
-      .prepare(`SELECT name, contact_person FROM projects WHERE id = ?`)
-      .get(req.projectId) as { name: string; contact_person: string | null } | undefined
-    projectName = proj?.name
-    projectContactPerson = proj?.contact_person ?? null
-  }
-
-  // v1.12 #105: project contact person overrides client contact person
-  const effectiveContactPerson =
-    req.projectId != null ? (projectContactPerson ?? client.contact_person) : client.contact_person
-
   return {
-    client,
-    sender: {
-      name: settings.company_name ?? '',
-      address: settings.pdf_sender_address ?? '',
-      taxId: settings.pdf_tax_id ?? ''
-    },
-    fromIso: req.fromIso,
-    toIso: req.toIso,
+    ...context,
     rows,
-    totals: { minutes: totalMinutes, feeCent: totalFee },
-    accentColor: settings.pdf_accent_color || '#4f46e5',
-    footerText: settings.pdf_footer_text ?? '',
-    logoDataUrl,
-    roundMinutes: entries.reduce((max, e) => Math.max(max, e.interval_min), 0),
-    includeSignatures: req.includeSignatures === true,
-    generatedAtIso,
     groups,
-    projectName,
-    effectiveContactPerson,
-    hideFeeColumn: req.hideFeeColumn === true
+    totals: { minutes: totalMinutes, feeCent: totalFee },
+    roundMinutes: entries.reduce((max, e) => Math.max(max, e.interval_min), 0)
   }
 }
 
@@ -735,7 +772,7 @@ export function buildPdfHtml(p: PdfPayload): string {
       </div>
     </header>
 
-    <h1 class="doc-title">Stundennachweis</h1>
+    <h1 class="doc-title">Stundennachweis${p.runNumber ? ` Nr. ${esc(p.runNumber)}` : ''}</h1>
 
     <div class="meta-row">
       <div class="recipient">

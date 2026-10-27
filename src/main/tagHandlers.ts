@@ -3,7 +3,7 @@ import type Database from 'better-sqlite3'
 import log from 'electron-log/main'
 import type { IpcResult } from '../shared/types'
 import { MAX_TAG_LEN, TAG_RE } from '../shared/tags'
-import { writeEntry } from './entryMutations'
+import { readEntry, writeEntry } from './entryMutations'
 
 export interface TagWithCount {
   name: string
@@ -103,9 +103,13 @@ function retagLiveEntries(db: Database.Database, from: string, to: string): numb
     .all(from) as Array<{ id: number; tags: string; running: number }>
   for (const row of rows) {
     const tags = row.tags.split(`,${from},`).join(`,${to},`)
+    const ctx = {
+      source: 'tag-rename' as const,
+      reason: readEntry(db, row.id)?.billed ? 'Tag renamed' : undefined
+    }
     const res = row.running
-      ? writeEntry(db, { op: 'amend', id: row.id, patch: { tags } }, { source: 'tag-rename' })
-      : writeEntry(db, { op: 'patch', id: row.id, patch: { tags } }, { source: 'tag-rename' })
+      ? writeEntry(db, { op: 'amend', id: row.id, patch: { tags } }, ctx)
+      : writeEntry(db, { op: 'patch', id: row.id, patch: { tags } }, ctx)
     if (!res.ok) throw new Error(`Eintrag ${row.id}: ${res.error}`)
   }
   return rows.length

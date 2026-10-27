@@ -1,3 +1,4 @@
+import type { BillingRun } from '../main/billingRuns'
 import type {
   Client,
   Entry,
@@ -135,8 +136,16 @@ declare global {
         merge(source: string, target: string): Promise<IpcResult<void>>
         delete(name: string): Promise<IpcResult<void>>
       }
+      billingRuns: {
+        list(clientId?: number): Promise<IpcResult<BillingRun[]>>
+        open(runId: number): Promise<IpcResult<Uint8Array>>
+        release(runId: number, reason: string): Promise<IpcResult<void>>
+        setInvoiceRef(runId: number, ref: string): Promise<IpcResult<void>>
+      }
       pdf: {
         export(req: {
+          markAsBilled?: boolean
+          replacesRunId?: number
           clientId: number
           fromIso: string
           toIso: string
@@ -146,7 +155,7 @@ declare global {
           hideFeeColumn?: boolean
           /** @deprecated use groupBy instead. */
           groupByTag?: boolean
-        }): Promise<IpcResult<{ path: string }>>
+        }): Promise<IpcResult<{ path: string; runId?: number; excludedCount?: number }>>
         mergeExport(req: {
           clientId: number
           fromIso: string

@@ -16,6 +16,9 @@ export interface JsonExportPayload {
   entry_legacy_id: Array<Record<string, unknown>>
   rate: Array<Record<string, unknown>>
   billing_profile: Array<Record<string, unknown>>
+  billing_run: Array<Record<string, unknown>>
+  billing_run_item: Array<Record<string, unknown>>
+  billing_run_document: Array<Record<string, unknown>>
   settings: Array<{ key: string; value: string }>
 }
 
@@ -105,6 +108,11 @@ export function buildJsonExportPayload(
     entry_legacy_id: table(`SELECT * FROM entry_legacy_id ORDER BY legacy_id ASC`),
     rate: table(`SELECT * FROM rate ORDER BY id ASC`),
     billing_profile: table(`SELECT * FROM billing_profile ORDER BY id ASC`),
+    billing_run: table('SELECT * FROM billing_run ORDER BY id'),
+    billing_run_item: table('SELECT * FROM billing_run_item ORDER BY run_id, version_id, seq'),
+    billing_run_document: table(
+      'SELECT run_id, kind, length(bytes) AS byte_length, sha256 FROM billing_run_document ORDER BY run_id, kind'
+    ),
     settings: exportableSettings(settings)
   }
 }

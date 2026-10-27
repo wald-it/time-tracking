@@ -108,3 +108,29 @@ BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
 CREATE TRIGGER trg_entries_view_delete INSTEAD OF DELETE ON entries
 BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
 `
+
+/** P5 only: the migration self-check above must remain independent of runs. */
+export const BILLING_LINES_RUN_VIEW_SQL = `CREATE VIEW billing_lines AS
+SELECT l.entry_id, l.version_id, l.segment_seq, l.segment_date, l.client_id, l.project_id,
+       l.billable, l.started_at, l.stopped_at, l.raw_min, l.interval_min, l.min_unit_min,
+       l.alignment,
+       CASE WHEN i.version_id = l.version_id THEN i.billed_minutes ELSE l.billed_minutes END AS billed_minutes,
+       CASE WHEN i.version_id = l.version_id THEN i.rate_cent ELSE l.rate_cent END AS rate_cent,
+       l.rate_is_project,
+       i.run_id AS billed_run_id, i.version_id AS billed_version_id,
+       CASE WHEN i.version_id = l.version_id THEN i.fee_cent ELSE l.fee_cent END AS fee_cent
+FROM (${BILLING_LINES_SELECT}) l
+LEFT JOIN billing_run_item i ON i.entry_id = l.entry_id AND i.segment_date = l.segment_date AND i.active = 1`
+
+export const BILLING_CHANGES_VIEW_SQL = `CREATE VIEW billing_changes AS
+SELECT i.*, r.number AS run_number, e.current_version_id
+FROM billing_run_item i
+JOIN billing_run r ON r.id = i.run_id
+JOIN entry e ON e.id = i.entry_id
+WHERE i.active = 1 AND (
+  e.is_deleted = 1 OR NOT EXISTS (
+    SELECT 1 FROM entry_segment s
+    WHERE s.version_id = e.current_version_id AND s.segment_date = i.segment_date
+      AND s.version_id = i.version_id
+  )
+)`

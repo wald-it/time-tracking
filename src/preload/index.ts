@@ -1,3 +1,4 @@
+import type { BillingRun } from '../main/billingRuns'
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Client,
@@ -198,8 +199,20 @@ const api = {
       ipcRenderer.invoke('tags:merge', source, target),
     delete: (name: string): Promise<IpcResult<void>> => ipcRenderer.invoke('tags:delete', name)
   },
+  billingRuns: {
+    list: (clientId?: number): Promise<IpcResult<BillingRun[]>> =>
+      ipcRenderer.invoke('billing-runs:list', clientId),
+    open: (runId: number): Promise<IpcResult<Uint8Array>> =>
+      ipcRenderer.invoke('billing-runs:open', runId),
+    release: (runId: number, reason: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('billing-runs:release', runId, reason),
+    setInvoiceRef: (runId: number, ref: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('billing-runs:set-invoice-ref', runId, ref)
+  },
   pdf: {
     export: (req: {
+      markAsBilled?: boolean
+      replacesRunId?: number
       clientId: number
       fromIso: string
       toIso: string
@@ -211,7 +224,8 @@ const api = {
       hideFeeColumn?: boolean
       /** @deprecated use groupBy instead. */
       groupByTag?: boolean
-    }): Promise<IpcResult<{ path: string }>> => ipcRenderer.invoke('pdf:export', req),
+    }): Promise<IpcResult<{ path: string; runId?: number; excludedCount?: number }>> =>
+      ipcRenderer.invoke('pdf:export', req),
     mergeExport: (req: {
       clientId: number
       fromIso: string

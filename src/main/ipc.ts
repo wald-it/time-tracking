@@ -1,3 +1,4 @@
+import { createRun, listRuns, openRunPdf, releaseRun, setInvoiceRef } from './billingRuns'
 import { isExternalUrlAllowed } from './externalLinks'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
@@ -912,7 +913,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle(
     'pdf:export',
-    async (_e, req: PdfRequest): Promise<IpcResult<{ path: string }>> => {
+    async (
+      _e,
+      req: PdfRequest
+    ): Promise<IpcResult<{ path: string; runId?: number; excludedCount?: number }>> => {
       try {
         if (!req || typeof req.clientId !== 'number' || !req.fromIso || !req.toIso) {
           return fail('Ungültige PDF-Anfrage')
@@ -956,17 +960,63 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         ) as unknown as Settings
         const logoDataUrl = readLogoAsDataUrl(settings.pdf_logo_path ?? '')
 
-        const payload = buildPdfPayload(db, req, logoDataUrl)
-        const html = buildPdfHtml(payload)
-        const buf = await renderPdfBuffer({ html })
+        let buf: Buffer
+        let runId: number | undefined
+        let excludedCount: number | undefined
+        if (req.markAsBilled) {
+          const run = await createRun(db, req, (html) => renderPdfBuffer({ html }), {
+            logoDataUrl,
+            appVersion: app.getVersion()
+          })
+          runId = run.id
+          excludedCount = run.excludedCount
+          buf = openRunPdf(db, run.id)
+        } else {
+          const payload = buildPdfPayload(db, req, logoDataUrl)
+          buf = await renderPdfBuffer({ html: buildPdfHtml(payload) })
+        }
         writeFileSync(result.filePath, buf)
         rememberExportFolder(db, 'pdf', result.filePath)
-        return ok({ path: result.filePath })
+        return ok({
+          path: result.filePath,
+          ...(runId === undefined ? {} : { runId, excludedCount })
+        })
       } catch (e) {
         return fail(e)
       }
     }
   )
+
+  ipcMain.handle('billing-runs:list', (_e, clientId?: number) => {
+    try {
+      return ok(listRuns(db, clientId))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:open', (_e, runId: number) => {
+    try {
+      return ok(openRunPdf(db, runId))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:release', (_e, runId: number, reason: string) => {
+    try {
+      releaseRun(db, runId, reason)
+      return ok(undefined)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:set-invoice-ref', (_e, runId: number, ref: string) => {
+    try {
+      setInvoiceRef(db, runId, ref)
+      return ok(undefined)
+    } catch (e) {
+      return fail(e)
+    }
+  })
 
   // PDF merge-export: renders the Stundennachweis and appends it to an
   // existing invoice PDF chosen by the user. The invoice file is never
