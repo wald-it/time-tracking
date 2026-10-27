@@ -14,6 +14,7 @@ import {
   listRuns,
   openRunPdf,
   releaseRun,
+  exportRunToFile,
   renderRunHtml,
   setInvoiceRef,
   verifyRunHtml
@@ -71,8 +72,8 @@ describe('P5 billing run lifecycle (design 11.6)', () => {
       seedEntry(db, {
         id,
         client_id: 1,
-        started_at: today + 'T0' + id + ':00:00.000Z',
-        stopped_at: today + 'T0' + id + ':04:00.000Z'
+        started_at: new Date(today + 'T' + (10 + id) + ':00:00').toISOString(),
+        stopped_at: new Date(today + 'T' + (10 + id) + ':04:00').toISOString()
       })
     add(1)
     add(2)
@@ -502,4 +503,73 @@ it('passes an existing reason contract through UpdateEntryInput and the actual M
     args: { id: 1, description: 'Without reason' }
   })
   expect(refused.ok).toBe(false)
+})
+
+it('keeps the origin of a billed rate after the project falls back to inheritance', async () => {
+  const db = setup()
+  db.exec("INSERT INTO projects (id, client_id, name, rate_cent) VALUES (1, 1, 'Goodwill', 0)")
+  seedEntry(db, {
+    id: 1,
+    client_id: 1,
+    project_id: 1,
+    started_at: '2026-10-27T08:00:00.000Z',
+    stopped_at: '2026-10-27T08:04:00.000Z'
+  })
+  const created = await run(db)
+  const column = (): unknown =>
+    db.prepare('SELECT rate_cent, rate_is_project FROM billing_lines WHERE entry_id = 1').get()
+  expect(column()).toEqual({ rate_cent: 0, rate_is_project: 1 })
+  const html = renderRunHtml(db, created.id),
+    archive = openRunPdf(db, created.id)
+  expect(html).toContain('0,00')
+  db.exec('UPDATE projects SET rate_cent = NULL WHERE id = 1')
+  expect(column()).toEqual({ rate_cent: 0, rate_is_project: 1 })
+  expect(db.prepare('SELECT rate_is_project FROM entries WHERE id = 1').get()).toEqual({
+    rate_is_project: 1
+  })
+  expect(renderRunHtml(db, created.id)).toBe(html)
+  expect(verifyRunHtml(db, created.id)).toBe(true)
+  expect(openRunPdf(db, created.id)).toEqual(archive)
+  releaseRun(db, created.id, 'Released')
+  expect(column()).toEqual({ rate_cent: 6000, rate_is_project: 0 })
+})
+
+describe('writing the export file after the run is committed', () => {
+  it('names the run and keeps it archived when the file cannot be written', async () => {
+    const db = setup()
+    entry(db)
+    const failure = (): never => {
+      throw new Error('EACCES: disk full')
+    }
+    const error = await exportRunToFile(
+      db,
+      req,
+      renderer,
+      { appVersion: '2.0' },
+      'X:/nope.pdf',
+      failure
+    ).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(Error)
+    const [stored] = listRuns(db)
+    expect(stored).toBeDefined()
+    const message = (error as Error).message
+    expect(message).toContain(`ID ${stored.id}`)
+    expect(message).toContain(stored.number)
+    expect(message).toContain('angelegt und archiviert')
+    expect(message).toContain('erneut öffnen')
+    expect(message).toContain('EACCES')
+    expect(readEntry(db, 1)?.billed).toBe(true)
+    expect(hash(openRunPdf(db, stored.id))).toBe(stored.pdf_sha256)
+  })
+
+  it('writes the archived bytes and returns the run id on success', async () => {
+    const db = setup()
+    entry(db)
+    let written: Buffer | undefined
+    const result = await exportRunToFile(db, req, renderer, {}, 'x.pdf', (_p, bytes) => {
+      written = bytes
+    })
+    expect(written).toEqual(openRunPdf(db, result.runId))
+    expect(result.excludedCount).toBe(0)
+  })
 })

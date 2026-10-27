@@ -109,18 +109,26 @@ CREATE TRIGGER trg_entries_view_delete INSTEAD OF DELETE ON entries
 BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
 `
 
-/** P5 only: the migration self-check above must remain independent of runs. */
+/**
+ * P5 only: the migration self-check above must remain independent of runs.
+ * A billed segment keeps the origin of its rate (`rate_is_project`) from the
+ * run's rule snapshot, like the frozen `rate_cent`; the live rules decide only
+ * for unbilled rows and for a segment whose version has changed since.
+ */
 export const BILLING_LINES_RUN_VIEW_SQL = `CREATE VIEW billing_lines AS
 SELECT l.entry_id, l.version_id, l.segment_seq, l.segment_date, l.client_id, l.project_id,
        l.billable, l.started_at, l.stopped_at, l.raw_min, l.interval_min, l.min_unit_min,
        l.alignment,
        CASE WHEN i.version_id = l.version_id THEN i.billed_minutes ELSE l.billed_minutes END AS billed_minutes,
        CASE WHEN i.version_id = l.version_id THEN i.rate_cent ELSE l.rate_cent END AS rate_cent,
-       l.rate_is_project,
+       CASE WHEN i.version_id = l.version_id
+            THEN COALESCE(json_extract(r.rule_snapshot, '$.rateIsProject."' || i.version_id || ':' || i.seq || '"'), l.rate_is_project)
+            ELSE l.rate_is_project END AS rate_is_project,
        i.run_id AS billed_run_id, i.version_id AS billed_version_id,
        CASE WHEN i.version_id = l.version_id THEN i.fee_cent ELSE l.fee_cent END AS fee_cent
 FROM (${BILLING_LINES_SELECT}) l
-LEFT JOIN billing_run_item i ON i.entry_id = l.entry_id AND i.segment_date = l.segment_date AND i.active = 1`
+LEFT JOIN billing_run_item i ON i.entry_id = l.entry_id AND i.segment_date = l.segment_date AND i.active = 1
+LEFT JOIN billing_run r ON r.id = i.run_id`
 
 export const BILLING_CHANGES_VIEW_SQL = `CREATE VIEW billing_changes AS
 SELECT i.*, r.number AS run_number, e.current_version_id

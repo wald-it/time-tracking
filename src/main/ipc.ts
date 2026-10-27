@@ -1,4 +1,4 @@
-import { createRun, listRuns, openRunPdf, releaseRun, setInvoiceRef } from './billingRuns'
+import { exportRunToFile, listRuns, openRunPdf, releaseRun, setInvoiceRef } from './billingRuns'
 import { isExternalUrlAllowed } from './externalLinks'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
@@ -960,22 +960,22 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         ) as unknown as Settings
         const logoDataUrl = readLogoAsDataUrl(settings.pdf_logo_path ?? '')
 
-        let buf: Buffer
         let runId: number | undefined
         let excludedCount: number | undefined
         if (req.markAsBilled) {
-          const run = await createRun(db, req, (html) => renderPdfBuffer({ html }), {
-            logoDataUrl,
-            appVersion: app.getVersion()
-          })
-          runId = run.id
-          excludedCount = run.excludedCount
-          buf = openRunPdf(db, run.id)
+          const exported = await exportRunToFile(
+            db,
+            req,
+            (html) => renderPdfBuffer({ html }),
+            { logoDataUrl, appVersion: app.getVersion() },
+            result.filePath
+          )
+          runId = exported.runId
+          excludedCount = exported.excludedCount
         } else {
           const payload = buildPdfPayload(db, req, logoDataUrl)
-          buf = await renderPdfBuffer({ html: buildPdfHtml(payload) })
+          writeFileSync(result.filePath, await renderPdfBuffer({ html: buildPdfHtml(payload) }))
         }
-        writeFileSync(result.filePath, buf)
         rememberExportFolder(db, 'pdf', result.filePath)
         return ok({
           path: result.filePath,

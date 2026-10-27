@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import {
   buildPdfHtml,
   buildPdfPayloadFromData,
@@ -362,4 +363,30 @@ export function openRunPdf(db: Db, runId: number): Buffer {
     throw new Error('SHA-256 des archivierten PDFs stimmt nicht überein')
   }
   return document.bytes
+}
+
+/**
+ * Create a run, then write its archived PDF to `filePath`. The run is committed
+ * before the file is written and is immutable, so a failing write is not rolled
+ * back: the error names the run instead, which is archived and can be fetched
+ * again through `openRunPdf` (the "Open" action of the run archive).
+ */
+export async function exportRunToFile(
+  db: Db,
+  req: PdfRequest,
+  renderPdf: (html: string) => Promise<Buffer>,
+  options: { logoDataUrl?: string; appVersion?: string },
+  filePath: string,
+  writeFile: (path: string, bytes: Buffer) => void = writeFileSync
+): Promise<{ runId: number; excludedCount: number }> {
+  const run = await createRun(db, req, renderPdf, options)
+  try {
+    writeFile(filePath, openRunPdf(db, run.id))
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e)
+    throw new Error(
+      `Abrechnungslauf ${run.number} (ID ${run.id}) wurde angelegt und archiviert, die Datei konnte aber nicht geschrieben werden (${reason}). Die Einträge sind abgerechnet; das PDF lässt sich über das Archiv der Abrechnungsläufe erneut öffnen.`
+    )
+  }
+  return { runId: run.id, excludedCount: run.excludedCount }
 }
