@@ -33,13 +33,13 @@ export function entryBilledMinutes(e: Entry, nowMs: number): number | null {
 export function entryShownSeconds(e: Entry, nowMs: number): number {
   const billed = entryBilledMinutes(e, nowMs)
   if (billed !== null) return billed * 60
-  const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : nowMs
-  return Math.max(0, Math.floor((stop - new Date(e.started_at).getTime()) / 1000))
+  return rawSeconds(e, nowMs)
 }
 
 /** Raw whole seconds of a row, a running one counted up to `nowMs`. */
 function rawSeconds(e: Entry, nowMs: number): number {
-  return rawSeconds(e, nowMs)
+  const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : nowMs
+  return Math.max(0, Math.floor((stop - new Date(e.started_at).getTime()) / 1000))
 }
 
 /**

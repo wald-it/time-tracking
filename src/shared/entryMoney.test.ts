@@ -80,6 +80,12 @@ describe('rowsBilledSeconds', () => {
     expect(rowsBilledSeconds([plain, rounded], T0)).toBe(19 * 60)
   })
 
+  it('a finished row without money columns next to a rounding row counts its time rounded up', () => {
+    const bare = row({ stopped_at: new Date(T0 + 181_000).toISOString() })
+    const rounded = row({ interval_min: 15, billed_minutes: 15 })
+    expect(rowsBilledSeconds([bare, rounded], T0)).toBe(19 * 60)
+  })
+
   it('a plain running row ticks to whole minutes', () => {
     const rounded = row({ interval_min: 15, billed_minutes: 15 })
     const live = row({ stopped_at: null, interval_min: 0, min_unit_min: 0 })
