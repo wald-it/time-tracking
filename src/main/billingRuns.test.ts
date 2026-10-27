@@ -642,7 +642,7 @@ it.each(['active', 'released'] as const)(
       started_at: '2026-10-27T08:00:00.000Z',
       stopped_at: '2026-10-27T08:04:00.000Z'
     })
-    const created = await run(db, { ...req, projectId: 1 })
+    const created = await run(db, { ...req, projectId: 1 } as typeof req)
     if (state === 'released') releaseRun(db, created.id, 'Released')
     const snapshot = (): unknown[] => [
       db.prepare('SELECT * FROM billing_run').all(),
