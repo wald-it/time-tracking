@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
@@ -9,6 +9,7 @@ import {
   LAST_V1_VERSION,
   loadSqlite,
   openMigratedCopy,
+  openScratchDb,
   type DatabaseCtor
 } from './sqlite'
 import { generateLegacyDb } from './legacyEntriesGenerator'
@@ -70,6 +71,25 @@ describe('SQLite test helpers (#378)', () => {
 
     expect(db.pragma('synchronous', { simple: true })).toBe(0)
     expect(db.pragma('journal_mode', { simple: true })).toBe('delete')
+  })
+
+  it('opens a scratch database with synchronous writes off (#381)', () => {
+    const db = openScratchDb(Ctor, join(dir, 'scratch.sqlite'))
+    handles.push(db)
+
+    expect(db.pragma('synchronous', { simple: true })).toBe(0)
+    expect(db.pragma('journal_mode', { simple: true })).toBe('delete')
+  })
+
+  it.each([
+    'migrations/migrations.test.ts',
+    'migrations/migration027.test.ts',
+    'migrations/migration027Integrity.test.ts',
+    'migrations/migration027Totals.test.ts'
+  ])('%s opens its per-test file database through openScratchDb (#381)', (file) => {
+    const source = readFileSync(join(__dirname, '..', 'main', file), 'utf8')
+    expect(source).toContain('openScratchDb(DatabaseImpl,')
+    expect(source).not.toMatch(/new DatabaseImpl\(join\(/)
   })
 
   it('writes all legacy clients, projects, settings and entries in exactly one transaction', () => {

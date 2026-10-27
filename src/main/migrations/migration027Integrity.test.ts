@@ -22,7 +22,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { executeMigration, migrations } from './index'
-import { loadSqlite, type DatabaseCtor } from '../../test/sqlite'
+import { loadSqlite, openScratchDb, type DatabaseCtor } from '../../test/sqlite'
 import { monthEntries } from '../entryRanges'
 import { billedMinutes } from '../../shared/currency'
 import { localDayRange, localMonthRange } from '../../shared/dateRanges'
@@ -247,7 +247,7 @@ describe('migration 027 on a 1.21.0 database (schema 26)', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-m027-integrity-'))
-    db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    db = openScratchDb(DatabaseImpl, join(tmpDir, 'test.sqlite'))
     db.pragma('foreign_keys = ON')
     db.exec(
       `CREATE TABLE IF NOT EXISTS schema_version (
