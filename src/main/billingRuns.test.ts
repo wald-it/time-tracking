@@ -4,6 +4,8 @@ import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { seedEntry } from '../test/entryFixtures'
 import { listEntries } from '../mcp/queries'
+import { entryShownSeconds, rowsBilledSeconds } from '../shared/entryMoney'
+import type { Entry } from '../shared/types'
 import { readEntry, updateManualEntry, writeEntry } from './entryMutations'
 import { buildPdfHtml, buildPdfPayload } from './pdf'
 import { makeCtx } from '../test/bridgeKit'
@@ -572,4 +574,52 @@ describe('writing the export file after the run is committed', () => {
     expect(written).toEqual(openRunPdf(db, result.runId))
     expect(result.excludedCount).toBe(0)
   })
+})
+
+it('keeps the profile a run billed with (interval, minimum unit, alignment) after the profile changes', async () => {
+  const db = setup()
+  db.exec(
+    "INSERT INTO billing_profile (client_id, interval_min, min_unit_min, alignment) VALUES (1, 15, 30, 'grid')"
+  )
+  entry(db)
+  const created = await run(db)
+  const view = (): unknown =>
+    db
+      .prepare(
+        'SELECT billed_minutes, interval_min, min_unit_min, alignment FROM billing_lines WHERE entry_id = 1'
+      )
+      .get()
+  const frozen = { billed_minutes: 30, interval_min: 15, min_unit_min: 30, alignment: 'grid' }
+  expect(view()).toEqual(frozen)
+  db.exec(
+    "UPDATE billing_profile SET interval_min = 0, min_unit_min = 0, alignment = 'none' WHERE client_id = 1"
+  )
+  expect(view()).toEqual(frozen)
+  const row = db.prepare('SELECT * FROM entries WHERE id = 1').get() as Entry
+  expect(row).toMatchObject({ interval_min: 15, min_unit_min: 30, billed_minutes: 30 })
+  const now = Date.parse('2026-12-01T00:00:00Z')
+  expect(entryShownSeconds(row, now)).toBe(30 * 60)
+  expect(rowsBilledSeconds([row], now)).toBe(30 * 60)
+  expect(verifyRunHtml(db, created.id)).toBe(true)
+  releaseRun(db, created.id, 'Released')
+  expect(view()).toEqual({ billed_minutes: 4, interval_min: 0, min_unit_min: 0, alignment: 'none' })
+})
+
+it('keeps a project profile snapshot for a billed row while the project override changes', async () => {
+  const db = setup()
+  db.exec(
+    "INSERT INTO projects (id, client_id, name) VALUES (1, 1, 'P'); INSERT INTO billing_profile (project_id, interval_min) VALUES (1, 15)"
+  )
+  seedEntry(db, {
+    id: 1,
+    client_id: 1,
+    project_id: 1,
+    started_at: '2026-10-27T08:00:00.000Z',
+    stopped_at: '2026-10-27T08:04:00.000Z'
+  })
+  await run(db)
+  db.exec('UPDATE billing_profile SET interval_min = 5 WHERE project_id = 1')
+  expect(
+    db.prepare('SELECT billed_minutes, interval_min FROM billing_lines WHERE entry_id = 1').get()
+  ).toEqual({ billed_minutes: 15, interval_min: 15 })
 })

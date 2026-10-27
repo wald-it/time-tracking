@@ -110,15 +110,31 @@ BEGIN SELECT RAISE(ABORT, '${ENTRIES_VIEW_READ_ONLY}'); END;
 `
 
 /**
+ * The profile value a run was billed with, from its rule snapshot: the project's
+ * resolved profile when the snapshot holds one, else the client's (the same
+ * choice `runHtml` makes). Falls back to the live value (`l.<col>`) for an
+ * unbilled row or a segment whose version changed since the run.
+ */
+const frozenProfile = (col: string): string =>
+  `CASE WHEN i.version_id = l.version_id THEN COALESCE(
+         json_extract(r.rule_snapshot, '$.projectProfiles."' || l.project_id || '".${col}'),
+         json_extract(r.rule_snapshot, '$.clientProfile.${col}'), l.${col}) ELSE l.${col} END`
+
+/**
  * P5 only: the migration self-check above must remain independent of runs.
- * A billed segment keeps the origin of its rate (`rate_is_project`) from the
- * run's rule snapshot, like the frozen `rate_cent`; the live rules decide only
+ * A billed segment keeps everything that decides its money or its shown minutes
+ * from the run: `billed_minutes`, `rate_cent`, `fee_cent` from the item,
+ * `rate_is_project`, `interval_min`, `min_unit_min` and `alignment` from the rule
+ * snapshot. The rest (ids, times, date, client, project, billable, raw_min) comes
+ * from the immutable version and segment and cannot drift; the live rules decide only
  * for unbilled rows and for a segment whose version has changed since.
  */
 export const BILLING_LINES_RUN_VIEW_SQL = `CREATE VIEW billing_lines AS
 SELECT l.entry_id, l.version_id, l.segment_seq, l.segment_date, l.client_id, l.project_id,
-       l.billable, l.started_at, l.stopped_at, l.raw_min, l.interval_min, l.min_unit_min,
-       l.alignment,
+       l.billable, l.started_at, l.stopped_at, l.raw_min,
+       ${frozenProfile('interval_min')} AS interval_min,
+       ${frozenProfile('min_unit_min')} AS min_unit_min,
+       ${frozenProfile('alignment')} AS alignment,
        CASE WHEN i.version_id = l.version_id THEN i.billed_minutes ELSE l.billed_minutes END AS billed_minutes,
        CASE WHEN i.version_id = l.version_id THEN i.rate_cent ELSE l.rate_cent END AS rate_cent,
        CASE WHEN i.version_id = l.version_id
