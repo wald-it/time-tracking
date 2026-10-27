@@ -137,9 +137,7 @@ describe('buildJsonExportPayload', () => {
       deleted_at: '2026-06-03T10:00:00.000Z'
     })
     db.prepare(`INSERT INTO entry_legacy_id (legacy_id, entry_id) VALUES (?, ?)`).run(77, trashed)
-    db.prepare(
-      `INSERT INTO rate (client_id, rate_cent, valid_from) VALUES (1, 8500, '2026-01-01')`
-    ).run()
+    // The client's rate row comes from the P4 trigger on the insert above.
 
     const payload = buildJsonExportPayload(db, '2.0.0')
     expect(payload.entry.map((e) => e.id)).toEqual([midnight, trashed])

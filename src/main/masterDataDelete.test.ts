@@ -24,16 +24,8 @@ let db: Database.Database
 beforeEach(() => {
   db = new DatabaseImpl(':memory:')
   seed(db)
-  // What the app does for every client before P4 seeds rates on creation.
-  db.prepare(
-    `INSERT INTO rate (client_id, project_id, valid_from, rate_cent) VALUES (1, NULL, '0001-01-01', 0)`
-  ).run()
-  db.prepare(
-    `INSERT INTO rate (client_id, project_id, valid_from, rate_cent) VALUES (2, NULL, '0001-01-01', 0)`
-  ).run()
-  db.prepare(
-    `INSERT INTO rate (client_id, project_id, valid_from, rate_cent) VALUES (NULL, 10, '0001-01-01', 100)`
-  ).run()
+  // The P4 triggers seed a rate row per client; give project 10 its own.
+  db.prepare(`UPDATE projects SET rate_cent = 100 WHERE id = 10`).run()
 })
 
 const count = (sql: string, ...args: unknown[]): number =>

@@ -543,7 +543,10 @@ describe('query layer', () => {
   it('getAnalytics keeps a client whose only time is a sub-second entry that bills a minute', () => {
     // Zeta (client 2) gets a rate and a 400 ms entry: no whole second, but the
     // invoice bills one minute, so the breakdown must not drop it.
-    db.prepare(`UPDATE clients SET rate_cent = 6000 WHERE id = 2`).run()
+    // A rate set in the 1.x column applies from today, so the June entry takes the open-ended row.
+    db.prepare(
+      `UPDATE rate SET rate_cent = 6000 WHERE client_id = 2 AND valid_from = '0001-01-01'`
+    ).run()
     seedEntry(db, {
       id: 105,
       client_id: 2,

@@ -10,7 +10,7 @@
  */
 import type Database from 'better-sqlite3'
 import type { Entry } from '../shared/types'
-import { billedMinutes } from '../shared/currency'
+import { readDefaultIntervalMin, roundingConfigured } from '../shared/billingProfile'
 import {
   parseWeekStart,
   weekStartModifiers,
@@ -50,7 +50,7 @@ export interface DayWeekTotals {
 }
 
 /**
- * The rounding step (`pdf_round_minutes`). 0 = off.
+ * The default profile's interval (the setting `pdf_round_minutes` edits it). 0 = off.
  *
  * Since the Messinstrument UI the "Heute" page shows the RAW worked time
  * large and the rounded value only as a sub-line ("gerundet … h"); the dial
@@ -61,11 +61,7 @@ export interface DayWeekTotals {
  * plugin builds.
  */
 export function readRoundMinutes(db: Db): number {
-  const row = db.prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`).get() as
-    | { value: string }
-    | undefined
-  const n = parseInt(row?.value ?? '0', 10)
-  return Number.isFinite(n) && n > 0 ? n : 0
+  return readDefaultIntervalMin(db)
 }
 
 /**
@@ -179,36 +175,25 @@ export interface RoundedTotals {
  * totals — the sub-line is hidden then, and nothing is billed differently.
  */
 export function readRoundedTotals(db: Db): RoundedTotals {
-  const step = readRoundMinutes(db)
   const totals = readTotals(db)
-  if (step <= 0) {
+  if (!roundingConfigured(db)) {
     return {
       today_rounded_seconds: totals.today_seconds,
       week_rounded_seconds: totals.week_seconds
     }
   }
-  const rows = db
+  // A running segment is provisional in billing_lines (counted up to now).
+  const row = db
     .prepare(
-      `SELECT started_at, stopped_at,
-              (DATE(started_at, 'localtime') = DATE('now', 'localtime') OR stopped_at IS NULL)
-                AS is_today
-         FROM entries
-        WHERE deleted_at IS NULL
-          AND (DATE(started_at, 'localtime') >= ${weekStartExpr(db)}
-               OR stopped_at IS NULL)`
+      `SELECT COALESCE(SUM(billed_minutes), 0) * 60 AS week,
+              COALESCE(SUM(CASE WHEN segment_date = DATE('now', 'localtime')
+                                  OR stopped_at IS NULL THEN billed_minutes ELSE 0 END), 0) * 60 AS today
+         FROM billing_lines
+        WHERE segment_date >= ${weekStartExpr(db)}
+           OR stopped_at IS NULL`
     )
-    .all() as Array<{ started_at: string; stopped_at: string | null; is_today: number }>
-
-  const now = Date.now()
-  let today = 0
-  let week = 0
-  for (const r of rows) {
-    const end = r.stopped_at ? Date.parse(r.stopped_at) : now
-    const secs = billedMinutes(Math.max(0, end - Date.parse(r.started_at)), step) * 60
-    week += secs
-    if (r.is_today) today += secs
-  }
-  return { today_rounded_seconds: today, week_rounded_seconds: week }
+    .get() as { week: number; today: number }
+  return { today_rounded_seconds: row.today, week_rounded_seconds: row.week }
 }
 
 export interface TopClient30d {

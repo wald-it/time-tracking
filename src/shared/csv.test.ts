@@ -29,6 +29,11 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     reference: '',
     billable: 1,
     private_note: '',
+    // 1.5 h billed at 75 €/h, as billing_lines would say.
+    billed_minutes: 90,
+    rate_cent: 7500,
+    fee_cent: 11250,
+    rate_is_project: 0,
     ...overrides
   }
 }
@@ -88,7 +93,7 @@ describe('formatCsv', () => {
   it('leaves Stundensatz + Betrag empty when no rate', () => {
     const noRateClient: Client = { ...BASE_CLIENT, rate_cent: 0 }
     const map = new Map([[1, noRateClient]])
-    const csv = formatCsv([makeEntry()], map)
+    const csv = formatCsv([makeEntry({ rate_cent: 0, fee_cent: 0 })], map)
     // last two fields should be empty → line ends with ";;..." trailing sep
     const dataLine = csv.replace('﻿', '').split('\r\n')[1]
     expect(dataLine).toMatch(/;;$/)
@@ -287,34 +292,23 @@ describe('formatCsv', () => {
   })
 })
 
-describe('formatCsv — amounts follow the invoice rule', () => {
+describe('formatCsv — amounts come from the money columns', () => {
   const lastTwo = (csv: string): string[] => csv.split('\r\n')[1].split(';').slice(-2)
 
-  it('rounds minutes up to the step before pricing', () => {
-    // 16 min at 75 €/h with a 15-min step bills 30 min = 37,50 €.
-    const entry = makeEntry({ stopped_at: '2026-04-25T09:16:00.000Z' })
-    expect(lastTwo(formatCsv([entry], CLIENT_MAP, { roundMinutes: 15 }))).toEqual([
-      '75,00',
-      '37,50'
-    ])
+  it('prints the rate and the fee of billing_lines, computes nothing', () => {
+    // 30 billed minutes at 75 €/h = 37,50 €, whatever the entry's own times say.
+    const entry = makeEntry({ rate_cent: 7500, fee_cent: 3750, rate_is_project: 0 })
+    expect(lastTwo(formatCsv([entry], CLIENT_MAP, {}))).toEqual(['75,00', '37,50'])
   })
 
-  it('uses a project rate of its own over the client rate', () => {
-    const entry = makeEntry({ project_id: 5 })
-    const csv = formatCsv([entry], CLIENT_MAP, { projectRates: new Map([[5, 10000]]) })
-    expect(lastTwo(csv)).toEqual(['100,00', '150,00'])
+  it('bills a goodwill project (rate 0) at 0,00', () => {
+    const entry = makeEntry({ project_id: 5, rate_cent: 0, fee_cent: 0, rate_is_project: 1 })
+    expect(lastTwo(formatCsv([entry], CLIENT_MAP, {}))).toEqual(['0,00', '0,00'])
   })
 
-  it('bills a goodwill project (rate 0) at 0,00, not the client rate', () => {
-    const entry = makeEntry({ project_id: 5 })
-    const csv = formatCsv([entry], CLIENT_MAP, { projectRates: new Map([[5, 0]]) })
-    expect(lastTwo(csv)).toEqual(['0,00', '0,00'])
-  })
-
-  it('inherits the client rate for a project without one', () => {
-    const entry = makeEntry({ project_id: 5 })
-    const csv = formatCsv([entry], CLIENT_MAP, { projectRates: new Map([[5, null]]) })
-    expect(lastTwo(csv)).toEqual(['75,00', '112,50'])
+  it('leaves the cells empty when no rate applies', () => {
+    const entry = makeEntry({ rate_cent: 0, fee_cent: 0, rate_is_project: 0 })
+    expect(lastTwo(formatCsv([entry], CLIENT_MAP, {}))).toEqual(['', ''])
   })
 })
 
