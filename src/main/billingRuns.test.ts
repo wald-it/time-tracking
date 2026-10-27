@@ -7,6 +7,12 @@ import { listEntries } from '../mcp/queries'
 import { entryShownSeconds, rowsBilledSeconds } from '../shared/entryMoney'
 import type { Entry } from '../shared/types'
 import { readEntry, updateManualEntry, writeEntry } from './entryMutations'
+import {
+  CLIENT_HAS_ENTRIES_ERROR,
+  PROJECT_HAS_ENTRIES_ERROR,
+  deleteClientGuarded,
+  deleteProjectGuarded
+} from './masterDataDelete'
 import { buildPdfHtml, buildPdfPayload } from './pdf'
 import { makeCtx } from '../test/bridgeKit'
 import { handleRequest } from './mcpBridgeCore'
@@ -623,3 +629,30 @@ it('keeps a project profile snapshot for a billed row while the project override
     db.prepare('SELECT billed_minutes, interval_min FROM billing_lines WHERE entry_id = 1').get()
   ).toEqual({ billed_minutes: 15, interval_min: 15 })
 })
+
+it.each(['active', 'released'] as const)(
+  'refuses to delete the client or project of a %s billing run',
+  async (state) => {
+    const db = setup()
+    db.exec("INSERT INTO projects (id, client_id, name) VALUES (1, 1, 'P')")
+    seedEntry(db, {
+      id: 1,
+      client_id: 1,
+      project_id: 1,
+      started_at: '2026-10-27T08:00:00.000Z',
+      stopped_at: '2026-10-27T08:04:00.000Z'
+    })
+    const created = await run(db, { ...req, projectId: 1 })
+    if (state === 'released') releaseRun(db, created.id, 'Released')
+    const snapshot = (): unknown[] => [
+      db.prepare('SELECT * FROM billing_run').all(),
+      items(db),
+      db.prepare('SELECT * FROM clients').all(),
+      db.prepare('SELECT * FROM projects').all()
+    ]
+    const before = snapshot()
+    expect(deleteProjectGuarded(db, 1)).toEqual({ ok: false, error: PROJECT_HAS_ENTRIES_ERROR })
+    expect(deleteClientGuarded(db, 1)).toEqual({ ok: false, error: CLIENT_HAS_ENTRIES_ERROR })
+    expect(snapshot()).toEqual(before)
+  }
+)
