@@ -560,6 +560,43 @@ it('passes an existing reason contract through UpdateEntryInput and the actual M
   expect(refused.ok).toBe(false)
 })
 
+it('names the billed run in the MCP preview and the confirmation before the owner answers', async () => {
+  const db = setup()
+  entry(db)
+  const created = await run(db)
+  const shown: string[] = []
+  const { ctx } = makeCtx(db)
+  const asking = {
+    ...ctx,
+    confirm: async (summary: string): Promise<boolean> => {
+      shown.push(summary)
+      return false
+    }
+  }
+  const args = { id: 1, description: 'Correction' }
+  const preview = await handleRequest(asking, {
+    v: 1,
+    token: 'secret',
+    op: 'update_entry_fields',
+    args,
+    preview: true
+  })
+  expect(preview.ok && (preview.data as { billed?: unknown }).billed).toEqual({
+    runs: [created.number]
+  })
+  await handleRequest(asking, { v: 1, token: 'secret', op: 'update_entry_fields', args })
+  await handleRequest(asking, {
+    v: 1,
+    token: 'secret',
+    op: 'update_entry_fields',
+    args: { ...args, reason: 'Fixing' }
+  })
+  expect(shown[0]).toContain(created.number)
+  expect(shown[0]).toMatch(/Ohne Grund/)
+  expect(shown[1]).toContain(created.number)
+  expect(shown[1]).toContain('Fixing')
+})
+
 it('keeps the origin of a billed rate after the project falls back to inheritance', async () => {
   const db = setup()
   db.exec("INSERT INTO projects (id, client_id, name, rate_cent) VALUES (1, 1, 'Goodwill', 0)")

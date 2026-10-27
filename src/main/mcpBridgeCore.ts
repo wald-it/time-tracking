@@ -9,6 +9,7 @@
  */
 import type Database from 'better-sqlite3'
 import {
+  activeRunNumbers,
   createManualEntry,
   resolveEditRange,
   readEntry,
@@ -594,6 +595,18 @@ function planOp(
           ? { before: noteBefore, after: noteAfter }
           : { changed: true as const }
       }
+      // Design 9: the confirmation and the preview say when the entry is billed,
+      // so the owner sees the run before he answers, not after the refusal.
+      const billedRuns = activeRunNumbers(db, id)
+      let billedPreview: Record<string, unknown> = {}
+      if (billedRuns.length) {
+        textLines.push(
+          reason
+            ? say.t('mainDialog.mcp.billed', { runs: billedRuns.join(', '), reason })
+            : say.t('mainDialog.mcp.billedNoReason', { runs: billedRuns.join(', ') })
+        )
+        billedPreview = { billed: { runs: billedRuns, ...(reason ? { reason } : {}) } }
+      }
       return {
         summary: withHints(
           say,
@@ -634,6 +647,7 @@ function planOp(
             project_id: input.project_id
           },
           changes,
+          ...billedPreview,
           ...hintPreview(hints)
         },
         hints,

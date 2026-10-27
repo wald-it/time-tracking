@@ -905,6 +905,10 @@ export const de = {
   'mainDialog.mcp.no': 'nein',
   'mainDialog.mcp.offsetHint':
     'Hinweis: {offset} weicht von der Ortszeit am {day} ab ({local}) — wird als {time} Ortszeit gespeichert.',
+  'mainDialog.mcp.billed':
+    'Hinweis: Der Eintrag ist abgerechnet (Lauf {runs}). Grund der Änderung: {reason}.',
+  'mainDialog.mcp.billedNoReason':
+    'Hinweis: Der Eintrag ist abgerechnet (Lauf {runs}). Ohne Grund wird eine Inhaltsänderung abgelehnt.',
   // #272 (A3): native confirmation before a setting widens access to the data.
   'mainDialog.settingConfirm.title': 'TimeTrack — Einstellung bestätigen',
   'mainDialog.settingConfirm.cancel': 'Abbrechen',
