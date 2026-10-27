@@ -1,6 +1,8 @@
 // Shared types between main process and renderer
 
 export interface Client {
+  /** Billing-run number code; edited from P6 on. */
+  short_code?: string | null
   id: number
   name: string
   color: string

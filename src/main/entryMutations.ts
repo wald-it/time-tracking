@@ -109,7 +109,7 @@ export interface EntryView extends EntryContent {
   source: string
   reason: string | null
   segments: EntrySegmentView[]
-  /** Any segment in an active billing run (P5); always false until then. */
+  /** Any segment in an active billing run (design 4.6). */
   billed: boolean
 }
 
@@ -205,6 +205,33 @@ export const ANCHOR_REUSED_ERROR =
 
 export const FUTURE_START_TOLERANCE_MS = 60_000
 
+export const BILLED_ENTRY_ERROR =
+  'Dieser Eintrag ist bereits abgerechnet. Eine Änderung braucht einen Grund. Lauf: '
+
+/** Also works during the v2 migration, before migration 032 has run. */
+export function activeRunNumbers(db: Db, id: number): string[] {
+  if (
+    !db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'billing_run_item'")
+      .get()
+  )
+    return []
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT r.number FROM billing_run_item i
+    JOIN billing_run r ON r.id = i.run_id WHERE i.entry_id = ? AND i.active = 1 ORDER BY r.number`
+      )
+      .all(id) as Array<{ number: string }>
+  ).map((r) => r.number)
+}
+
+function billedWriteError(db: Db, id: number, reason?: string): string | null {
+  if (reason?.trim()) return null
+  const numbers = activeRunNumbers(db, id)
+  return numbers.length ? BILLED_ENTRY_ERROR + numbers.join(', ') : null
+}
+
 // ── reading ─────────────────────────────────────────────────────────────────
 
 interface EntryRow {
@@ -257,7 +284,7 @@ export function readEntry(db: Db, id: number): EntryView | null {
     deleted: is_deleted === 1 || deleted === 1,
     heartbeat_at: row.state === 'open' ? row.heartbeat_at : null,
     segments,
-    billed: false
+    billed: activeRunNumbers(db, id).length > 0
   }
 }
 
@@ -877,6 +904,10 @@ function patchEntry(
     if (err) return fail(err)
   }
   if (sameContent(merged, contentOf(cur))) return ok(cur)
+  if (CONTENT_KEYS.some((key) => key !== 'private_note' && merged[key] !== cur[key])) {
+    const lock = billedWriteError(db, cur.id, ctx.reason)
+    if (lock) return fail(lock)
+  }
   const segments: SegmentBounds[] = timesChanged
     ? rangeSegments(merged.started_at, merged.stopped_at!)
     : copiedSegments(cur)
@@ -918,6 +949,8 @@ function deleteVersion(
   if (!open || open.deleted) return fail('Eintrag existiert nicht')
   const stale = checkExpectedVersion(open, expected)
   if (stale) return fail(stale)
+  const lock = billedWriteError(db, id, ctx.reason)
+  if (lock) return fail(lock)
   const tx = db.transaction((): EntryView => {
     let cur = open
     if (cur.state === 'open') {
@@ -966,6 +999,8 @@ function undeleteVersion(
   if (!cur.deleted) return ok(cur)
   const stale = checkExpectedVersion(cur, expected)
   if (stale) return fail(stale)
+  const lock = billedWriteError(db, id, ctx.reason)
+  if (lock) return fail(lock)
   const overlap = checkOverlapOfSegments(db, cur.client_id, cur.segments, cur.id)
   if (overlap) return fail(overlap)
   if (cur.graph_event_id !== null) {

@@ -126,6 +126,7 @@ interface ProjectRow {
 }
 
 interface EntryRow {
+  billed_numbers: string
   id: number
   client_id: number
   project_id: number | null
@@ -251,7 +252,10 @@ function shapeEntry(rows: EntryRow[], privacy: PrivacyConfig, nowMs: number): Mc
     version: first.version_no,
     source: first.source,
     created_at: first.created_at,
-    billed: null
+    billed:
+      first.billed_numbers && first.billed_numbers !== '[]'
+        ? JSON.parse(first.billed_numbers)
+        : null
   }
   if (rows.length > 1) {
     out.segments = rows.map((r, i) => ({
@@ -468,7 +472,11 @@ export function listEntries(
   // `duration_seconds`.
   const rows = db
     .prepare(
-      `SELECT e.*, v.source AS source
+      `SELECT e.*, v.source AS source,
+       (SELECT json_group_array(number) FROM (
+         SELECT DISTINCT r.number FROM billing_run_item i JOIN billing_run r ON r.id = i.run_id
+         WHERE i.entry_id = e.id AND i.active = 1 ORDER BY r.number
+       )) AS billed_numbers
          FROM entries e JOIN entry_version v ON v.id = e.version_id
         WHERE e.id IN (SELECT id FROM entries WHERE ${filters.join(' AND ')})
         ORDER BY e.id, e.segment_seq`
@@ -518,7 +526,11 @@ function loadEntries(
   if (ids.length === 0) return []
   const rows = db
     .prepare(
-      `SELECT e.*, v.source AS source
+      `SELECT e.*, v.source AS source,
+       (SELECT json_group_array(number) FROM (
+         SELECT DISTINCT r.number FROM billing_run_item i JOIN billing_run r ON r.id = i.run_id
+         WHERE i.entry_id = e.id AND i.active = 1 ORDER BY r.number
+       )) AS billed_numbers
          FROM entries e JOIN entry_version v ON v.id = e.version_id
         WHERE e.id IN (${ids.map(() => '?').join(', ')})
         ORDER BY e.id, e.segment_seq`
@@ -541,7 +553,11 @@ export function getRunningTimer(
   // snapshot: the app may stop or delete the timer at any moment.
   const rows = db
     .prepare(
-      `SELECT e.*, v.source AS source
+      `SELECT e.*, v.source AS source,
+       (SELECT json_group_array(number) FROM (
+         SELECT DISTINCT r.number FROM billing_run_item i JOIN billing_run r ON r.id = i.run_id
+         WHERE i.entry_id = e.id AND i.active = 1 ORDER BY r.number
+       )) AS billed_numbers
          FROM entries e JOIN entry_version v ON v.id = e.version_id
         WHERE e.id = (SELECT id FROM entries
                        WHERE stopped_at IS NULL AND deleted_at IS NULL

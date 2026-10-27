@@ -890,6 +890,10 @@ export const en: Record<TranslationKey, string> = {
   'mainDialog.mcp.no': 'no',
   'mainDialog.mcp.offsetHint':
     'Note: {offset} is not the local offset on {day} ({local}). Saved as {time} local time.',
+  'mainDialog.mcp.billed':
+    'Note: The entry is billed (run {runs}). Reason for the change: {reason}.',
+  'mainDialog.mcp.billedNoReason':
+    'Note: The entry is billed (run {runs}). Without a reason a content change is refused.',
   'mainDialog.settingConfirm.title': 'TimeTrack — Confirm setting',
   'mainDialog.settingConfirm.cancel': 'Cancel',
   'mainDialog.settingConfirm.mcpWrite.message': 'Turn on MCP write access?',
