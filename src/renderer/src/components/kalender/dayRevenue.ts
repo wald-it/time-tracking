@@ -1,5 +1,5 @@
 import type { Entry } from '../../../../shared/types'
-import { entryShownSeconds } from '../../../../shared/entryMoney'
+import { entryShownSeconds, rowsBilledSeconds } from '../../../../shared/entryMoney'
 
 /**
  * Billable revenue of a day in cents: the `fee_cent` of the billable rows
@@ -19,10 +19,13 @@ export function dayRevenueCent(entries: Entry[]): number {
 }
 
 /**
- * Day total as the invoice bills it: the billed minutes of rows whose profile
- * rounds (a running one ticks by the rule up to `nowMs`), the raw time of the
- * others.
+ * Day total as the invoice bills it: the billed minutes of the rows (a running
+ * one ticks by the rule up to `nowMs`) as soon as one row's profile rounds,
+ * else the raw time.
  */
 export function dayBilledSeconds(entries: Entry[], nowMs: number): number {
-  return entries.reduce((sum, e) => sum + entryShownSeconds(e, nowMs), 0)
+  return (
+    rowsBilledSeconds(entries, nowMs) ??
+    entries.reduce((sum, e) => sum + entryShownSeconds(e, nowMs), 0)
+  )
 }

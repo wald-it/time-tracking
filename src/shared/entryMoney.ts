@@ -36,3 +36,47 @@ export function entryShownSeconds(e: Entry, nowMs: number): number {
   const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : nowMs
   return Math.max(0, Math.floor((stop - new Date(e.started_at).getTime()) / 1000))
 }
+
+/** Raw whole seconds of a row, a running one counted up to `nowMs`. */
+function rawSeconds(e: Entry, nowMs: number): number {
+  return rawSeconds(e, nowMs)
+}
+
+/**
+ * Seconds a set of rows adds up to as the invoice bills them, or undefined when
+ * no row's profile rounds (then nothing is shown as "rounded"). Once one row
+ * rounds, every row counts its billed minutes, also a row without a profile
+ * (its raw time rounded up to whole minutes by billing_lines): a sum that mixed
+ * raw seconds and billed minutes would differ from the PDF.
+ */
+export function rowsBilledSeconds(entries: Entry[], nowMs: number): number | undefined {
+  if (!entries.some(entryRounds)) return undefined
+  let minutes = 0
+  for (const e of entries) {
+    if (e.stopped_at === null) {
+      minutes += billedMinutes(
+        Math.max(0, nowMs - new Date(e.started_at).getTime()),
+        e.interval_min ?? 0,
+        e.min_unit_min ?? 0
+      )
+    } else {
+      minutes += e.billed_minutes ?? billedMinutes(rawSeconds(e, nowMs) * 1000, 0, 0)
+    }
+  }
+  return minutes * 60
+}
+
+/**
+ * The interval to name in a "gerundet ... N-min-Takt" label: only when every
+ * row has the same interval above 0 and none has a minimum unit. Otherwise
+ * null, and the label says "gerundet" without claiming a uniform step.
+ */
+export function uniformStepMin(entries: Entry[]): number | null {
+  if (entries.length === 0) return null
+  const step = entries[0].interval_min ?? 0
+  if (step <= 0) return null
+  for (const e of entries) {
+    if ((e.interval_min ?? 0) !== step || (e.min_unit_min ?? 0) > 0) return null
+  }
+  return step
+}

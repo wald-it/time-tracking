@@ -1,6 +1,6 @@
 import { useT } from '../../contexts/I18nContext'
 import { useUiPrefsStore } from '../../store/uiPrefsStore'
-import { entryBilledMinutes } from '../../../../shared/entryMoney'
+import { entryBilledMinutes, uniformStepMin } from '../../../../shared/entryMoney'
 import { formatHoursMinutes } from '../../../../shared/currency'
 import { formatTimeHHMM } from '../../../../shared/date'
 import { deserializeTags } from '../../../../shared/tags'
@@ -25,14 +25,12 @@ export function TimerDisplay({
   client,
   project,
   nowMs,
-  roundMinutes,
   hotkey
 }: {
   runningEntry: Entry | null
   client?: Client
   project?: Project
   nowMs: number
-  roundMinutes: number
   hotkey: string
 }): React.JSX.Element {
   const t = useT()
@@ -50,10 +48,12 @@ export function TimerDisplay({
   // The running segment ticks by the rule of currency.ts with the profile values of its row.
   const billedNow = runningEntry ? entryBilledMinutes(runningEntry, nowMs) : null
   if (running && billedNow !== null) {
-    rightHint = t('today.display.rounding', {
-      step: roundMinutes,
-      total: formatHoursMinutes(billedNow)
-    })
+    // The step is named only when the row's own profile has an interval and no minimum unit.
+    const step = uniformStepMin([runningEntry])
+    rightHint =
+      step !== null
+        ? t('today.display.rounding', { step, total: formatHoursMinutes(billedNow) })
+        : t('today.display.roundedOnly', { total: formatHoursMinutes(billedNow) })
   } else if (!running && hotkey) {
     rightHint = t('today.display.hotkeyHint', { hotkey: formatHotkey(hotkey) })
   }

@@ -384,8 +384,8 @@ describe('CalendarView — live running entry', () => {
 })
 
 /** Local wall-clock timestamp in August 2026, as ISO (the app stores UTC). */
-const local = (day: number, h: number, m = 0): string =>
-  new Date(2026, 7, day, h, m, 0, 0).toISOString()
+const local = (day: number, h: number, m = 0, s = 0): string =>
+  new Date(2026, 7, day, h, m, s, 0).toISOString()
 
 describe('CalendarView — selection state (§4.2.3)', () => {
   it('selects today on open', async () => {
@@ -493,6 +493,42 @@ describe('CalendarView — totals', () => {
     expect(total.textContent).toBe('0:07')
     // The rounded value is only an addition (tooltip).
     expect(total.getAttribute('title')).toBe('gerundet 0:15 h · 15-min-Takt')
+  })
+
+  it('names no step in the tooltip when a minimum unit lifts the day', async () => {
+    useSettingsStore.setState({ settings: { pdf_round_minutes: '15' } as unknown as never })
+    const lifted = [
+      priced(
+        makeEntry({ id: 22, started_at: local(10, 9, 0), stopped_at: local(10, 9, 3) }),
+        15,
+        0,
+        { interval_min: 0, min_unit_min: 15 }
+      )
+    ]
+    await setup({ byMonth: { '2026-8': lifted } })
+    const total = within(cell('2026-08-10')).getByTestId('day-total')
+    expect(total.getAttribute('title')).toBe('gerundet 0:15 h')
+  })
+
+  it('a mixed day sums billed minutes throughout and names no step', async () => {
+    useSettingsStore.setState({ settings: { pdf_round_minutes: '15' } as unknown as never })
+    // 3:01 raw without a profile (billed 4) next to a 15-minute-step row (billed 15): 19, not 18.
+    const mixed = [
+      priced(
+        makeEntry({ id: 23, started_at: local(10, 9, 0), stopped_at: local(10, 9, 3, 1) }),
+        4,
+        0
+      ),
+      priced(
+        makeEntry({ id: 24, started_at: local(10, 10, 0), stopped_at: local(10, 10, 5) }),
+        15,
+        0,
+        { interval_min: 15 }
+      )
+    ]
+    await setup({ byMonth: { '2026-8': mixed } })
+    const total = within(cell('2026-08-10')).getByTestId('day-total')
+    expect(total.getAttribute('title')).toBe('gerundet 0:19 h')
   })
 })
 

@@ -879,19 +879,23 @@ async function handleControllerRequest(
   // - `*_rounded_seconds`: as the invoice bills it — each entry rounded up to
   //   `pdf_round_minutes` (readRoundedTotals), the same number as Heute's
   //   "gerundet … h". One rounding rule in the product.
-  // The legacy `*_display_seconds` (the total rounded in one piece) are gone
-  // (2.0, #374): a plugin build that still reads them gets undefined and falls
-  // back to the raw seconds.
+  // - `*_display_seconds`: kept by name for plugin builds that already read
+  //   them (CHANGELOG 1.23.0). Since 2.0 (#374) they carry the same billed
+  //   minutes as `*_rounded_seconds` (billing_lines), no longer a total rounded
+  //   in one piece.
   if (op === 'get_summary') {
     const totals = readTotals(db)
     const round_minutes = readRoundMinutes(db)
+    const rounded = readRoundedTotals(db)
     return {
       ok: true,
       data: {
         running: readRunning(db),
         ...totals,
         round_minutes,
-        ...readRoundedTotals(db)
+        ...rounded,
+        today_display_seconds: rounded.today_rounded_seconds,
+        week_display_seconds: rounded.week_rounded_seconds
       }
     }
   }

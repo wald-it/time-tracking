@@ -14,11 +14,11 @@ import { CalendarDrawer } from '../components/CalendarDrawer'
 import { DayPanel } from '../components/kalender/DayPanel'
 import { ClientBreakdown } from '../components/kalender/ClientBreakdown'
 import { GraphImportModal } from '../components/GraphImportModal'
-import { useRounding } from '../contexts/RoundingContext'
 import { formatEur } from '../../../shared/currency'
 import { formatHm, type DayRange } from '../components/heute/dayScaleLayout'
 import { MiniDayScale } from '../components/kalender/MiniDayScale'
 import { dayBilledSeconds, dayRevenueCent } from '../components/kalender/dayRevenue'
+import { uniformStepMin } from '../../../shared/entryMoney'
 import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
 
 /**
@@ -65,7 +65,6 @@ export default function CalendarView(): React.JSX.Element {
   const { locale } = useLocale()
   const nowMs = useNow()
   const { clients } = useTimer()
-  const { roundMinutes } = useRounding()
   const weekStart = useWeekStart()
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
@@ -408,7 +407,6 @@ export default function CalendarView(): React.JSX.Element {
                 todayKey={todayKey}
                 selectedKey={selectedKey}
                 activeDay={activeDay}
-                roundMinutes={roundMinutes}
                 dateFmt={dateFmt}
                 onSelect={selectDay}
               />
@@ -478,7 +476,6 @@ function Week({
   todayKey,
   selectedKey,
   activeDay,
-  roundMinutes,
   dateFmt,
   onSelect
 }: {
@@ -492,7 +489,6 @@ function Week({
   todayKey: string
   selectedKey: string
   activeDay: Date
-  roundMinutes: number
   dateFmt: Intl.DateTimeFormat
   onSelect: (d: Date) => void
 }): React.JSX.Element {
@@ -537,6 +533,7 @@ function Week({
         // One rounding rule (HANDOFF §2.2): the billed minutes of the view, like the invoice.
         const roundedSeconds = dayBilledSeconds(dayEntries, nowMs)
         const revenueCent = dayRevenueCent(dayEntries)
+        const step = uniformStepMin(dayEntries)
         const date = dateFmt.format(day)
         // The amount is part of the label: narrow cells hide the euro line.
         const ariaLabel =
@@ -597,10 +594,9 @@ function Week({
                     style={{ color: 'var(--ink2)' }}
                     title={
                       roundedSeconds !== totalSeconds
-                        ? t('today.summary.rounded', {
-                            total: formatHm(roundedSeconds),
-                            step: roundMinutes
-                          })
+                        ? step !== null
+                          ? t('today.summary.rounded', { total: formatHm(roundedSeconds), step })
+                          : t('today.summary.roundedOnly', { total: formatHm(roundedSeconds) })
                         : undefined
                     }
                   >

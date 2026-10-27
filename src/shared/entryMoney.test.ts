@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Entry } from './types'
-import { entryBilledMinutes, entryRounds, entryShownSeconds } from './entryMoney'
+import {
+  entryBilledMinutes,
+  entryRounds,
+  entryShownSeconds,
+  rowsBilledSeconds,
+  uniformStepMin
+} from './entryMoney'
 
 const T0 = Date.UTC(2026, 9, 21, 9, 0, 0)
 function row(over: Partial<Entry>): Entry {
@@ -54,5 +60,44 @@ describe('entryMoney', () => {
   it('shown seconds: billed when rounding, raw otherwise', () => {
     expect(entryShownSeconds(row({ interval_min: 15, billed_minutes: 15 }), T0)).toBe(900)
     expect(entryShownSeconds(row({ interval_min: 0 }), T0)).toBe(300)
+  })
+})
+
+describe('rowsBilledSeconds', () => {
+  it('is undefined when no row rounds', () => {
+    expect(rowsBilledSeconds([row({ interval_min: 0, billed_minutes: 5 })], T0)).toBeUndefined()
+  })
+
+  it('sums billed minutes throughout: a row without a profile counts its billed minutes, not raw seconds', () => {
+    // 3:01 raw, no interval: billing_lines bills 4 minutes. Next to it 15 billed.
+    const plain = row({
+      stopped_at: new Date(T0 + 181_000).toISOString(),
+      interval_min: 0,
+      min_unit_min: 0,
+      billed_minutes: 4
+    })
+    const rounded = row({ interval_min: 15, billed_minutes: 15 })
+    expect(rowsBilledSeconds([plain, rounded], T0)).toBe(19 * 60)
+  })
+
+  it('a plain running row ticks to whole minutes', () => {
+    const rounded = row({ interval_min: 15, billed_minutes: 15 })
+    const live = row({ stopped_at: null, interval_min: 0, min_unit_min: 0 })
+    expect(rowsBilledSeconds([rounded, live], T0 + 61_000)).toBe((15 + 2) * 60)
+  })
+})
+
+describe('uniformStepMin', () => {
+  it('names the interval when every row has the same interval and no minimum unit', () => {
+    const a = row({ interval_min: 15, min_unit_min: 0 })
+    expect(uniformStepMin([a, row({ interval_min: 15, min_unit_min: 0 })])).toBe(15)
+  })
+
+  it('names nothing for a minimum unit, mixed intervals, or a row without rounding', () => {
+    expect(uniformStepMin([row({ interval_min: 15, min_unit_min: 30 })])).toBeNull()
+    expect(uniformStepMin([row({ interval_min: 15 }), row({ interval_min: 10 })])).toBeNull()
+    expect(uniformStepMin([row({ interval_min: 15 }), row({ interval_min: 0 })])).toBeNull()
+    expect(uniformStepMin([row({ min_unit_min: 15, interval_min: 0 })])).toBeNull()
+    expect(uniformStepMin([])).toBeNull()
   })
 })

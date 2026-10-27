@@ -19,9 +19,8 @@ import { EntryTable } from '../components/heute/EntryTable'
 import { QuickStart } from '../components/heute/QuickStart'
 import type { TFunction } from '../contexts/I18nContext'
 import { useT } from '../contexts/I18nContext'
-import { useRounding } from '../contexts/RoundingContext'
 import { useNow } from '../contexts/NowContext'
-import { entryRounds, entryShownSeconds } from '../../../shared/entryMoney'
+import { rowsBilledSeconds, uniformStepMin } from '../../../shared/entryMoney'
 
 /**
  * `Heute` — the Messinstrument layout (HANDOFF §4.1):
@@ -37,7 +36,6 @@ import { entryRounds, entryShownSeconds } from '../../../shared/entryMoney'
  */
 export default function TodayView(): React.JSX.Element {
   const t = useT()
-  const { roundMinutes } = useRounding()
   const { runningEntry, clients, startWithClient, switchTo, stop } = useTimer()
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
@@ -118,10 +116,14 @@ export default function TodayView(): React.JSX.Element {
 
   // Today as the invoice bills it: the billed minutes of the rows from the view,
   // the running one ticking by the rule. Undefined when nothing rounds today.
-  const todayRoundedSeconds = useMemo(() => {
-    if (!summary || !summary.todayEntries.some(entryRounds)) return undefined
-    return summary.todayEntries.reduce((sum, e) => sum + entryShownSeconds(e, nowMs), 0)
-  }, [summary, nowMs])
+  const todayRoundedSeconds = useMemo(
+    () => (summary ? rowsBilledSeconds(summary.todayEntries, nowMs) : undefined),
+    [summary, nowMs]
+  )
+  const todayStepMin = useMemo(
+    () => (summary ? uniformStepMin(summary.todayEntries) : null),
+    [summary]
+  )
 
   // The running entry the timer returned lacks the money columns; the summary row has them.
   const runningRow = useMemo(
@@ -165,7 +167,6 @@ export default function TodayView(): React.JSX.Element {
             client={runningClient}
             project={runningProject}
             nowMs={nowMs}
-            roundMinutes={roundMinutes}
             hotkey={hotkey}
           />
         </div>
@@ -185,7 +186,7 @@ export default function TodayView(): React.JSX.Element {
             weekDaySeconds={weekDaySeconds}
             weekNumber={weekNumberOf(new Date(nowMs), weekStart)}
             todayIndex={todayIndex}
-            roundMinutes={roundMinutes}
+            stepMin={todayStepMin}
             todayRoundedSeconds={todayRoundedSeconds}
           />
         ) : (
