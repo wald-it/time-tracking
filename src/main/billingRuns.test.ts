@@ -614,7 +614,10 @@ it('keeps the origin of a billed rate after the project falls back to inheritanc
   const html = renderRunHtml(db, created.id),
     archive = openRunPdf(db, created.id)
   expect(html).toContain('0,00')
-  db.exec('UPDATE projects SET rate_cent = NULL WHERE id = 1')
+  // The project hands its rate back to the client from before the entry's
+  // day. Not through `UPDATE projects`: its trigger dates the change to
+  // today's date, which made this test pass only on the day it was written.
+  db.exec("INSERT INTO rate (project_id, rate_cent, valid_from) VALUES (1, NULL, '2026-10-01')")
   expect(column()).toEqual({ rate_cent: 0, rate_is_project: 1 })
   expect(db.prepare('SELECT rate_is_project FROM entries WHERE id = 1').get()).toEqual({
     rate_is_project: 1
