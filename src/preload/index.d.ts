@@ -2,6 +2,7 @@ import type { BillingRun } from '../main/billingRuns'
 import type {
   Client,
   Entry,
+  EntryVersion,
   Project,
   CreateClientInput,
   UpdateClientInput,
@@ -67,6 +68,7 @@ declare global {
         delete(id: number): Promise<IpcResult<void>>
       }
       entries: {
+        versions(id: number): Promise<IpcResult<EntryVersion[]>>
         start(input: CreateEntryInput): Promise<IpcResult<Entry>>
         switch(input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>>
         stop(id: number): Promise<IpcResult<Entry>>
