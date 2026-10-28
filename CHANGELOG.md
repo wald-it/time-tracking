@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Clients can now set, change and clear a unique short code for timesheet run numbers.
+
 ### Breaking for MCP clients and integrations
 
 - **2.0: entries keep their history, and an edit keeps the entry's id.** Every entry is now stored as an entry with versions and segments (`entry`, `entry_version`, `entry_segment`); the old table is kept read-only as `entries_v1`, and `entries` is a read-only view over the current versions, one row per segment. An edit, a delete and a restore each write a new version instead of replacing the row, so the entry's id, creation time and calendar link never change, and `update_entry_fields` no longer saves the edited entry under a new id. An entry across midnight is one entry with two segments that share its id; `link_id` is always null, and `rounded_min` is null (it has had no reader since #285). Deleting a client or project that any entry version refers to, deleted entries and earlier versions included, is refused with a message instead of failing ([#321](https://github.com/wald-it/time-tracking/issues/321), design `docs/design/2.0-entry-lifecycle.md`, P2).

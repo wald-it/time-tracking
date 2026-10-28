@@ -270,6 +270,12 @@ export const de = {
   'clients.form.createTitle': 'Neuer Kunde',
   'clients.form.editTitle': 'Kunde bearbeiten',
   'clients.form.nameLabel': 'Name',
+  'clients.form.shortCodeLabel': 'Kurzcode',
+  'clients.form.shortCodeHint':
+    'Steht in der Laufnummer des Stundennachweises. Ohne Kurzcode lassen sich keine Einträge als abgerechnet markieren. 1 bis 8 Zeichen aus A–Z und 0–9.',
+  'clients.form.shortCodeInvalid': 'Bitte 1 bis 8 Zeichen aus A–Z und 0–9 eingeben.',
+  'clients.form.shortCodeTaken': 'Kurzcode ist bereits einem anderen Kunden zugeordnet.',
+  'clients.form.saveFailed': 'Kunde konnte nicht gespeichert werden. Bitte erneut versuchen.',
   'clients.form.namePlaceholder': 'z.B. Mustermann GmbH',
   'clients.form.colorLabel': 'Farbe',
   'clients.form.colorAria': 'Farbe {color}',

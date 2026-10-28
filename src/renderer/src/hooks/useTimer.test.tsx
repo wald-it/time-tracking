@@ -26,6 +26,7 @@ afterEach(() => {
 
 function makeClient(over: Partial<Client> = {}): Client {
   return {
+    short_code: null,
     id: 1,
     name: 'Acme',
     color: '#6366f1',

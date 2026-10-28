@@ -14,6 +14,7 @@ const encoder = new TextEncoder()
 const byteLen = (s: string): number => encoder.encode(s).length
 
 const BASE_CLIENT: Client = {
+  short_code: null,
   id: 1,
   name: 'Acme GmbH',
   color: '#4f46e5',

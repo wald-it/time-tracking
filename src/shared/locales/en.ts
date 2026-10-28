@@ -268,6 +268,12 @@ export const en: Record<TranslationKey, string> = {
   'clients.form.createTitle': 'New client',
   'clients.form.editTitle': 'Edit client',
   'clients.form.nameLabel': 'Name',
+  'clients.form.shortCodeLabel': 'Short code',
+  'clients.form.shortCodeHint':
+    'Part of the timesheet run number. Without a short code, entries cannot be marked as billed. 1 to 8 characters from A–Z and 0–9.',
+  'clients.form.shortCodeInvalid': 'Enter 1 to 8 characters from A–Z and 0–9.',
+  'clients.form.shortCodeTaken': 'This short code is already assigned to another client.',
+  'clients.form.saveFailed': 'Could not save the client. Please try again.',
   'clients.form.namePlaceholder': 'e.g. Acme Corp',
   'clients.form.colorLabel': 'Color',
   'clients.form.colorAria': 'Color {color}',
