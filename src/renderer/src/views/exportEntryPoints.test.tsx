@@ -80,6 +80,7 @@ function mockApi(initial: Store = {}): Store {
     },
     projects: { getAll: async () => ({ ok: true as const, data: [] }) },
     clients: { getAll: async () => ({ ok: true as const, data: [] }) },
+    billingRuns: { list: async () => ({ ok: true as const, data: [] }) },
     settings: {
       getAll: async () => ({ ok: true as const, data: { ...store } }),
       set: async (key: string, value: string) => {

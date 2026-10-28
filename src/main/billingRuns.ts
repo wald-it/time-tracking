@@ -11,6 +11,13 @@ import {
 } from './pdf'
 
 type Db = Database.Database
+export class MissingClientShortCodeError extends Error {
+  constructor() {
+    super('Für diesen Kunden fehlt der Kurzcode')
+    this.name = 'MissingClientShortCodeError'
+  }
+}
+
 export interface BillingRun {
   id: number
   number: string
@@ -27,6 +34,11 @@ export interface BillingRun {
   rule_snapshot: string
   html_sha256: string
   pdf_sha256: string
+}
+export interface BillingRunSummary extends BillingRun {
+  client_name: string
+  billed_minutes: number
+  fee_cent: number
 }
 interface Item {
   entry_id: number
@@ -74,10 +86,19 @@ function getRun(db: Db, runId: number): BillingRun {
   if (!run) throw new Error('Abrechnungslauf nicht gefunden')
   return run
 }
-export function listRuns(db: Db, clientId?: number): BillingRun[] {
+export function listRuns(db: Db, clientId?: number): BillingRunSummary[] {
   return db
-    .prepare('SELECT * FROM billing_run WHERE (? IS NULL OR client_id = ?) ORDER BY id DESC')
-    .all(clientId ?? null, clientId ?? null) as BillingRun[]
+    .prepare(
+      `SELECT r.*, c.name AS client_name,
+        COALESCE(SUM(i.billed_minutes), 0) AS billed_minutes,
+        COALESCE(SUM(i.fee_cent), 0) AS fee_cent
+      FROM billing_run r
+      JOIN clients c ON c.id = r.client_id
+      LEFT JOIN billing_run_item i ON i.run_id = r.id
+      WHERE (? IS NULL OR r.client_id = ?)
+      GROUP BY r.id ORDER BY r.id DESC`
+    )
+    .all(clientId ?? null, clientId ?? null) as BillingRunSummary[]
 }
 
 function resolvedProfile(db: Db, clientId: number, projectId: number | null): Profile {
@@ -190,7 +211,7 @@ export async function createRun(
         | { short_code: string | null }
         | undefined
       if (!client) throw new Error('Kunde nicht gefunden')
-      if (!client.short_code) throw new Error('Für diesen Kunden fehlt der Kurzcode')
+      if (!client.short_code) throw new MissingClientShortCodeError()
       if (
         req.projectId != null &&
         !db
@@ -378,7 +399,7 @@ export async function exportRunToFile(
   options: { logoDataUrl?: string; appVersion?: string },
   filePath: string,
   writeFile: (path: string, bytes: Buffer) => void = writeFileSync
-): Promise<{ runId: number; excludedCount: number }> {
+): Promise<{ runId: number; runNumber: string; excludedCount: number }> {
   const run = await createRun(db, req, renderPdf, options)
   try {
     writeFile(filePath, openRunPdf(db, run.id))
@@ -388,5 +409,5 @@ export async function exportRunToFile(
       `Abrechnungslauf ${run.number} (ID ${run.id}) wurde angelegt und archiviert, die Datei konnte aber nicht geschrieben werden (${reason}). Die Einträge sind abgerechnet; das PDF lässt sich über das Archiv der Abrechnungsläufe erneut öffnen.`
     )
   }
-  return { runId: run.id, excludedCount: run.excludedCount }
+  return { runId: run.id, runNumber: run.number, excludedCount: run.excludedCount }
 }

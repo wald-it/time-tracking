@@ -1,4 +1,4 @@
-import type { BillingRun } from '../main/billingRuns'
+import type { BillingRunSummary } from '../main/billingRuns'
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Client,
@@ -203,9 +203,9 @@ const api = {
     delete: (name: string): Promise<IpcResult<void>> => ipcRenderer.invoke('tags:delete', name)
   },
   billingRuns: {
-    list: (clientId?: number): Promise<IpcResult<BillingRun[]>> =>
+    list: (clientId?: number): Promise<IpcResult<BillingRunSummary[]>> =>
       ipcRenderer.invoke('billing-runs:list', clientId),
-    open: (runId: number): Promise<IpcResult<Uint8Array>> =>
+    open: (runId: number): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('billing-runs:open', runId),
     release: (runId: number, reason: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('billing-runs:release', runId, reason),
@@ -227,8 +227,9 @@ const api = {
       hideFeeColumn?: boolean
       /** @deprecated use groupBy instead. */
       groupByTag?: boolean
-    }): Promise<IpcResult<{ path: string; runId?: number; excludedCount?: number }>> =>
-      ipcRenderer.invoke('pdf:export', req),
+    }): Promise<
+      IpcResult<{ path: string; runId?: number; runNumber?: string; excludedCount?: number }>
+    > => ipcRenderer.invoke('pdf:export', req),
     mergeExport: (req: {
       clientId: number
       fromIso: string
