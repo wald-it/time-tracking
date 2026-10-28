@@ -77,8 +77,8 @@ declare global {
         getByMonth(query: MonthQuery): Promise<IpcResult<Entry[]>>
         create(input: CreateManualEntryInput): Promise<IpcResult<Entry>>
         update(input: UpdateEntryInput): Promise<IpcResult<Entry>>
-        delete(id: number): Promise<IpcResult<void>>
-        undelete(id: number): Promise<IpcResult<Entry>>
+        delete(id: number, reason?: string): Promise<IpcResult<void>>
+        undelete(id: number, reason?: string): Promise<IpcResult<Entry>>
       }
       settings: {
         getAll(): Promise<IpcResult<Settings>>

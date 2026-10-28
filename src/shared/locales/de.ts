@@ -10,6 +10,13 @@
  * Update + Language sections). Other views stay hardcoded until v1.6.
  */
 export const de = {
+  'entry.billed': 'abgerechnet',
+  'entry.billed.changeTitle': 'Abgerechneten Eintrag ändern',
+  'entry.billed.restoreTitle': 'Abgerechneten Eintrag wiederherstellen',
+  'entry.billed.reasonHint': 'Dieser Eintrag ist abgerechnet. Bitte gib einen Grund an.',
+  'entry.billed.reason': 'Grund',
+  'entry.billed.reasonRequired': 'Bitte gib einen Grund an.',
+  'entry.billed.restore': 'Wiederherstellen',
   'history.toggle': 'Verlauf',
   'history.capture': 'Erfassung',
   'history.additions': '{count} weitere',

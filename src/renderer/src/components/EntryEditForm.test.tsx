@@ -6,7 +6,7 @@
  * of 00:00 is that midnight; a new entry keeps the old, same-day reading.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { EntryEditForm } from './EntryEditForm'
 import { I18nProvider } from '../contexts/I18nContext'
 import type { Client, Entry, UpdateEntryInput } from '../../../shared/types'
@@ -171,5 +171,63 @@ describe('EntryEditForm and the end of the day (#334)', () => {
       )
     ).toBeTruthy()
     expect(create).not.toHaveBeenCalled()
+  })
+})
+
+describe('billed entry edits', () => {
+  it('does not ask for a reason for an unbilled content edit', async () => {
+    const update = mount({ ...FIRST_HALF, billed: 0 })
+    fireEvent.change(screen.getByDisplayValue('Nachtschicht'), { target: { value: 'Correction' } })
+    fireEvent.submit(screen.getByDisplayValue('Correction').closest('form')!)
+    await waitFor(() => expect(update).toHaveBeenCalled())
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('shows a backend lock error on save when the loaded status is stale', async () => {
+    const update = mount(FIRST_HALF)
+    update.mockResolvedValue({ ok: false, error: 'BILLED_ENTRY_ERROR: ABC-2026-001' })
+    fireEvent.change(screen.getByDisplayValue('Nachtschicht'), { target: { value: 'Correction' } })
+    fireEvent.submit(screen.getByDisplayValue('Correction').closest('form')!)
+    expect((await screen.findByRole('alert')).textContent).toBe('BILLED_ENTRY_ERROR: ABC-2026-001')
+  })
+
+  it('asks for a non-empty reason, permits cancellation, and sends the reason on save', async () => {
+    const update = mount({ ...FIRST_HALF, billed: 1 } as Entry)
+    const description = screen.getByDisplayValue('Nachtschicht')
+    fireEvent.change(description, { target: { value: 'Correction' } })
+    fireEvent.submit(description.closest('form')!)
+    expect(update).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }))
+    expect(update).not.toHaveBeenCalled()
+    expect(within(dialog).getByRole('alert').textContent).toContain('Grund')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByDisplayValue('Correction')).toBeTruthy()
+    fireEvent.submit(description.closest('form')!)
+    fireEvent.change(screen.getByLabelText('Grund'), {
+      target: { value: '  Falsche Beschreibung  ' }
+    })
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Speichern' })
+    )
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'Falsche Beschreibung', description: 'Correction' })
+      )
+    )
+  })
+
+  it('saves a private note without asking, preserving displayed seconds and midnight', async () => {
+    const update = mount({
+      ...FIRST_HALF,
+      billed: 1,
+      started_at: local(10, 20).replace(':00.000', ':27.000')
+    } as Entry)
+    fireEvent.change(screen.getByLabelText(/Interne Notiz/), { target: { value: 'Only for me' } })
+    fireEvent.submit(screen.getByDisplayValue('Only for me').closest('form')!)
+    await waitFor(() => expect(update).toHaveBeenCalled())
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(update.mock.calls[0][0]).not.toHaveProperty('reason')
   })
 })

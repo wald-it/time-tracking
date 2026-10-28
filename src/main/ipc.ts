@@ -440,17 +440,17 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    * Either half of an entry across midnight deletes the whole entry, and undo
    * brings back what that delete removed (#323, see `deleteEntry`).
    */
-  ipcMain.handle('entries:delete', (_e, id: number): IpcResult<void> => {
+  ipcMain.handle('entries:delete', (_e, id: number, reason?: string): IpcResult<void> => {
     try {
-      return deleteEntry(db, id)
+      return deleteEntry(db, id, { reason })
     } catch (e) {
       return fail(e)
     }
   })
 
-  ipcMain.handle('entries:undelete', (_e, id: number): IpcResult<Entry> => {
+  ipcMain.handle('entries:undelete', (_e, id: number, reason?: string): IpcResult<Entry> => {
     try {
-      return undeleteEntry(db, id)
+      return undeleteEntry(db, id, { reason })
     } catch (e) {
       return fail(e)
     }

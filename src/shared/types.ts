@@ -20,6 +20,8 @@ export interface Client {
 }
 
 export interface Entry {
+  /** Any active billing run item for this logical entry, across all versions/days (0 or 1). */
+  billed?: number
   id: number
   client_id: number
   description: string
