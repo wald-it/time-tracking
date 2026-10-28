@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type {
   Client,
   CreateClientInput,
@@ -179,7 +179,9 @@ export default function ClientsView(): React.JSX.Element {
     bumpClientsVersion()
   }
 
-  async function handleToggleActive(client: Client): Promise<void> {
+  // Updates leave out the list copy of the rate: it may lag a due editor row,
+  // and the main process would write it back (P6e, owner decision C).
+  async function handleToggleActive({ rate_cent: _rate, ...client }: Client): Promise<void> {
     await window.api.clients.update({ ...client, active: client.active ? 0 : 1 })
     await loadClients()
     bumpClientsVersion()
@@ -189,7 +191,7 @@ export default function ClientsView(): React.JSX.Element {
     name: string
     short_code: string | null
     color: string
-    rate_cent: number
+    rate_cent?: number
     billing_address_line1: string | null
     billing_address_line2: string | null
     billing_address_line3: string | null
@@ -199,7 +201,8 @@ export default function ClientsView(): React.JSX.Element {
     contact_email: string | null
   }): Promise<string | null> {
     if (editingClient) {
-      const input: UpdateClientInput = { ...editingClient, ...data }
+      const { rate_cent: _rate, ...client } = editingClient
+      const input: UpdateClientInput = { ...client, ...data }
       const res = await window.api.clients.update(input)
       if (!res.ok) return res.error.replace(/^(?:Sqlite)?Error:\s*/, '')
     } else {
@@ -229,7 +232,7 @@ export default function ClientsView(): React.JSX.Element {
   async function handleProjectSave(data: {
     name: string
     color: string
-    rate_cent: number | null
+    rate_cent?: number | null
     external_project_number: string | null
     start_date: string | null
     end_date: string | null
@@ -239,8 +242,9 @@ export default function ClientsView(): React.JSX.Element {
   }): Promise<string | null> {
     if (!projectFormClientId && projectFormClientId !== 0) return null
     if (editingProject) {
+      const { rate_cent: _rate, ...project } = editingProject
       const input: UpdateProjectInput = {
-        ...editingProject,
+        ...project,
         ...data,
         client_id: projectFormClientId
       }
@@ -897,7 +901,7 @@ function ClientFormModal({
     name: string
     short_code: string | null
     color: string
-    rate_cent: number
+    rate_cent?: number
     billing_address_line1: string | null
     billing_address_line2: string | null
     billing_address_line3: string | null
@@ -914,6 +918,9 @@ function ClientFormModal({
   const [shortCodeError, setShortCodeError] = useState('')
   const [color, setColor] = useState(client?.color ?? CLIENT_COLORS[0])
   const [rateInput, setRateInput] = useState(() => formatRateInput(client?.rate_cent ?? 0))
+  // The rate valid today; an update sends the field only when it differs.
+  const [rateBase, setRateBase] = useState(client?.rate_cent ?? 0)
+  const rateTouched = useRef(false)
   const [isSaving, setIsSaving] = useState(false)
   const [billingBusy, setBillingBusy] = useState(false)
   const [error, setError] = useState('')
@@ -969,7 +976,7 @@ function ClientFormModal({
         name: trimmed,
         short_code: code,
         color,
-        rate_cent: parsed,
+        ...(client && parsed === rateBase ? {} : { rate_cent: parsed }),
         billing_address_line1: nullIfEmpty(billingLine1),
         billing_address_line2: nullIfEmpty(billingLine2),
         billing_address_line3: nullIfEmpty(billingLine3),
@@ -1070,6 +1077,7 @@ function ClientFormModal({
               inputMode="decimal"
               value={rateInput}
               onChange={(e) => {
+                rateTouched.current = true
                 setRateInput(e.target.value)
                 setRateError('')
               }}
@@ -1107,7 +1115,13 @@ function ClientFormModal({
           target={client ? { kind: 'client', id: client.id } : null}
           disabled={isSaving}
           onBusyChange={setBillingBusy}
+          onRateLoaded={(rate) => {
+            setRateBase(rate ?? 0)
+            if (!rateTouched.current) setRateInput(formatRateInput(rate ?? 0))
+          }}
           onRateSaved={(rate) => {
+            rateTouched.current = false
+            setRateBase(rate ?? 0)
             setRateInput(formatRateInput(rate ?? 0))
             setRateError('')
           }}
@@ -1241,7 +1255,7 @@ function ProjectFormModal({
   onSave: (data: {
     name: string
     color: string
-    rate_cent: number | null
+    rate_cent?: number | null
     external_project_number: string | null
     start_date: string | null
     end_date: string | null
@@ -1261,6 +1275,11 @@ function ProjectFormModal({
       ? formatRateInput(project.rate_cent)
       : ''
   )
+  // As in the client form; null is the inherited client rate.
+  const [rateBase, setRateBase] = useState(project?.rate_cent ?? null)
+  const rateTouched = useRef(false)
+  const showRate = (rate: number | null): void =>
+    setRateInput(rate === null ? '' : formatRateInput(rate) || '0')
   const [isSaving, setIsSaving] = useState(false)
   const [billingBusy, setBillingBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1321,7 +1340,7 @@ function ProjectFormModal({
       const saveError = await onSave({
         name: trimmed,
         color,
-        rate_cent,
+        ...(project && rate_cent === rateBase ? {} : { rate_cent }),
         external_project_number: nullIfEmpty(externalNumber),
         start_date: nullIfEmpty(startDate),
         end_date: nullIfEmpty(endDate),
@@ -1402,6 +1421,7 @@ function ProjectFormModal({
               inputMode="decimal"
               value={rateInput}
               onChange={(e) => {
+                rateTouched.current = true
                 setRateInput(e.target.value)
                 setRateError('')
               }}
@@ -1439,8 +1459,14 @@ function ProjectFormModal({
           target={project ? { kind: 'project', id: project.id } : null}
           disabled={isSaving}
           onBusyChange={setBillingBusy}
+          onRateLoaded={(rate) => {
+            setRateBase(rate)
+            if (!rateTouched.current) showRate(rate)
+          }}
           onRateSaved={(rate) => {
-            setRateInput(rate === null ? '' : formatRateInput(rate) || '0')
+            rateTouched.current = false
+            setRateBase(rate)
+            showRate(rate)
             setRateError('')
           }}
           onChanged={onBillingChanged}

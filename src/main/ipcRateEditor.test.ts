@@ -73,6 +73,72 @@ describe('rate and profile IPC', () => {
     })
     expect(db.prepare('SELECT COUNT(*) AS n FROM rate WHERE client_id = 1').get()).toEqual({ n: 2 })
   })
+  // A form copy of the 1.x column lags an editor row that became due without a
+  // write. An update that leaves rate_cent out must not write that copy back.
+  describe.each(['today', 'past'] as const)('stale column, editor row due %s', (when) => {
+    let day: string
+    beforeEach(() => {
+      const today = (db.prepare("SELECT date('now', 'localtime') AS day").get() as { day: string })
+        .day
+      day = when === 'today' ? today : '2020-01-01'
+      db.prepare(
+        "INSERT INTO rate (client_id, valid_from, rate_cent, source) VALUES (1, ?, 9000, 'editor')"
+      ).run(day)
+      db.prepare(
+        "INSERT INTO rate (project_id, valid_from, rate_cent, source) VALUES (10, ?, 9500, 'editor')"
+      ).run(day)
+    })
+    const rates = (column: string, id: number): unknown[] =>
+      db
+        .prepare(`SELECT valid_from, rate_cent, source FROM rate WHERE ${column} = ? ORDER BY id`)
+        .all(id)
+
+    it('keeps the client column and rows when rate_cent is not sent', () => {
+      const before = rates('client_id', 1)
+      expect(
+        invoke('clients:update', { id: 1, name: 'Renamed', color: '#123456', active: 1 })
+      ).toMatchObject({ ok: true, data: { name: 'Renamed', rate_cent: 6000 } })
+      expect(rates('client_id', 1)).toEqual(before)
+    })
+    it('keeps the project column and rows when rate_cent is not sent', () => {
+      const before = rates('project_id', 10)
+      expect(
+        invoke('projects:update', { id: 10, client_id: 1, name: 'Renamed', color: '' })
+      ).toMatchObject({ ok: true, data: { name: 'Renamed', rate_cent: 7000 } })
+      expect(rates('project_id', 10)).toEqual(before)
+    })
+    it('lists the due rate as the current rate', () => {
+      expect(invoke('rates:list', { kind: 'client', id: 1 })).toMatchObject({
+        ok: true,
+        data: { current_rate_cent: 9000 }
+      })
+      expect(invoke('rates:list', { kind: 'project', id: 10 })).toMatchObject({
+        ok: true,
+        data: { current_rate_cent: 9500 }
+      })
+    })
+    it('still applies a sent rate, and a sent null is inheritance', () => {
+      const client = { id: 1, name: 'A', color: '#123456', active: 1, rate_cent: 10000 }
+      const project = { id: 10, client_id: 1, name: 'P', color: '', rate_cent: null }
+      if (when === 'today') {
+        const conflict = { ok: false, error: 'SqliteError: ' + RATE_EDITOR_CONFLICT_ERROR }
+        expect(invoke('clients:update', client)).toEqual(conflict)
+        expect(invoke('projects:update', project)).toEqual(conflict)
+        return
+      }
+      expect(invoke('clients:update', client)).toMatchObject({ ok: true })
+      expect(invoke('projects:update', project)).toMatchObject({
+        ok: true,
+        data: { rate_cent: null }
+      })
+      expect(rates('client_id', 1)).toContainEqual(
+        expect.objectContaining({ rate_cent: 10000, source: 'legacy' })
+      )
+      expect(rates('project_id', 10)).toContainEqual(
+        expect.objectContaining({ rate_cent: null, source: 'legacy' })
+      )
+    })
+  })
   it('validates IPC arguments and reads inheritance for the profile', () => {
     const client = { kind: 'client', id: 1 },
       project = { kind: 'project', id: 10 }

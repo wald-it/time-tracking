@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type {
   RateRow,
   RateTarget,
@@ -16,18 +16,21 @@ import { rateEditorError } from './rateEditorError'
  * The editors save on their own, beside the surrounding form. The two save
  * paths lock each other: the form would otherwise send the old rate field
  * while a rate change is still pending, and the legacy trigger would add it
- * back for today.
+ * back for today. `onRateLoaded` hands the form the rate valid today, so the
+ * form sends its field only when it was changed.
  */
 export function BillingEditors({
   target,
   disabled = false,
   onBusyChange,
+  onRateLoaded,
   onRateSaved,
   onChanged
 }: {
   target: RateTarget | null
   disabled?: boolean
   onBusyChange?: (busy: boolean) => void
+  onRateLoaded: (rate: number | null) => void
   onRateSaved: (rate: number | null) => void
   onChanged: () => void
 }): React.JSX.Element {
@@ -47,6 +50,10 @@ export function BillingEditors({
   const [loaded, setLoaded] = useState(false)
   const kind = target?.kind
   const targetId = target?.id
+  const onRateLoadedRef = useRef(onRateLoaded)
+  useEffect(() => {
+    onRateLoadedRef.current = onRateLoaded
+  })
 
   useEffect(() => {
     onBusyChange?.(busy)
@@ -70,6 +77,7 @@ export function BillingEditors({
           return
         }
         setRows(rates.data.rows)
+        onRateLoadedRef.current(rates.data.current_rate_cent)
         setProfile(billing.data)
         setInterval(billing.data.interval_min?.toString() ?? '')
         setMinimum(billing.data.min_unit_min?.toString() ?? '')

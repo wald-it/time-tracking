@@ -399,6 +399,92 @@ describe('ClientsView billing editors', () => {
     }
   )
 
+  // The list copy of the rate lags an editor row that became due while the app
+  // was open. The form shows the due rate and sends the rate only when changed.
+  it.each([false, true])(
+    'takes the due rate on open and sends the rate only when changed (project=%s)',
+    async (project) => {
+      vi.mocked(window.api.rates.list).mockResolvedValue({
+        ok: true,
+        data: {
+          rows: [{ id: 2, valid_from: '2020-01-01', rate_cent: 9000 }],
+          current_rate_cent: 9000
+        }
+      })
+      const update = vi.fn().mockResolvedValue({ ok: true, data: {} })
+      if (project) window.api.projects.update = update
+      else window.api.clients.update = update
+      const open = async (): Promise<void> => {
+        await act(async () => {
+          fireEvent.click(
+            screen.getByRole('button', {
+              name: project ? 'Bearbeiten: Rollout' : 'Bearbeiten: Acme'
+            })
+          )
+        })
+      }
+      const save = async (): Promise<void> => {
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+        })
+      }
+      await openEditor(project)
+      expect(screen.getByLabelText('Stundensatz (€/h)')).toHaveValue('90,00')
+      await save()
+      expect(update).toHaveBeenCalledTimes(1)
+      expect(update.mock.calls[0][0]).not.toHaveProperty('rate_cent')
+
+      await open()
+      fireEvent.change(screen.getByLabelText('Stundensatz (€/h)'), { target: { value: '100' } })
+      await save()
+      expect(update.mock.calls[1][0]).toMatchObject({ rate_cent: 10000 })
+      if (!project) return
+      await open()
+      fireEvent.change(screen.getByLabelText('Stundensatz (€/h)'), { target: { value: '' } })
+      await save()
+      expect(update.mock.calls[2][0]).toMatchObject({ rate_cent: null })
+    }
+  )
+
+  it('keeps a rate typed before the editors load', async () => {
+    let finishList: (value: unknown) => void = () => {}
+    vi.mocked(window.api.rates.list).mockReturnValue(
+      new Promise<unknown>((resolve) => {
+        finishList = resolve
+      }) as ReturnType<typeof window.api.rates.list>
+    )
+    const update = vi.fn().mockResolvedValue({ ok: true, data: {} })
+    window.api.clients.update = update
+    await openEditor()
+    // The list copy is 0; the typed 0 equals it but not the due rate.
+    fireEvent.change(screen.getByLabelText('Stundensatz (€/h)'), { target: { value: '0' } })
+    await act(async () => {
+      finishList({
+        ok: true,
+        data: {
+          rows: [{ id: 1, valid_from: '0001-01-01', rate_cent: 9000 }],
+          current_rate_cent: 9000
+        }
+      })
+    })
+    expect(screen.getByLabelText('Stundensatz (€/h)')).toHaveValue('0')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    })
+    expect(update.mock.calls[0][0]).toMatchObject({ rate_cent: 0 })
+  })
+
+  it('archiving a client does not send its list copy of the rate', async () => {
+    const update = vi.fn().mockResolvedValue({ ok: true, data: {} })
+    window.api.clients.update = update
+    await renderView()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Archivieren: Acme' }))
+    })
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ id: 1, active: 0 }))
+    expect(update.mock.calls[0][0]).not.toHaveProperty('rate_cent')
+  })
+
   it.each([false, true])(
     'shows the legacy-field conflict as translated field text and keeps the form open (project=%s)',
     async (project) => {

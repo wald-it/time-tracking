@@ -175,6 +175,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
   ipcMain.handle('rates:list', (_e, target: RateTarget) => {
     try {
+      // The forms take the current rate from here, so it must be the due one.
+      syncDueRates(db)
       return ok(readRates(db, target))
     } catch (e) {
       return fail(e)
@@ -320,12 +322,16 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('clients:update', (_e, input: UpdateClientInput): IpcResult<Client> => {
     try {
-      const rate = normaliseRateCent(input.rate_cent)
+      // The form sends rate_cent only when the field was changed. Its copy
+      // may lag a due editor row, and writing it back would reset the rate.
+      const hasRate = input.rate_cent !== undefined
+      const rate = hasRate ? normaliseRateCent(input.rate_cent) : null
       const hasShortCode = input.short_code !== undefined
       const shortCode = hasShortCode ? normaliseClientShortCode(input.short_code, input.id) : null
       db.prepare(
         `UPDATE clients SET
-           name = ?, color = ?, active = ?, rate_cent = ?,
+           name = ?, color = ?, active = ?,
+           rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END,
            short_code = CASE WHEN ? THEN ? ELSE short_code END,
            billing_address_line1 = ?, billing_address_line2 = ?,
            billing_address_line3 = ?, billing_address_line4 = ?,
@@ -335,6 +341,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         input.name.trim(),
         input.color,
         input.active,
+        hasRate ? 1 : 0,
         rate,
         hasShortCode ? 1 : 0,
         shortCode,
@@ -629,10 +636,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const status = input.status ?? 'active'
       // Keep `active` in sync with `status` for backward compatibility.
       const activeFlag = status === 'active' ? 1 : 0
+      // As for clients: no rate_cent keeps the column. A sent null is a real
+      // value (inherit the client rate).
+      const hasRate = input.rate_cent !== undefined
       const result = db
         .prepare(
           `UPDATE projects SET
-             client_id=?, name=?, color=?, rate_cent=?, active=?,
+             client_id=?, name=?, color=?,
+             rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END, active=?,
              external_project_number=?, start_date=?, end_date=?,
              budget_minutes=?, status=?, contact_person=?
            WHERE id=? RETURNING *`
@@ -641,6 +652,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           input.client_id ?? null,
           input.name.trim(),
           input.color ?? '',
+          hasRate ? 1 : 0,
           input.rate_cent ?? null,
           activeFlag,
           input.external_project_number?.trim() ?? null,
