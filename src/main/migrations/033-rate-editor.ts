@@ -2,7 +2,8 @@ import type { Migration } from './index'
 import { RATE_EDITOR_CONFLICT_ERROR } from '../../shared/rateEditor'
 
 // Only the update triggers change. The legacy insert/delete and default-profile
-// triggers from 030 continue to own their existing paths.
+// triggers from 030 continue to own their existing paths. The OLD/NEW check from
+// 030 stays: a rename sends the column unchanged, which may lag a due editor row.
 export const migration033: Migration = {
   version: 33,
   name: 'rate-editor',
@@ -14,7 +15,7 @@ ${(['client', 'project'] as const)
     (kind) => `
 DROP TRIGGER trg_rate_sync_${kind}_update;
 CREATE TRIGGER trg_rate_sync_${kind}_update AFTER UPDATE OF rate_cent ON ${kind === 'client' ? 'clients' : 'projects'}
-  WHEN NEW.rate_cent IS NOT (SELECT rate_cent FROM rate WHERE ${kind}_id = NEW.id
+  WHEN OLD.rate_cent IS NOT NEW.rate_cent AND NEW.rate_cent IS NOT (SELECT rate_cent FROM rate WHERE ${kind}_id = NEW.id
     AND valid_from <= date('now', 'localtime') ORDER BY valid_from DESC LIMIT 1)
 BEGIN
   SELECT RAISE(ABORT, '${RATE_EDITOR_CONFLICT_ERROR.replace(/'/g, "''")}')

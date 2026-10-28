@@ -90,6 +90,27 @@ describe('rate editor and legacy field', () => {
       ])
     )
   })
+  // A future editor row leaves the old column on the previous rate until its day
+  // comes; a rename that sends that stale rate back must not touch the rows.
+  it.each([
+    { ...client, day: 'today' },
+    { ...client, day: 'past' },
+    { ...project, day: 'today' },
+    { ...project, day: 'past' }
+  ])('ignores a rename with a stale $kind column once an editor row is due ($day)', (target) => {
+    const table = target.kind === 'client' ? 'clients' : 'projects'
+    const validFrom = target.day === 'today' ? today : '2020-01-02'
+    db.prepare(
+      `INSERT INTO rate (${target.kind}_id, rate_cent, valid_from, source) VALUES (?, 9000, ?, 'editor')`
+    ).run(target.id, validFrom)
+    const before = listRates(db, target)
+    const stale = target.kind === 'client' ? 6000 : 7000
+    db.prepare(`UPDATE ${table} SET name = 'Renamed', rate_cent = ? WHERE id = ?`).run(
+      stale,
+      target.id
+    )
+    expect(listRates(db, target)).toEqual(before)
+  })
   it.each([client, project])(
     'upserts dates, moves rows and synchronizes today without a legacy row for $kind',
     (target) => {
