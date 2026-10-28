@@ -5,6 +5,7 @@ import { mkdirSync } from 'fs'
 import { runMigrations, MigrationError } from './migrations/runner'
 import { runDailyBackupIfNeeded } from './backup'
 import { writeEntry } from './entryMutations'
+import { syncDueRates } from './rateEditor'
 
 let db: Database.Database | undefined
 let _dbPath: string
@@ -26,6 +27,13 @@ export function getDb(): Database.Database {
   db = conn
   if (result.applied.length > 0) {
     console.log(`[db] Applied ${result.applied.length} migration(s): ${result.applied.join(', ')}`)
+  }
+
+  // A rate that became due while the app was closed reaches the 1.x columns.
+  try {
+    syncDueRates(conn)
+  } catch (e) {
+    console.error('[db] syncDueRates failed', e)
   }
 
   // Daily backup is fire-and-forget — must not block startup or throw.

@@ -327,6 +327,24 @@ describe('ClientsView billing editors', () => {
     }
   )
 
+  it('reloads the shown projects after a client profile change, their budget use follows it', async () => {
+    const getAll = vi.fn(window.api.projects.getAll)
+    window.api.projects.getAll = getAll
+    await openEditor(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Acme' }))
+    })
+    getAll.mockClear()
+    const version = useClientsStore.getState().version
+    const section = within(screen.getByRole('region', { name: 'Abrechnung' }))
+    await act(async () => {
+      fireEvent.click(section.getByRole('button', { name: 'Abrechnung speichern' }))
+    })
+    expect(getAll).toHaveBeenCalledWith({ clientId: 1 })
+    expect(useClientsStore.getState().version).toBe(version + 1)
+  })
+
   it.each([false, true])(
     'shows the legacy-field conflict as translated field text and keeps the form open (project=%s)',
     async (project) => {

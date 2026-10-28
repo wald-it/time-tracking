@@ -59,7 +59,14 @@ import {
 import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
-import { readRates, saveRate, deleteRate, readProfile, saveProfile } from './rateEditor'
+import {
+  readRates,
+  saveRate,
+  deleteRate,
+  readProfile,
+  saveProfile,
+  syncDueRates
+} from './rateEditor'
 import type { RateTarget, SaveRateInput, ProfileFields } from '../shared/rateEditor'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { budgetUsedMinutesSql } from '../shared/currency'
@@ -267,6 +274,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
     try {
+      // An app left open past a rate's valid-from day still shows the due rate.
+      syncDueRates(db)
       const rows = db.prepare(`SELECT * FROM clients ORDER BY name ASC`).all() as Client[]
       return ok(rows)
     } catch (e) {
@@ -532,6 +541,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     'projects:getAll',
     (_e, req?: { clientId?: number | null }): IpcResult<Project[]> => {
       try {
+        syncDueRates(db)
         // Budget use counts like the invoice (#285): billing_lines.
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,

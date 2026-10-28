@@ -368,6 +368,11 @@ export default function ClientsView(): React.JSX.Element {
           onBillingChanged={() => {
             void loadClients()
             bumpClientsVersion()
+            // Inherited rules change the shown projects' budget use.
+            if (editingClient && projectsByClient[editingClient.id]) {
+              void loadProjectsForClient(editingClient.id)
+              bumpProjectsVersion()
+            }
           }}
           onSave={handleSave}
           onClose={() => {

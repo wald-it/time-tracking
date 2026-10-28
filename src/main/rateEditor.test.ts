@@ -1,7 +1,14 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
-import { deleteRate, listRates, saveRate, readProfile, saveProfile } from './rateEditor'
+import {
+  deleteRate,
+  listRates,
+  saveRate,
+  readProfile,
+  saveProfile,
+  syncDueRates
+} from './rateEditor'
 import { RATE_EDITOR_CONFLICT_ERROR } from '../shared/rateEditor'
 import { seedEntry } from '../test/entryFixtures'
 import { createRun, verifyRunHtml } from './billingRuns'
@@ -110,6 +117,35 @@ describe('rate editor and legacy field', () => {
       target.id
     )
     expect(listRates(db, target)).toEqual(before)
+  })
+  it.each([
+    { ...client, day: 'today', rate: 9000 },
+    { ...client, day: 'past', rate: 9000 },
+    { ...project, day: 'today', rate: 9000 },
+    { ...project, day: 'past', rate: null }
+  ])('moves a stale $kind column to the due editor rate ($day)', (target) => {
+    const table = target.kind === 'client' ? 'clients' : 'projects'
+    const validFrom = target.day === 'today' ? today : '2020-01-02'
+    db.prepare(
+      `INSERT INTO rate (${target.kind}_id, rate_cent, valid_from, source) VALUES (?, ?, ?, 'editor')`
+    ).run(target.id, target.rate, validFrom)
+    const before = listRates(db, target)
+    syncDueRates(db)
+    expect(db.prepare(`SELECT rate_cent FROM ${table} WHERE id = ?`).get(target.id)).toEqual({
+      rate_cent: target.rate
+    })
+    expect(listRates(db, target)).toEqual(before)
+  })
+  it('leaves columns without rate rows or with a current rate alone', () => {
+    db.exec('DELETE FROM rate WHERE project_id = 10')
+    const rows = db.prepare('SELECT * FROM rate ORDER BY id').all()
+    const changes = db.prepare('SELECT total_changes() AS n').get() as { n: number }
+    syncDueRates(db)
+    expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(changes)
+    expect(db.prepare('SELECT * FROM rate ORDER BY id').all()).toEqual(rows)
+    expect(db.prepare('SELECT rate_cent FROM projects WHERE id = 10').get()).toEqual({
+      rate_cent: 7000
+    })
   })
   it.each([client, project])(
     'upserts dates, moves rows and synchronizes today without a legacy row for $kind',

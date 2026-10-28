@@ -69,15 +69,39 @@ export function readRates(db: Db, target: RateTarget): RateEditorData {
   return { rows: listRates(db, target), current_rate_cent: current.rate_cent }
 }
 
+// The project column retains NULL when inheriting. Resolving the client's
+// numeric rate here would turn inheritance into an override.
+function dueRateSql(table: string, column: string): string {
+  return `(SELECT rate_cent FROM rate WHERE ${column} = ${table}.id
+    AND valid_from <= date('now', 'localtime') ORDER BY valid_from DESC LIMIT 1)`
+}
+
 function syncCurrent(db: Db, target: RateTarget): RateEditorData {
   const { table, column } = owner(db, target)
-  // The project column retains NULL when inheriting. Resolving the client's
-  // numeric rate here would turn inheritance into an override.
-  db.prepare(
-    `UPDATE ${table} SET rate_cent = (SELECT rate_cent FROM rate WHERE ${column} = ?
-    AND valid_from <= date('now', 'localtime') ORDER BY valid_from DESC LIMIT 1) WHERE id = ?`
-  ).run(target.id, target.id)
+  db.prepare(`UPDATE ${table} SET rate_cent = ${dueRateSql(table, column)} WHERE id = ?`).run(
+    target.id
+  )
   return readRates(db, target)
+}
+
+/**
+ * A future editor row becomes due without any write, so the 1.x columns are
+ * moved to the rate valid today on open and before the lists are read. The
+ * update triggers stay quiet because the new value is the due rate.
+ */
+export function syncDueRates(db: Db): void {
+  db.transaction(() => {
+    for (const [table, column] of [
+      ['clients', 'client_id'],
+      ['projects', 'project_id']
+    ]) {
+      const due = dueRateSql(table, column)
+      db.prepare(
+        `UPDATE ${table} SET rate_cent = ${due}
+        WHERE EXISTS (SELECT 1 FROM rate WHERE ${column} = ${table}.id) AND rate_cent IS NOT ${due}`
+      ).run()
+    }
+  })()
 }
 
 export function saveRate(db: Db, target: RateTarget, input: SaveRateInput): RateEditorData {
