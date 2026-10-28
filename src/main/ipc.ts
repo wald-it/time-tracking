@@ -52,6 +52,12 @@ import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { budgetUsedMinutesSql } from '../shared/currency'
+import {
+  normaliseShortCodeInput,
+  SHORT_CODE_INVALID_ERROR,
+  SHORT_CODE_PATTERN,
+  SHORT_CODE_TAKEN_ERROR
+} from '../shared/clientShortCode'
 import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
@@ -195,6 +201,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ])
 
   // ── Clients ──────────────────────────────────────────────────
+  function normaliseClientShortCode(value: unknown, clientId?: number): string | null {
+    if (value === undefined || value === null) return null
+    if (typeof value !== 'string') throw new Error(SHORT_CODE_INVALID_ERROR)
+    const code = normaliseShortCodeInput(value)
+    if (code === null) return null
+    if (!SHORT_CODE_PATTERN.test(code)) throw new Error(SHORT_CODE_INVALID_ERROR)
+    const owner = db.prepare('SELECT id FROM clients WHERE short_code = ?').get(code) as
+      | { id: number }
+      | undefined
+    if (owner && owner.id !== clientId) throw new Error(SHORT_CODE_TAKEN_ERROR)
+    return code
+  }
+
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
     try {
       const rows = db.prepare(`SELECT * FROM clients ORDER BY name ASC`).all() as Client[]
@@ -207,18 +226,20 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('clients:create', (_e, input: CreateClientInput): IpcResult<Client> => {
     try {
       const rate = normaliseRateCent(input.rate_cent)
+      const shortCode = normaliseClientShortCode(input.short_code)
       const info = db
         .prepare(
-          `INSERT INTO clients (name, color, rate_cent,
+          `INSERT INTO clients (name, color, rate_cent, short_code,
              billing_address_line1, billing_address_line2,
              billing_address_line3, billing_address_line4,
              vat_id, contact_person, contact_email)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           input.name.trim(),
           input.color,
           rate,
+          shortCode,
           input.billing_address_line1?.trim() ?? null,
           input.billing_address_line2?.trim() ?? null,
           input.billing_address_line3?.trim() ?? null,
@@ -240,9 +261,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('clients:update', (_e, input: UpdateClientInput): IpcResult<Client> => {
     try {
       const rate = normaliseRateCent(input.rate_cent)
+      const hasShortCode = input.short_code !== undefined
+      const shortCode = hasShortCode ? normaliseClientShortCode(input.short_code, input.id) : null
       db.prepare(
         `UPDATE clients SET
            name = ?, color = ?, active = ?, rate_cent = ?,
+           short_code = CASE WHEN ? THEN ? ELSE short_code END,
            billing_address_line1 = ?, billing_address_line2 = ?,
            billing_address_line3 = ?, billing_address_line4 = ?,
            vat_id = ?, contact_person = ?, contact_email = ?
@@ -252,6 +276,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         input.color,
         input.active,
         rate,
+        hasShortCode ? 1 : 0,
+        shortCode,
         input.billing_address_line1?.trim() ?? null,
         input.billing_address_line2?.trim() ?? null,
         input.billing_address_line3?.trim() ?? null,

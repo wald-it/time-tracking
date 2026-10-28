@@ -6,7 +6,15 @@ const at = (day: number, h: number, m = 0): number => new Date(2026, 9, day, h, 
 const iso = (ms: number): string => new Date(ms).toISOString()
 
 function client(id: number, name: string, color = '#123456'): Client {
-  return { id, name, color, active: 1, rate_cent: 0, created_at: '2026-01-01T00:00:00.000Z' }
+  return {
+    id,
+    name,
+    color,
+    active: 1,
+    rate_cent: 0,
+    short_code: null,
+    created_at: '2026-01-01T00:00:00.000Z'
+  }
 }
 
 let nextId = 1

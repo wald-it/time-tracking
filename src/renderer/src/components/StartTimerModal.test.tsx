@@ -20,8 +20,24 @@ afterEach(() => {
 })
 
 const CLIENTS: Client[] = [
-  { id: 1, name: 'Acme', color: '#111111', active: 1, rate_cent: 0, created_at: '' },
-  { id: 2, name: 'Beta', color: '#222222', active: 1, rate_cent: 0, created_at: '' }
+  {
+    id: 1,
+    name: 'Acme',
+    color: '#111111',
+    active: 1,
+    rate_cent: 0,
+    short_code: null,
+    created_at: ''
+  },
+  {
+    id: 2,
+    name: 'Beta',
+    color: '#222222',
+    active: 1,
+    rate_cent: 0,
+    short_code: null,
+    created_at: ''
+  }
 ]
 
 const PROJECTS: Project[] = [
@@ -81,6 +97,7 @@ describe('StartTimerModal — prefill (B6)', () => {
       created_at: ''
     })
     CLIENTS.push({
+      short_code: null,
       id: 3,
       name: 'Gamma',
       color: '#333333',
@@ -119,6 +136,7 @@ describe('StartTimerModal — prefill (B6)', () => {
       created_at: ''
     })
     CLIENTS.push({
+      short_code: null,
       id: 3,
       name: 'Gamma',
       color: '#333333',
@@ -319,6 +337,7 @@ describe('StartTimerModal — a selected archived client (#297)', () => {
   it('cannot be started', async () => {
     setup()
     const archived: Client = {
+      short_code: null,
       id: 9,
       name: 'Alt',
       color: '#999999',
@@ -348,7 +367,15 @@ describe('StartTimerModal — prefill when the last project is archived (#297)',
 
   it('offers the client’s single active project', async () => {
     const clients: Client[] = [
-      { id: 4, name: 'Delta', color: '#444444', active: 1, rate_cent: 0, created_at: '' }
+      {
+        id: 4,
+        name: 'Delta',
+        color: '#444444',
+        active: 1,
+        rate_cent: 0,
+        short_code: null,
+        created_at: ''
+      }
     ]
     const projects: Project[] = [
       { id: 40, client_id: 4, name: 'Alt', color: '', rate_cent: null, active: 0, created_at: '' },

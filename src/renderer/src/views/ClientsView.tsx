@@ -9,6 +9,13 @@ import type {
   UpdateProjectInput
 } from '../../../shared/types'
 import { formatRateInput, parseRateInput } from '../../../shared/rate'
+import {
+  normaliseShortCodeInput,
+  SHORT_CODE_INVALID_ERROR,
+  SHORT_CODE_MAX_LENGTH,
+  SHORT_CODE_PATTERN,
+  SHORT_CODE_TAKEN_ERROR
+} from '../../../shared/clientShortCode'
 import { useClientsStore } from '../store/clientsStore'
 import { useProjectsStore } from '../store/projectsStore'
 import { useT, useLocale } from '../contexts/I18nContext'
@@ -178,6 +185,7 @@ export default function ClientsView(): React.JSX.Element {
 
   async function handleSave(data: {
     name: string
+    short_code: string | null
     color: string
     rate_cent: number
     billing_address_line1: string | null
@@ -187,18 +195,21 @@ export default function ClientsView(): React.JSX.Element {
     vat_id: string | null
     contact_person: string | null
     contact_email: string | null
-  }): Promise<void> {
+  }): Promise<string | null> {
     if (editingClient) {
       const input: UpdateClientInput = { ...editingClient, ...data }
-      await window.api.clients.update(input)
+      const res = await window.api.clients.update(input)
+      if (!res.ok) return res.error.replace(/^Error:\s*/, '')
     } else {
       const input: CreateClientInput = data
-      await window.api.clients.create(input)
+      const res = await window.api.clients.create(input)
+      if (!res.ok) return res.error.replace(/^Error:\s*/, '')
     }
     await loadClients()
     bumpClientsVersion()
     setShowForm(false)
     setEditingClient(null)
+    return null
   }
 
   function openNewProject(clientId: number): void {
@@ -536,6 +547,9 @@ function ClientItem({
             >
               {c.name}
             </span>
+            {c.short_code && (
+              <span className="font-num text-xs text-[var(--ink3)]">{c.short_code}</span>
+            )}
             {dimmed && <span className={STATUS_TAG}>{t('clients.archived.label')}</span>}
           </span>
           {c.contact_person && (
@@ -861,6 +875,7 @@ function ClientFormModal({
   client: Client | null
   onSave: (data: {
     name: string
+    short_code: string | null
     color: string
     rate_cent: number
     billing_address_line1: string | null
@@ -870,11 +885,13 @@ function ClientFormModal({
     vat_id: string | null
     contact_person: string | null
     contact_email: string | null
-  }) => Promise<void>
+  }) => Promise<string | null>
   onClose: () => void
 }): React.JSX.Element {
   const t = useT()
   const [name, setName] = useState(client?.name ?? '')
+  const [shortCode, setShortCode] = useState(client?.short_code ?? '')
+  const [shortCodeError, setShortCodeError] = useState('')
   const [color, setColor] = useState(client?.color ?? CLIENT_COLORS[0])
   const [rateInput, setRateInput] = useState(() => formatRateInput(client?.rate_cent ?? 0))
   const [isSaving, setIsSaving] = useState(false)
@@ -910,6 +927,11 @@ function ClientFormModal({
       setError(t('clients.form.nameRequired'))
       return
     }
+    const code = normaliseShortCodeInput(shortCode)
+    if (code && !SHORT_CODE_PATTERN.test(code)) {
+      setShortCodeError(t('clients.form.shortCodeInvalid'))
+      return
+    }
     const parsed = parseRateInput(rateInput)
     if (parsed === 'invalid') {
       setRateError(t('clients.form.rateInvalid'))
@@ -920,19 +942,29 @@ function ClientFormModal({
       return
     }
     setIsSaving(true)
-    await onSave({
-      name: trimmed,
-      color,
-      rate_cent: parsed,
-      billing_address_line1: nullIfEmpty(billingLine1),
-      billing_address_line2: nullIfEmpty(billingLine2),
-      billing_address_line3: nullIfEmpty(billingLine3),
-      billing_address_line4: nullIfEmpty(billingLine4),
-      vat_id: nullIfEmpty(vatId),
-      contact_person: nullIfEmpty(contactPerson),
-      contact_email: nullIfEmpty(contactEmail)
-    })
-    setIsSaving(false)
+    try {
+      const saveError = await onSave({
+        name: trimmed,
+        short_code: code,
+        color,
+        rate_cent: parsed,
+        billing_address_line1: nullIfEmpty(billingLine1),
+        billing_address_line2: nullIfEmpty(billingLine2),
+        billing_address_line3: nullIfEmpty(billingLine3),
+        billing_address_line4: nullIfEmpty(billingLine4),
+        vat_id: nullIfEmpty(vatId),
+        contact_person: nullIfEmpty(contactPerson),
+        contact_email: nullIfEmpty(contactEmail)
+      })
+      if (saveError === SHORT_CODE_TAKEN_ERROR) setShortCodeError(t('clients.form.shortCodeTaken'))
+      else if (saveError === SHORT_CODE_INVALID_ERROR)
+        setShortCodeError(t('clients.form.shortCodeInvalid'))
+      else if (saveError) setError(saveError)
+    } catch {
+      setError(t('clients.form.saveFailed'))
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -959,6 +991,34 @@ function ClientFormModal({
           {error && (
             <p className="text-xs" style={{ color: 'var(--danger)' }}>
               {error}
+            </p>
+          )}
+        </div>
+
+        {/* Short code */}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="client-short-code" className={FIELD_LABEL}>
+            {t('clients.form.shortCodeLabel')}
+          </label>
+          <input
+            id="client-short-code"
+            type="text"
+            value={shortCode}
+            maxLength={SHORT_CODE_MAX_LENGTH}
+            onChange={(e) => {
+              setShortCode(e.target.value.toUpperCase())
+              setShortCodeError('')
+            }}
+            aria-invalid={!!shortCodeError}
+            aria-describedby={`client-short-code-hint${shortCodeError ? ' client-short-code-error' : ''}`}
+            className={`${INPUT} font-num`}
+          />
+          <p id="client-short-code-hint" className="text-xs text-[var(--ink3)]">
+            {t('clients.form.shortCodeHint')}
+          </p>
+          {shortCodeError && (
+            <p id="client-short-code-error" role="alert" className="text-xs text-[var(--danger)]">
+              {shortCodeError}
             </p>
           )}
         </div>

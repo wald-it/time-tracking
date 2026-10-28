@@ -12,6 +12,7 @@ import type { Client } from '../../../shared/types'
 afterEach(cleanup)
 
 const ACME: Client = {
+  short_code: null,
   id: 1,
   name: 'Acme',
   color: '#123456',

@@ -3,6 +3,7 @@ import { escapeField, escapeTextField, formatCsv } from './csv'
 import type { Entry, Client } from './types'
 
 const BASE_CLIENT: Client = {
+  short_code: null,
   id: 1,
   name: 'Acme GmbH',
   color: '#4f46e5',
