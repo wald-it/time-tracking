@@ -59,6 +59,15 @@ import {
 import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
+import {
+  readRates,
+  saveRate,
+  deleteRate,
+  readProfile,
+  saveProfile,
+  syncDueRates
+} from './rateEditor'
+import type { RateTarget, SaveRateInput, ProfileFields } from '../shared/rateEditor'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { budgetUsedMinutesSql } from '../shared/currency'
 import {
@@ -164,6 +173,47 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+  ipcMain.handle('rates:list', (_e, target: RateTarget) => {
+    try {
+      // The forms take the current rate from here, so it must be the due one.
+      syncDueRates(db)
+      return ok(readRates(db, target))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('rates:save', (_e, target: RateTarget, input: SaveRateInput) => {
+    try {
+      const result = saveRate(db, target, input)
+      hooks.refreshTrayClients()
+      return ok(result)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('rates:delete', (_e, target: RateTarget, id: number) => {
+    try {
+      const result = deleteRate(db, target, id)
+      hooks.refreshTrayClients()
+      return ok(result)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-profile:get', (_e, target: RateTarget) => {
+    try {
+      return ok(readProfile(db, target))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-profile:save', (_e, target: RateTarget, fields: ProfileFields) => {
+    try {
+      return ok(saveProfile(db, target, fields))
+    } catch (e) {
+      return fail(e)
+    }
+  })
   // Native dialogs, file names and cancel texts follow the app language
   // (#270, #296). Never throws (mainI18n.appLocale): with the handle closed
   // after a restore attempt, the language last read in this run, the same
@@ -226,6 +276,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
     try {
+      // An app left open past a rate's valid-from day still shows the due rate.
+      syncDueRates(db)
       const rows = db.prepare(`SELECT * FROM clients ORDER BY name ASC`).all() as Client[]
       return ok(rows)
     } catch (e) {
@@ -270,12 +322,16 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('clients:update', (_e, input: UpdateClientInput): IpcResult<Client> => {
     try {
-      const rate = normaliseRateCent(input.rate_cent)
+      // The form sends rate_cent only when the field was changed. Its copy
+      // may lag a due editor row, and writing it back would reset the rate.
+      const hasRate = input.rate_cent !== undefined
+      const rate = hasRate ? normaliseRateCent(input.rate_cent) : null
       const hasShortCode = input.short_code !== undefined
       const shortCode = hasShortCode ? normaliseClientShortCode(input.short_code, input.id) : null
       db.prepare(
         `UPDATE clients SET
-           name = ?, color = ?, active = ?, rate_cent = ?,
+           name = ?, color = ?, active = ?,
+           rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END,
            short_code = CASE WHEN ? THEN ? ELSE short_code END,
            billing_address_line1 = ?, billing_address_line2 = ?,
            billing_address_line3 = ?, billing_address_line4 = ?,
@@ -285,6 +341,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         input.name.trim(),
         input.color,
         input.active,
+        hasRate ? 1 : 0,
         rate,
         hasShortCode ? 1 : 0,
         shortCode,
@@ -491,6 +548,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     'projects:getAll',
     (_e, req?: { clientId?: number | null }): IpcResult<Project[]> => {
       try {
+        syncDueRates(db)
         // Budget use counts like the invoice (#285): billing_lines.
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
@@ -578,10 +636,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const status = input.status ?? 'active'
       // Keep `active` in sync with `status` for backward compatibility.
       const activeFlag = status === 'active' ? 1 : 0
+      // As for clients: no rate_cent keeps the column. A sent null is a real
+      // value (inherit the client rate).
+      const hasRate = input.rate_cent !== undefined
       const result = db
         .prepare(
           `UPDATE projects SET
-             client_id=?, name=?, color=?, rate_cent=?, active=?,
+             client_id=?, name=?, color=?,
+             rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END, active=?,
              external_project_number=?, start_date=?, end_date=?,
              budget_minutes=?, status=?, contact_person=?
            WHERE id=? RETURNING *`
@@ -590,6 +652,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           input.client_id ?? null,
           input.name.trim(),
           input.color ?? '',
+          hasRate ? 1 : 0,
           input.rate_cent ?? null,
           activeFlag,
           input.external_project_number?.trim() ?? null,

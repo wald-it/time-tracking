@@ -1,4 +1,11 @@
 import type { BillingRunSummary } from '../main/billingRuns'
+import type {
+  RateTarget,
+  RateEditorData,
+  SaveRateInput,
+  ProfileFields,
+  ProfileEditorData
+} from '../shared/rateEditor'
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Client,
@@ -44,6 +51,20 @@ document.addEventListener('DOMContentLoaded', () => {
 // ──────────────────────────────────────────────────────────────────────────
 
 const api = {
+  rates: {
+    list: (target: RateTarget): Promise<IpcResult<RateEditorData>> =>
+      ipcRenderer.invoke('rates:list', target),
+    save: (target: RateTarget, input: SaveRateInput): Promise<IpcResult<RateEditorData>> =>
+      ipcRenderer.invoke('rates:save', target, input),
+    delete: (target: RateTarget, id: number): Promise<IpcResult<RateEditorData>> =>
+      ipcRenderer.invoke('rates:delete', target, id)
+  },
+  billingProfile: {
+    get: (target: RateTarget): Promise<IpcResult<ProfileEditorData>> =>
+      ipcRenderer.invoke('billing-profile:get', target),
+    save: (target: RateTarget, fields: ProfileFields): Promise<IpcResult<ProfileEditorData>> =>
+      ipcRenderer.invoke('billing-profile:save', target, fields)
+  },
   // Tray + hotkey
   tray: {
     update: (

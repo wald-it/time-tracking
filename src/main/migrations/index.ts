@@ -31,6 +31,7 @@ import { migration029 } from './029-v2-entries-view-segment-count'
 import { migration030 } from './030-v2-billing-lines'
 import { migration031 } from './031-v2-entries-view-money'
 import { migration032 } from './032-v2-billing-runs'
+import { migration033 } from './033-rate-editor'
 
 export interface Migration {
   /** Monotonically increasing integer. Never reused, never reordered. */
@@ -89,5 +90,6 @@ export const migrations: Migration[] = [
   migration029,
   migration030,
   migration031,
-  migration032
+  migration032,
+  migration033
 ].sort((a, b) => a.version - b.version)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type {
   Client,
   CreateClientInput,
@@ -36,6 +36,8 @@ import { Dialog } from '../components/Dialog'
 import { ColorSwatches } from '../components/ColorSwatches'
 import { CLIENT_COLORS } from '../components/clientColors'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { BillingEditors } from '../components/BillingEditors'
+import { RATE_EDITOR_CONFLICT_ERROR } from '../../../shared/rateEditor'
 
 /** Lightens a hex color by the given amount (0-100) to create a visually
  * related but distinct project color from the client color. */
@@ -177,7 +179,10 @@ export default function ClientsView(): React.JSX.Element {
     bumpClientsVersion()
   }
 
-  async function handleToggleActive(client: Client): Promise<void> {
+  // Updates leave out the list copy of the rate: it may lag a due editor row,
+  // and the main process would write it back (P6e, owner decision C).
+  async function handleToggleActive({ rate_cent: _rate, ...client }: Client): Promise<void> {
+    void _rate
     await window.api.clients.update({ ...client, active: client.active ? 0 : 1 })
     await loadClients()
     bumpClientsVersion()
@@ -187,7 +192,7 @@ export default function ClientsView(): React.JSX.Element {
     name: string
     short_code: string | null
     color: string
-    rate_cent: number
+    rate_cent?: number
     billing_address_line1: string | null
     billing_address_line2: string | null
     billing_address_line3: string | null
@@ -197,13 +202,15 @@ export default function ClientsView(): React.JSX.Element {
     contact_email: string | null
   }): Promise<string | null> {
     if (editingClient) {
-      const input: UpdateClientInput = { ...editingClient, ...data }
+      const { rate_cent: _rate, ...client } = editingClient
+      void _rate
+      const input: UpdateClientInput = { ...client, ...data }
       const res = await window.api.clients.update(input)
-      if (!res.ok) return res.error.replace(/^Error:\s*/, '')
+      if (!res.ok) return res.error.replace(/^(?:Sqlite)?Error:\s*/, '')
     } else {
       const input: CreateClientInput = data
       const res = await window.api.clients.create(input)
-      if (!res.ok) return res.error.replace(/^Error:\s*/, '')
+      if (!res.ok) return res.error.replace(/^(?:Sqlite)?Error:\s*/, '')
     }
     await loadClients()
     bumpClientsVersion()
@@ -227,31 +234,36 @@ export default function ClientsView(): React.JSX.Element {
   async function handleProjectSave(data: {
     name: string
     color: string
-    rate_cent: number | null
+    rate_cent?: number | null
     external_project_number: string | null
     start_date: string | null
     end_date: string | null
     budget_minutes: number | null
     status: 'active' | 'paused' | 'archived'
     contact_person: string | null
-  }): Promise<void> {
-    if (!projectFormClientId && projectFormClientId !== 0) return
+  }): Promise<string | null> {
+    if (!projectFormClientId && projectFormClientId !== 0) return null
     if (editingProject) {
+      const { rate_cent: _rate, ...project } = editingProject
+      void _rate
       const input: UpdateProjectInput = {
-        ...editingProject,
+        ...project,
         ...data,
         client_id: projectFormClientId
       }
-      await window.api.projects.update(input)
+      const res = await window.api.projects.update(input)
+      if (!res.ok) return res.error.replace(/^(?:Sqlite)?Error:\s*/, '')
     } else {
       const input: CreateProjectInput = { client_id: projectFormClientId, ...data }
-      await window.api.projects.create(input)
+      const res = await window.api.projects.create(input)
+      if (!res.ok) return res.error.replace(/^(?:Sqlite)?Error:\s*/, '')
     }
     await loadProjectsForClient(projectFormClientId)
     bumpProjectsVersion()
     setShowProjectForm(false)
     setEditingProject(null)
     setProjectFormClientId(null)
+    return null
   }
 
   async function handleProjectArchive(project: Project): Promise<void> {
@@ -360,6 +372,15 @@ export default function ClientsView(): React.JSX.Element {
       {showForm && (
         <ClientFormModal
           client={editingClient}
+          onBillingChanged={() => {
+            void loadClients()
+            bumpClientsVersion()
+            // Inherited rules change the shown projects' budget use.
+            if (editingClient && projectsByClient[editingClient.id]) {
+              void loadProjectsForClient(editingClient.id)
+              bumpProjectsVersion()
+            }
+          }}
           onSave={handleSave}
           onClose={() => {
             setShowForm(false)
@@ -371,6 +392,10 @@ export default function ClientsView(): React.JSX.Element {
       {showProjectForm && (
         <ProjectFormModal
           project={editingProject}
+          onBillingChanged={() => {
+            if (projectFormClientId !== null) void loadProjectsForClient(projectFormClientId)
+            bumpProjectsVersion()
+          }}
           clientColor={clients.find((c) => c.id === projectFormClientId)?.color ?? ''}
           onSave={handleProjectSave}
           onClose={() => {
@@ -869,15 +894,17 @@ function ArchivedProjectsSection({
 
 function ClientFormModal({
   client,
+  onBillingChanged,
   onSave,
   onClose
 }: {
   client: Client | null
+  onBillingChanged: () => void
   onSave: (data: {
     name: string
     short_code: string | null
     color: string
-    rate_cent: number
+    rate_cent?: number
     billing_address_line1: string | null
     billing_address_line2: string | null
     billing_address_line3: string | null
@@ -894,7 +921,11 @@ function ClientFormModal({
   const [shortCodeError, setShortCodeError] = useState('')
   const [color, setColor] = useState(client?.color ?? CLIENT_COLORS[0])
   const [rateInput, setRateInput] = useState(() => formatRateInput(client?.rate_cent ?? 0))
+  // The rate valid today; an update sends the field only when it differs.
+  const [rateBase, setRateBase] = useState(client?.rate_cent ?? 0)
+  const rateTouched = useRef(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [billingBusy, setBillingBusy] = useState(false)
   const [error, setError] = useState('')
   const [rateError, setRateError] = useState('')
   // v1.11 #94 — Stammdaten
@@ -922,6 +953,7 @@ function ClientFormModal({
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
+    if (billingBusy) return
     const trimmed = name.trim()
     if (!trimmed) {
       setError(t('clients.form.nameRequired'))
@@ -947,7 +979,7 @@ function ClientFormModal({
         name: trimmed,
         short_code: code,
         color,
-        rate_cent: parsed,
+        ...(client && parsed === rateBase ? {} : { rate_cent: parsed }),
         billing_address_line1: nullIfEmpty(billingLine1),
         billing_address_line2: nullIfEmpty(billingLine2),
         billing_address_line3: nullIfEmpty(billingLine3),
@@ -959,6 +991,7 @@ function ClientFormModal({
       if (saveError === SHORT_CODE_TAKEN_ERROR) setShortCodeError(t('clients.form.shortCodeTaken'))
       else if (saveError === SHORT_CODE_INVALID_ERROR)
         setShortCodeError(t('clients.form.shortCodeInvalid'))
+      else if (saveError === RATE_EDITOR_CONFLICT_ERROR) setRateError(t('rates.conflict'))
       else if (saveError) setError(saveError)
     } catch {
       setError(t('clients.form.saveFailed'))
@@ -972,7 +1005,7 @@ function ClientFormModal({
       open
       onClose={onClose}
       title={client ? t('clients.form.editTitle') : t('clients.form.createTitle')}
-      widthClass="w-[440px]"
+      widthClass="w-[640px]"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {/* Name */}
@@ -1041,10 +1074,13 @@ function ClientFormModal({
           <div className="relative">
             <input
               id="client-rate"
+              aria-invalid={!!rateError}
+              aria-describedby="client-rate-hint client-rate-error"
               type="text"
               inputMode="decimal"
               value={rateInput}
               onChange={(e) => {
+                rateTouched.current = true
                 setRateInput(e.target.value)
                 setRateError('')
               }}
@@ -1059,7 +1095,12 @@ function ClientFormModal({
             </span>
           </div>
           {rateError && (
-            <p className="text-xs" style={{ color: 'var(--danger)' }}>
+            <p
+              id="client-rate-error"
+              role="alert"
+              className="text-xs"
+              style={{ color: 'var(--danger)' }}
+            >
               {rateError}
             </p>
           )}
@@ -1069,6 +1110,26 @@ function ClientFormModal({
             </p>
           )}
         </div>
+
+        <p id="client-rate-hint" className="text-xs text-[var(--ink3)]">
+          {t('rates.fromToday')}
+        </p>
+        <BillingEditors
+          target={client ? { kind: 'client', id: client.id } : null}
+          disabled={isSaving}
+          onBusyChange={setBillingBusy}
+          onRateLoaded={(rate) => {
+            setRateBase(rate ?? 0)
+            if (!rateTouched.current) setRateInput(formatRateInput(rate ?? 0))
+          }}
+          onRateSaved={(rate) => {
+            rateTouched.current = false
+            setRateBase(rate ?? 0)
+            setRateInput(formatRateInput(rate ?? 0))
+            setRateError('')
+          }}
+          onChanged={onBillingChanged}
+        />
 
         {/* Collapsible details toggle */}
         <button
@@ -1175,7 +1236,7 @@ function ClientFormModal({
           <button type="button" onClick={onClose} className={`${KEY} flex-1`}>
             {t('common.cancel')}
           </button>
-          <button type="submit" disabled={isSaving} className={`${KEY_INV} flex-1`}>
+          <button type="submit" disabled={isSaving || billingBusy} className={`${KEY_INV} flex-1`}>
             {isSaving ? t('common.saving') : t('common.save')}
           </button>
         </div>
@@ -1186,23 +1247,25 @@ function ClientFormModal({
 
 function ProjectFormModal({
   project,
+  onBillingChanged,
   clientColor,
   onSave,
   onClose
 }: {
   project: Project | null
+  onBillingChanged: () => void
   clientColor: string
   onSave: (data: {
     name: string
     color: string
-    rate_cent: number | null
+    rate_cent?: number | null
     external_project_number: string | null
     start_date: string | null
     end_date: string | null
     budget_minutes: number | null
     status: 'active' | 'paused' | 'archived'
     contact_person: string | null
-  }) => Promise<void>
+  }) => Promise<string | null>
   onClose: () => void
 }): React.JSX.Element {
   const t = useT()
@@ -1215,7 +1278,13 @@ function ProjectFormModal({
       ? formatRateInput(project.rate_cent)
       : ''
   )
+  // As in the client form; null is the inherited client rate.
+  const [rateBase, setRateBase] = useState(project?.rate_cent ?? null)
+  const rateTouched = useRef(false)
+  const showRate = (rate: number | null): void =>
+    setRateInput(rate === null ? '' : formatRateInput(rate) || '0')
   const [isSaving, setIsSaving] = useState(false)
+  const [billingBusy, setBillingBusy] = useState(false)
   const [error, setError] = useState('')
   const [rateError, setRateError] = useState('')
   // v1.11 #94 — Stammdaten
@@ -1239,6 +1308,7 @@ function ProjectFormModal({
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
+    if (billingBusy) return
     const trimmed = name.trim()
     if (!trimmed) {
       setError(t('projects.form.nameRequired'))
@@ -1269,18 +1339,25 @@ function ProjectFormModal({
       }
     }
     setIsSaving(true)
-    await onSave({
-      name: trimmed,
-      color,
-      rate_cent,
-      external_project_number: nullIfEmpty(externalNumber),
-      start_date: nullIfEmpty(startDate),
-      end_date: nullIfEmpty(endDate),
-      budget_minutes,
-      status,
-      contact_person: nullIfEmpty(contactPerson)
-    })
-    setIsSaving(false)
+    try {
+      const saveError = await onSave({
+        name: trimmed,
+        color,
+        ...(project && rate_cent === rateBase ? {} : { rate_cent }),
+        external_project_number: nullIfEmpty(externalNumber),
+        start_date: nullIfEmpty(startDate),
+        end_date: nullIfEmpty(endDate),
+        budget_minutes,
+        status,
+        contact_person: nullIfEmpty(contactPerson)
+      })
+      if (saveError === RATE_EDITOR_CONFLICT_ERROR) setRateError(t('rates.conflict'))
+      else if (saveError) setError(saveError)
+    } catch {
+      setError(t('clients.form.saveFailed'))
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const STATUS_OPTIONS: Array<{ value: 'active' | 'paused' | 'archived'; label: string }> = [
@@ -1294,7 +1371,7 @@ function ProjectFormModal({
       open
       onClose={onClose}
       title={project ? t('projects.form.editTitle') : t('projects.form.createTitle')}
-      widthClass="w-[440px]"
+      widthClass="w-[640px]"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {/* Name */}
@@ -1341,10 +1418,13 @@ function ProjectFormModal({
           <div className="relative">
             <input
               id="project-rate"
+              aria-invalid={!!rateError}
+              aria-describedby="project-rate-hint project-rate-error"
               type="text"
               inputMode="decimal"
               value={rateInput}
               onChange={(e) => {
+                rateTouched.current = true
                 setRateInput(e.target.value)
                 setRateError('')
               }}
@@ -1359,7 +1439,12 @@ function ProjectFormModal({
             </span>
           </div>
           {rateError && (
-            <p className="text-xs" style={{ color: 'var(--danger)' }}>
+            <p
+              id="project-rate-error"
+              role="alert"
+              className="text-xs"
+              style={{ color: 'var(--danger)' }}
+            >
               {rateError}
             </p>
           )}
@@ -1369,6 +1454,26 @@ function ProjectFormModal({
             </p>
           )}
         </div>
+
+        <p id="project-rate-hint" className="text-xs text-[var(--ink3)]">
+          {t('rates.fromToday')}
+        </p>
+        <BillingEditors
+          target={project ? { kind: 'project', id: project.id } : null}
+          disabled={isSaving}
+          onBusyChange={setBillingBusy}
+          onRateLoaded={(rate) => {
+            setRateBase(rate)
+            if (!rateTouched.current) showRate(rate)
+          }}
+          onRateSaved={(rate) => {
+            rateTouched.current = false
+            setRateBase(rate)
+            showRate(rate)
+            setRateError('')
+          }}
+          onChanged={onBillingChanged}
+        />
 
         {/* Divider */}
         <hr style={{ borderColor: 'var(--line)' }} />
@@ -1462,7 +1567,7 @@ function ProjectFormModal({
           <button type="button" onClick={onClose} className={`${KEY} flex-1`}>
             {t('common.cancel')}
           </button>
-          <button type="submit" disabled={isSaving} className={`${KEY_INV} flex-1`}>
+          <button type="submit" disabled={isSaving || billingBusy} className={`${KEY_INV} flex-1`}>
             {isSaving ? t('common.saving') : t('common.save')}
           </button>
         </div>
