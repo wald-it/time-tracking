@@ -157,6 +157,30 @@ describe.each(['calendar', 'today'] as const)('%s billed entries', (view) => {
   })
 })
 
+it('keeps a second billed undo waiting while a restore reason is open', async () => {
+  await mount('calendar')
+  const undo = (entryId: number): void => {
+    useToastStore.getState().show(`Deleted ${entryId}`, {
+      type: 'undo_delete',
+      label: `Undo ${entryId}`,
+      data: { entryId, billed: true }
+    })
+  }
+  act(() => {
+    undo(1)
+    undo(2)
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Undo 1' }))
+  const dialog = screen.getByRole('alertdialog')
+  fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Reason for 1' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Undo 2' }))
+  expect(useToastStore.getState().pendingUndo?.data.entryId).toBe(1)
+  expect(screen.getByRole('button', { name: 'Undo 2' })).toBeTruthy()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Wiederherstellen' }))
+  await waitFor(() => expect(restore).toHaveBeenCalledWith(1, 'Reason for 1'))
+  expect(restore).toHaveBeenCalledTimes(1)
+})
+
 it('cancels restore without writing, and shows a refused restore as a toast', async () => {
   await mount('calendar')
   act(() =>

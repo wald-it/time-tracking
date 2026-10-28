@@ -75,6 +75,9 @@ export const useToastStore = create<ToastState>((set, get) => ({
   executeAction: async (id): Promise<void> => {
     const toast = get().toasts.find((t) => t.id === id)
     if (!toast?.action) return
+    // One reason prompt at a time: a second billed undo would take over the open
+    // dialog, and the reason typed for the first entry would land on the second.
+    if (toast.action.data.billed && get().pendingUndo) return
     // Dismiss first so a slow IPC call doesn't leave the toast hanging.
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
     if (toast.action.type === 'undo_delete') {

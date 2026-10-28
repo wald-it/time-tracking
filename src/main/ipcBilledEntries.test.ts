@@ -74,20 +74,14 @@ describe('P6c billed entries through IPC', () => {
   })
 
   it('exposes entry-wide billed state after correction, and clears it on release', async () => {
+    // Local times: the second segment starts at local midnight in any test time zone.
+    const at = (d: number, h: number): string => new Date(2026, 5, d, h).toISOString()
     seedEntry(db, {
       id: 2,
       client_id: 1,
       segments: [
-        {
-          started_at: '2026-06-30T21:00:00.000Z',
-          stopped_at: '2026-06-30T22:00:00.000Z',
-          segment_date: '2026-06-30'
-        },
-        {
-          started_at: '2026-06-30T22:00:00.000Z',
-          stopped_at: '2026-07-01T01:00:00.000Z',
-          segment_date: '2026-07-01'
-        }
+        { started_at: at(30, 23), stopped_at: at(31, 0), segment_date: '2026-06-30' },
+        { started_at: at(31, 0), stopped_at: at(31, 3), segment_date: '2026-07-01' }
       ]
     })
     const billed = await run()
