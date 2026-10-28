@@ -13,6 +13,7 @@ const client: Client = {
   active: 1,
   color: '#111',
   rate_cent: 0,
+  short_code: null,
   created_at: ''
 }
 const first: EntryVersion = {
