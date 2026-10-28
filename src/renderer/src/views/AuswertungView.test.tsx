@@ -31,6 +31,7 @@ function summary(over: Partial<AnalyticsSummary['month']> = {}): AnalyticsSummar
     month: {
       hours: 126 * H + 2 * 60 + 30, // 126:02:30 raw
       hoursRounded: 127 * H,
+      roundingRule: { kind: 'interval', minutes: 15 },
       hoursPrev: 118 * H + 45 * 60,
       revenue: 1_307_800,
       revenuePrev: 1_214_000,
@@ -117,13 +118,27 @@ function kpi(legend: string): HTMLElement {
 
 describe('AuswertungView — KPI row', () => {
   it('shows worked time raw, not the rounded sum, with the rounded sub-line from hoursRounded', async () => {
-    await setup({ roundMinutes: 15 })
+    await setup({ roundMinutes: 30 })
     const hours = kpi('Stunden')
     expect(within(hours).getByText('126:02')).toBeTruthy()
     expect(within(hours).queryByText('126:15')).toBeNull()
     await waitFor(() =>
       expect(within(hours).getByText('gerundet 127:00 h · 15-min-Takt')).toBeTruthy()
     )
+  })
+
+  it('names the minimum from the month instead of the global interval', async () => {
+    await setup({
+      roundMinutes: 15,
+      data: () => summary({ roundingRule: { kind: 'minimum', minutes: 30 } })
+    })
+    expect(within(kpi('Stunden')).getByText('gerundet 127:00 h · mind. 30 Min')).toBeTruthy()
+  })
+
+  it('names no rule for mixed month profiles', async () => {
+    await setup({ roundMinutes: 15, data: () => summary({ roundingRule: null }) })
+    expect(within(kpi('Stunden')).getByText('gerundet 127:00 h')).toBeTruthy()
+    expect(within(kpi('Stunden')).queryByText(/Takt/)).toBeNull()
   })
 
   it('has no rounded sub-line when hoursRounded is null', async () => {

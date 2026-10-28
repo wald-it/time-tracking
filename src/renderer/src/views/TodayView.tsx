@@ -20,7 +20,7 @@ import { QuickStart } from '../components/heute/QuickStart'
 import type { TFunction } from '../contexts/I18nContext'
 import { useT } from '../contexts/I18nContext'
 import { useNow } from '../contexts/NowContext'
-import { rowsBilledSeconds, uniformStepMin } from '../../../shared/entryMoney'
+import { rowsBilledSeconds, uniformRoundingRule } from '../../../shared/entryMoney'
 
 /**
  * `Heute` — the Messinstrument layout (HANDOFF §4.1):
@@ -120,8 +120,8 @@ export default function TodayView(): React.JSX.Element {
     () => (summary ? rowsBilledSeconds(summary.todayEntries, nowMs) : undefined),
     [summary, nowMs]
   )
-  const todayStepMin = useMemo(
-    () => (summary ? uniformStepMin(summary.todayEntries) : null),
+  const todayRoundingRule = useMemo(
+    () => (summary ? uniformRoundingRule(summary.todayEntries) : null),
     [summary]
   )
 
@@ -186,7 +186,7 @@ export default function TodayView(): React.JSX.Element {
             weekDaySeconds={weekDaySeconds}
             weekNumber={weekNumberOf(new Date(nowMs), weekStart)}
             todayIndex={todayIndex}
-            stepMin={todayStepMin}
+            roundingRule={todayRoundingRule}
             todayRoundedSeconds={todayRoundedSeconds}
           />
         ) : (

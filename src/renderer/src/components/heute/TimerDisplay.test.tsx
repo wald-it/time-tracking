@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
 import { TimerDisplay } from './TimerDisplay'
 import { I18nProvider } from '../../contexts/I18nContext'
 import type { Entry } from '../../../../shared/types'
+
+afterEach(cleanup)
 
 const T0 = Date.UTC(2026, 9, 21, 9, 0, 0)
 
@@ -42,8 +44,8 @@ describe('TimerDisplay rounding label', () => {
     expect(screen.getByText('Takt 15 min · gerundet 0:30 h')).toBeTruthy()
   })
 
-  it('names no step for a minimum unit and ignores the global setting', () => {
-    show(running({ interval_min: 0, min_unit_min: 15 }), T0 + 3 * 60000)
-    expect(screen.getByText('gerundet 0:15 h')).toBeTruthy()
+  it('names a pure minimum time', () => {
+    show(running({ interval_min: 0, min_unit_min: 30 }), T0 + 3 * 60000)
+    expect(screen.getByText('mind. 30 Min · gerundet 0:30 h')).toBeTruthy()
   })
 })

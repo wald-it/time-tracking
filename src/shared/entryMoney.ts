@@ -1,5 +1,5 @@
 import { billedMinutes } from './currency'
-import type { Entry } from './types'
+import type { Entry, RoundingRule } from './types'
 
 /**
  * What a reader of the view `entries` shows for the time and money of a row
@@ -67,16 +67,19 @@ export function rowsBilledSeconds(entries: Entry[], nowMs: number): number | und
 }
 
 /**
- * The interval to name in a "gerundet ... N-min-Takt" label: only when every
- * row has the same interval above 0 and none has a minimum unit. Otherwise
- * null, and the label says "gerundet" without claiming a uniform step.
+ * Name a rule only when every row shares a pure interval or a pure minimum.
+ * Mixed rules (including rows without rounding) leave the label unnamed.
  */
-export function uniformStepMin(entries: Entry[]): number | null {
+export function uniformRoundingRule(
+  entries: Pick<Entry, 'interval_min' | 'min_unit_min'>[]
+): RoundingRule | null {
   if (entries.length === 0) return null
   const step = entries[0].interval_min ?? 0
-  if (step <= 0) return null
+  const minimum = entries[0].min_unit_min ?? 0
   for (const e of entries) {
-    if ((e.interval_min ?? 0) !== step || (e.min_unit_min ?? 0) > 0) return null
+    if ((e.interval_min ?? 0) !== step || (e.min_unit_min ?? 0) !== minimum) return null
   }
-  return step
+  if (step > 0 && minimum === 0) return { kind: 'interval', minutes: step }
+  if (step === 0 && minimum > 0) return { kind: 'minimum', minutes: minimum }
+  return null
 }

@@ -1,5 +1,6 @@
 import { useT } from '../../contexts/I18nContext'
 import { formatHoursMinutes } from '../../../../shared/currency'
+import type { RoundingRule } from '../../../../shared/types'
 import { Readout } from './Readout'
 import { WeekMeter } from './WeekMeter'
 
@@ -15,7 +16,7 @@ export function SummaryColumn({
   weekDaySeconds,
   weekNumber,
   todayIndex,
-  stepMin,
+  roundingRule,
   todayRoundedSeconds
 }: {
   todaySeconds: number
@@ -23,8 +24,8 @@ export function SummaryColumn({
   weekDaySeconds: number[]
   weekNumber: number
   todayIndex: number
-  /** Interval to name in the sub-line, or null when the rows share no single step. */
-  stepMin: number | null
+  /** Rule to name in the sub-line, or null when the rows share no pure rule. */
+  roundingRule: RoundingRule | null
   /**
    * Today's total as the invoice bills it (the billed minutes of the rows).
    * Omitted ⇒ nothing rounds today and no sub-line is shown.
@@ -34,14 +35,19 @@ export function SummaryColumn({
   const t = useT()
   const roundedSub =
     todayRoundedSeconds !== undefined
-      ? stepMin !== null
+      ? roundingRule?.kind === 'interval'
         ? t('today.summary.rounded', {
             total: formatHoursMinutes(Math.floor(todayRoundedSeconds / 60)),
-            step: stepMin
+            step: roundingRule.minutes
           })
-        : t('today.summary.roundedOnly', {
-            total: formatHoursMinutes(Math.floor(todayRoundedSeconds / 60))
-          })
+        : roundingRule?.kind === 'minimum'
+          ? t('today.summary.minimum', {
+              total: formatHoursMinutes(Math.floor(todayRoundedSeconds / 60)),
+              min: roundingRule.minutes
+            })
+          : t('today.summary.roundedOnly', {
+              total: formatHoursMinutes(Math.floor(todayRoundedSeconds / 60))
+            })
       : undefined
 
   return (

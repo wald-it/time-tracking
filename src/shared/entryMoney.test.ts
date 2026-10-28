@@ -5,7 +5,7 @@ import {
   entryRounds,
   entryShownSeconds,
   rowsBilledSeconds,
-  uniformStepMin
+  uniformRoundingRule
 } from './entryMoney'
 
 const T0 = Date.UTC(2026, 9, 21, 9, 0, 0)
@@ -93,17 +93,30 @@ describe('rowsBilledSeconds', () => {
   })
 })
 
-describe('uniformStepMin', () => {
-  it('names the interval when every row has the same interval and no minimum unit', () => {
-    const a = row({ interval_min: 15, min_unit_min: 0 })
-    expect(uniformStepMin([a, row({ interval_min: 15, min_unit_min: 0 })])).toBe(15)
+describe('uniformRoundingRule', () => {
+  it('names a pure minimum shared by all rows', () => {
+    expect(
+      uniformRoundingRule([
+        { interval_min: 0, min_unit_min: 30 },
+        { interval_min: 0, min_unit_min: 30 }
+      ])
+    ).toEqual({ kind: 'minimum', minutes: 30 })
   })
 
-  it('names nothing for a minimum unit, mixed intervals, or a row without rounding', () => {
-    expect(uniformStepMin([row({ interval_min: 15, min_unit_min: 30 })])).toBeNull()
-    expect(uniformStepMin([row({ interval_min: 15 }), row({ interval_min: 10 })])).toBeNull()
-    expect(uniformStepMin([row({ interval_min: 15 }), row({ interval_min: 0 })])).toBeNull()
-    expect(uniformStepMin([row({ min_unit_min: 15, interval_min: 0 })])).toBeNull()
-    expect(uniformStepMin([])).toBeNull()
+  it('names the interval when every row has the same interval and no minimum unit', () => {
+    const a = row({ interval_min: 15, min_unit_min: 0 })
+    expect(uniformRoundingRule([a, row({ interval_min: 15, min_unit_min: 0 })])).toEqual({
+      kind: 'interval',
+      minutes: 15
+    })
+  })
+
+  it('names nothing for combined rules, mixed intervals, or a row without rounding', () => {
+    expect(uniformRoundingRule([row({ interval_min: 15, min_unit_min: 30 })])).toBeNull()
+    expect(uniformRoundingRule([row({ interval_min: 15 }), row({ interval_min: 10 })])).toBeNull()
+    expect(uniformRoundingRule([row({ interval_min: 15 }), row({ interval_min: 0 })])).toBeNull()
+    expect(uniformRoundingRule([row({ min_unit_min: 30 }), row({ min_unit_min: 15 })])).toBeNull()
+    expect(uniformRoundingRule([row({ min_unit_min: 30 }), row({})])).toBeNull()
+    expect(uniformRoundingRule([])).toBeNull()
   })
 })

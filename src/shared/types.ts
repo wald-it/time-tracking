@@ -489,6 +489,8 @@ export interface LicenseEntry {
 
 // ── Analytics (v1.10 #93) ─────────────────────────────────────────────────
 
+export type RoundingRule = { kind: 'interval' | 'minimum'; minutes: number }
+
 export interface AnalyticsSummary {
   month: {
     /** Worked seconds in the selected month (raw, owner decision 2026-10-22). */
@@ -498,6 +500,8 @@ export interface AnalyticsSummary {
      * "gerundet … h" sub-line. null when no rounding step is set.
      */
     hoursRounded: number | null
+    /** Uniform pure interval or minimum of the month's completed segments, else null. */
+    roundingRule: RoundingRule | null
     /** Worked seconds in the comparison period (see `comparison`). */
     hoursPrev: number
     /** Total revenue in cents for the selected month. */
