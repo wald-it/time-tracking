@@ -12,6 +12,10 @@
  * the baseline tree stays untouched. It imports only 1.x production code.
  * PERF_DB is the closed seed file; PERF_BASELINE_JSON is its measured report.
  * Baselines are machine-specific; never commit them or generated databases.
+ *
+ * Bounds (owner, 2026-10-28): Auswertung at most 20% over v1.23.2; the month
+ * view under MONTH_VIEW_MAX_MS absolute, because its per-row money columns
+ * have no 1.x counterpart (factor about 10 after migration 034, at ~14 ms).
  */
 import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -24,6 +28,9 @@ import { runMigrations } from '../migrations/runner'
 import { migrations } from '../migrations'
 import { monthEntries } from '../entryRanges'
 import { buildAnalyticsSummary } from '../analyticsHandlers'
+
+/** Absolute bound for the month view's median; kept out of PERF so old baselines stay valid. */
+const MONTH_VIEW_MAX_MS = 50
 
 vi.mock('electron', async () => {
   const { mkdtempSync } = await import('node:fs')
@@ -139,22 +146,25 @@ it('gates month view and Auswertung against v1.23.2 (+20% maximum)', async () =>
   process.stdout.write(
     `\nP7: ${PERF.entries} entries; ${current.contract.year}-${current.contract.month}; now=${PERF.now}; warmup=${PERF.warmup}; N=${PERF.runs}; limit=${PERF.limit.toFixed(2)}\n`
   )
-  const ratios: number[] = []
+  const verdicts: boolean[] = []
   for (const name of ['monthEntries', 'buildAnalyticsSummary'] as const) {
     const before = baseline.medians[name]
     expect(Number.isFinite(before) && before > 0, `Invalid baseline for ${name}`).toBe(true)
     const after = current.medians[name]
     const ratio = after / before
-    ratios.push(ratio)
+    const pass = name === 'monthEntries' ? after < MONTH_VIEW_MAX_MS : ratio <= PERF.limit
+    const bound =
+      name === 'monthEntries' ? `< ${MONTH_VIEW_MAX_MS} ms` : `ratio <= ${PERF.limit.toFixed(2)}`
+    verdicts.push(pass)
     process.stdout.write(
-      `${name}: v1.23.2=${before.toFixed(3)} ms; 2.0=${after.toFixed(3)} ms; ratio=${ratio.toFixed(3)}; ${ratio <= PERF.limit ? 'PASS' : 'FAIL'}\n`
+      `${name}: v1.23.2=${before.toFixed(3)} ms; 2.0=${after.toFixed(3)} ms; ratio=${ratio.toFixed(3)}; bound ${bound}; ${pass ? 'PASS' : 'FAIL'}\n`
     )
   }
   const report = join(mkdtempSync(join(tmpdir(), 'tt-perf-report-')), 'comparison.json')
   writeFileSync(report, JSON.stringify({ baseline, current }, null, 2))
   process.stdout.write(`Report: ${report}\n`)
   expect(
-    ratios.every((ratio) => ratio <= PERF.limit),
-    'Performance exceeds v1.23.2 by more than 20%'
+    verdicts.every(Boolean),
+    `Month view must stay under ${MONTH_VIEW_MAX_MS} ms, Auswertung within 20% of v1.23.2`
   ).toBe(true)
 })
