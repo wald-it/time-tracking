@@ -59,6 +59,8 @@ import {
 import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
+import { readRates, saveRate, deleteRate, readProfile, saveProfile } from './rateEditor'
+import type { RateTarget, SaveRateInput, ProfileFields } from '../shared/rateEditor'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { budgetUsedMinutesSql } from '../shared/currency'
 import {
@@ -164,6 +166,45 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+  ipcMain.handle('rates:list', (_e, target: RateTarget) => {
+    try {
+      return ok(readRates(db, target))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('rates:save', (_e, target: RateTarget, input: SaveRateInput) => {
+    try {
+      const result = saveRate(db, target, input)
+      hooks.refreshTrayClients()
+      return ok(result)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('rates:delete', (_e, target: RateTarget, id: number) => {
+    try {
+      const result = deleteRate(db, target, id)
+      hooks.refreshTrayClients()
+      return ok(result)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-profile:get', (_e, target: RateTarget) => {
+    try {
+      return ok(readProfile(db, target))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-profile:save', (_e, target: RateTarget, fields: ProfileFields) => {
+    try {
+      return ok(saveProfile(db, target, fields))
+    } catch (e) {
+      return fail(e)
+    }
+  })
   // Native dialogs, file names and cancel texts follow the app language
   // (#270, #296). Never throws (mainI18n.appLocale): with the handle closed
   // after a restore attempt, the language last read in this run, the same

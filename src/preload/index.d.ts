@@ -1,5 +1,12 @@
 import type { BillingRunSummary } from '../main/billingRuns'
 import type {
+  RateTarget,
+  RateEditorData,
+  SaveRateInput,
+  ProfileFields,
+  ProfileEditorData
+} from '../shared/rateEditor'
+import type {
   Client,
   Entry,
   EntryVersion,
@@ -31,6 +38,15 @@ import type { FilterOptions, MappedEvents } from '../shared/graphCalendar'
 declare global {
   interface Window {
     api: {
+      rates: {
+        list(target: RateTarget): Promise<IpcResult<RateEditorData>>
+        save(target: RateTarget, input: SaveRateInput): Promise<IpcResult<RateEditorData>>
+        delete(target: RateTarget, id: number): Promise<IpcResult<RateEditorData>>
+      }
+      billingProfile: {
+        get(target: RateTarget): Promise<IpcResult<ProfileEditorData>>
+        save(target: RateTarget, fields: ProfileFields): Promise<IpcResult<ProfileEditorData>>
+      }
       tray: {
         update(
           isRunning: boolean,

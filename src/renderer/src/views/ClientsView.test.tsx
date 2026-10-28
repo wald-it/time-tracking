@@ -8,12 +8,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import ClientsView from './ClientsView'
 import { I18nProvider } from '../contexts/I18nContext'
 import type { Client, Project } from '../../../shared/types'
 import { useClientsStore } from '../store/clientsStore'
+import { RATE_EDITOR_CONFLICT_ERROR } from '../../../shared/rateEditor'
 
 afterEach(cleanup)
 
@@ -64,6 +65,44 @@ const PROJECTS: Project[] = [
 
 beforeEach(() => {
   ;(window as unknown as { api: unknown }).api = {
+    rates: {
+      list: vi.fn().mockResolvedValue({
+        ok: true,
+        data: {
+          rows: [{ id: 1, valid_from: '0001-01-01', rate_cent: 6000 }],
+          current_rate_cent: 6000
+        }
+      }),
+      save: vi.fn().mockResolvedValue({
+        ok: true,
+        data: {
+          rows: [
+            { id: 1, valid_from: '0001-01-01', rate_cent: 6000 },
+            { id: 2, valid_from: '2020-01-01', rate_cent: 9000 }
+          ],
+          current_rate_cent: 9000
+        }
+      }),
+      delete: vi.fn().mockResolvedValue({ ok: true, data: { rows: [], current_rate_cent: null } })
+    },
+    billingProfile: {
+      get: vi.fn().mockResolvedValue({
+        ok: true,
+        data: {
+          interval_min: 15,
+          min_unit_min: 30,
+          inherited: { interval_min: 5, min_unit_min: 0 }
+        }
+      }),
+      save: vi.fn().mockResolvedValue({
+        ok: true,
+        data: {
+          interval_min: null,
+          min_unit_min: null,
+          inherited: { interval_min: 5, min_unit_min: 0 }
+        }
+      })
+    },
     clients: { getAll: async () => ({ ok: true as const, data: CLIENTS }) },
     projects: {
       getAll: async ({ clientId }: { clientId: number }) => ({
@@ -176,6 +215,139 @@ async function renderView(): Promise<void> {
   )
   await act(async () => {})
 }
+
+describe('ClientsView billing editors', () => {
+  async function openEditor(project = false): Promise<void> {
+    await renderView()
+    if (project) {
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole('button', { name: /Projekte anzeigen/ })[0])
+      })
+    }
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: project ? 'Bearbeiten: Rollout' : 'Bearbeiten: Acme' })
+      )
+    })
+  }
+
+  it('shows the rate table and sends a past date, then updates the old field', async () => {
+    await openEditor()
+    const section = within(screen.getByRole('region', { name: 'Sätze' }))
+    expect(section.getByRole('table')).toHaveTextContent('0001-01-01')
+    expect(section.getByRole('table')).toHaveTextContent('60,00')
+    expect(section.getByRole('button', { name: 'Satz ab 0001-01-01 löschen' })).toBeDisabled()
+    fireEvent.change(section.getByLabelText('Gültig ab'), { target: { value: '2020-01-01' } })
+    fireEvent.change(section.getByLabelText('Satz €/h'), { target: { value: '90' } })
+    await act(async () => {
+      fireEvent.click(section.getByRole('button', { name: 'Zeile hinzufügen' }))
+    })
+    expect(window.api.rates.save).toHaveBeenCalledWith(
+      { kind: 'client', id: 1 },
+      { valid_from: '2020-01-01', rate_cent: 9000, id: undefined }
+    )
+    expect(screen.getByLabelText('Stundensatz (€/h)')).toHaveValue('90,00')
+    expect(section.getByRole('table')).toHaveTextContent('2020-01-01')
+  })
+
+  it('edits the baseline rate with its date locked and deletes another row', async () => {
+    await openEditor()
+    const section = within(screen.getByRole('region', { name: 'Sätze' }))
+    fireEvent.click(section.getByRole('button', { name: 'Satz ab 0001-01-01 ändern' }))
+    expect(section.getByLabelText('Gültig ab')).toBeDisabled()
+    fireEvent.change(section.getByLabelText('Satz €/h'), { target: { value: '90' } })
+    await act(async () => {
+      fireEvent.click(section.getByRole('button', { name: 'Zeile speichern' }))
+    })
+    expect(window.api.rates.save).toHaveBeenCalledWith(
+      { kind: 'client', id: 1 },
+      { id: 1, valid_from: '0001-01-01', rate_cent: 9000 }
+    )
+    await act(async () => {
+      fireEvent.click(section.getByRole('button', { name: 'Satz ab 2020-01-01 löschen' }))
+    })
+    expect(window.api.rates.delete).toHaveBeenCalledWith({ kind: 'client', id: 1 }, 2)
+  })
+
+  it('saves a rate on Enter without submitting the surrounding client form', async () => {
+    const update = vi.fn()
+    window.api.clients.update = update
+    await openEditor()
+    const section = within(screen.getByRole('region', { name: 'Sätze' }))
+    fireEvent.change(section.getByLabelText('Gültig ab'), { target: { value: '2020-01-01' } })
+    const rate = section.getByLabelText('Satz €/h')
+    fireEvent.change(rate, { target: { value: '90' } })
+    await act(async () => {
+      fireEvent.keyDown(rate, { key: 'Enter' })
+    })
+    expect(window.api.rates.save).toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+
+  it('sends NULL for the project client-rate option and clears the old field', async () => {
+    vi.mocked(window.api.rates.save).mockResolvedValue({
+      ok: true,
+      data: {
+        rows: [{ id: 2, valid_from: '2020-01-01', rate_cent: null }],
+        current_rate_cent: null
+      }
+    })
+    await openEditor(true)
+    const section = within(screen.getByRole('region', { name: 'Sätze' }))
+    fireEvent.change(section.getByLabelText('Gültig ab'), { target: { value: '2020-01-01' } })
+    fireEvent.click(section.getByLabelText('Kundensatz'))
+    await act(async () => {
+      fireEvent.click(section.getByRole('button', { name: 'Zeile hinzufügen' }))
+    })
+    expect(window.api.rates.save).toHaveBeenCalledWith(
+      { kind: 'project', id: 10 },
+      { valid_from: '2020-01-01', rate_cent: null, id: undefined }
+    )
+    expect(section.getByRole('table')).toHaveTextContent('Kundensatz')
+    expect(screen.getByLabelText('Stundensatz (€/h)')).toHaveValue('')
+  })
+
+  it.each([false, true])(
+    'sends NULL for blank profile fields and shows inherited placeholders (project=%s)',
+    async (project) => {
+      await openEditor(project)
+      const section = within(screen.getByRole('region', { name: 'Abrechnung' }))
+      fireEvent.change(section.getByLabelText('Takt (Minuten)'), { target: { value: '' } })
+      fireEvent.change(section.getByLabelText('Mindestzeit (Minuten)'), { target: { value: '' } })
+      expect(section.getByLabelText('Takt (Minuten)')).toHaveAttribute('placeholder', '5')
+      expect(section.getByLabelText('Mindestzeit (Minuten)')).toHaveAttribute('placeholder', '0')
+      await act(async () => {
+        fireEvent.click(section.getByRole('button', { name: 'Abrechnung speichern' }))
+      })
+      expect(window.api.billingProfile.save).toHaveBeenCalledWith(
+        { kind: project ? 'project' : 'client', id: project ? 10 : 1 },
+        { interval_min: null, min_unit_min: null }
+      )
+    }
+  )
+
+  it.each([false, true])(
+    'shows the legacy-field conflict as translated field text and keeps the form open (project=%s)',
+    async (project) => {
+      const save = vi
+        .fn()
+        .mockResolvedValue({ ok: false, error: 'SqliteError: ' + RATE_EDITOR_CONFLICT_ERROR })
+      if (project) window.api.projects.update = save
+      else window.api.clients.update = save
+      await openEditor(project)
+      fireEvent.change(screen.getByLabelText('Stundensatz (€/h)'), { target: { value: '100' } })
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+      })
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Für heute gibt es eine Satzzeile. Bitte den Satz unter Sätze ändern.'
+      )
+      expect(screen.getByLabelText('Stundensatz (€/h)')).toHaveAttribute('aria-invalid', 'true')
+      expect(screen.getByRole('dialog')).toBeTruthy()
+    }
+  )
+})
 
 describe('ClientsView — focus returns to the opener', () => {
   it('"Neuer Kunde" open and closed: focus is back on the key', async () => {
