@@ -28,7 +28,8 @@ import {
   stopEntry,
   deleteEntry,
   undeleteEntry,
-  heartbeat
+  heartbeat,
+  listEntryVersions
 } from './entryMutations'
 import { deleteClientGuarded, deleteProjectGuarded } from './masterDataDelete'
 import { emitWebhooks } from './webhooks'
@@ -72,6 +73,7 @@ import {
 import type {
   Client,
   Entry,
+  EntryVersion,
   Project,
   CreateClientInput,
   UpdateClientInput,
@@ -370,6 +372,15 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           )
           .get() as Entry) ?? null
       return ok(row)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
+  ipcMain.handle('entries:versions', (_e, id: number): IpcResult<EntryVersion[]> => {
+    try {
+      if (!Number.isSafeInteger(id) || id <= 0) return fail(new Error('Ungültige Eintrag-ID'))
+      return ok(listEntryVersions(db, id))
     } catch (e) {
       return fail(e)
     }

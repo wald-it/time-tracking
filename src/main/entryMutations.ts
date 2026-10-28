@@ -30,6 +30,7 @@ import { splitAtMidnight } from '../shared/midnightSplit'
 import { localDateKey } from '../shared/dateRanges'
 import type {
   Entry,
+  EntryVersion,
   CreateEntryInput,
   CreateManualEntryInput,
   UpdateEntryInput,
@@ -286,6 +287,27 @@ export function readEntry(db: Db, id: number): EntryView | null {
     segments,
     billed: activeRunNumbers(db, id).length > 0
   }
+}
+
+/** Read-only history for the app. Like readEntry/monthEntries it includes private_note. */
+export function listEntryVersions(db: Db, entryId: number): EntryVersion[] {
+  const rows = db
+    .prepare(
+      `SELECT id AS version_id, version_no, state, deleted, written_at, source, reason,
+            client_id, project_id, description, started_at, stopped_at, tags, reference,
+            billable, private_note
+       FROM entry_version WHERE entry_id = ? ORDER BY version_no`
+    )
+    .all(entryId) as Array<Omit<EntryVersion, 'deleted' | 'segments'> & { deleted: number }>
+  const segments = db.prepare(
+    `SELECT seq, segment_date, started_at, stopped_at FROM entry_segment
+      WHERE version_id = ? ORDER BY seq`
+  )
+  return rows.map((row) => ({
+    ...row,
+    deleted: row.deleted === 1,
+    segments: segments.all(row.version_id) as EntryVersion['segments']
+  }))
 }
 
 /**

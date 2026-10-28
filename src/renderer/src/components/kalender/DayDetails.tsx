@@ -9,6 +9,7 @@ import { useEntriesStore } from '../../store/entriesStore'
 import { useToastStore } from '../../store/toastStore'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { EntryEditForm } from '../EntryEditForm'
+import { EntryHistory } from './EntryHistory'
 import { useLocale, useT } from '../../contexts/I18nContext'
 import type { TFunction } from '../../contexts/I18nContext'
 
@@ -338,6 +339,12 @@ export function DayDetails({
                       ))}
                     </div>
                   )}
+                  <EntryHistory
+                    entryId={e.id}
+                    versionNo={e.version_no}
+                    clients={clients}
+                    projects={projects}
+                  />
                 </div>
                 <div className="flex flex-none items-start">
                   <button

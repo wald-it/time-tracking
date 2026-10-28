@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Client,
   Entry,
+  EntryVersion,
   Project,
   CreateClientInput,
   UpdateClientInput,
@@ -124,6 +125,8 @@ const api = {
   },
   // Entries
   entries: {
+    versions: (id: number): Promise<IpcResult<EntryVersion[]>> =>
+      ipcRenderer.invoke('entries:versions', id),
     start: (input: CreateEntryInput): Promise<IpcResult<Entry>> =>
       ipcRenderer.invoke('entries:start', input),
     // B1: stop the running entry and start this one at ONE instant.

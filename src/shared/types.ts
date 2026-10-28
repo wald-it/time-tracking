@@ -93,6 +93,32 @@ export interface Entry {
   segment_date?: string
 }
 
+/** One stored version, as exposed to the app renderer (including its internal note). */
+export interface EntryVersion {
+  version_id: number
+  version_no: number
+  state: 'open' | 'sealed'
+  deleted: boolean
+  written_at: string
+  source: string
+  reason: string | null
+  client_id: number
+  project_id: number | null
+  description: string
+  started_at: string
+  stopped_at: string | null
+  tags: string
+  reference: string
+  billable: number
+  private_note: string
+  segments: Array<{
+    seq: number
+    segment_date: string
+    started_at: string
+    stopped_at: string | null
+  }>
+}
+
 // ── Projects (v1.9 #75) ───────────────────────────────────────────────────
 
 export interface Project {
