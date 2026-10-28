@@ -28,6 +28,56 @@ export function mulberry32(seed: number): () => number {
   }
 }
 
+/** P7 volume fixture: exactly `count` rows over working days in 2023–2026. */
+export function generatePerformanceLegacyDb(
+  db: Database.Database,
+  seed: number,
+  count: number
+): number {
+  // Reuse the clients, projects and seeded content, but replace the original
+  // two-month, defect-heavy distribution with ordinary short work sessions.
+  const generated = generateLegacyDb(db, seed)
+  const templates = generated.rows.filter((r) => !r.link_id && r.stopped_at && !r.deleted_at)
+  db.exec('DELETE FROM entries')
+  db.prepare("UPDATE settings SET value = '15' WHERE key = 'pdf_round_minutes'").run()
+  const days: Date[] = []
+  for (
+    const day = new Date(2023, 0, 2);
+    day < new Date(2026, 9, 28);
+    day.setDate(day.getDate() + 1)
+  ) {
+    if (day.getDay() !== 0 && day.getDay() !== 6) days.push(new Date(day))
+  }
+  const random = mulberry32(seed)
+  const insert = db.prepare(`
+    INSERT INTO entries (id, client_id, project_id, description, started_at, stopped_at,
+      created_at, deleted_at, tags, reference, billable, private_note)
+    VALUES (@id, @client_id, @project_id, @description, @started_at, @stopped_at,
+      @created_at, @deleted_at, @tags, @reference, @billable, @private_note)
+  `)
+  db.transaction(() => {
+    for (let i = 0; i < count; i++) {
+      const content = templates[Math.floor(random() * templates.length)]
+      const day = days[i % days.length]
+      const midnight = random() < 0.02
+      const start = new Date(day)
+      start.setHours(midnight ? 23 : 7, midnight ? 45 : Math.floor(random() * 600), 0, 0)
+      const end = new Date(
+        start.getTime() + (midnight ? 45 : 5 + Math.floor(random() * 16)) * 60000
+      )
+      insert.run({
+        ...content,
+        id: i + 1,
+        started_at: start.toISOString(),
+        stopped_at: end.toISOString(),
+        created_at: start.toISOString(),
+        deleted_at: random() < 0.05 ? new Date(end.getTime() + 86400000).toISOString() : null
+      })
+    }
+  })()
+  return days.length
+}
+
 /** One 1.x row as the generator wrote it. */
 export interface LegacyRow {
   id: number
