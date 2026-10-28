@@ -182,6 +182,7 @@ export default function ClientsView(): React.JSX.Element {
   // Updates leave out the list copy of the rate: it may lag a due editor row,
   // and the main process would write it back (P6e, owner decision C).
   async function handleToggleActive({ rate_cent: _rate, ...client }: Client): Promise<void> {
+    void _rate
     await window.api.clients.update({ ...client, active: client.active ? 0 : 1 })
     await loadClients()
     bumpClientsVersion()
@@ -202,6 +203,7 @@ export default function ClientsView(): React.JSX.Element {
   }): Promise<string | null> {
     if (editingClient) {
       const { rate_cent: _rate, ...client } = editingClient
+      void _rate
       const input: UpdateClientInput = { ...client, ...data }
       const res = await window.api.clients.update(input)
       if (!res.ok) return res.error.replace(/^(?:Sqlite)?Error:\s*/, '')
@@ -243,6 +245,7 @@ export default function ClientsView(): React.JSX.Element {
     if (!projectFormClientId && projectFormClientId !== 0) return null
     if (editingProject) {
       const { rate_cent: _rate, ...project } = editingProject
+      void _rate
       const input: UpdateProjectInput = {
         ...project,
         ...data,
