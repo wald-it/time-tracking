@@ -234,9 +234,10 @@ describe('ClientsView billing editors', () => {
   it('shows the rate table and sends a past date, then updates the old field', async () => {
     await openEditor()
     const section = within(screen.getByRole('region', { name: 'Sätze' }))
-    expect(section.getByRole('table')).toHaveTextContent('0001-01-01')
+    expect(section.getByRole('table')).toHaveTextContent('seit Beginn')
+    expect(section.getByRole('table')).not.toHaveTextContent('0001-01-01')
     expect(section.getByRole('table')).toHaveTextContent('60,00')
-    expect(section.getByRole('button', { name: 'Satz ab 0001-01-01 löschen' })).toBeDisabled()
+    expect(section.getByRole('button', { name: 'Satz seit Beginn löschen' })).toBeDisabled()
     fireEvent.change(section.getByLabelText('Gültig ab'), { target: { value: '2020-01-01' } })
     fireEvent.change(section.getByLabelText('Satz €/h'), { target: { value: '90' } })
     await act(async () => {
@@ -253,8 +254,9 @@ describe('ClientsView billing editors', () => {
   it('edits the baseline rate with its date locked and deletes another row', async () => {
     await openEditor()
     const section = within(screen.getByRole('region', { name: 'Sätze' }))
-    fireEvent.click(section.getByRole('button', { name: 'Satz ab 0001-01-01 ändern' }))
+    fireEvent.click(section.getByRole('button', { name: 'Satz seit Beginn ändern' }))
     expect(section.getByLabelText('Gültig ab')).toBeDisabled()
+    expect(section.getByLabelText('Gültig ab')).toHaveValue('0001-01-01')
     fireEvent.change(section.getByLabelText('Satz €/h'), { target: { value: '90' } })
     await act(async () => {
       fireEvent.click(section.getByRole('button', { name: 'Zeile speichern' }))

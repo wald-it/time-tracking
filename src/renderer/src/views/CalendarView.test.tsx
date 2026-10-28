@@ -508,7 +508,7 @@ describe('CalendarView — totals', () => {
     expect(total.getAttribute('title')).toBe('gerundet 0:15 h · 15-min-Takt')
   })
 
-  it('names no step in the tooltip when a minimum unit lifts the day', async () => {
+  it('names the minimum in the tooltip when a minimum unit lifts the day', async () => {
     useSettingsStore.setState({ settings: { pdf_round_minutes: '15' } as unknown as never })
     const lifted = [
       priced(
@@ -520,7 +520,7 @@ describe('CalendarView — totals', () => {
     ]
     await setup({ byMonth: { '2026-8': lifted } })
     const total = within(cell('2026-08-10')).getByTestId('day-total')
-    expect(total.getAttribute('title')).toBe('gerundet 0:15 h')
+    expect(total.getAttribute('title')).toBe('gerundet 0:15 h · mind. 15 Min')
   })
 
   it('a mixed day sums billed minutes throughout and names no step', async () => {

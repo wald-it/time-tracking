@@ -76,6 +76,57 @@ describe('buildAnalyticsSummary', () => {
 
   // ── 1. Month stats happy path ────────────────────────────────────────────
 
+  it.each([
+    { interval: 0, minimum: 30, rule: { kind: 'minimum', minutes: 30 } },
+    { interval: 15, minimum: 0, rule: { kind: 'interval', minutes: 15 } },
+    { interval: 15, minimum: 30, rule: null }
+  ])(
+    'derives the month rule from the client profile: $interval / $minimum',
+    ({ interval, minimum, rule }) => {
+      db.prepare(
+        `INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', '60')`
+      ).run()
+      db.prepare(
+        'INSERT INTO billing_profile (client_id, interval_min, min_unit_min) VALUES (1, ?, ?)'
+      ).run(interval, minimum)
+      addEntry(db, {
+        client_id: 1,
+        started_at: '2025-04-10T08:00:00.000Z',
+        stopped_at: '2025-04-10T08:03:00.000Z'
+      })
+      // Other months and an open segment must not influence the selected month's rule.
+      addEntry(db, {
+        client_id: 2,
+        started_at: '2025-03-10T08:00:00.000Z',
+        stopped_at: '2025-03-10T08:03:00.000Z'
+      })
+      seedEntry(db, { client_id: 2, started_at: '2025-04-11T08:00:00.000Z', stopped_at: null })
+      const res = buildAnalyticsSummary(db, { year: 2025, month: 4 })
+      expect(res.ok).toBe(true)
+      if (!res.ok) return
+      expect(res.data.month.roundingRule).toEqual(rule)
+      expect(res.data.month.hoursRounded).toBe((minimum || interval) * 60)
+    }
+  )
+
+  it('names no rule for two clients with different intervals in the month', () => {
+    db.prepare(
+      'INSERT INTO billing_profile (client_id, interval_min, min_unit_min) VALUES (1, 15, 0), (2, 30, 0)'
+    ).run()
+    for (const client_id of [1, 2]) {
+      addEntry(db, {
+        client_id,
+        started_at: '2025-04-10T08:00:00.000Z',
+        stopped_at: '2025-04-10T08:03:00.000Z'
+      })
+    }
+    const res = buildAnalyticsSummary(db, { year: 2025, month: 4 })
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.data.month.roundingRule).toBeNull()
+    expect(res.data.month.hoursRounded).toBe(45 * 60)
+  })
+
   it('returns correct hours and revenue for selected month', () => {
     // 2 hours for Acme (rate 85 €/h) in April 2025
     addEntry(db, {
@@ -104,6 +155,7 @@ describe('buildAnalyticsSummary', () => {
     if (!res.ok) return
 
     expect(res.data.month.hasData).toBe(false)
+    expect(res.data.month.roundingRule).toBeNull()
     expect(res.data.month.hours).toBe(0)
     expect(res.data.month.revenue).toBe(0)
   })

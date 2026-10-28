@@ -19,7 +19,7 @@ import { formatHm, type DayRange } from '../components/heute/dayScaleLayout'
 import { MiniDayScale } from '../components/kalender/MiniDayScale'
 import { BilledChip } from '../components/BilledChip'
 import { dayBilledSeconds, dayRevenueCent } from '../components/kalender/dayRevenue'
-import { uniformStepMin } from '../../../shared/entryMoney'
+import { uniformRoundingRule } from '../../../shared/entryMoney'
 import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
 
 /**
@@ -534,7 +534,7 @@ function Week({
         // One rounding rule (HANDOFF §2.2): the billed minutes of the view, like the invoice.
         const roundedSeconds = dayBilledSeconds(dayEntries, nowMs)
         const revenueCent = dayRevenueCent(dayEntries)
-        const step = uniformStepMin(dayEntries)
+        const rule = uniformRoundingRule(dayEntries)
         const date = dateFmt.format(day)
         // The amount is part of the label: narrow cells hide the euro line.
         const ariaLabel =
@@ -598,9 +598,17 @@ function Week({
                     style={{ color: 'var(--ink2)' }}
                     title={
                       roundedSeconds !== totalSeconds
-                        ? step !== null
-                          ? t('today.summary.rounded', { total: formatHm(roundedSeconds), step })
-                          : t('today.summary.roundedOnly', { total: formatHm(roundedSeconds) })
+                        ? rule?.kind === 'interval'
+                          ? t('today.summary.rounded', {
+                              total: formatHm(roundedSeconds),
+                              step: rule.minutes
+                            })
+                          : rule?.kind === 'minimum'
+                            ? t('today.summary.minimum', {
+                                total: formatHm(roundedSeconds),
+                                min: rule.minutes
+                              })
+                            : t('today.summary.roundedOnly', { total: formatHm(roundedSeconds) })
                         : undefined
                     }
                   >

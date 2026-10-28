@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { anyRateConfigured, roundingConfigured } from '../shared/billingProfile'
+import { uniformRoundingRule } from '../shared/entryMoney'
 import type Database from 'better-sqlite3'
 import type { IpcResult, MonthQuery, AnalyticsSummary } from '../shared/types'
 
@@ -95,6 +96,13 @@ export function buildAnalyticsSummary(
         billed_sec: number
       }
 
+      const monthSourceSql = `
+        FROM billing_lines e
+        JOIN clients c ON c.id = e.client_id
+        LEFT JOIN projects p ON p.id = e.project_id
+        WHERE e.stopped_at IS NOT NULL
+          AND substr(e.segment_date, 1, 7) = ?
+          AND CAST(substr(e.segment_date, 9, 2) AS INTEGER) <= ?`
       const monthSql = `
         SELECT
           COALESCE(SUM(
@@ -109,12 +117,7 @@ export function buildAnalyticsSummary(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS revenue_cent,
           COALESCE(SUM(${BILLED_SEC}), 0) AS billed_sec
-        FROM billing_lines e
-        JOIN clients c ON c.id = e.client_id
-        LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.stopped_at IS NOT NULL
-          AND substr(e.segment_date, 1, 7) = ?
-          AND CAST(substr(e.segment_date, 9, 2) AS INTEGER) <= ?`
+        ${monthSourceSql}`
 
       // Days in selected month + days elapsed (for current month ETA)
       const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month
@@ -129,6 +132,9 @@ export function buildAnalyticsSummary(
 
       const mCur = db.prepare(monthSql).get(selMonthKey, 31) as MonthRow
       const mPrev = db.prepare(monthSql).get(prevMonthKey, prevPeriodDays) as MonthRow
+      const monthProfiles = db
+        .prepare(`SELECT DISTINCT e.interval_min, e.min_unit_min ${monthSourceSql}`)
+        .all(selMonthKey, 31) as { interval_min: number; min_unit_min: number }[]
 
       // A sub-second entry has no whole second of hours but bills a minute.
       const hasData = (mCur.total_sec ?? 0) > 0 || (mCur.revenue_cent ?? 0) > 0
@@ -332,6 +338,7 @@ export function buildAnalyticsSummary(
         month: {
           hours: Math.round(totalSec),
           hoursRounded: roundingConfigured(db) ? Math.round(mCur.billed_sec ?? 0) : null,
+          roundingRule: uniformRoundingRule(monthProfiles),
           hoursPrev: Math.round(mPrev.total_sec ?? 0),
           revenue: Math.round(mCur.revenue_cent ?? 0),
           revenuePrev: Math.round(mPrev.revenue_cent ?? 0),

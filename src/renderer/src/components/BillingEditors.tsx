@@ -190,7 +190,9 @@ export function BillingEditors({
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.id} className="border-b border-[var(--line)]">
-                      <td className="font-num">{row.valid_from}</td>
+                      <td className="font-num">
+                        {row.valid_from === '0001-01-01' ? t('rates.fromStart') : row.valid_from}
+                      </td>
                       <td className="font-num">
                         {row.rate_cent === null
                           ? t('rates.clientRate')
@@ -204,7 +206,11 @@ export function BillingEditors({
                           <button
                             type="button"
                             className={`${KEY} px-2`}
-                            aria-label={t('rates.editRow', { date: row.valid_from })}
+                            aria-label={
+                              row.valid_from === '0001-01-01'
+                                ? t('rates.editFromStart')
+                                : t('rates.editRow', { date: row.valid_from })
+                            }
                             onClick={() => {
                               setEditing(row.id)
                               setDate(row.valid_from)
@@ -220,7 +226,11 @@ export function BillingEditors({
                           <button
                             type="button"
                             className={`${KEY} px-2`}
-                            aria-label={t('rates.deleteRow', { date: row.valid_from })}
+                            aria-label={
+                              row.valid_from === '0001-01-01'
+                                ? t('rates.deleteFromStart')
+                                : t('rates.deleteRow', { date: row.valid_from })
+                            }
                             disabled={
                               target.kind === 'client' &&
                               (row.valid_from === '0001-01-01' || rows.length <= 1)
