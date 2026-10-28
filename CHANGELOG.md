@@ -24,6 +24,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Changed
 
+- **2.0: the month view and Auswertung load faster on large databases.** Migration 034 adds indexes on the current version of an entry and on segment start and date; results are unchanged. With 50 000 entries the month view takes about 14 ms instead of 42 ms and Auswertung about 155 ms instead of 190 ms.
 - **2.0: rounding labels name a minimum time.** When every row rounds by the same minimum time and no interval, Heute, the calendar, the timer and Auswertung say "mind. 30 Min" instead of naming no rule. Auswertung now takes the rule from the profiles of the month's segments instead of the global interval setting. The first rate row of a client reads "seit Beginn" instead of `0001-01-01`.
 - **2.0: entries in the calendar day panel show their version history**, with field changes, source and reason, grouping additions within five minutes of capture under an expandable row.
 
