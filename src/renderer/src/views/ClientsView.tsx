@@ -915,6 +915,7 @@ function ClientFormModal({
   const [color, setColor] = useState(client?.color ?? CLIENT_COLORS[0])
   const [rateInput, setRateInput] = useState(() => formatRateInput(client?.rate_cent ?? 0))
   const [isSaving, setIsSaving] = useState(false)
+  const [billingBusy, setBillingBusy] = useState(false)
   const [error, setError] = useState('')
   const [rateError, setRateError] = useState('')
   // v1.11 #94 — Stammdaten
@@ -942,6 +943,7 @@ function ClientFormModal({
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
+    if (billingBusy) return
     const trimmed = name.trim()
     if (!trimmed) {
       setError(t('clients.form.nameRequired'))
@@ -1103,6 +1105,8 @@ function ClientFormModal({
         </p>
         <BillingEditors
           target={client ? { kind: 'client', id: client.id } : null}
+          disabled={isSaving}
+          onBusyChange={setBillingBusy}
           onRateSaved={(rate) => {
             setRateInput(formatRateInput(rate ?? 0))
             setRateError('')
@@ -1215,7 +1219,7 @@ function ClientFormModal({
           <button type="button" onClick={onClose} className={`${KEY} flex-1`}>
             {t('common.cancel')}
           </button>
-          <button type="submit" disabled={isSaving} className={`${KEY_INV} flex-1`}>
+          <button type="submit" disabled={isSaving || billingBusy} className={`${KEY_INV} flex-1`}>
             {isSaving ? t('common.saving') : t('common.save')}
           </button>
         </div>
@@ -1258,6 +1262,7 @@ function ProjectFormModal({
       : ''
   )
   const [isSaving, setIsSaving] = useState(false)
+  const [billingBusy, setBillingBusy] = useState(false)
   const [error, setError] = useState('')
   const [rateError, setRateError] = useState('')
   // v1.11 #94 — Stammdaten
@@ -1281,6 +1286,7 @@ function ProjectFormModal({
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
+    if (billingBusy) return
     const trimmed = name.trim()
     if (!trimmed) {
       setError(t('projects.form.nameRequired'))
@@ -1431,6 +1437,8 @@ function ProjectFormModal({
         </p>
         <BillingEditors
           target={project ? { kind: 'project', id: project.id } : null}
+          disabled={isSaving}
+          onBusyChange={setBillingBusy}
           onRateSaved={(rate) => {
             setRateInput(rate === null ? '' : formatRateInput(rate) || '0')
             setRateError('')
@@ -1530,7 +1538,7 @@ function ProjectFormModal({
           <button type="button" onClick={onClose} className={`${KEY} flex-1`}>
             {t('common.cancel')}
           </button>
-          <button type="submit" disabled={isSaving} className={`${KEY_INV} flex-1`}>
+          <button type="submit" disabled={isSaving || billingBusy} className={`${KEY_INV} flex-1`}>
             {isSaving ? t('common.saving') : t('common.save')}
           </button>
         </div>

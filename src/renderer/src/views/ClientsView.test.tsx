@@ -346,6 +346,60 @@ describe('ClientsView billing editors', () => {
   })
 
   it.each([false, true])(
+    'locks the form save while a rate change is pending and the editors while the form saves (project=%s)',
+    async (project) => {
+      let finishRate: (value: unknown) => void = () => {}
+      vi.mocked(window.api.rates.save).mockReturnValue(
+        new Promise<unknown>((resolve) => {
+          finishRate = resolve
+        }) as ReturnType<typeof window.api.rates.save>
+      )
+      const update = vi.fn()
+      if (project) window.api.projects.update = update
+      else window.api.clients.update = update
+      await openEditor(project)
+      const section = within(screen.getByRole('region', { name: 'Sätze' }))
+      fireEvent.change(section.getByLabelText('Gültig ab'), { target: { value: '2020-01-01' } })
+      fireEvent.change(section.getByLabelText('Satz €/h'), { target: { value: '90' } })
+      await act(async () => {
+        fireEvent.click(section.getByRole('button', { name: 'Zeile hinzufügen' }))
+      })
+      const save = screen.getByRole('button', { name: 'Speichern' })
+      expect(save).toBeDisabled()
+      await act(async () => {
+        fireEvent.submit(save.closest('form')!)
+      })
+      expect(update).not.toHaveBeenCalled()
+      await act(async () => {
+        finishRate({
+          ok: true,
+          data: {
+            rows: [{ id: 2, valid_from: '2020-01-01', rate_cent: 9000 }],
+            current_rate_cent: 9000
+          }
+        })
+      })
+      expect(save).toBeEnabled()
+
+      let finishForm: (value: unknown) => void = () => {}
+      update.mockReturnValue(
+        new Promise((resolve) => {
+          finishForm = resolve
+        })
+      )
+      await act(async () => {
+        fireEvent.click(save)
+      })
+      expect(update).toHaveBeenCalled()
+      expect(section.getByRole('button', { name: 'Zeile hinzufügen' })).toBeDisabled()
+      await act(async () => {
+        finishForm({ ok: false, error: 'nope' })
+      })
+      expect(section.getByRole('button', { name: 'Zeile hinzufügen' })).toBeEnabled()
+    }
+  )
+
+  it.each([false, true])(
     'shows the legacy-field conflict as translated field text and keeps the form open (project=%s)',
     async (project) => {
       const save = vi

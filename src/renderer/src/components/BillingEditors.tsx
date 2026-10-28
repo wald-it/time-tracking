@@ -12,12 +12,22 @@ import { useLocale, useT } from '../contexts/I18nContext'
 import { FIELD_LABEL, INPUT, KEY, LEGEND, SECTION } from './instrumentClasses'
 import { rateEditorError } from './rateEditorError'
 
+/**
+ * The editors save on their own, beside the surrounding form. The two save
+ * paths lock each other: the form would otherwise send the old rate field
+ * while a rate change is still pending, and the legacy trigger would add it
+ * back for today.
+ */
 export function BillingEditors({
   target,
+  disabled = false,
+  onBusyChange,
   onRateSaved,
   onChanged
 }: {
   target: RateTarget | null
+  disabled?: boolean
+  onBusyChange?: (busy: boolean) => void
   onRateSaved: (rate: number | null) => void
   onChanged: () => void
 }): React.JSX.Element {
@@ -37,6 +47,10 @@ export function BillingEditors({
   const [loaded, setLoaded] = useState(false)
   const kind = target?.kind
   const targetId = target?.id
+
+  useEffect(() => {
+    onBusyChange?.(busy)
+  }, [busy, onBusyChange])
 
   useEffect(() => {
     if (!kind || targetId === undefined) return
@@ -146,7 +160,7 @@ export function BillingEditors({
           <>
             <p className="my-2 text-xs text-[var(--ink3)]">{t('rates.immediate')}</p>
             <fieldset
-              disabled={busy || !loaded}
+              disabled={busy || disabled || !loaded}
               className="min-w-0"
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
@@ -270,7 +284,7 @@ export function BillingEditors({
           <p className="mt-2 text-xs text-[var(--ink3)]">{t('rates.saveFirst')}</p>
         ) : (
           <fieldset
-            disabled={busy || !loaded}
+            disabled={busy || disabled || !loaded}
             className="min-w-0"
             onKeyDown={(event) => {
               if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
