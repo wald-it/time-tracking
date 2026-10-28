@@ -1,7 +1,16 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { seedEntry } from '../test/entryFixtures'
@@ -120,5 +129,29 @@ describe('P6b billing run IPC', () => {
       ok: false,
       error: 'No PDF viewer'
     })
+    expect(existsSync(openPath.mock.lastCall![0])).toBe(false)
+  })
+
+  it('keeps viewer copies in one folder and prunes copies older than a day', async () => {
+    const created = await run()
+    const dir = join(state.tempDir, 'timetrack-runs')
+    mkdirSync(dir, { recursive: true })
+    const stale = join(dir, 'run-0-stale.pdf')
+    const fresh = join(dir, 'run-0-fresh.pdf')
+    writeFileSync(stale, 'old')
+    writeFileSync(fresh, 'new')
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    utimesSync(stale, twoDaysAgo, twoDaysAgo)
+
+    await invoke('billing-runs:open', created.id)
+    await invoke('billing-runs:open', created.id)
+
+    const [first, second] = openPath.mock.calls.map(([path]) => path)
+    expect(first).not.toBe(second)
+    expect(readdirSync(dir).sort()).toEqual(
+      ['run-0-fresh.pdf', basename(first), basename(second)].sort()
+    )
+    expect(existsSync(stale)).toBe(false)
+    expect(existsSync(fresh)).toBe(true)
   })
 })

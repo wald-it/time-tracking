@@ -10,7 +10,7 @@ import { isExternalUrlAllowed } from './externalLinks'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
 import { dialog } from 'electron'
-import { writeFileSync, readFileSync, mkdirSync, mkdtempSync, readdirSync } from 'fs'
+import { writeFileSync, readFileSync, mkdirSync, readdirSync } from 'fs'
 import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
@@ -45,6 +45,7 @@ import { buildJsonExportPayload } from './jsonExport'
 import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 import { buildPdfHtml, buildPdfPayload, type PdfRequest } from './pdf'
 import { renderPdfBuffer } from './pdfWindow'
+import { discardViewerCopy, writeViewerCopy } from './runViewerCopy'
 import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
 import { handleCsvExport, type CsvRequest } from './csvExport'
 import { handleIcalExport, type IcalRequest } from './icalExport'
@@ -1050,11 +1051,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const bytes = openRunPdf(db, runId)
       // The renderer cannot open blob windows (guardWindowLinks). Hand only
       // a verified archive copy, at a main-process-owned path, to the PDF viewer.
-      const dir = mkdtempSync(join(app.getPath('temp'), 'timetrack-run-'))
-      const filePath = join(dir, 'timesheet.pdf')
-      writeFileSync(filePath, bytes)
+      const filePath = writeViewerCopy(app.getPath('temp'), runId, bytes)
       const error = await shell.openPath(filePath)
-      if (error) return fail(error)
+      if (error) {
+        discardViewerCopy(filePath)
+        return fail(error)
+      }
       return ok(undefined)
     } catch (e) {
       return fail(e)
