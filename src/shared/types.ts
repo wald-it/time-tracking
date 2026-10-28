@@ -1,8 +1,8 @@
 // Shared types between main process and renderer
 
 export interface Client {
-  /** Billing-run number code; edited from P6 on. */
-  short_code?: string | null
+  /** Client code in the timesheet run number. */
+  short_code: string | null
   id: number
   name: string
   color: string
@@ -288,6 +288,7 @@ export interface Settings {
 }
 
 export interface CreateClientInput {
+  short_code?: string | null
   name: string
   color: string
   /**
@@ -306,6 +307,8 @@ export interface CreateClientInput {
 }
 
 export interface UpdateClientInput {
+  /** Omitted = keep the current code; null or empty = clear it. */
+  short_code?: string | null
   id: number
   name: string
   color: string

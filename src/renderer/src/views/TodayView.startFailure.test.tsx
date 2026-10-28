@@ -22,8 +22,24 @@ afterEach(() => {
 })
 
 const CLIENTS: Client[] = [
-  { id: 1, name: 'Acme', color: '#111111', active: 1, rate_cent: 0, created_at: '' },
-  { id: 2, name: 'Beta', color: '#222222', active: 1, rate_cent: 0, created_at: '' }
+  {
+    id: 1,
+    name: 'Acme',
+    color: '#111111',
+    active: 1,
+    rate_cent: 0,
+    short_code: null,
+    created_at: ''
+  },
+  {
+    id: 2,
+    name: 'Beta',
+    color: '#222222',
+    active: 1,
+    rate_cent: 0,
+    short_code: null,
+    created_at: ''
+  }
 ]
 
 const RUNNING: Entry = {
