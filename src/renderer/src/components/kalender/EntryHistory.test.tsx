@@ -125,6 +125,31 @@ describe('day panel entry history', () => {
     await screen.findByRole('list', { name: 'Verlauf' })
   })
 
+  it('shows tags, reference and internal note of the capture when set, and omits them when empty', async () => {
+    const tagged = { ...first, tags: 'workshop', reference: 'PO-7', private_note: 'call back' }
+    install(
+      vi
+        .fn<(id: number) => Promise<IpcResult<EntryVersion[]>>>()
+        .mockResolvedValue({ ok: true, data: [tagged] })
+    )
+    render(panel())
+    fireEvent.click(screen.getByRole('button', { name: 'Verlauf' }))
+    const history = await screen.findByRole('list', { name: 'Verlauf' })
+    const captureRow = within(history).getByText('Version 1').closest('li')
+    expect(captureRow).toHaveTextContent('Tags: workshop')
+    expect(captureRow).toHaveTextContent('Referenz: PO-7')
+    expect(captureRow).toHaveTextContent('Interne Notiz: call back')
+    cleanup()
+    install()
+    render(panel())
+    fireEvent.click(screen.getByRole('button', { name: 'Verlauf' }))
+    const plain = await screen.findByRole('list', { name: 'Verlauf' })
+    const plainRow = within(plain).getByText('Version 1').closest('li')
+    expect(plainRow).not.toHaveTextContent('Tags:')
+    expect(plainRow).not.toHaveTextContent('Referenz:')
+    expect(plainRow).not.toHaveTextContent('Interne Notiz:')
+  })
+
   it('shows loading and an error with retry for both failed results and rejected requests', async () => {
     let resolve!: (result: IpcResult<EntryVersion[]>) => void
     const versions = install(

@@ -234,6 +234,8 @@ function VersionRow({
         'project',
         'description',
         'billable',
+        // Optional fields only when set; a later diff row never repeats an unchanged value.
+        ...(['tags', 'reference', 'private_note'] as const).filter((field) => version[field]),
         ...(version.deleted ? ['deleted' as const] : [])
       ]
   return (
