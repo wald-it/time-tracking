@@ -1,9 +1,16 @@
-import { exportRunToFile, listRuns, openRunPdf, releaseRun, setInvoiceRef } from './billingRuns'
+import {
+  exportRunToFile,
+  listRuns,
+  MissingClientShortCodeError,
+  openRunPdf,
+  releaseRun,
+  setInvoiceRef
+} from './billingRuns'
 import { isExternalUrlAllowed } from './externalLinks'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
 import { dialog } from 'electron'
-import { writeFileSync, readFileSync, mkdirSync, readdirSync } from 'fs'
+import { writeFileSync, readFileSync, mkdirSync, mkdtempSync, readdirSync } from 'fs'
 import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
@@ -953,7 +960,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     async (
       _e,
       req: PdfRequest
-    ): Promise<IpcResult<{ path: string; runId?: number; excludedCount?: number }>> => {
+    ): Promise<
+      IpcResult<{ path: string; runId?: number; runNumber?: string; excludedCount?: number }>
+    > => {
       try {
         if (!req || typeof req.clientId !== 'number' || !req.fromIso || !req.toIso) {
           return fail('Ungültige PDF-Anfrage')
@@ -998,6 +1007,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const logoDataUrl = readLogoAsDataUrl(settings.pdf_logo_path ?? '')
 
         let runId: number | undefined
+        let runNumber: string | undefined
         let excludedCount: number | undefined
         if (req.markAsBilled) {
           const exported = await exportRunToFile(
@@ -1008,6 +1018,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
             result.filePath
           )
           runId = exported.runId
+          runNumber = exported.runNumber
           excludedCount = exported.excludedCount
         } else {
           const payload = buildPdfPayload(db, req, logoDataUrl)
@@ -1016,9 +1027,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         rememberExportFolder(db, 'pdf', result.filePath)
         return ok({
           path: result.filePath,
-          ...(runId === undefined ? {} : { runId, excludedCount })
+          ...(runId === undefined ? {} : { runId, runNumber, excludedCount })
         })
       } catch (e) {
+        if (e instanceof MissingClientShortCodeError) {
+          return fail(dialogT(dialogLocale())('export.status.shortCodeMissing'))
+        }
         return fail(e)
       }
     }
@@ -1031,9 +1045,17 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       return fail(e)
     }
   })
-  ipcMain.handle('billing-runs:open', (_e, runId: number) => {
+  ipcMain.handle('billing-runs:open', async (_e, runId: number) => {
     try {
-      return ok(openRunPdf(db, runId))
+      const bytes = openRunPdf(db, runId)
+      // The renderer cannot open blob windows (guardWindowLinks). Hand only
+      // a verified archive copy, at a main-process-owned path, to the PDF viewer.
+      const dir = mkdtempSync(join(app.getPath('temp'), 'timetrack-run-'))
+      const filePath = join(dir, 'timesheet.pdf')
+      writeFileSync(filePath, bytes)
+      const error = await shell.openPath(filePath)
+      if (error) return fail(error)
+      return ok(undefined)
     } catch (e) {
       return fail(e)
     }

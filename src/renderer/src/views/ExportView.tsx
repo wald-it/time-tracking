@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import { useT } from '../contexts/I18nContext'
 import type { TranslationKey } from '../../../shared/locales/de'
 import { ExportModal } from '../components/ExportModal'
+import { BillingRunList } from '../components/BillingRunList'
+import type { BillingRunSummary } from '../../../main/billingRuns'
 import { PdfMergeModal } from '../components/PdfMergeModal'
 import { getQuickRange, localDateKey, type QuickRangeKind } from '../../../shared/dateRanges'
 import { useWeekStart } from '../hooks/useWeekStart'
@@ -42,12 +44,15 @@ export default function ExportView(): React.JSX.Element {
   // range prefilled.
   const [pdfRange, setPdfRange] = useState<{ fromIso: string; toIso: string } | null>(null)
   const [mergeOpen, setMergeOpen] = useState(false)
+  const [replacementRun, setReplacementRun] = useState<BillingRunSummary | undefined>()
+  const [runsRevision, setRunsRevision] = useState(0)
 
   // "Diese/Letzte Woche" follows the week_start setting (#188) — otherwise the
   // quick filter would hand over a different week than the week total shows.
   const onQuickRange = useCallback(
     (kind: QuickRangeKind) => {
       const range = getQuickRange(kind, new Date(), weekStart)
+      setReplacementRun(undefined)
       setPdfRange({ fromIso: localDateKey(range.from), toIso: localDateKey(range.to) })
     },
     [weekStart]
@@ -80,6 +85,14 @@ export default function ExportView(): React.JSX.Element {
         </div>
       </Card>
 
+      <BillingRunList
+        refreshKey={runsRevision}
+        onRebill={(run) => {
+          setReplacementRun(run)
+          setPdfRange({ fromIso: run.period_from, toIso: run.period_to })
+        }}
+      />
+
       <Card>
         <CardHeading title={t('export.view.mergeTitle')} hint={t('export.view.mergeHint')} />
         <div className="flex flex-wrap items-center gap-2">
@@ -99,9 +112,15 @@ export default function ExportView(): React.JSX.Element {
           from the first mount — before the settings load finishes — in place
           for the rest of the session. Case 6 of the test guards this. */}
       <ExportModal
-        key={pdfRange ? `${pdfRange.fromIso}-${pdfRange.toIso}` : 'closed'}
+        key={
+          pdfRange
+            ? `${pdfRange.fromIso}-${pdfRange.toIso}-${replacementRun?.id ?? 'new'}`
+            : 'closed'
+        }
         open={pdfRange !== null}
         prefilledRange={pdfRange ?? undefined}
+        replacementRun={replacementRun}
+        onRunsChanged={() => setRunsRevision((n) => n + 1)}
         onClose={() => setPdfRange(null)}
       />
 

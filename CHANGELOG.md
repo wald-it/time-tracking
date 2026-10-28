@@ -9,6 +9,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Added
 
+- PDF exports can mark time as billed, with an archive listing run totals and actions to open PDFs, release runs with a reason and re-bill corrections.
 - Clients can now set, change and clear a unique short code for timesheet run numbers.
 
 ### Breaking for MCP clients and integrations

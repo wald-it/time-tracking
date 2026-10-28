@@ -70,6 +70,54 @@ const patch = (
     { source: 'app', reason, now: '2026-12-01T00:00:00.000Z' }
   )
 
+describe('P6b billing run list', () => {
+  it('reads client names and frozen item totals for active and released runs, newest first', async () => {
+    const db = setup()
+    expect(listRuns(db)).toEqual([])
+    db.exec('INSERT INTO billing_profile (client_id, interval_min, min_unit_min) VALUES (1, 5, 0)')
+    entry(db, 1)
+    entry(db, 2)
+    const first = await run(db)
+    db.exec(
+      "INSERT INTO clients (id, name, rate_cent, short_code) VALUES (2, 'Other client', 9000, 'DEF'); INSERT INTO billing_profile (client_id, interval_min, min_unit_min) VALUES (2, 0, 0)"
+    )
+    seedEntry(db, {
+      id: 3,
+      client_id: 2,
+      started_at: '2026-10-27T10:00:00.000Z',
+      stopped_at: '2026-10-27T10:07:00.000Z'
+    })
+    const other = await createRun(db, { ...req, clientId: 2 }, renderer)
+    releaseRun(db, first.id, 'Correction')
+    db.exec(
+      "UPDATE billing_profile SET interval_min = 15 WHERE client_id = 1; UPDATE clients SET name = 'Renamed client', rate_cent = 12000 WHERE id = 1"
+    )
+    const replacement = await createRun(db, { ...req, replacesRunId: first.id }, renderer)
+    const before = db.prepare('SELECT total_changes() AS n').get()
+    const summaries = listRuns(db)
+    expect(summaries.map((r) => r.id)).toEqual([replacement.id, other.id, first.id])
+    expect(summaries[1]).toMatchObject({
+      client_name: 'Other client',
+      billed_minutes: 7,
+      fee_cent: 1050,
+      status: 'active'
+    })
+    expect(summaries[2]).toMatchObject({
+      client_name: 'Renamed client',
+      billed_minutes: 10,
+      fee_cent: 1000,
+      status: 'released',
+      release_reason: 'Correction',
+      released_at: expect.any(String)
+    })
+    expect(summaries[0].billed_minutes).toBe(30)
+    expect(listRuns(db, 1).map((r) => r.id)).toEqual([replacement.id, first.id])
+    expect(listRuns(db, 2).map((r) => r.id)).toEqual([other.id])
+    expect(listRuns(db, 999)).toEqual([])
+    expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(before)
+  })
+})
+
 describe('P5 billing run lifecycle (design 11.6)', () => {
   it('freezes rules, recipient, sender, logo, versions and both hashes with live controls', async () => {
     const db = setup()
