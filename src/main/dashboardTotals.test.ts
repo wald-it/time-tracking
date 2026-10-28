@@ -250,14 +250,26 @@ describe('readTotals', () => {
         stopped_at: null
       })
 
+      // readTotals counts the running entry up to SQLite's own 'now', which a
+      // test cannot pin. Bracket it: getDashboard before and after must
+      // enclose it (a second boundary between two reads made CI red, 2820
+      // against 2821 on 2026-10-27).
+      const dashboardAt = (nowMs: number): ReturnType<typeof getDashboard> =>
+        getDashboard(
+          db as unknown as SqliteDb,
+          { exposeRates: false, exposePrivateNotes: false },
+          nowMs
+        )
+      const before = dashboardAt(Date.now() - 1000)
       const mine = readTotals(db)
-      const theirs = getDashboard(
-        db as unknown as SqliteDb,
-        { exposeRates: false, exposePrivateNotes: false },
-        Date.now()
-      )
-      expect(mine.today_seconds).toBe(theirs.today_seconds)
-      expect(mine.week_seconds).toBe(theirs.week_seconds)
+      const after = dashboardAt(Date.now() + 1000)
+      expect(mine.today_seconds).toBeGreaterThanOrEqual(before.today_seconds)
+      expect(mine.today_seconds).toBeLessThanOrEqual(after.today_seconds)
+      expect(mine.week_seconds).toBeGreaterThanOrEqual(before.week_seconds)
+      expect(mine.week_seconds).toBeLessThanOrEqual(after.week_seconds)
+      // The bracket is two seconds wide plus the time between the reads: a
+      // second definition that drifts by minutes still fails.
+      expect(after.today_seconds - before.today_seconds).toBeLessThan(10)
     })
   }
 })
