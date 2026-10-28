@@ -142,8 +142,10 @@ const api = {
       ipcRenderer.invoke('entries:create', input),
     update: (input: UpdateEntryInput): Promise<IpcResult<Entry>> =>
       ipcRenderer.invoke('entries:update', input),
-    delete: (id: number): Promise<IpcResult<void>> => ipcRenderer.invoke('entries:delete', id),
-    undelete: (id: number): Promise<IpcResult<Entry>> => ipcRenderer.invoke('entries:undelete', id)
+    delete: (id: number, reason?: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('entries:delete', id, reason),
+    undelete: (id: number, reason?: string): Promise<IpcResult<Entry>> =>
+      ipcRenderer.invoke('entries:undelete', id, reason)
   },
   // Settings
   icalFeed: {

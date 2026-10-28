@@ -11,13 +11,14 @@
 import type Database from 'better-sqlite3'
 import { localMonthRange } from '../shared/dateRanges'
 import type { Entry } from '../shared/types'
+import { entryBilledSql } from './entryBillingState'
 
 /** The calendar's month (`entries:getByMonth`): every client, running ones included. */
 export function monthEntries(db: Database.Database, year: number, month: number): Entry[] {
   const { start, end } = localMonthRange(year, month)
   return db
     .prepare(
-      `SELECT * FROM entries
+      `SELECT entries.*, ${entryBilledSql(db)} AS billed FROM entries
          WHERE started_at >= ? AND started_at < ? AND deleted_at IS NULL
          ORDER BY started_at ASC`
     )

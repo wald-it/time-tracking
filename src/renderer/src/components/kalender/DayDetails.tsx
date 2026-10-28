@@ -8,6 +8,7 @@ import { deserializeTags, entryHasTag } from '../../../../shared/tags'
 import { useEntriesStore } from '../../store/entriesStore'
 import { useToastStore } from '../../store/toastStore'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { BilledChip } from '../BilledChip'
 import { EntryEditForm } from '../EntryEditForm'
 import { EntryHistory } from './EntryHistory'
 import { useLocale, useT } from '../../contexts/I18nContext'
@@ -165,9 +166,9 @@ export function DayDetails({
     month: '2-digit'
   }).format(day)
 
-  async function confirmDelete(entry: Entry): Promise<void> {
+  async function confirmDelete(entry: Entry, reason?: string): Promise<void> {
     setDeleteCandidate(null)
-    const res = await window.api.entries.delete(entry.id)
+    const res = await window.api.entries.delete(entry.id, reason)
     if (!res.ok) {
       showToast(t('common.entryDeleteFailed', { error: res.error }))
       // A refused delete means the row is no longer live (a confirm that
@@ -179,7 +180,7 @@ export function DayDetails({
     showToast(t('common.entryDeleted'), {
       label: t('common.undo'),
       type: 'undo_delete',
-      data: { entryId: entry.id }
+      data: { entryId: entry.id, billed: !!entry.billed }
     })
   }
 
@@ -318,6 +319,7 @@ export function DayDetails({
                       )}
                     </span>
                   </div>
+                  {!!e.billed && <BilledChip />}
                   {e.description && (
                     <p
                       className="m-0 line-clamp-2 text-[13px] text-[var(--ink)] [overflow-wrap:anywhere]"
@@ -416,7 +418,8 @@ export function DayDetails({
         confirmLabel={t('common.delete')}
         cancelLabel={t('common.cancel')}
         variant="danger"
-        onConfirm={() => deleteCandidate && void confirmDelete(deleteCandidate)}
+        requireReason={!!deleteCandidate?.billed}
+        onConfirm={(reason) => deleteCandidate && void confirmDelete(deleteCandidate, reason)}
         onCancel={() => setDeleteCandidate(null)}
       />
     </section>

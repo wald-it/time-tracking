@@ -17,6 +17,7 @@ import { GraphImportModal } from '../components/GraphImportModal'
 import { formatEur } from '../../../shared/currency'
 import { formatHm, type DayRange } from '../components/heute/dayScaleLayout'
 import { MiniDayScale } from '../components/kalender/MiniDayScale'
+import { BilledChip } from '../components/BilledChip'
 import { dayBilledSeconds, dayRevenueCent } from '../components/kalender/dayRevenue'
 import { uniformStepMin } from '../../../shared/entryMoney'
 import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
@@ -556,7 +557,10 @@ function Week({
             tabIndex={key === activeKey ? 0 : -1}
             disabled={!inMonth}
             aria-pressed={isSelected}
-            aria-label={ariaLabel}
+            aria-label={
+              ariaLabel +
+              (dayEntries.some((entry) => !!entry.billed) ? ` · ${t('entry.billed')}` : '')
+            }
             onClick={() => onSelect(day)}
             className={[
               '@container flex min-h-[104px] min-w-0 cursor-pointer flex-col justify-between gap-2.5 overflow-hidden rounded-none p-2.5 text-left',
@@ -617,6 +621,7 @@ function Week({
                 )}
               </span>
             </span>
+            {inMonth && dayEntries.some((entry) => !!entry.billed) && <BilledChip compact />}
             {inMonth && (
               <MiniDayScale
                 entries={dayEntries}

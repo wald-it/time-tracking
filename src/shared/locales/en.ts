@@ -10,6 +10,13 @@ import type { TranslationKey } from './de'
  * sections). Remaining DE-only UI strings get an EN translation in v1.6.
  */
 export const en: Record<TranslationKey, string> = {
+  'entry.billed': 'billed',
+  'entry.billed.changeTitle': 'Change billed entry',
+  'entry.billed.restoreTitle': 'Restore billed entry',
+  'entry.billed.reasonHint': 'This entry is billed. Please give a reason.',
+  'entry.billed.reason': 'Reason',
+  'entry.billed.reasonRequired': 'Please give a reason.',
+  'entry.billed.restore': 'Restore',
   'history.toggle': 'History',
   'history.capture': 'Capture',
   'history.additions': '{count} more',

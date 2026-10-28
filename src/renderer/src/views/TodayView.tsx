@@ -139,9 +139,9 @@ export default function TodayView(): React.JSX.Element {
   const runningProject =
     runningEntry?.project_id != null ? projectsById.get(runningEntry.project_id) : undefined
 
-  async function confirmDelete(entry: Entry): Promise<void> {
+  async function confirmDelete(entry: Entry, reason?: string): Promise<void> {
     setDeleteCandidate(null)
-    const res = await window.api.entries.delete(entry.id)
+    const res = await window.api.entries.delete(entry.id, reason)
     if (!res.ok) {
       showToast(t('common.entryDeleteFailed', { error: res.error }))
       // A refused delete means the row is no longer live (a confirm that
@@ -153,7 +153,7 @@ export default function TodayView(): React.JSX.Element {
     showToast(t('common.entryDeleted'), {
       label: t('common.undo'),
       type: 'undo_delete',
-      data: { entryId: entry.id }
+      data: { entryId: entry.id, billed: !!entry.billed }
     })
   }
 
@@ -307,7 +307,8 @@ export default function TodayView(): React.JSX.Element {
         confirmLabel={t('common.delete')}
         cancelLabel={t('common.cancel')}
         variant="danger"
-        onConfirm={() => deleteCandidate && void confirmDelete(deleteCandidate)}
+        requireReason={!!deleteCandidate?.billed}
+        onConfirm={(reason) => deleteCandidate && void confirmDelete(deleteCandidate, reason)}
         onCancel={() => setDeleteCandidate(null)}
       />
     </div>

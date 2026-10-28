@@ -225,6 +225,18 @@ function cell(dayKey: string): HTMLElement {
 }
 
 describe('CalendarView — day selection', () => {
+  it('marks only billed days and entries with a lock chip', async () => {
+    await setup({
+      byMonth: { '2026-8': AUGUST_ENTRIES.map((e) => ({ ...e, billed: e.id === 1 ? 1 : 0 })) }
+    })
+    expect(
+      within(cell('2026-08-10')).getByText('abgerechnet').parentElement!.querySelector('svg')
+    ).not.toBeNull()
+    expect(within(cell('2026-08-12')).queryByText('abgerechnet')).toBeNull()
+    fireEvent.click(cell('2026-08-10'))
+    const drawer = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
+    expect(within(drawer).getAllByText('abgerechnet')).toHaveLength(1)
+  })
   it("a click on a day opens the drawer with exactly that day's entries", async () => {
     await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
 

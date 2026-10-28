@@ -4,6 +4,7 @@ import { entryRowKey } from '../../../../shared/entryKey'
 import { entryBilledMinutes } from '../../../../shared/entryMoney'
 import { deserializeTags } from '../../../../shared/tags'
 import { useT } from '../../contexts/I18nContext'
+import { BilledChip } from '../BilledChip'
 
 /**
  * Heute — "Einträge heute" (HANDOFF §3.10, §4.1).
@@ -209,6 +210,7 @@ function EntryRow({
               {tag}
             </span>
           ))}
+          {!!entry.billed && <BilledChip />}
         </div>
       </td>
       <td

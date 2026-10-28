@@ -9,6 +9,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Added
 
+- Billed entries show a lock chip in Calendar and Today and require a reason to edit, delete or restore, while private notes remain freely editable.
 - PDF exports can mark time as billed, with an archive listing run totals and actions to open PDFs, release runs with a reason and re-bill corrections.
 - Clients can now set, change and clear a unique short code for timesheet run numbers.
 

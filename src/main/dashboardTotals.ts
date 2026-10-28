@@ -10,6 +10,7 @@
  */
 import type Database from 'better-sqlite3'
 import type { Entry } from '../shared/types'
+import { entryBilledSql } from './entryBillingState'
 import { readDefaultIntervalMin, roundingConfigured } from '../shared/billingProfile'
 import {
   parseWeekStart,
@@ -151,7 +152,7 @@ export function readRecentEntries(db: Db, limit: number): Entry[] {
 export function readTodayEntries(db: Db): Entry[] {
   return db
     .prepare(
-      `SELECT * FROM entries
+      `SELECT entries.*, ${entryBilledSql(db)} AS billed FROM entries
         WHERE deleted_at IS NULL
           AND (DATE(started_at, 'localtime') = DATE('now', 'localtime')
                OR stopped_at IS NULL)
