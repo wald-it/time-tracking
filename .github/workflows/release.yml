@@ -215,6 +215,9 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+    env:
+      APP_EXE: dist/win-unpacked/TimeTrack.exe
+      APP_RESOURCES: dist/win-unpacked/resources
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -250,49 +253,17 @@ jobs:
       - name: Check package contents (only runtime files in app.asar)
         run: node scripts/check-package-contents.mjs dist/win-unpacked/resources/app.asar
 
-      - name: Smoke test packaged binary (DB + migrations against Electron ABI)
-        shell: pwsh
+      - name: Smoke test packaged app (DB + migrations + PDF)
+        shell: bash
+        run: node scripts/package-smoke.mjs smoke --exe "$APP_EXE"
+
+      - name: MCP server from the package (initialize, tools/list, tools/call)
+        shell: bash
         run: |
-          $exe = Get-ChildItem -Path "dist/win-unpacked" -Filter "*.exe" |
-                 Where-Object { $_.Name -notmatch '(uninstall|crashpad|elevate)' } |
-                 Select-Object -First 1
-          if (-not $exe) {
-            Write-Error "No packaged exe found in dist/win-unpacked"
-            exit 1
-          }
-          $out = Join-Path $env:RUNNER_TEMP "smoke.json"
-          if (Test-Path $out) { Remove-Item $out -Force }
-          Write-Host "Running smoke test: $($exe.FullName) --smoke-test=$out"
-          $proc = Start-Process -FilePath $exe.FullName -ArgumentList "--smoke-test=$out" -PassThru -NoNewWindow
-          if (-not $proc.WaitForExit(60000)) {
-            Stop-Process -Id $proc.Id -Force
-            Write-Error "Smoke test timed out after 60s"
-            exit 1
-          }
-          if ($proc.ExitCode -ne 0) {
-            Write-Error "Smoke test exited with code $($proc.ExitCode)"
-            if (Test-Path $out) { Get-Content $out }
-            exit 1
-          }
-          if (-not (Test-Path $out)) {
-            Write-Error "Smoke test did not produce $out"
-            exit 1
-          }
-          $payload = Get-Content $out -Raw | ConvertFrom-Json
-          Write-Host "Smoke result: $($payload | ConvertTo-Json -Compress)"
-          if (-not $payload.ok) {
-            Write-Error "Smoke test reported ok=false: $($payload.error)"
-            exit 1
-          }
-          if ($payload.schemaVersion -lt 3) {
-            Write-Error "Expected schemaVersion >= 3 (v1.2 migrations), got $($payload.schemaVersion)"
-            exit 1
-          }
-          if (-not $payload.pdfBytes -or $payload.pdfBytes -lt 1000) {
-            Write-Error "Expected pdfBytes >= 1000 (v1.3 PDF pipeline), got $($payload.pdfBytes)"
-            exit 1
-          }
-          Write-Host "Smoke test passed (schema v$($payload.schemaVersion), Electron $($payload.electronVersion), PDF $($payload.pdfBytes) bytes)"
+          node scripts/package-smoke.mjs mcp \
+            --exe "$APP_EXE" \
+            --entry "$APP_RESOURCES/app.asar/out/mcp/mcp/server.js" \
+            --server-source src/mcp/server.ts
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -309,6 +280,9 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: read
+    env:
+      APP_EXE: dist/mac-arm64/TimeTrack.app/Contents/MacOS/TimeTrack
+      APP_RESOURCES: dist/mac-arm64/TimeTrack.app/Contents/Resources
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -343,55 +317,17 @@ jobs:
       - name: Check package contents (only runtime files in app.asar)
         run: node scripts/check-package-contents.mjs dist/mac-arm64/TimeTrack.app/Contents/Resources/app.asar
 
-      - name: Smoke test packaged binary (DB + migrations against Electron ABI)
+      - name: Smoke test packaged app (DB + migrations + PDF)
+        shell: bash
+        run: node scripts/package-smoke.mjs smoke --exe "$APP_EXE"
+
+      - name: MCP server from the package (initialize, tools/list, tools/call)
+        shell: bash
         run: |
-          APP_BINARY="dist/mac-arm64/TimeTrack.app/Contents/MacOS/TimeTrack"
-          if [ ! -f "$APP_BINARY" ]; then
-            echo "ERROR: Binary not found at $APP_BINARY"
-            ls -la dist/ || true
-            exit 1
-          fi
-          OUT="$RUNNER_TEMP/smoke.json"
-          echo "Running smoke test: $APP_BINARY --smoke-test=$OUT"
-          "$APP_BINARY" "--smoke-test=$OUT" &
-          SMOKE_PID=$!
-          WAITED=0
-          while kill -0 $SMOKE_PID 2>/dev/null && [ $WAITED -lt 60 ]; do
-            sleep 1
-            WAITED=$((WAITED + 1))
-          done
-          if kill -0 $SMOKE_PID 2>/dev/null; then
-            kill -9 $SMOKE_PID 2>/dev/null
-            echo "ERROR: Smoke test timed out after 60s"
-            exit 1
-          fi
-          wait $SMOKE_PID
-          SMOKE_EXIT=$?
-          if [ $SMOKE_EXIT -ne 0 ]; then
-            echo "ERROR: Smoke test exited with code $SMOKE_EXIT"
-            cat "$OUT" 2>/dev/null || true
-            exit 1
-          fi
-          if [ ! -f "$OUT" ]; then
-            echo "ERROR: Smoke test did not produce $OUT"
-            exit 1
-          fi
-          python3 -c "
-          import json, sys
-          d = json.load(open('$OUT'))
-          print('Smoke result:', json.dumps(d))
-          if not d.get('ok'):
-              print('ERROR: ok=false:', d.get('error'))
-              sys.exit(1)
-          if d.get('schemaVersion', 0) < 3:
-              print('ERROR: schemaVersion', d.get('schemaVersion'))
-              sys.exit(1)
-          if d.get('pdfBytes', 0) < 1000:
-              print('ERROR: pdfBytes', d.get('pdfBytes'))
-              sys.exit(1)
-          print('Smoke test passed (schema v{}, Electron {}, PDF {} bytes)'.format(
-              d['schemaVersion'], d.get('electronVersion', '?'), d['pdfBytes']))
-          "
+          node scripts/package-smoke.mjs mcp \
+            --exe "$APP_EXE" \
+            --entry "$APP_RESOURCES/app.asar/out/mcp/mcp/server.js" \
+            --server-source src/mcp/server.ts
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
