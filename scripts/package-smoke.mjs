@@ -6,6 +6,7 @@
  *   node scripts/package-smoke.mjs smoke --exe <packaged binary> [--timeout-ms 60000]
  *   node scripts/package-smoke.mjs mcp --exe <packaged binary> --entry <server.js>
  *        [--server-source src/mcp/server.ts] [--timeout-ms 30000]
+ *   node scripts/package-smoke.mjs fuses --exe <packaged binary>
  *
  * `smoke` runs the app's own `--smoke-test` mode (DB + migrations + PDF in a
  * throw-away userData) and checks its JSON report — the same checks the
@@ -34,6 +35,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 
 class ProbeError extends Error {}
@@ -193,6 +195,18 @@ async function runSmoke(dir, exe, timeoutMs) {
     )
   }
   console.log('safeStorage async compatibility proven')
+  // #272: the app windows run sandboxed and their preload still exposes the API.
+  const sandbox = report.sandbox
+  if (!sandbox) throw new ProbeError('smoke report has no sandbox probe')
+  if (sandbox.api !== 'object') {
+    throw new ProbeError(`sandboxed preload did not expose window.api (typeof: ${sandbox.api})`)
+  }
+  if (sandbox.electron !== 'undefined') {
+    throw new ProbeError(`window.electron is exposed again (typeof: ${sandbox.electron})`)
+  }
+  if (sandbox.sandboxed !== true) {
+    throw new ProbeError(`the app window's renderer is not sandboxed (${sandbox.sandboxed})`)
+  }
   console.log(
     `Smoke test passed (schema v${report.schemaVersion}, Electron ${report.electronVersion ?? '?'}, PDF ${report.pdfBytes} bytes)`
   )
@@ -314,8 +328,51 @@ async function runMcp(dir, exe, entry, expected, timeoutMs) {
   console.log('MCP probe passed')
 }
 
+/**
+ * The fuses electron-builder.yml sets (#272), by FuseV1Options index. RunAsNode
+ * must stay on: the MCP server and the smoke test's cleaner run the packaged
+ * binary in Node mode (F&I 5). The other four close debugger, NODE_OPTIONS
+ * injection and code loaded from outside the signed-off app.asar.
+ */
+const EXPECTED_FUSES = [
+  { index: 0, name: 'RunAsNode', on: true },
+  { index: 2, name: 'EnableNodeOptionsEnvironmentVariable', on: false },
+  { index: 3, name: 'EnableNodeCliInspectArguments', on: false },
+  { index: 4, name: 'EnableEmbeddedAsarIntegrityValidation', on: true },
+  { index: 5, name: 'OnlyLoadAppFromAsar', on: true }
+]
+
+/** Fuse wire bytes: ASCII '1' (enabled) and '0' (disabled). */
+const FUSE_ENABLED = 49
+const FUSE_DISABLED = 48
+
+async function runFuses(exe) {
+  if (!existsSync(exe)) throw new ProbeError(`binary not found at ${exe}`)
+  const { getCurrentFuseWire } = createRequire(import.meta.url)('@electron/fuses')
+  let wire
+  try {
+    wire = await getCurrentFuseWire(exe)
+  } catch (e) {
+    throw new ProbeError(`could not read the fuse wire of ${exe}: ${e?.message ?? e}`)
+  }
+  const wrong = []
+  for (const { index, name, on } of EXPECTED_FUSES) {
+    const want = on ? FUSE_ENABLED : FUSE_DISABLED
+    const got = wire[index]
+    const shown = got === FUSE_ENABLED ? 'on' : got === FUSE_DISABLED ? 'off' : `raw ${got}`
+    console.log(`fuse ${name}: ${shown} (expected ${on ? 'on' : 'off'})`)
+    if (got !== want) wrong.push(`${name} is ${shown}, expected ${on ? 'on' : 'off'}`)
+  }
+  if (wrong.length) throw new ProbeError(`fuses not as configured: ${wrong.join('; ')}`)
+  console.log('Fuse probe passed')
+}
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2))
+  if (command === 'fuses') {
+    if (!opts.exe) throw new ProbeError('--exe is required')
+    return runFuses(opts.exe)
+  }
   if (!opts.exe) throw new ProbeError('--exe is required')
   const timeoutMs = Number(opts['timeout-ms'] ?? (command === 'smoke' ? 60000 : 30000))
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
@@ -334,7 +391,7 @@ async function main() {
     }
     run = (dir) => runMcp(dir, opts.exe, opts.entry, expected, timeoutMs)
   } else {
-    throw new ProbeError(`unknown subcommand "${command ?? ''}" (expected smoke or mcp)`)
+    throw new ProbeError(`unknown subcommand "${command ?? ''}" (expected smoke, mcp or fuses)`)
   }
   const dir = mkdtempSync(join(tmpdir(), `tt-package-${command}-`))
   try {

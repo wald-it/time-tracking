@@ -390,3 +390,81 @@ describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => 
     expect(r.status).toBe(0)
   })
 })
+
+// #272: the fuse half. A fake binary is enough: the probe reads the fuse wire
+// (sentinel, version, length, one byte per fuse: '1' on, '0' off) and never
+// starts it. The unfused Electron in node_modules is the real-world red case.
+describe('package-smoke fuses probe', () => {
+  const SENTINEL = 'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
+  // Index: 0 RunAsNode, 1 CookieEncryption, 2 NodeOptions, 3 NodeCliInspect,
+  // 4 AsarIntegrity, 5 OnlyLoadAppFromAsar, 6 V8Snapshot.
+  const CONFIGURED = '1000110'
+
+  function fuseProbe(wire: string | null): { status: number | null; output: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'tt-fuses-'))
+    try {
+      const exe = join(dir, 'fake-electron')
+      const body =
+        wire === null
+          ? Buffer.from('no fuse wire in here')
+          : Buffer.concat([
+              Buffer.from('padding'),
+              Buffer.from(SENTINEL),
+              Buffer.from([1, wire.length]),
+              Buffer.from(wire)
+            ])
+      writeFileSync(exe, body)
+      const proc = spawnSync(process.execPath, [SCRIPT, 'fuses', '--exe', exe], {
+        encoding: 'utf8',
+        env: process.env
+      })
+      return { status: proc.status, output: `${proc.stdout}${proc.stderr}` }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('passes for the fuses electron-builder.yml sets', () => {
+    const r = fuseProbe(CONFIGURED)
+    expect(r.output).toContain('Fuse probe passed')
+    expect(r.status).toBe(0)
+  })
+
+  it('fails when RunAsNode is off (the MCP server would not start)', () => {
+    const r = fuseProbe('0' + CONFIGURED.slice(1))
+    expect(r.status).toBe(1)
+    expect(r.output).toContain('RunAsNode is off, expected on')
+  })
+
+  it.each([
+    ['OnlyLoadAppFromAsar', 5],
+    ['EnableEmbeddedAsarIntegrityValidation', 4]
+  ])('fails when %s is off', (name, index) => {
+    const wire = CONFIGURED.slice(0, index) + '0' + CONFIGURED.slice(index + 1)
+    const r = fuseProbe(wire)
+    expect(r.status).toBe(1)
+    expect(r.output).toContain(`${name} is off, expected on`)
+  })
+
+  it('fails when the inspector is left on', () => {
+    const r = fuseProbe('1001110')
+    expect(r.status).toBe(1)
+    expect(r.output).toContain('EnableNodeCliInspectArguments is on, expected off')
+  })
+
+  it('fails for a binary without a fuse wire', () => {
+    const r = fuseProbe(null)
+    expect(r.status).toBe(1)
+    expect(r.output).toMatch(/could not read the fuse wire/)
+  })
+
+  it('agrees with electron-builder.yml', () => {
+    const yml = readFileSync(join(REPO_ROOT, 'electron-builder.yml'), 'utf8')
+    const block = yml.slice(yml.indexOf('electronFuses:'))
+    expect(block).toMatch(/\n\s+runAsNode: true/)
+    expect(block).toMatch(/\n\s+onlyLoadAppFromAsar: true/)
+    expect(block).toMatch(/\n\s+enableEmbeddedAsarIntegrityValidation: true/)
+    expect(block).toMatch(/\n\s+enableNodeCliInspectArguments: false/)
+    expect(block).toMatch(/\n\s+enableNodeOptionsEnvironmentVariable: false/)
+  })
+})
