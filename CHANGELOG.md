@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Microsoft account token is now read and written with Electron's asynchronous `safeStorage` API.** This prepares for Electron 46, which removes the synchronous API; existing sign-ins stay valid ([#354](https://github.com/wald-it/time-tracking/issues/354)).
+
 ## [2.0.1] — 2026-10-29
 
 ### Breaking for webhook receivers

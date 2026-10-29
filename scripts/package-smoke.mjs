@@ -185,6 +185,14 @@ async function runSmoke(dir, exe, timeoutMs) {
   if (!(report.pdfBytes >= 1000)) {
     throw new ProbeError(`expected pdfBytes >= 1000, got ${report.pdfBytes}`)
   }
+  // CI has no guaranteed keychain setup. A skip is evidence that the migration
+  // was not tested, so it must not turn a package green.
+  if (report.safeStorageAsync?.ok !== true || report.safeStorageAsync?.skipped) {
+    throw new ProbeError(
+      `safeStorage async compatibility not proven: ${report.safeStorageAsync?.skipped ?? report.safeStorageAsync?.reason ?? 'missing or failed result'}`
+    )
+  }
+  console.log('safeStorage async compatibility proven')
   console.log(
     `Smoke test passed (schema v${report.schemaVersion}, Electron ${report.electronVersion ?? '?'}, PDF ${report.pdfBytes} bytes)`
   )

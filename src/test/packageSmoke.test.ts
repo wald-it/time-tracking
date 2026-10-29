@@ -9,8 +9,8 @@
  * environment the probe hands the server (Node mode, temp DB path, temp
  * userData), because that isolation is what makes the probe safe to run.
  *
- * The `smoke` subcommand starts the GUI app and refuses to run outside CI, so
- * it has no test here; its checks mirror the release jobs.
+ * The `smoke` report checks run with a fake process launch below, so they do
+ * not open a GUI or require a keychain in this unit test process.
  */
 import { describe, it, expect } from 'vitest'
 import { spawn, spawnSync } from 'node:child_process'
@@ -240,6 +240,63 @@ async function probeTimed(
 }
 
 const TOOLS = ['list_clients', 'get_dashboard']
+
+describe('package-smoke async safeStorage proof', () => {
+  function smokeReport(safeStorageAsync: unknown): { status: number | null; output: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'package-smoke-report-'))
+    try {
+      // Replace only process launch: exercise the CLI's real report checks with
+      // a fake app result, without opening a GUI or using a real user profile.
+      const script = join(dir, 'package-smoke.mjs')
+      const source = readFileSync(SCRIPT, 'utf8').replace(
+        "import { spawn } from 'node:child_process'",
+        `import { EventEmitter } from 'node:events'
+         function spawn(_exe, args) {
+           const child = new EventEmitter()
+           child.pid = 123
+           const report = JSON.parse(process.env.FAKE_SMOKE_REPORT)
+           writeFileSync(args[0].slice('--smoke-test='.length), JSON.stringify(report))
+           process.nextTick(() => { child.emit('exit', 0, null); child.emit('close', 0, null) })
+           return child
+         }`
+      )
+      writeFileSync(script, source)
+      const proc = spawnSync(process.execPath, [script, 'smoke', '--exe', process.execPath], {
+        env: {
+          ...process.env,
+          CI: 'true',
+          FAKE_SMOKE_REPORT: JSON.stringify({
+            ok: true,
+            schemaVersion: 34,
+            pdfBytes: 2000,
+            safeStorageAsync
+          })
+        },
+        encoding: 'utf8',
+        timeout: PROBE_LIMIT_MS
+      })
+      return { status: proc.status, output: `${proc.stdout}\n${proc.stderr}` }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it.each([
+    ['missing', undefined],
+    ['failed', { ok: false, reason: 'decrypted value differs' }],
+    ['skipped', { ok: false, skipped: 'OS encryption unavailable' }]
+  ])('rejects a %s async encryption proof', (_label, result) => {
+    const r = smokeReport(result)
+    expect(r.status, r.output).toBe(1)
+    expect(r.output).toContain('safeStorage async compatibility not proven')
+  })
+
+  it('accepts and reports a successful async encryption proof', () => {
+    const r = smokeReport({ ok: true })
+    expect(r.status, r.output).toBe(0)
+    expect(r.output).toContain('safeStorage async compatibility proven')
+  })
+})
 
 describe('package-smoke mcp probe', { timeout: PROBE_LIMIT_MS + 30_000 }, () => {
   it('passes against a server that lists every registered tool and reaches SQLite', () => {

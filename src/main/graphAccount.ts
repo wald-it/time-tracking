@@ -30,7 +30,7 @@ import {
   clearTokens,
   isStorageAvailable,
   loadTokens,
-  saveTokens,
+  prepareTokenWrite,
   type TokenStoreDeps
 } from './graphTokenStore'
 
@@ -83,9 +83,9 @@ function configOf(deps: GraphAccountDeps): GraphAuthConfig {
   return { clientId: effectiveClientId(deps), scopes }
 }
 
-export function getStatus(deps: GraphAccountDeps): AccountStatus {
-  const storageAvailable = isStorageAvailable(deps.store)
-  const tokens = storageAvailable ? loadTokens(deps.store) : null
+export async function getStatus(deps: GraphAccountDeps): Promise<AccountStatus> {
+  const storageAvailable = await isStorageAvailable(deps.store)
+  const tokens = storageAvailable ? await loadTokens(deps.store) : null
   const custom = deps.getSetting(CLIENT_ID_SETTING)?.trim()
   return {
     connected: tokens !== null,
@@ -108,7 +108,7 @@ export async function connect(
   deps: GraphAccountDeps,
   signal?: AbortSignal
 ): Promise<AccountStatus> {
-  if (!isStorageAvailable(deps.store)) {
+  if (!(await isStorageAvailable(deps.store))) {
     throw new GraphAuthError(
       'Die sichere Ablage des Systems ist nicht verfügbar. Die Verbindung könnte nicht ' +
         'gespeichert werden, deshalb wird die Anmeldung gar nicht erst gestartet.',
@@ -120,19 +120,22 @@ export async function connect(
     log: deps.log,
     ...deps.auth
   }
+  const generation = currentGeneration(storeKey(deps))
   const tokens = await connectAccount(configOf(deps), connectDeps, signal)
+  const write = await prepareTokenWrite(tokens, deps.store)
+  if (connectionMoved(deps, generation) || signal?.aborted) return getStatus(deps)
   // Store, then bump, in one synchronous step with nothing awaited between:
   // a refresh finishing in a gap would otherwise write the old account back.
   // Bumped only after a successful save — if the save throws, the old
   // connection is still the one stored and its refresh must still land.
-  saveTokens(tokens, deps.store)
+  write()
   connectionChanged(deps)
   deps.log?.('graph account: connected')
   return getStatus(deps)
 }
 
 /** Forget the connection. Does not revoke anything server-side — that is the user's own account page. */
-export function disconnect(deps: GraphAccountDeps): AccountStatus {
+export function disconnect(deps: GraphAccountDeps): Promise<AccountStatus> {
   connectionChanged(deps)
   clearTokens(deps.store)
   deps.log?.('graph account: disconnected')
@@ -152,29 +155,28 @@ export function disconnect(deps: GraphAccountDeps): AccountStatus {
  * retry (#308): a refused feature scope can arrive as `invalid_grant` too.
  */
 export async function getAccessToken(deps: GraphAccountDeps): Promise<string | null> {
-  const tokens = loadTokens(deps.store)
-  if (!tokens) return null
-
-  const now = deps.auth?.now?.() ?? Date.now()
-  if (!needsRefresh(tokens, now)) return tokens.accessToken
-
-  // #341: one refresh per token store at a time. The presence pokes and the
-  // calendar import can ask at the same moment; a second refresh with the
-  // same refresh token is sent with a spent token once Entra has rotated it.
   const key = storeKey(deps)
+  // #341: one refresh per token store at a time. The presence pokes and the
+  // calendar import can ask at the same moment. Share the async read too:
+  // a slow decrypt could otherwise return the old token after a refresh has
+  // already finished and start another refresh with that spent token.
   const running = inFlight.get(key)
   if (running) return running
-  const refresh: Promise<string | null> = refreshAndStore(
-    deps,
-    tokens,
-    currentGeneration(key)
-  ).finally(() => {
+  const refresh = readAndRefresh(deps, currentGeneration(key)).finally(() => {
     // Only its own entry: connect or disconnect may have released it and a
     // refresh for the new connection taken its place (#348).
     if (inFlight.get(key) === refresh) inFlight.delete(key)
   })
   inFlight.set(key, refresh)
   return refresh
+}
+
+async function readAndRefresh(deps: GraphAccountDeps, generation: number): Promise<string | null> {
+  const tokens = await loadTokens(deps.store)
+  if (connectionMoved(deps, generation)) return getAccessToken(deps)
+  if (!tokens) return null
+  const now = deps.auth?.now?.() ?? Date.now()
+  return needsRefresh(tokens, now) ? refreshAndStore(deps, tokens, generation) : tokens.accessToken
 }
 
 /**
@@ -232,7 +234,8 @@ async function refreshAndStore(
       // refresh token that was refused. A different one means someone else
       // refreshed or reconnected meanwhile; an empty or unreadable store is
       // nothing to delete.
-      const current = loadTokens(deps.store)
+      const current = await loadTokens(deps.store)
+      if (connectionMoved(deps, generation)) return getAccessToken(deps)
       if (!current) return null
       if (current.refreshToken !== tokens.refreshToken) {
         deps.log?.('graph account: refresh token already replaced, using the stored one')
@@ -254,7 +257,15 @@ async function refreshAndStore(
   }
   // Must be persisted even when only the access token changed — the refresh
   // token may have rotated, and the old one stops working once it has.
-  saveTokens(refreshed, deps.store)
+  let write: () => void
+  try {
+    write = await prepareTokenWrite(refreshed, deps.store)
+  } catch (err) {
+    if (connectionMoved(deps, generation)) return getAccessToken(deps)
+    throw err
+  }
+  if (connectionMoved(deps, generation)) return getAccessToken(deps)
+  write()
   return refreshed.accessToken
 }
 
@@ -322,7 +333,7 @@ const GRAPH_TIMEOUT_MS = 15_000
  * would first be tried for real an hour into someone's workday.
  */
 export async function verifyConnection(deps: GraphAccountDeps): Promise<VerifyResult> {
-  const before = loadTokens(deps.store)
+  const before = await loadTokens(deps.store)
   if (!before) {
     throw new GraphAuthError('Kein Microsoft-Konto verbunden.', 'not_connected')
   }

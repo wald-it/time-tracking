@@ -7,11 +7,12 @@ import {
   ipcMain,
   dialog,
   screen,
+  safeStorage,
   type MenuItemConstructorOptions
 } from 'electron'
 import log from 'electron-log/main'
 import { dirname, join } from 'path'
-import { writeFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import trayRunningIcon from '../../resources/tray-running.png?asset'
@@ -518,8 +519,8 @@ function pokePresence(): void {
     const account = graphAccountDepsFor(db)
     const deps: PresenceDeps = {
       getSetting: account.getSetting,
-      getAccountStatus: () => {
-        const s = getStatus(account)
+      getAccountStatus: async () => {
+        const s = await getStatus(account)
         return {
           connected: s.connected,
           personalAccount: s.personalAccount,
@@ -683,17 +684,39 @@ app.whenReady().then(async () => {
         pdfBytes = buf.length
       }
 
+      let safeStorageAsync: { ok: boolean; reason?: string; skipped?: string }
+      try {
+        // Deliberately use sync encryption only in this probe: existing Graph
+        // token files were written with it. Prove on the packaged binary that
+        // the async API reads those bytes, after app.whenReady() above.
+        if (!safeStorage.isEncryptionAvailable()) {
+          safeStorageAsync = { ok: false, skipped: 'OS encryption unavailable' }
+        } else if (!(await safeStorage.isAsyncEncryptionAvailable())) {
+          safeStorageAsync = { ok: false, reason: 'Async OS encryption unavailable' }
+        } else {
+          const plain = 'TimeTrack safeStorage legacy compatibility #354'
+          const file = join(smokeUserData, 'safe-storage-legacy.enc')
+          writeFileSync(file, safeStorage.encryptString(plain))
+          const { result } = await safeStorage.decryptStringAsync(readFileSync(file))
+          safeStorageAsync =
+            result === plain ? { ok: true } : { ok: false, reason: 'Decrypted value differs' }
+        }
+      } catch (err) {
+        safeStorageAsync = { ok: false, reason: (err as Error).message }
+      }
+
       const result = {
-        ok: true as const,
+        ok: safeStorageAsync.ok,
         schemaVersion: row.v ?? 0,
         dbPath: app.getPath('userData'),
         sessionData: app.getPath('sessionData'),
         electronVersion: process.versions.electron,
         nodeVersion: process.versions.node,
-        pdfBytes
+        pdfBytes,
+        safeStorageAsync
       }
       writeSmokeResult(outPath, result, 'log')
-      finishSmoke(0)
+      finishSmoke(safeStorageAsync.ok ? 0 : 1)
     } catch (err) {
       writeSmokeResult(
         outPath,
