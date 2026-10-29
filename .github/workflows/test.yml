@@ -273,7 +273,12 @@ jobs:
       - name: Check package contents (only runtime files in app.asar)
         run: node scripts/check-package-contents.mjs "$APP_RESOURCES/app.asar"
 
-      - name: Smoke test packaged app (DB + migrations + PDF)
+      # #272: the fuses electron-builder.yml sets, read from the packaged binary.
+      # RunAsNode must be on; the MCP step below proves it by behaviour as well.
+      - name: Fuses of the packaged binary
+        run: node scripts/package-smoke.mjs fuses --exe "$APP_EXE"
+
+      - name: Smoke test packaged app (DB + migrations + PDF + sandboxed windows)
         run: node scripts/package-smoke.mjs smoke --exe "$APP_EXE"
 
       - name: MCP server from the package (initialize, tools/list, tools/call)

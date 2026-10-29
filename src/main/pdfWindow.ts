@@ -48,6 +48,8 @@ export async function renderPdfBuffer(opts: RenderPdfOptions): Promise<Buffer> {
     show: false,
     width: 794, // approximate A4 at 96 DPI
     height: 1123,
+    // No appWebPreferences(): this static PDF document needs no app preload
+    // or IPC API. Keep the same sandbox and isolation without exposing either.
     webPreferences: {
       sandbox: true,
       contextIsolation: true,

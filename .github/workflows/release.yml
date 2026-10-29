@@ -253,7 +253,11 @@ jobs:
       - name: Check package contents (only runtime files in app.asar)
         run: node scripts/check-package-contents.mjs dist/win-unpacked/resources/app.asar
 
-      - name: Smoke test packaged app (DB + migrations + PDF)
+      - name: Check packaged Electron fuses
+        shell: bash
+        run: node scripts/package-smoke.mjs fuses --exe "$APP_EXE"
+
+      - name: Smoke test packaged app (DB + migrations + PDF + sandboxed windows)
         shell: bash
         run: node scripts/package-smoke.mjs smoke --exe "$APP_EXE"
 
@@ -317,7 +321,11 @@ jobs:
       - name: Check package contents (only runtime files in app.asar)
         run: node scripts/check-package-contents.mjs dist/mac-arm64/TimeTrack.app/Contents/Resources/app.asar
 
-      - name: Smoke test packaged app (DB + migrations + PDF)
+      - name: Check packaged Electron fuses
+        shell: bash
+        run: node scripts/package-smoke.mjs fuses --exe "$APP_EXE"
+
+      - name: Smoke test packaged app (DB + migrations + PDF + sandboxed windows)
         shell: bash
         run: node scripts/package-smoke.mjs smoke --exe "$APP_EXE"
 

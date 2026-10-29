@@ -40,6 +40,7 @@ import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
 import { pruneViewerCopiesAtStart } from './runViewerCopy'
 import { guardWindowLinks } from './externalLinks'
+import { appWebPreferences } from './appWebPreferences'
 import {
   WINDOW_BOUNDS_KEY,
   createWindowStateKeeper,
@@ -463,12 +464,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+    webPreferences: appWebPreferences()
   })
 
   // Windows can size a window created with x/y on a monitor whose scaling
@@ -683,6 +679,10 @@ app.whenReady().then(async () => {
         pdfBytes = buf.length
       }
 
+      // #272: the app windows' sandboxed preload, checked in the package.
+      const { probeSandboxedWindow } = await import('./smokeSandbox')
+      const sandbox = await probeSandboxedWindow()
+
       const result = {
         ok: true as const,
         schemaVersion: row.v ?? 0,
@@ -690,7 +690,8 @@ app.whenReady().then(async () => {
         sessionData: app.getPath('sessionData'),
         electronVersion: process.versions.electron,
         nodeVersion: process.versions.node,
-        pdfBytes
+        pdfBytes,
+        sandbox
       }
       writeSmokeResult(outPath, result, 'log')
       finishSmoke(0)
@@ -920,6 +921,9 @@ app.on('will-quit', () => {
 })
 
 app.on('window-all-closed', () => {
+  // Smoke mode closes the PDF and sandbox probe windows before writing its
+  // report. Only finishSmoke may exit it, after the report and DB cleanup.
+  if (smokeTestArg !== undefined) return
   if (process.platform !== 'darwin') {
     app.quit()
   }

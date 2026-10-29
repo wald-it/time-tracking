@@ -3,6 +3,7 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { getDb } from './db'
 import { guardWindowLinks } from './externalLinks'
+import { appWebPreferences } from './appWebPreferences'
 
 /**
  * v1.4 PR B — Mini-Widget. A frameless 200×40 always-on-top overlay that
@@ -120,12 +121,7 @@ export function showMini(): void {
     transparent: true,
     hasShadow: false,
     show: false,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+    webPreferences: appWebPreferences()
   })
 
   guardWindowLinks(miniWindow)

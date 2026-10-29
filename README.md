@@ -295,7 +295,9 @@ On start the app stops entries whose heartbeat is older than five minutes (crash
 
 ## Security
 
-- Renderer with `contextIsolation`, no Node integration, a strict Content Security Policy; all database access in the main process.
+- Renderer in the OS sandbox with `contextIsolation`, no Node integration, a strict Content Security Policy; all database access in the main process.
+- The installed app is locked with Electron fuses: it loads its code only from its own, unchanged package, and it ignores debugger flags and `NODE_OPTIONS`. Node mode stays available, because the MCP server runs through it.
+- PR and release builds check the packaged fuses, sandboxed preload and MCP server on Windows and macOS.
 - Links leave the app only as `http(s)` links; app windows never navigate away from the app.
 - Local interfaces (MCP write bridge, hardware keys, iCal feed) are off by default and protected by random tokens.
 - Releases are not code-signed; checksums and build provenance are published. TimeTrack runs on Electron 44, which receives security updates until March 2027.
