@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-10-29
+
 ### Breaking for webhook receivers
 
 - **An idle stop ("Beim Leerlauf stoppen") now sends `timer.stopped` for the running entry, like every other stop path, instead of `entry.updated`.** Receivers that matched `entry.updated` for idle stops must match `timer.stopped` ([#330](https://github.com/wald-it/time-tracking/issues/330)).
