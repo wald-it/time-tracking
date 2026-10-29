@@ -102,7 +102,26 @@ beforeEach(() => {
         data: {
           interval_min: 15,
           min_unit_min: 30,
-          inherited: { interval_min: 5, min_unit_min: 0 }
+          columns: null,
+          language: null,
+          fee_column: null,
+          group_by: null,
+          inherited: {
+            interval_min: 5,
+            min_unit_min: 0,
+            columns: 'times',
+            language: 'de',
+            fee_column: 'auto',
+            group_by: 'none'
+          },
+          inherited_source: {
+            interval_min: 'default',
+            min_unit_min: 'default',
+            columns: 'default',
+            language: 'default',
+            fee_column: 'default',
+            group_by: 'default'
+          }
         }
       }),
       save: vi.fn().mockResolvedValue({
@@ -110,7 +129,26 @@ beforeEach(() => {
         data: {
           interval_min: null,
           min_unit_min: null,
-          inherited: { interval_min: 5, min_unit_min: 0 }
+          columns: null,
+          language: null,
+          fee_column: null,
+          group_by: null,
+          inherited: {
+            interval_min: 5,
+            min_unit_min: 0,
+            columns: 'times',
+            language: 'de',
+            fee_column: 'auto',
+            group_by: 'none'
+          },
+          inherited_source: {
+            interval_min: 'default',
+            min_unit_min: 'default',
+            columns: 'default',
+            language: 'default',
+            fee_column: 'default',
+            group_by: 'default'
+          }
         }
       })
     },
@@ -335,7 +373,14 @@ describe('ClientsView billing editors', () => {
       })
       expect(window.api.billingProfile.save).toHaveBeenCalledWith(
         { kind: project ? 'project' : 'client', id: project ? 10 : 1 },
-        { interval_min: null, min_unit_min: null }
+        {
+          interval_min: null,
+          min_unit_min: null,
+          columns: null,
+          language: null,
+          fee_column: null,
+          group_by: null
+        }
       )
     }
   )

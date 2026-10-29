@@ -11,6 +11,7 @@ export function rateEditorError(message: string, t: TFunction): string {
     [errors.RATE_DELETE_ERROR, 'rates.deleteError'],
     [errors.PROFILE_INTERVAL_ERROR, 'rates.intervalError'],
     [errors.PROFILE_MINIMUM_ERROR, 'rates.minimumError'],
+    [errors.PROFILE_CHOICE_ERROR, 'rates.choiceError'],
     [errors.RATE_OWNER_ERROR, 'rates.ownerError'],
     [errors.RATE_ROW_ERROR, 'rates.rowError']
   ] as const
