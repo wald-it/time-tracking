@@ -16,6 +16,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../../../test/sqlite'
 import { seed } from '../../../test/bridgeKit'
+import { seedEntry } from '../../../test/entryFixtures'
 import { switchTimer, updateManualEntry } from '../../../main/entryMutations'
 import type { Client, CreateEntryInput, Entry, UpdateEntryInput } from '../../../shared/types'
 import type { UseTimerResult } from './useTimer'
@@ -74,11 +75,20 @@ describe('quick-start switch → quick note → save (real main-process mutation
     const db = new DatabaseImpl(':memory:')
     seed(db)
     const startedAt = new Date(Date.now() - 60 * 60_000).toISOString()
-    db.prepare(
-      `INSERT INTO entries (id, client_id, project_id, description, started_at, heartbeat_at,
-                            billable, reference, private_note, tags)
-       VALUES (1, 1, 10, '', ?, ?, 0, 'JIRA-7', 'intern', ',ops,')`
-    ).run(startedAt, startedAt)
+    // 2.0 P2: written through the fixture; `entries` is a read-only view.
+    seedEntry(db, {
+      id: 1,
+      client_id: 1,
+      project_id: 10,
+      description: '',
+      started_at: startedAt,
+      stopped_at: null,
+      heartbeat_at: startedAt,
+      billable: 0,
+      reference: 'JIRA-7',
+      private_note: 'intern',
+      tags: ',ops,'
+    })
     const { trayUpdate } = installApi(db)
 
     // Fresh module instances (useTimer keeps module-level singletons), wired

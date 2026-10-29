@@ -4,8 +4,10 @@
  * (the real `deleteEntry` on a real database) → the toast's undo →
  * `entries:undelete` (the real `undeleteEntry`).
  *
- * The day panel shows only the half on its own day, so the user deletes one
- * row; both halves have to go, and undo has to bring both back.
+ * The day panel shows only the segment on its own day, so the user deletes
+ * one row; the whole entry has to go, and undo has to bring it back whole.
+ * Since 2.0 the two halves are two segments of one entry (same `id`,
+ * `segment_seq` 0 and 1), no longer two rows sharing a `link_id`.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -43,16 +45,19 @@ function installApi(db: Database.Database): void {
   ;(window as unknown as { api: typeof api }).api = api
 }
 
-function deletedFlags(db: Database.Database, linkId: string): boolean[] {
-  return (
-    db
-      .prepare(`SELECT deleted_at FROM entries WHERE link_id = ? ORDER BY started_at`)
-      .all(linkId) as Array<{ deleted_at: string | null }>
-  ).map((r) => r.deleted_at !== null)
+/** Whether the entry is in the trash, and how many of its segments the view shows. */
+function state(db: Database.Database, id: number): { trashed: boolean; shown: number } {
+  const row = db.prepare(`SELECT is_deleted FROM entry WHERE id = ?`).get(id) as {
+    is_deleted: number
+  }
+  const shown = (
+    db.prepare(`SELECT COUNT(*) AS n FROM entries WHERE id = ?`).get(id) as { n: number }
+  ).n
+  return { trashed: row.is_deleted === 1, shown }
 }
 
 describe('day panel: delete and undo an entry across midnight (#323)', () => {
-  it('deleting the half shown on the second day removes both halves; undo restores both', async () => {
+  it('deleting the segment shown on the second day removes the whole entry; undo restores it', async () => {
     const db = new DatabaseImpl(':memory:')
     seed(db)
     const created = createManualEntry(db, {
@@ -62,10 +67,11 @@ describe('day panel: delete and undo an entry across midnight (#323)', () => {
       stopped_at: new Date(2026, 5, 11, 1, 0, 0).toISOString()
     })
     if (!created.ok) throw new Error(created.error)
-    const linkId = created.data.link_id!
+    const id = created.data.id
+    expect(state(db, id)).toEqual({ trashed: false, shown: 2 })
     const secondHalf = db
-      .prepare(`SELECT * FROM entries WHERE link_id = ? ORDER BY started_at DESC LIMIT 1`)
-      .get(linkId) as Entry
+      .prepare(`SELECT * FROM entries WHERE id = ? AND segment_seq = 1`)
+      .get(id) as Entry
     const clients = db.prepare(`SELECT * FROM clients ORDER BY id`).all() as Client[]
     installApi(db)
 
@@ -77,17 +83,18 @@ describe('day panel: delete and undo an entry across midnight (#323)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Löschen' }))
     const dialog = screen.getByRole('alertdialog')
-    // The question says that both days go, not just the half on screen.
+    // #372: the question says that both days go; the view's `segment_count`
+    // tells the renderer that this row is one day of two.
     expect(dialog.textContent).toContain('an beiden Tagen gelöscht')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Löschen' }))
 
-    await waitFor(() => expect(deletedFlags(db, linkId)).toEqual([true, true]))
+    await waitFor(() => expect(state(db, id)).toEqual({ trashed: true, shown: 0 }))
 
     const toast = useToastStore.getState().toasts.find((t) => t.action?.type === 'undo_delete')
     expect(toast).toBeDefined()
     await act(async () => {
       await useToastStore.getState().executeAction(toast!.id)
     })
-    expect(deletedFlags(db, linkId)).toEqual([false, false])
+    expect(state(db, id)).toEqual({ trashed: false, shown: 2 })
   })
 })

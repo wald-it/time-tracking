@@ -1,13 +1,14 @@
 import { ipcMain } from 'electron'
+import { anyRateConfigured, roundingConfigured } from '../shared/billingProfile'
+import { uniformRoundingRule } from '../shared/entryMoney'
 import type Database from 'better-sqlite3'
 import type { IpcResult, MonthQuery, AnalyticsSummary } from '../shared/types'
-import { billedMinutesSql, feeCentSql } from '../shared/currency'
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
 function pad(n: number): string {
@@ -75,20 +76,17 @@ export function buildAnalyticsSummary(
       const selMonthKey = `${year}-${pad(month)}`
       const prevMonthKey = `${prevYear}-${pad(prevMonth)}`
 
-      // Read rounding step from settings (same rule as the PDF pipeline)
-      const roundSetting = db
-        .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-        .get() as { value: string } | undefined
-      const roundStep = parseInt(roundSetting?.value ?? '0', 10) || 0
+      // Money comes from the view billing_lines (design section 7): the rule,
+      // the profile and the rate valid on the day are applied there, once.
 
       // Hours are worked time, to the second (owner decision 2026-10-22, HANDOFF
       // §2.2 — supersedes the per-entry rounded hours of v1.21). The rounded
       // figure exists once, for the month, as `hoursRounded`: per entry like the
       // invoice, then summed. Revenue follows the invoice rule (FEE_CENT).
       const ENTRY_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
-      const BILLED_SEC = `(${billedMinutesSql(roundStep)} * 60)`
+      const BILLED_SEC = `(e.billed_minutes * 60)`
       // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
-      const FEE_CENT = feeCentSql(roundStep)
+      const FEE_CENT = 'e.fee_cent'
 
       // ── 1. Month stats ─────────────────────────────────────────────
       type MonthRow = {
@@ -98,6 +96,13 @@ export function buildAnalyticsSummary(
         billed_sec: number
       }
 
+      const monthSourceSql = `
+        FROM billing_lines e
+        JOIN clients c ON c.id = e.client_id
+        LEFT JOIN projects p ON p.id = e.project_id
+        WHERE e.stopped_at IS NOT NULL
+          AND substr(e.segment_date, 1, 7) = ?
+          AND CAST(substr(e.segment_date, 9, 2) AS INTEGER) <= ?`
       const monthSql = `
         SELECT
           COALESCE(SUM(
@@ -112,13 +117,7 @@ export function buildAnalyticsSummary(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS revenue_cent,
           COALESCE(SUM(${BILLED_SEC}), 0) AS billed_sec
-        FROM entries e
-        JOIN clients c ON c.id = e.client_id
-        LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.deleted_at IS NULL
-          AND e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
-          AND CAST(strftime('%d', e.started_at, 'localtime') AS INTEGER) <= ?`
+        ${monthSourceSql}`
 
       // Days in selected month + days elapsed (for current month ETA)
       const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month
@@ -133,20 +132,15 @@ export function buildAnalyticsSummary(
 
       const mCur = db.prepare(monthSql).get(selMonthKey, 31) as MonthRow
       const mPrev = db.prepare(monthSql).get(prevMonthKey, prevPeriodDays) as MonthRow
+      const monthProfiles = db
+        .prepare(`SELECT DISTINCT e.interval_min, e.min_unit_min ${monthSourceSql}`)
+        .all(selMonthKey, 31) as { interval_min: number; min_unit_min: number }[]
 
       // A sub-second entry has no whole second of hours but bills a minute.
       const hasData = (mCur.total_sec ?? 0) > 0 || (mCur.revenue_cent ?? 0) > 0
 
-      // hasRateConfigured: any client or project has rate_cent > 0
-      const rateCheck = db
-        .prepare(
-          `SELECT 1 FROM clients WHERE rate_cent > 0
-           UNION ALL
-           SELECT 1 FROM projects WHERE rate_cent IS NOT NULL AND rate_cent > 0
-           LIMIT 1`
-        )
-        .get() as { 1: number } | undefined
-      const hasRateConfigured = rateCheck != null
+      // hasRateConfigured: any client or project has a rate above 0
+      const hasRateConfigured = anyRateConfigured(db)
 
       const totalSec = mCur.total_sec ?? 0
       const billableSec = mCur.billable_sec ?? 0
@@ -173,12 +167,11 @@ export function buildAnalyticsSummary(
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS rev
-        FROM entries e
+        FROM billing_lines e
         JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.deleted_at IS NULL
-          AND e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
+        WHERE e.stopped_at IS NOT NULL
+          AND substr(e.segment_date, 1, 7) = ?
         GROUP BY c.id
         ORDER BY h DESC`
 
@@ -196,7 +189,7 @@ export function buildAnalyticsSummary(
 
       const weekSql = `
         SELECT
-          DATE(e.started_at, 'localtime', '-' || ((CAST(strftime('%w', e.started_at, 'localtime') AS INTEGER) + 6) % 7) || ' days') AS week_start,
+          DATE(e.segment_date, '-' || ((CAST(strftime('%w', e.segment_date) AS INTEGER) + 6) % 7) || ' days') AS week_start,
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN
               ${ENTRY_SEC}
@@ -210,13 +203,12 @@ export function buildAnalyticsSummary(
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS r
-        FROM entries e
+        FROM billing_lines e
         JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.deleted_at IS NULL
-          AND e.stopped_at IS NOT NULL
-          AND DATE(e.started_at, 'localtime') <= ${anchorEnd}
-          AND DATE(e.started_at, 'localtime') > DATE(${anchorEnd}, '-84 days')
+        WHERE e.stopped_at IS NOT NULL
+          AND e.segment_date <= ${anchorEnd}
+          AND e.segment_date > DATE(${anchorEnd}, '-84 days')
         GROUP BY week_start
         ORDER BY week_start ASC`
 
@@ -257,7 +249,7 @@ export function buildAnalyticsSummary(
 
       const monthTrendSql = `
         SELECT
-          strftime('%Y-%m', e.started_at, 'localtime') AS month_key,
+          substr(e.segment_date, 1, 7) AS month_key,
           COALESCE(SUM(
             ${ENTRY_SEC}
           ), 0) AS h,
@@ -266,13 +258,12 @@ export function buildAnalyticsSummary(
           COALESCE(SUM(
             CASE WHEN e.billable = 1 THEN ${FEE_CENT} ELSE 0 END
           ), 0) AS r
-        FROM entries e
+        FROM billing_lines e
         JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.deleted_at IS NULL
-          AND e.stopped_at IS NOT NULL
-          AND DATE(e.started_at, 'localtime') <= ${anchorEnd}
-          AND DATE(e.started_at, 'localtime') > DATE(${anchorEnd}, '-12 months')
+        WHERE e.stopped_at IS NOT NULL
+          AND e.segment_date <= ${anchorEnd}
+          AND e.segment_date > DATE(${anchorEnd}, '-12 months')
         GROUP BY month_key
         ORDER BY month_key ASC`
 
@@ -316,12 +307,11 @@ export function buildAnalyticsSummary(
 
       const weekdaySql = `
         SELECT
-          CAST(strftime('%w', e.started_at, 'localtime') AS INTEGER) AS dow,
+          CAST(strftime('%w', e.segment_date) AS INTEGER) AS dow,
           COALESCE(SUM(${ENTRY_SEC}), 0) AS sec
-        FROM entries e
-        WHERE e.deleted_at IS NULL
-          AND e.stopped_at IS NOT NULL
-          AND DATE(e.started_at, 'localtime') BETWEEN ? AND ?
+        FROM billing_lines e
+        WHERE e.stopped_at IS NOT NULL
+          AND e.segment_date BETWEEN ? AND ?
         GROUP BY dow`
 
       const weekdayRows = db.prepare(weekdaySql).all(ymd(spanStart), ymd(yesterday)) as WeekdayRow[]
@@ -347,7 +337,8 @@ export function buildAnalyticsSummary(
       return {
         month: {
           hours: Math.round(totalSec),
-          hoursRounded: roundStep > 0 ? Math.round(mCur.billed_sec ?? 0) : null,
+          hoursRounded: roundingConfigured(db) ? Math.round(mCur.billed_sec ?? 0) : null,
+          roundingRule: uniformRoundingRule(monthProfiles),
           hoursPrev: Math.round(mPrev.total_sec ?? 0),
           revenue: Math.round(mCur.revenue_cent ?? 0),
           revenuePrev: Math.round(mPrev.revenue_cent ?? 0),

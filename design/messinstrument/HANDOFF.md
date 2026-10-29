@@ -361,6 +361,6 @@ rg -n "backdrop-blur|backdrop-filter|linear-gradient|accent-glow|--blur|indigo-|
    - An anchored dark popover: it needs positioning and flip logic, and it puts a second dark window on the page next to the display.
 
 1. **Client colour presets.** The 10 stored presets are not colour-blind-safe (DESIGN.md limitation L2). A validated replacement set is possible, but it touches user data, so it needs a separate issue and a decision.
-2. **App icon / tray glyph** are still the glass versions (`timetrack_icon_glass_*.svg`). They need a separate design pass.
+2. **App icon / tray glyph** were still the glass versions when this was written. Done in 1.23.2 (#365, #366): the dial drawn in `build/icon-src/*.svg`, rendered by `scripts/sync-icon.mjs`.
 3. **PDF timesheet template** is unaffected (it has its own accent-colour setting).
 4. If Kunden, Export or Einstellungen need **structural** changes beyond restyling, ask for a mockup instead of improvising.

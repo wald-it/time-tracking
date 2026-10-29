@@ -9,8 +9,11 @@
  */
 import type Database from 'better-sqlite3'
 import {
+  activeRunNumbers,
   createManualEntry,
   resolveEditRange,
+  readEntry,
+  toLegacyEntry,
   STALE_EDIT_ERROR,
   updateManualEntry,
   switchTimer,
@@ -36,7 +39,6 @@ import {
   toLocalIso,
   zonedTimestampError
 } from '../shared/zonedTimestamp'
-import { roundDuration } from '../shared/duration'
 import { deserializeTags } from '../shared/tags'
 import type { Locale } from '../shared/i18n'
 import { dialogT, dialogText, readLanguage, type DialogT } from './mainI18n'
@@ -389,7 +391,7 @@ function planOp(
           ...hintPreview(hints)
         },
         hints,
-        run: () => createManualEntry(db, input),
+        run: () => createManualEntry(db, input, { source: 'mcp' }),
         audit: (r) => ({
           op,
           id: r?.id ?? null,
@@ -401,10 +403,15 @@ function planOp(
       }
     }
     case 'update_entry_fields': {
-      const id = Number(args.id)
-      const existing = db
-        .prepare(`SELECT * FROM entries WHERE id = ? AND deleted_at IS NULL`)
-        .get(id) as Entry | undefined
+      // An id from 1.x resolves to its entry; the id of a second half also
+      // names the half, so an edit through it behaves as it did in 1.x (the
+      // outer edge moves the entry, the midnight cut is refused, #372).
+      const target = resolveEntryId(db, Number(args.id))
+      const id = target.id
+      // The entry with its whole range (a midnight-split entry is one entry
+      // with two segments, #311), not the first row of the view.
+      const current = readEntry(db, id)
+      const existing = current && !current.deleted ? toLegacyEntry(current) : undefined
       if (!existing) return { error: 'Eintrag existiert nicht' }
       // Running timers are excluded from update_entry_fields entirely (matches
       // the tool description). Stop the timer via stop_running_timer first.
@@ -417,14 +424,36 @@ function planOp(
       // Only the time fields the caller actually passed are checked; an update
       // without them keeps the stored values and is not affected by the rule.
       const written: WrittenOffsets = {}
-      let startedAt = existing.started_at
+      // Through the id of a half, an omitted time is that half's own, so it
+      // reads as "not moved" to resolveEditRange.
+      const half =
+        target.date !== undefined
+          ? current!.segments.find((s) => s.segment_date === target.date)
+          : target.seq === undefined
+            ? undefined
+            : current!.segments[target.seq]
+      // The entry shrank since (an edit dropped the day this id stood for): the
+      // id still names the entry, so a change of its fields goes through, but a
+      // time cannot be placed on a half that no longer exists.
+      if (
+        (target.seq !== undefined || target.date !== undefined) &&
+        !half &&
+        (args.started_at !== undefined || args.stopped_at !== undefined)
+      ) {
+        return {
+          error:
+            'Die Tageshälfte, für die diese Id stand, gibt es nicht mehr — Zeiten über die Id des Eintrags ändern'
+        }
+      }
+      const seq = half?.seq
+      let startedAt = half?.started_at ?? existing.started_at
       if (args.started_at !== undefined) {
         const r = zonedField('started_at', args.started_at)
         if ('error' in r) return r
         startedAt = r.iso
         written.started_at = r
       }
-      let stoppedAt = existing.stopped_at ?? ''
+      let stoppedAt = half ? (half.stopped_at ?? '') : (existing.stopped_at ?? '')
       if (args.stopped_at !== undefined) {
         const r = zonedField('stopped_at', args.stopped_at)
         if ('error' in r) return r
@@ -432,8 +461,18 @@ function planOp(
         written.stopped_at = r
       }
       const hints = offsetHints(written, 'de')
+      // The version the client read; the entry moving on since refuses the
+      // edit (design 9). Without one, the version the owner is asked about.
+      const clientVersion =
+        args.expected_version === undefined ? undefined : Number(args.expected_version)
+      if (clientVersion !== undefined && clientVersion !== existing.version_no) {
+        return { error: STALE_EDIT_ERROR }
+      }
+      const reason = args.reason === undefined ? undefined : asString(args.reason).trim()
       const given: UpdateEntryInput = {
         id,
+        ...(seq === undefined ? {} : { segment_seq: seq }),
+        ...(reason ? { reason } : {}),
         client_id: args.client_id === undefined ? existing.client_id : Number(args.client_id),
         description:
           args.description === undefined ? existing.description : asString(args.description),
@@ -450,16 +489,27 @@ function planOp(
         project_id:
           'project_id' in args
             ? asProjectId(args.project_id, existing.project_id ?? null)
-            : (existing.project_id ?? null)
+            : (existing.project_id ?? null),
+        // #335 case 1: the version the owner is asked about. A delete or an
+        // edit in between moves the entry on, and the write is refused.
+        expected_version: clientVersion ?? existing.version_no
       }
       // #311: an edit of one half of a split entry applies to the whole entry.
       // Mapped here, before the dialog and the preview, so the owner confirms
       // the change that is applied; times compare against the entry's range.
       const resolved = resolveEditRange(db, given)
       if ('error' in resolved) return { error: resolved.error }
-      const input = resolved.input
       const was = resolved.before
-      const vErr = validateManualEntry(db, input, id, existing.link_id ?? undefined)
+      // An edge a half-id edit leaves alone stays the entry's own.
+      const input = {
+        ...resolved.input,
+        started_at: resolved.input.started_at ?? was.started_at,
+        stopped_at: resolved.input.stopped_at ?? was.stopped_at
+      } as Required<
+        Pick<UpdateEntryInput, 'client_id' | 'description' | 'started_at' | 'stopped_at'>
+      > &
+        UpdateEntryInput
+      const vErr = validateManualEntry(db, input, id)
       if (vErr) return { error: vErr }
       // Every field the commit actually changes, before → after: one line in
       // the dialog each, and the same set under `changes` in the preview.
@@ -545,6 +595,18 @@ function planOp(
           ? { before: noteBefore, after: noteAfter }
           : { changed: true as const }
       }
+      // Design 9: the confirmation and the preview say when the entry is billed,
+      // so the owner sees the run before he answers, not after the refusal.
+      const billedRuns = activeRunNumbers(db, id)
+      let billedPreview: Record<string, unknown> = {}
+      if (billedRuns.length) {
+        textLines.push(
+          reason
+            ? say.t('mainDialog.mcp.billed', { runs: billedRuns.join(', '), reason })
+            : say.t('mainDialog.mcp.billedNoReason', { runs: billedRuns.join(', ') })
+        )
+        billedPreview = { billed: { runs: billedRuns, ...(reason ? { reason } : {}) } }
+      }
       return {
         summary: withHints(
           say,
@@ -585,6 +647,7 @@ function planOp(
             project_id: input.project_id
           },
           changes,
+          ...billedPreview,
           ...hintPreview(hints)
         },
         hints,
@@ -595,12 +658,12 @@ function planOp(
           const now = resolveEditRange(db, given)
           if ('error' in now) return { ok: false as const, error: now.error }
           if (
-            now.input.started_at !== input.started_at ||
-            now.input.stopped_at !== input.stopped_at
+            (now.input.started_at ?? now.before.started_at) !== input.started_at ||
+            (now.input.stopped_at ?? now.before.stopped_at) !== input.stopped_at
           ) {
             return { ok: false as const, error: STALE_EDIT_ERROR }
           }
-          return updateManualEntry(db, given)
+          return updateManualEntry(db, given, { source: 'mcp' })
         },
         audit: (r) => ({
           op,
@@ -718,7 +781,7 @@ function planOp(
               error: 'Der laufende Timer hat sich seit der Vorschau geändert — bitte erneut senden'
             }
           }
-          const r = switchTimer(db, input)
+          const r = switchTimer(db, input, { source: 'mcp' })
           if (!r.ok) return r
           stopped = r.data.stopped
           return { ok: true, data: r.data.entry }
@@ -758,7 +821,7 @@ function planOp(
               error: 'Der laufende Timer hat sich seit der Vorschau geändert — bitte erneut senden'
             }
           }
-          return stopRunningTimer(db)
+          return stopRunningTimer(db, { source: 'mcp' })
         },
         audit: (r) => ({ op, id: r?.id ?? null, client_id: r?.client_id ?? null })
       }
@@ -830,22 +893,23 @@ async function handleControllerRequest(
   // - `*_rounded_seconds`: as the invoice bills it — each entry rounded up to
   //   `pdf_round_minutes` (readRoundedTotals), the same number as Heute's
   //   "gerundet … h". One rounding rule in the product.
-  // - `*_display_seconds`: LEGACY, unchanged meaning — the total rounded in
-  //   one piece, as the page showed it before. Kept only for plugin builds
-  //   that already read it (the plugin ships separately); not the invoice rule.
+  // - `*_display_seconds`: kept by name for plugin builds that already read
+  //   them (CHANGELOG 1.23.0). Since 2.0 (#374) they carry the same billed
+  //   minutes as `*_rounded_seconds` (billing_lines), no longer a total rounded
+  //   in one piece.
   if (op === 'get_summary') {
     const totals = readTotals(db)
     const round_minutes = readRoundMinutes(db)
+    const rounded = readRoundedTotals(db)
     return {
       ok: true,
       data: {
         running: readRunning(db),
         ...totals,
         round_minutes,
-        ...readRoundedTotals(db),
-        // Legacy: the total rounded in one piece — see above.
-        today_display_seconds: roundDuration(totals.today_seconds, round_minutes),
-        week_display_seconds: roundDuration(totals.week_seconds, round_minutes)
+        ...rounded,
+        today_display_seconds: rounded.today_rounded_seconds,
+        week_display_seconds: rounded.week_rounded_seconds
       }
     }
   }
@@ -902,7 +966,7 @@ async function handleControllerRequest(
   await ctx.ensureBackup()
 
   if (matches) {
-    const r = stopRunningTimer(db)
+    const r = stopRunningTimer(db, { source: 'controller' })
     if (!r.ok) return err('invalid', r.error)
     ctx.onChange()
     ctx.audit({
@@ -918,12 +982,16 @@ async function handleControllerRequest(
   // Same switch path as the app's quick start (B1): the running entry ends
   // at the instant the new one begins, and the receiver hears
   // `timer.stopped` for it before `timer.started`.
-  const r = switchTimer(db, {
-    client_id,
-    description,
-    started_at: new Date().toISOString(),
-    project_id
-  })
+  const r = switchTimer(
+    db,
+    {
+      client_id,
+      description,
+      started_at: new Date().toISOString(),
+      project_id
+    },
+    { source: 'controller' }
+  )
   if (!r.ok) return err('invalid', r.error)
   ctx.onChange()
   ctx.audit({
@@ -947,6 +1015,54 @@ async function handleControllerRequest(
  * Controller-token requests branch into `handleControllerRequest` after the
  * token check; the two token scopes never unlock each other's ops.
  */
+/**
+ * The entry an MCP id names. A current entry id is itself; an id from 1.x that
+ * is no entry id (the second half of a pair, which the migration folded into
+ * its first) resolves through `entry_legacy_id` for the whole 2.x line, with
+ * the half it stood for (the day of that segment in the first version, else the ordinal
+ * among the entry's legacy ids), so an edit through it keeps its 1.x meaning. Unknown ids stay as given and fail
+ * as "Eintrag existiert nicht".
+ */
+function resolveEntryId(db: Db, id: number): { id: number; seq?: number; date?: string } {
+  if (readEntry(db, id)) return { id }
+  const row = db.prepare(`SELECT entry_id FROM entry_legacy_id WHERE legacy_id = ?`).get(id) as
+    | { entry_id: number }
+    | undefined
+  if (!row) return { id }
+  const ordinal = (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM entry_legacy_id WHERE entry_id = ? AND legacy_id < ?`)
+      .get(row.entry_id, id) as { n: number }
+  ).n
+  // The day that segment stood for is kept in the entry's first version, which
+  // never changes (and was cut in the zone of the migration); it names the half
+  // even after an edit dropped or added a day in front. The segment is found by
+  // the start of the 1.x row, which `entries_v1` keeps; ids need not run in time
+  // order. Without that row the ordinal among the legacy ids is all there is.
+  const byStart = db
+    .prepare(
+      `SELECT s.segment_date FROM entry_segment s
+         JOIN entry_version v ON v.id = s.version_id
+        WHERE v.entry_id = ? AND v.version_no = 1
+          AND s.started_at = (SELECT started_at FROM entries_v1 WHERE id = ?)`
+    )
+    .get(row.entry_id, id) as { segment_date: string } | undefined
+  const byOrdinal = db
+    .prepare(
+      `SELECT s.segment_date FROM entry_segment s
+         JOIN entry_version v ON v.id = s.version_id
+        WHERE v.entry_id = ? AND v.version_no = 1 AND s.seq = ?`
+    )
+    .get(row.entry_id, ordinal) as { segment_date: string } | undefined
+  const first = byStart ?? byOrdinal
+  return { id: row.entry_id, seq: ordinal, ...(first ? { date: first.segment_date } : {}) }
+}
+
+function withVersion<T>(data: T): T {
+  const d = data as { version_no?: number } | null | undefined
+  return d && typeof d.version_no === 'number' ? ({ ...d, version: d.version_no } as T) : data
+}
+
 export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise<BridgeResponse> {
   if (!req || req.v !== 1 || typeof req.op !== 'string') {
     return err('invalid', 'Ungültige Anfrage')
@@ -989,8 +1105,10 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
   // Same emission point as the IPC handlers, one level up from the mutation.
   const events = plan.webhooks?.(result.data) ?? [[req.op as WriteOp, result.data]]
   for (const [event, entry] of events) ctx.emitWebhook?.(event, entry)
+  // 2.0: every entry the bridge returns names its version next to the stable id.
+  const data = withVersion(result.data)
   if (plan.hints && Object.keys(plan.hints).length) {
-    return { ok: true, data: { ...(result.data ?? {}), zeit_hinweise: plan.hints } }
+    return { ok: true, data: { ...(data ?? {}), zeit_hinweise: plan.hints } }
   }
-  return { ok: true, data: result.data }
+  return { ok: true, data }
 }

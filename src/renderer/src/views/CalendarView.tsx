@@ -14,11 +14,12 @@ import { CalendarDrawer } from '../components/CalendarDrawer'
 import { DayPanel } from '../components/kalender/DayPanel'
 import { ClientBreakdown } from '../components/kalender/ClientBreakdown'
 import { GraphImportModal } from '../components/GraphImportModal'
-import { useRounding } from '../contexts/RoundingContext'
-import { billedMinutes, formatEur } from '../../../shared/currency'
+import { formatEur } from '../../../shared/currency'
 import { formatHm, type DayRange } from '../components/heute/dayScaleLayout'
 import { MiniDayScale } from '../components/kalender/MiniDayScale'
-import { dayRevenueCent } from '../components/kalender/dayRevenue'
+import { BilledChip } from '../components/BilledChip'
+import { dayBilledSeconds, dayRevenueCent } from '../components/kalender/dayRevenue'
+import { uniformRoundingRule } from '../../../shared/entryMoney'
 import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
 
 /**
@@ -65,7 +66,6 @@ export default function CalendarView(): React.JSX.Element {
   const { locale } = useLocale()
   const nowMs = useNow()
   const { clients } = useTimer()
-  const { roundMinutes } = useRounding()
   const weekStart = useWeekStart()
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
@@ -401,8 +401,6 @@ export default function CalendarView(): React.JSX.Element {
                 week={week}
                 cursor={cursor}
                 byDay={byDay}
-                clients={clients}
-                projects={loadedProjects}
                 clientsById={clientsById}
                 projectsById={projectsById}
                 range={range}
@@ -410,7 +408,6 @@ export default function CalendarView(): React.JSX.Element {
                 todayKey={todayKey}
                 selectedKey={selectedKey}
                 activeDay={activeDay}
-                roundMinutes={roundMinutes}
                 dateFmt={dateFmt}
                 onSelect={selectDay}
               />
@@ -473,8 +470,6 @@ function Week({
   week,
   cursor,
   byDay,
-  clients,
-  projects,
   clientsById,
   projectsById,
   range,
@@ -482,16 +477,12 @@ function Week({
   todayKey,
   selectedKey,
   activeDay,
-  roundMinutes,
   dateFmt,
   onSelect
 }: {
   week: WeekData
   cursor: Date
   byDay: Map<string, Entry[]>
-  clients: Client[]
-  /** null while the project rates are unknown: then no amount is shown. */
-  projects: Project[] | null
   clientsById: Map<number, Client>
   projectsById: Map<number, Project>
   range: DayRange
@@ -499,7 +490,6 @@ function Week({
   todayKey: string
   selectedKey: string
   activeDay: Date
-  roundMinutes: number
   dateFmt: Intl.DateTimeFormat
   onSelect: (d: Date) => void
 }): React.JSX.Element {
@@ -541,11 +531,10 @@ function Week({
         const isSelected = inMonth && key === selectedKey
         const weekend = isWeekend(day)
         const totalSeconds = dayEntries.reduce((sum, e) => sum + entryDurationSeconds(e, nowMs), 0)
-        // One rounding rule (HANDOFF §2.2): each entry rounded like the invoice.
-        const roundedSeconds = dayRoundedSeconds(dayEntries, roundMinutes, nowMs)
-        const revenueCent = projects
-          ? dayRevenueCent(dayEntries, clients, projects, roundMinutes, nowMs)
-          : 0
+        // One rounding rule (HANDOFF §2.2): the billed minutes of the view, like the invoice.
+        const roundedSeconds = dayBilledSeconds(dayEntries, nowMs)
+        const revenueCent = dayRevenueCent(dayEntries)
+        const rule = uniformRoundingRule(dayEntries)
         const date = dateFmt.format(day)
         // The amount is part of the label: narrow cells hide the euro line.
         const ariaLabel =
@@ -568,7 +557,10 @@ function Week({
             tabIndex={key === activeKey ? 0 : -1}
             disabled={!inMonth}
             aria-pressed={isSelected}
-            aria-label={ariaLabel}
+            aria-label={
+              ariaLabel +
+              (dayEntries.some((entry) => !!entry.billed) ? ` · ${t('entry.billed')}` : '')
+            }
             onClick={() => onSelect(day)}
             className={[
               '@container flex min-h-[104px] min-w-0 cursor-pointer flex-col justify-between gap-2.5 overflow-hidden rounded-none p-2.5 text-left',
@@ -606,10 +598,17 @@ function Week({
                     style={{ color: 'var(--ink2)' }}
                     title={
                       roundedSeconds !== totalSeconds
-                        ? t('today.summary.rounded', {
-                            total: formatHm(roundedSeconds),
-                            step: roundMinutes
-                          })
+                        ? rule?.kind === 'interval'
+                          ? t('today.summary.rounded', {
+                              total: formatHm(roundedSeconds),
+                              step: rule.minutes
+                            })
+                          : rule?.kind === 'minimum'
+                            ? t('today.summary.minimum', {
+                                total: formatHm(roundedSeconds),
+                                min: rule.minutes
+                              })
+                            : t('today.summary.roundedOnly', { total: formatHm(roundedSeconds) })
                         : undefined
                     }
                   >
@@ -630,6 +629,7 @@ function Week({
                 )}
               </span>
             </span>
+            {inMonth && dayEntries.some((entry) => !!entry.billed) && <BilledChip compact />}
             {inMonth && (
               <MiniDayScale
                 entries={dayEntries}
@@ -729,15 +729,6 @@ const NO_PROJECTS: Project[] = []
 
 function monthKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth() + 1}`
-}
-
-/** Day total as the invoice bills it (each entry rounded up); raw when rounding is off. */
-function dayRoundedSeconds(entries: Entry[], roundStep: number, nowMs: number): number {
-  return entries.reduce((sum, e) => {
-    const stop = e.stopped_at ? new Date(e.stopped_at).getTime() : nowMs
-    const rawMs = Math.max(0, stop - new Date(e.started_at).getTime())
-    return sum + (roundStep > 0 ? billedMinutes(rawMs, roundStep) * 60 : Math.floor(rawMs / 1000))
-  }, 0)
 }
 
 const MONTHS_KEYS: TranslationKey[] = [

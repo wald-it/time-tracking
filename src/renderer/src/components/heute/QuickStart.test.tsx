@@ -23,6 +23,7 @@ afterEach(() => {
 
 function client(id: number, name: string, active = 1): Client {
   return {
+    short_code: null,
     id,
     name,
     color: '#123456',

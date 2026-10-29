@@ -1,30 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { Client, Entry, Project } from '../../../../shared/types'
-import { dayRevenueCent } from './dayRevenue'
+import type { Entry } from '../../../../shared/types'
+import { dayBilledSeconds, dayRevenueCent } from './dayRevenue'
 
 const at = (h: number, m = 0, s = 0): number => new Date(2026, 9, 21, h, m, s, 0).getTime()
 const iso = (ms: number): string => new Date(ms).toISOString()
-
-const CLIENT: Client = {
-  id: 1,
-  name: 'Acme',
-  color: '#123456',
-  active: 1,
-  rate_cent: 6000, // 60 €/h = 1 € per minute
-  created_at: '2026-01-01T00:00:00.000Z'
-}
-
-function project(id: number, rate: number | null): Project {
-  return {
-    id,
-    client_id: 1,
-    name: `P${id}`,
-    color: '',
-    rate_cent: rate,
-    active: 1,
-    created_at: '2026-01-01T00:00:00.000Z'
-  }
-}
 
 let nextId = 1
 function entry(start: number, stop: number | null, over: Partial<Entry> = {}): Entry {
@@ -49,38 +28,50 @@ function entry(start: number, stop: number | null, over: Partial<Entry> = {}): E
 }
 
 describe('dayRevenueCent', () => {
-  it('bills the client rate per started minute', () => {
-    // 10:00:00–10:07:01 is 7 min 1 s, billed as 8 minutes.
-    const e = entry(at(10), at(10, 7, 1))
-    expect(dayRevenueCent([e], [CLIENT], [], 0, at(12))).toBe(800)
+  it('adds up the fee of the rows as the view delivers it', () => {
+    const a = entry(at(9), at(10), { billed_minutes: 60, rate_cent: 6000, fee_cent: 6000 })
+    const b = entry(at(11), at(11, 5), { billed_minutes: 15, rate_cent: 12000, fee_cent: 3000 })
+    expect(dayRevenueCent([a, b])).toBe(9000)
   })
 
-  it('rounds each entry up to the step, not the day total', () => {
-    // Two 5-minute entries at a 15-minute step: 15 + 15, not 15 for 10 min.
-    const a = entry(at(9), at(9, 5))
-    const b = entry(at(11), at(11, 5))
-    expect(dayRevenueCent([a, b], [CLIENT], [], 15, at(12))).toBe(3000)
-  })
-
-  it('a project rate of 0 is goodwill and never falls back to the client rate', () => {
-    const e = entry(at(9), at(10), { project_id: 8 })
-    expect(dayRevenueCent([e], [CLIENT], [project(8, 0)], 0, at(12))).toBe(0)
-  })
-
-  it('a project without a rate inherits the client rate; one with a rate wins', () => {
-    const inherit = entry(at(9), at(10), { project_id: 8 })
-    const own = entry(at(10), at(11), { project_id: 9 })
-    const projects = [project(8, null), project(9, 12000)]
-    expect(dayRevenueCent([inherit, own], [CLIENT], projects, 0, at(12))).toBe(6000 + 12000)
+  it('a goodwill row (fee 0) adds nothing', () => {
+    const e = entry(at(9), at(10), { billed_minutes: 60, rate_cent: 0, fee_cent: 0 })
+    expect(dayRevenueCent([e])).toBe(0)
   })
 
   it('leaves non-billable entries out', () => {
-    const e = entry(at(9), at(10), { billable: 0 })
-    expect(dayRevenueCent([e], [CLIENT], [], 0, at(12))).toBe(0)
+    const e = entry(at(9), at(10), {
+      billable: 0,
+      billed_minutes: 60,
+      rate_cent: 6000,
+      fee_cent: 6000
+    })
+    expect(dayRevenueCent([e])).toBe(0)
   })
 
-  it('counts a running entry up to now', () => {
-    const e = entry(at(9), null)
-    expect(dayRevenueCent([e], [CLIENT], [], 0, at(9, 30))).toBe(3000)
+  it('a running entry has no fee until it is stopped and adds nothing', () => {
+    const e = entry(at(9), null, { billed_minutes: 30, rate_cent: null, fee_cent: null })
+    expect(dayRevenueCent([e])).toBe(0)
+  })
+})
+
+describe('dayBilledSeconds', () => {
+  it('shows the billed minutes of a row whose profile rounds', () => {
+    // 5 minutes at a 15-minute step: the view says 15.
+    const e = entry(at(9), at(9, 5), { billed_minutes: 15, interval_min: 15, min_unit_min: 0 })
+    expect(dayBilledSeconds([e], at(12))).toBe(15 * 60)
+  })
+
+  it('shows the raw time when the profile does not round', () => {
+    const e = entry(at(9), at(9, 5, 30), { billed_minutes: 6, interval_min: 0, min_unit_min: 0 })
+    expect(dayBilledSeconds([e], at(12))).toBe(5 * 60 + 30)
+  })
+
+  it('ticks a running row by the rule with the profile of the row', () => {
+    // 7 minutes in, 15-minute minimum unit: 15 billed.
+    const e = entry(at(9), null, { billed_minutes: 15, interval_min: 0, min_unit_min: 15 })
+    expect(dayBilledSeconds([e], at(9, 7))).toBe(15 * 60)
+    // 16 minutes in: the minimum no longer lifts it.
+    expect(dayBilledSeconds([e], at(9, 16))).toBe(16 * 60)
   })
 })

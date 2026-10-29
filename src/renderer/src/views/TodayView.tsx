@@ -19,9 +19,8 @@ import { EntryTable } from '../components/heute/EntryTable'
 import { QuickStart } from '../components/heute/QuickStart'
 import type { TFunction } from '../contexts/I18nContext'
 import { useT } from '../contexts/I18nContext'
-import { useRounding } from '../contexts/RoundingContext'
 import { useNow } from '../contexts/NowContext'
-import { billedMinutes } from '../../../shared/currency'
+import { rowsBilledSeconds, uniformRoundingRule } from '../../../shared/entryMoney'
 
 /**
  * `Heute` — the Messinstrument layout (HANDOFF §4.1):
@@ -37,7 +36,6 @@ import { billedMinutes } from '../../../shared/currency'
  */
 export default function TodayView(): React.JSX.Element {
   const t = useT()
-  const { roundMinutes } = useRounding()
   const { runningEntry, clients, startWithClient, switchTo, stop } = useTimer()
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
@@ -116,22 +114,34 @@ export default function TodayView(): React.JSX.Element {
     return summary.weekDaySeconds.map((s, i) => (i === todayIndex ? s + liveDelta : s))
   }, [summary, todayIndex, liveDelta])
 
-  // Today as the invoice bills it: each entry rounded up to the step.
-  const todayRoundedSeconds = useMemo(() => {
-    if (!summary || roundMinutes <= 0) return undefined
-    return summary.todayEntries.reduce((sum, e) => {
-      const stop = e.stopped_at ? Date.parse(e.stopped_at) : nowMs
-      return sum + billedMinutes(Math.max(0, stop - Date.parse(e.started_at)), roundMinutes) * 60
-    }, 0)
-  }, [summary, roundMinutes, nowMs])
+  // Today as the invoice bills it: the billed minutes of the rows from the view,
+  // the running one ticking by the rule. Undefined when nothing rounds today.
+  const todayRoundedSeconds = useMemo(
+    () => (summary ? rowsBilledSeconds(summary.todayEntries, nowMs) : undefined),
+    [summary, nowMs]
+  )
+  const todayRoundingRule = useMemo(
+    () => (summary ? uniformRoundingRule(summary.todayEntries) : null),
+    [summary]
+  )
+
+  // The running entry the timer returned lacks the money columns; the summary row has them.
+  const runningRow = useMemo(
+    () =>
+      runningEntry
+        ? (summary?.todayEntries.find((e) => e.id === runningEntry.id && e.stopped_at === null) ??
+          runningEntry)
+        : null,
+    [runningEntry, summary]
+  )
 
   const runningClient = runningEntry ? clientsById.get(runningEntry.client_id) : undefined
   const runningProject =
     runningEntry?.project_id != null ? projectsById.get(runningEntry.project_id) : undefined
 
-  async function confirmDelete(entry: Entry): Promise<void> {
+  async function confirmDelete(entry: Entry, reason?: string): Promise<void> {
     setDeleteCandidate(null)
-    const res = await window.api.entries.delete(entry.id)
+    const res = await window.api.entries.delete(entry.id, reason)
     if (!res.ok) {
       showToast(t('common.entryDeleteFailed', { error: res.error }))
       // A refused delete means the row is no longer live (a confirm that
@@ -143,7 +153,7 @@ export default function TodayView(): React.JSX.Element {
     showToast(t('common.entryDeleted'), {
       label: t('common.undo'),
       type: 'undo_delete',
-      data: { entryId: entry.id }
+      data: { entryId: entry.id, billed: !!entry.billed }
     })
   }
 
@@ -153,11 +163,10 @@ export default function TodayView(): React.JSX.Element {
       <div className="flex flex-wrap items-stretch gap-6">
         <div className="flex min-w-0 flex-[999_1_520px]">
           <TimerDisplay
-            runningEntry={runningEntry}
+            runningEntry={runningRow}
             client={runningClient}
             project={runningProject}
             nowMs={nowMs}
-            roundMinutes={roundMinutes}
             hotkey={hotkey}
           />
         </div>
@@ -177,7 +186,7 @@ export default function TodayView(): React.JSX.Element {
             weekDaySeconds={weekDaySeconds}
             weekNumber={weekNumberOf(new Date(nowMs), weekStart)}
             todayIndex={todayIndex}
-            roundMinutes={roundMinutes}
+            roundingRule={todayRoundingRule}
             todayRoundedSeconds={todayRoundedSeconds}
           />
         ) : (
@@ -242,7 +251,6 @@ export default function TodayView(): React.JSX.Element {
               clientsById={clientsById}
               projectsById={projectsById}
               nowMs={nowMs}
-              roundMinutes={roundMinutes}
               showProjectNumber={showProjectNumber}
               onEdit={(e) => setEditEntry(e)}
               onDelete={(e) => setDeleteCandidate(e)}
@@ -299,7 +307,8 @@ export default function TodayView(): React.JSX.Element {
         confirmLabel={t('common.delete')}
         cancelLabel={t('common.cancel')}
         variant="danger"
-        onConfirm={() => deleteCandidate && void confirmDelete(deleteCandidate)}
+        requireReason={!!deleteCandidate?.billed}
+        onConfirm={(reason) => deleteCandidate && void confirmDelete(deleteCandidate, reason)}
         onCancel={() => setDeleteCandidate(null)}
       />
     </div>
@@ -350,6 +359,7 @@ function buildDeleteMessage(entry: Entry, client: Client | undefined, t: TFuncti
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   const name = client?.name ?? t('common.unknown')
   // One half of an entry across midnight: the delete takes both days (#323).
-  const key = entry.link_id ? 'common.deleteEntryMessageLinked' : 'common.deleteEntryMessage'
+  const key =
+    (entry.segment_count ?? 1) > 1 ? 'common.deleteEntryMessageLinked' : 'common.deleteEntryMessage'
   return t(key, { client: name, date: dateStr, duration: dur })
 }

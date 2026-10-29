@@ -11,6 +11,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 import { exportEntries, monthEntries } from './entryRanges'
 import { buildPdfPayload } from './pdf'
 import { listEntries } from '../mcp/queries'
@@ -63,10 +64,7 @@ describe('local month boundaries are the same on every path', () => {
 
   function add(label: string, startIso: string): void {
     const stop = new Date(Date.parse(startIso) + 20 * 60 * 1000).toISOString()
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable)
-         VALUES (1, ?, ?, ?, 1)`
-    ).run(label, startIso, stop)
+    seedEntry(db, { client_id: 1, description: label, started_at: startIso, stopped_at: stop })
   }
 
   /** Which of the labels the written export file mentions. */

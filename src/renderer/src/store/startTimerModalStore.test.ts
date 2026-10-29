@@ -9,6 +9,7 @@ import { useTimerStore } from './timerStore'
 import type { Client, Entry } from '../../../shared/types'
 
 const client = (id: number, active: 0 | 1): Client => ({
+  short_code: null,
   id,
   name: `C${id}`,
   color: '#000000',

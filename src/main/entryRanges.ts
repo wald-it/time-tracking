@@ -9,15 +9,16 @@
  * after the range fell in.
  */
 import type Database from 'better-sqlite3'
-import { localDayRange, localMonthRange } from '../shared/dateRanges'
+import { localMonthRange } from '../shared/dateRanges'
 import type { Entry } from '../shared/types'
+import { entryBilledSql } from './entryBillingState'
 
 /** The calendar's month (`entries:getByMonth`): every client, running ones included. */
 export function monthEntries(db: Database.Database, year: number, month: number): Entry[] {
   const { start, end } = localMonthRange(year, month)
   return db
     .prepare(
-      `SELECT * FROM entries
+      `SELECT entries.*, ${entryBilledSql(db)} AS billed FROM entries
          WHERE started_at >= ? AND started_at < ? AND deleted_at IS NULL
          ORDER BY started_at ASC`
     )
@@ -26,7 +27,7 @@ export function monthEntries(db: Database.Database, year: number, month: number)
 
 /**
  * The entries a CSV or iCal export covers: one client, finished, not deleted,
- * optionally one project, started within the local days `fromIso`–`toIso`.
+ * optionally one project, whose stored segment date is within the local days `fromIso`–`toIso`.
  */
 export interface ExportRangeRequest {
   clientId: number
@@ -37,17 +38,21 @@ export interface ExportRangeRequest {
 }
 
 export function exportEntries(db: Database.Database, req: ExportRangeRequest): Entry[] {
-  const { start, end } = localDayRange(req.fromIso, req.toIso)
   return db
     .prepare(
-      `SELECT * FROM entries
-         WHERE client_id = ?
-           AND started_at >= ?
-           AND started_at < ?
-           AND (? IS NULL OR project_id = ?)
-           AND deleted_at IS NULL
-           AND stopped_at IS NOT NULL
-         ORDER BY started_at ASC`
+      `SELECT e.* FROM entries e
+         WHERE e.client_id = ?
+           AND e.segment_date BETWEEN ? AND ?
+           AND (? IS NULL OR e.project_id = ?)
+           AND e.deleted_at IS NULL
+           AND e.stopped_at IS NOT NULL
+         ORDER BY e.started_at ASC`
     )
-    .all(req.clientId, start, end, req.projectId ?? null, req.projectId ?? null) as Entry[]
+    .all(
+      req.clientId,
+      req.fromIso,
+      req.toIso,
+      req.projectId ?? null,
+      req.projectId ?? null
+    ) as Entry[]
 }

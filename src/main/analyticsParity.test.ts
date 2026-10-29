@@ -12,6 +12,7 @@ import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { buildAnalyticsSummary } from './analyticsHandlers'
 import { getAnalytics } from '../mcp/queries'
+import { seedEntry } from '../test/entryFixtures'
 import { buildPdfPayload } from './pdf'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 
@@ -38,9 +39,15 @@ describe('Auswertung and get_analytics agree', () => {
     db.prepare(
       `INSERT INTO projects (id, client_id, name, rate_cent) VALUES (10, 1, 'Audit', 12000), (11, 1, 'Kulanz', 0)`
     ).run()
-    const ins = db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, billable) VALUES (?, ?, ?, ?, ?)`
-    )
+    const ins = {
+      run: (
+        client_id: number,
+        project_id: number | null,
+        started_at: string,
+        stopped_at: string,
+        billable: number
+      ): number => seedEntry(db, { client_id, project_id, started_at, stopped_at, billable })
+    }
     // Odd seconds on purpose, so raw, minute-ceiled and stepped all differ.
     ins.run(1, null, '2026-09-03T09:00:00.000Z', '2026-09-03T09:07:31.000Z', 1)
     ins.run(1, 10, '2026-09-04T10:00:00.000Z', '2026-09-04T11:52:05.500Z', 1)

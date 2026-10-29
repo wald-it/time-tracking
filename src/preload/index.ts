@@ -1,7 +1,16 @@
+import type { BillingRunSummary } from '../main/billingRuns'
+import type {
+  RateTarget,
+  RateEditorData,
+  SaveRateInput,
+  ProfileFields,
+  ProfileEditorData
+} from '../shared/rateEditor'
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Client,
   Entry,
+  EntryVersion,
   Project,
   CreateClientInput,
   UpdateClientInput,
@@ -42,6 +51,20 @@ document.addEventListener('DOMContentLoaded', () => {
 // ──────────────────────────────────────────────────────────────────────────
 
 const api = {
+  rates: {
+    list: (target: RateTarget): Promise<IpcResult<RateEditorData>> =>
+      ipcRenderer.invoke('rates:list', target),
+    save: (target: RateTarget, input: SaveRateInput): Promise<IpcResult<RateEditorData>> =>
+      ipcRenderer.invoke('rates:save', target, input),
+    delete: (target: RateTarget, id: number): Promise<IpcResult<RateEditorData>> =>
+      ipcRenderer.invoke('rates:delete', target, id)
+  },
+  billingProfile: {
+    get: (target: RateTarget): Promise<IpcResult<ProfileEditorData>> =>
+      ipcRenderer.invoke('billing-profile:get', target),
+    save: (target: RateTarget, fields: ProfileFields): Promise<IpcResult<ProfileEditorData>> =>
+      ipcRenderer.invoke('billing-profile:save', target, fields)
+  },
   // Tray + hotkey
   tray: {
     update: (
@@ -123,12 +146,16 @@ const api = {
   },
   // Entries
   entries: {
+    versions: (id: number): Promise<IpcResult<EntryVersion[]>> =>
+      ipcRenderer.invoke('entries:versions', id),
     start: (input: CreateEntryInput): Promise<IpcResult<Entry>> =>
       ipcRenderer.invoke('entries:start', input),
     // B1: stop the running entry and start this one at ONE instant.
     switch: (input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>> =>
       ipcRenderer.invoke('entries:switch', input),
     stop: (id: number): Promise<IpcResult<Entry>> => ipcRenderer.invoke('entries:stop', id),
+    stopAt: (id: number, stoppedAt: string): Promise<IpcResult<Entry>> =>
+      ipcRenderer.invoke('entries:stopAt', id, stoppedAt),
     heartbeat: (id: number): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('entries:heartbeat', id),
     getRunning: (): Promise<IpcResult<Entry | null>> => ipcRenderer.invoke('entries:getRunning'),
@@ -138,8 +165,10 @@ const api = {
       ipcRenderer.invoke('entries:create', input),
     update: (input: UpdateEntryInput): Promise<IpcResult<Entry>> =>
       ipcRenderer.invoke('entries:update', input),
-    delete: (id: number): Promise<IpcResult<void>> => ipcRenderer.invoke('entries:delete', id),
-    undelete: (id: number): Promise<IpcResult<Entry>> => ipcRenderer.invoke('entries:undelete', id)
+    delete: (id: number, reason?: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('entries:delete', id, reason),
+    undelete: (id: number, reason?: string): Promise<IpcResult<Entry>> =>
+      ipcRenderer.invoke('entries:undelete', id, reason)
   },
   // Settings
   icalFeed: {
@@ -198,8 +227,20 @@ const api = {
       ipcRenderer.invoke('tags:merge', source, target),
     delete: (name: string): Promise<IpcResult<void>> => ipcRenderer.invoke('tags:delete', name)
   },
+  billingRuns: {
+    list: (clientId?: number): Promise<IpcResult<BillingRunSummary[]>> =>
+      ipcRenderer.invoke('billing-runs:list', clientId),
+    open: (runId: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('billing-runs:open', runId),
+    release: (runId: number, reason: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('billing-runs:release', runId, reason),
+    setInvoiceRef: (runId: number, ref: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('billing-runs:set-invoice-ref', runId, ref)
+  },
   pdf: {
     export: (req: {
+      markAsBilled?: boolean
+      replacesRunId?: number
       clientId: number
       fromIso: string
       toIso: string
@@ -211,7 +252,9 @@ const api = {
       hideFeeColumn?: boolean
       /** @deprecated use groupBy instead. */
       groupByTag?: boolean
-    }): Promise<IpcResult<{ path: string }>> => ipcRenderer.invoke('pdf:export', req),
+    }): Promise<
+      IpcResult<{ path: string; runId?: number; runNumber?: string; excludedCount?: number }>
+    > => ipcRenderer.invoke('pdf:export', req),
     mergeExport: (req: {
       clientId: number
       fromIso: string

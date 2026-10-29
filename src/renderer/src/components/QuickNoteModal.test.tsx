@@ -1,8 +1,10 @@
 /**
- * The quick-note prompt saves through entries:update, which re-inserts the row
- * and defaults every field it is not given. After a quick-start switch (B1)
- * the prompt routinely gets entries with a project, so it must pass every
- * field through — not only the description.
+ * The quick-note prompt saves through entries:update. In 1.x that re-inserted
+ * the row and defaulted every field it was not given, so the prompt had to
+ * pass every field through. Since 2.0 (design D3) an update is a patch: the
+ * prompt sends the description only, and project, billable, reference, note
+ * and the times keep their values in main. This pins that nothing else is
+ * sent, so a stale copy cannot overwrite what the entry has by then.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -31,7 +33,7 @@ const ENTRY: Entry = {
 }
 
 describe('QuickNoteModal', () => {
-  it('keeps project, billable, reference and private note when saving the description', async () => {
+  it('sends the description only, as a patch; the other fields stay as they are in main', async () => {
     const update = vi.fn(async () => ({ ok: true as const, data: ENTRY }))
     ;(window as unknown as { api: unknown }).api = { entries: { update } }
     const onDone = vi.fn()
@@ -48,15 +50,8 @@ describe('QuickNoteModal', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled())
     expect(update).toHaveBeenCalledWith({
       id: 42,
-      client_id: 2,
       description: 'Rollout vorbereitet',
-      started_at: ENTRY.started_at,
-      stopped_at: ENTRY.stopped_at,
-      tags: ',ops,',
-      project_id: 8,
-      billable: 0,
-      reference: 'JIRA-7',
-      private_note: 'internal'
+      source: 'quicknote'
     })
   })
 })

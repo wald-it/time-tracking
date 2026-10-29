@@ -8,7 +8,8 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import type Database from 'better-sqlite3'
-import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 import { billedMinutes, effectiveRateCent, feeCent, feeCentSql } from '../shared/currency'
 
 let DatabaseImpl: DatabaseCtor
@@ -41,21 +42,32 @@ const ROWS: Row[] = [
 
 function seed(): Database.Database {
   const db = new DatabaseImpl(':memory:')
-  db.exec(`
-    CREATE TABLE clients (id INTEGER PRIMARY KEY, rate_cent INTEGER NOT NULL);
-    CREATE TABLE projects (id INTEGER PRIMARY KEY, rate_cent INTEGER);
-    CREATE TABLE entries (id INTEGER PRIMARY KEY, client_id INTEGER, project_id INTEGER,
-                          started_at TEXT, stopped_at TEXT);
-  `)
+  // 2.0 P2: `entries` is a read-only view now, so this runs on the migrated
+  // schema and seeds through the fixture instead of a hand-made table.
+  db.pragma('foreign_keys = ON')
+  applyMigrations(db)
   ROWS.forEach((r, i) => {
     const id = i + 1
-    db.prepare('INSERT INTO clients (id, rate_cent) VALUES (?, ?)').run(id, r.client_rate)
+    db.prepare('INSERT INTO clients (id, name, rate_cent) VALUES (?, ?, ?)').run(
+      id,
+      `Client ${id}`,
+      r.client_rate
+    )
     if (r.project_rate !== undefined) {
-      db.prepare('INSERT INTO projects (id, rate_cent) VALUES (?, ?)').run(id, r.project_rate)
+      db.prepare('INSERT INTO projects (id, client_id, name, rate_cent) VALUES (?, ?, ?, ?)').run(
+        id,
+        id,
+        `Project ${id}`,
+        r.project_rate
+      )
     }
-    db.prepare(
-      'INSERT INTO entries (id, client_id, project_id, started_at, stopped_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(id, id, r.project_rate === undefined ? null : id, r.started_at, r.stopped_at)
+    seedEntry(db, {
+      id,
+      client_id: id,
+      project_id: r.project_rate === undefined ? null : id,
+      started_at: r.started_at,
+      stopped_at: r.stopped_at
+    })
   })
   return db
 }

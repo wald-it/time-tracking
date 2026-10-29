@@ -16,6 +16,7 @@ import type Database from 'better-sqlite3'
 import { handleRequest, type BridgeCtx, type BridgeRequest } from './mcpBridgeCore'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { makeCtx, seed } from '../test/bridgeKit'
+import { writeEntry } from './entryMutations'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -301,6 +302,19 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     expect(asked).toHaveLength(1)
   })
 
+  /** The app's own switch: whatever runs ends, client 2 runs since 08:30Z. */
+  const switchInApp = (): void => {
+    const r = writeEntry(
+      db,
+      {
+        op: 'start',
+        fields: { client_id: 2, description: '', started_at: '2025-10-28T08:30:00.000Z' }
+      },
+      { source: 'app' }
+    )
+    if (!r.ok) throw new Error(r.error)
+  }
+
   it('start_timer refuses when the running entry changed while the dialog was open', async () => {
     const { ctx } = makeCtx(db)
     await handleRequest(ctx, {
@@ -311,11 +325,7 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     })
     // The owner switches in the app while the MCP confirmation is open.
     ctx.confirm = async () => {
-      db.prepare(`UPDATE entries SET stopped_at = started_at WHERE stopped_at IS NULL`).run()
-      db.prepare(
-        `INSERT INTO entries (client_id, description, started_at, heartbeat_at)
-         VALUES (2, '', '2025-10-28T08:30:00.000Z', '2025-10-28T08:30:00.000Z')`
-      ).run()
+      switchInApp()
       return true
     }
     const res = await handleRequest(ctx, {
@@ -341,11 +351,7 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
     })
     // The owner switches in the app while the MCP confirmation is open.
     ctx.confirm = async () => {
-      db.prepare(`UPDATE entries SET stopped_at = started_at WHERE stopped_at IS NULL`).run()
-      db.prepare(
-        `INSERT INTO entries (client_id, description, started_at, heartbeat_at)
-         VALUES (2, '', '2025-10-28T08:30:00.000Z', '2025-10-28T08:30:00.000Z')`
-      ).run()
+      switchInApp()
       return true
     }
     const res = await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer' })
@@ -358,10 +364,7 @@ describe('handleRequest — confirmation and preview speak local time (Europe/Be
   it('stop_running_timer refuses when a timer started while "none running" was shown', async () => {
     const { ctx } = makeCtx(db)
     ctx.confirm = async () => {
-      db.prepare(
-        `INSERT INTO entries (client_id, description, started_at, heartbeat_at)
-         VALUES (2, '', '2025-10-28T08:30:00.000Z', '2025-10-28T08:30:00.000Z')`
-      ).run()
+      switchInApp()
       return true
     }
     const res = await handleRequest(ctx, { v: 1, token: 'secret', op: 'stop_running_timer' })

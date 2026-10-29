@@ -271,8 +271,7 @@ src/
     rate.ts      # German decimal <-> integer cent parsing
     locales/     # de.ts + en.ts locale files (type-safe via TranslationKey)
 scripts/
-  generate-icons.mjs    # SVG -> tray PNGs (running/stopped, @1x/@2x)
-  sync-icon.mjs         # resources/icon.png -> build/icon.png + multi-res .ico (prebuild hook)
+  sync-icon.mjs         # build/icon-src/*.svg -> app icon (.png, multi-res .ico) + tray PNGs (prebuild hook)
   generate-licenses.mjs # Scans production deps, writes resources/licenses.json (prebuild hook)
 resources/
   licenses.json  # Generated license list (updated on pnpm build)

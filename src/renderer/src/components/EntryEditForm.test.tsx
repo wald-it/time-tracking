@@ -6,10 +6,10 @@
  * of 00:00 is that midnight; a new entry keeps the old, same-day reading.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { EntryEditForm } from './EntryEditForm'
 import { I18nProvider } from '../contexts/I18nContext'
-import type { Client, Entry } from '../../../shared/types'
+import type { Client, Entry, UpdateEntryInput } from '../../../shared/types'
 
 afterEach(() => {
   cleanup()
@@ -17,6 +17,62 @@ afterEach(() => {
 })
 
 const local = (d: number, h: number, m = 0): string => new Date(2026, 5, d, h, m).toISOString()
+
+// Codex counter-check on 2.0 P2: an update is a patch, and a field left out
+// keeps its value. "No project" must therefore be sent as null, not left out,
+// or the old project stays and a client change fails on the project rule.
+describe('EntryEditForm sends "no project" as null (2.0 patch)', () => {
+  it('choosing the placeholder sends project_id: null', async () => {
+    const entry: Entry = {
+      id: 9,
+      client_id: 1,
+      description: 'Mit Projekt',
+      started_at: local(10, 9),
+      stopped_at: local(10, 10),
+      heartbeat_at: local(10, 10),
+      rounded_min: null,
+      deleted_at: null,
+      created_at: '2026-06-10 08:00:00',
+      link_id: null,
+      tags: '',
+      reference: '',
+      billable: 1,
+      private_note: '',
+      project_id: 5
+    }
+    const update = vi.fn<(input: UpdateEntryInput) => Promise<{ ok: true; data: Entry }>>(
+      async () => ({ ok: true as const, data: entry })
+    )
+    ;(window as unknown as { api: unknown }).api = {
+      entries: { update, create: vi.fn() },
+      projects: {
+        getAll: vi.fn(async () => ({
+          ok: true as const,
+          data: [{ id: 5, client_id: 1, name: 'Rollout', status: 'active', active: 1 }]
+        }))
+      },
+      tags: { getAllWithCount: vi.fn(async () => ({ ok: true as const, data: [] })) }
+    }
+    render(
+      <I18nProvider>
+        <EntryEditForm
+          entry={entry}
+          defaultDate={new Date(2026, 5, 10, 9)}
+          clients={[{ id: 1, name: 'Acme', active: 1 } as Client]}
+          onSaved={() => {}}
+          onCancel={() => {}}
+        />
+      </I18nProvider>
+    )
+    const picker = (await screen.findByDisplayValue('Rollout')) as HTMLSelectElement
+    fireEvent.change(picker, { target: { value: '' } })
+    fireEvent.submit(picker.closest('form')!)
+    await waitFor(() => expect(update).toHaveBeenCalled())
+    const sent = update.mock.calls[0][0]
+    expect(sent).toMatchObject({ id: 9, project_id: null })
+    expect('project_id' in sent).toBe(true)
+  })
+})
 
 const CLIENTS = [{ id: 1, name: 'Acme', active: 1 } as Client]
 
@@ -115,5 +171,63 @@ describe('EntryEditForm and the end of the day (#334)', () => {
       )
     ).toBeTruthy()
     expect(create).not.toHaveBeenCalled()
+  })
+})
+
+describe('billed entry edits', () => {
+  it('does not ask for a reason for an unbilled content edit', async () => {
+    const update = mount({ ...FIRST_HALF, billed: 0 })
+    fireEvent.change(screen.getByDisplayValue('Nachtschicht'), { target: { value: 'Correction' } })
+    fireEvent.submit(screen.getByDisplayValue('Correction').closest('form')!)
+    await waitFor(() => expect(update).toHaveBeenCalled())
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('shows a backend lock error on save when the loaded status is stale', async () => {
+    const update = mount(FIRST_HALF)
+    update.mockResolvedValue({ ok: false, error: 'BILLED_ENTRY_ERROR: ABC-2026-001' })
+    fireEvent.change(screen.getByDisplayValue('Nachtschicht'), { target: { value: 'Correction' } })
+    fireEvent.submit(screen.getByDisplayValue('Correction').closest('form')!)
+    expect((await screen.findByRole('alert')).textContent).toBe('BILLED_ENTRY_ERROR: ABC-2026-001')
+  })
+
+  it('asks for a non-empty reason, permits cancellation, and sends the reason on save', async () => {
+    const update = mount({ ...FIRST_HALF, billed: 1 } as Entry)
+    const description = screen.getByDisplayValue('Nachtschicht')
+    fireEvent.change(description, { target: { value: 'Correction' } })
+    fireEvent.submit(description.closest('form')!)
+    expect(update).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }))
+    expect(update).not.toHaveBeenCalled()
+    expect(within(dialog).getByRole('alert').textContent).toContain('Grund')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByDisplayValue('Correction')).toBeTruthy()
+    fireEvent.submit(description.closest('form')!)
+    fireEvent.change(screen.getByLabelText('Grund'), {
+      target: { value: '  Falsche Beschreibung  ' }
+    })
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Speichern' })
+    )
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'Falsche Beschreibung', description: 'Correction' })
+      )
+    )
+  })
+
+  it('saves a private note without asking, preserving displayed seconds and midnight', async () => {
+    const update = mount({
+      ...FIRST_HALF,
+      billed: 1,
+      started_at: local(10, 20).replace(':00.000', ':27.000')
+    } as Entry)
+    fireEvent.change(screen.getByLabelText(/Interne Notiz/), { target: { value: 'Only for me' } })
+    fireEvent.submit(screen.getByDisplayValue('Only for me').closest('form')!)
+    await waitFor(() => expect(update).toHaveBeenCalled())
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(update.mock.calls[0][0]).not.toHaveProperty('reason')
   })
 })

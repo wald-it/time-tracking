@@ -11,6 +11,7 @@ import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useT } from '../contexts/I18nContext'
 import { TagInput } from './TagInput'
 import { Toggle } from './Toggle'
+import { ConfirmDialog } from './ConfirmDialog'
 import { FIELD_LABEL, INPUT, KEY, KEY_INV, TEXTAREA } from './instrumentClasses'
 
 interface Props {
@@ -99,6 +100,7 @@ export function EntryEditForm({
   const [privateNote, setPrivateNote] = useState(entry?.private_note ?? '')
   const [state, setState] = useState<FormState>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [reasonOpen, setReasonOpen] = useState(false)
   const bumpVersion = useEntriesStore((s) => s.bumpVersion)
 
   // Local validation (200ms debounce so it doesn't flicker while typing).
@@ -134,11 +136,34 @@ export function EntryEditForm({
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
+    if (state !== 'idle' || reasonOpen) return
     const err = validateLocal()
     if (err) {
       setLocalError(err)
       return
     }
+    // Compare the displayed minutes, matching from_form in the write path:
+    // unchanged seconds and a next-midnight stop must not turn a note into a content edit.
+    const contentChanged =
+      entry &&
+      (date !== toDateInputValue(initialStart) ||
+        startTime !== formatTimeHHMM(initialStart) ||
+        stopTime !== formatTimeHHMM(initialStop) ||
+        clientId !== entry.client_id ||
+        projectId !== (entry.project_id ?? null) ||
+        description.trim() !== entry.description ||
+        tags !== entry.tags ||
+        reference.trim() !== entry.reference ||
+        billable !== entry.billable)
+    if (entry?.billed && contentChanged) {
+      setReasonOpen(true)
+      return
+    }
+    await save()
+  }
+
+  async function save(reason?: string): Promise<void> {
+    setReasonOpen(false)
     setState('saving')
     setError(null)
     const start = parseTimeToDate(date, startTime).toISOString()
@@ -146,19 +171,29 @@ export function EntryEditForm({
     const res = entry
       ? await window.api.entries.update({
           id: entry.id,
+          ...(reason ? { reason } : {}),
           client_id: clientId,
-          project_id: projectId ?? undefined,
+          // A patch (2.0): a field left out keeps its value, so "no project"
+          // goes as null, never as undefined.
+          project_id: projectId,
           description: description.trim(),
           started_at: start,
           stopped_at: stop,
           tags,
           reference: reference.trim(),
           billable,
-          private_note: privateNote.trim()
+          private_note: privateNote.trim(),
+          // The form shows minutes: a time sent back as displayed is no
+          // change and keeps the entry's seconds (#335 case 4). The segment
+          // tells the write which half of a midnight-split entry the times
+          // belong to (#311).
+          from_form: true,
+          segment_seq: entry.segment_seq,
+          expected_version: entry.version_no
         })
       : await window.api.entries.create({
           client_id: clientId,
-          project_id: projectId ?? undefined,
+          project_id: projectId,
           description: description.trim(),
           started_at: start,
           stopped_at: stop,
@@ -358,6 +393,15 @@ export function EntryEditForm({
           {isSaving ? t('common.saving') : t('common.save')}
         </button>
       </div>
+      <ConfirmDialog
+        open={reasonOpen}
+        title={t('entry.billed.changeTitle')}
+        message={t('entry.billed.reasonHint')}
+        requireReason
+        confirmLabel={t('common.save')}
+        onConfirm={(reason) => void save(reason)}
+        onCancel={() => setReasonOpen(false)}
+      />
     </form>
   )
 }

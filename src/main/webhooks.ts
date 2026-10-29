@@ -18,7 +18,8 @@
  */
 import { createHmac } from 'crypto'
 import type Database from 'better-sqlite3'
-import { billedMinutes, effectiveRateCent, feeCent } from '../shared/currency'
+import { effectiveRateCent } from '../shared/currency'
+import { dueRateSql } from '../shared/dueRate'
 import { deserializeTags } from '../shared/tags'
 import { parseWebhookTargets, type WebhookEvent, type WebhookTarget } from '../shared/webhooks'
 import { resolvePrivacy } from '../mcp/privacy'
@@ -33,7 +34,10 @@ type Db = Database.Database
 // ── payload ────────────────────────────────────────────────────────────────
 
 interface PayloadEntry {
+  /** The stable entry id; it does not change with an edit. */
   id: number
+  /** 2.0: the entry's version this delivery describes; absent when the caller has none. */
+  version?: number
   description: string
   started_at: string
   stopped_at: string | null
@@ -93,19 +97,24 @@ export function buildWebhookPayload(
         )
 
   const clientRow = db
-    .prepare(`SELECT id, name, rate_cent FROM clients WHERE id = ?`)
+    .prepare(
+      `SELECT id, name, ${dueRateSql('clients', 'client_id')} AS rate_cent FROM clients WHERE id = ?`
+    )
     .get(entry.client_id) as { id: number; name: string; rate_cent: number } | undefined
 
   const projectId = entry.project_id ?? null
   const projectRow =
     projectId === null
       ? undefined
-      : (db.prepare(`SELECT id, name, rate_cent FROM projects WHERE id = ?`).get(projectId) as
-          | { id: number; name: string; rate_cent: number | null }
-          | undefined)
+      : (db
+          .prepare(
+            `SELECT id, name, ${dueRateSql('projects', 'project_id')} AS rate_cent FROM projects WHERE id = ?`
+          )
+          .get(projectId) as { id: number; name: string; rate_cent: number | null } | undefined)
 
   const payloadEntry: PayloadEntry = {
     id: entry.id,
+    ...(entry.version_no === undefined ? {} : { version: entry.version_no }),
     description: entry.description,
     started_at: entry.started_at,
     stopped_at: entry.stopped_at ?? null,
@@ -118,17 +127,21 @@ export function buildWebhookPayload(
   }
 
   if (privacy.exposeRates && clientRow) {
-    const effectiveRate = effectiveRateCent(projectRow?.rate_cent, clientRow.rate_cent)
-    payloadEntry.rate_cent = effectiveRate
+    // Money comes from billing_lines (design section 7): the rate valid on the
+    // day and the fee per segment, summed over the entry's segments so a
+    // minimum unit or interval applies per day. A running entry has no fee yet
+    // and falls back to the rate valid today for the informational rate.
+    const lines = db
+      .prepare(
+        `SELECT rate_cent, fee_cent FROM billing_lines WHERE entry_id = ? ORDER BY segment_seq`
+      )
+      .all(entry.id) as Array<{ rate_cent: number | null; fee_cent: number | null }>
+    payloadEntry.rate_cent =
+      lines[0]?.rate_cent ?? effectiveRateCent(projectRow?.rate_cent, clientRow.rate_cent)
     if (entry.stopped_at !== null) {
-      // The amount the invoice bills (shared/currency.ts); non-billable time earns nothing.
-      const roundRow = db
-        .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-        .get() as { value: string } | undefined
-      const step = parseInt(roundRow?.value ?? '0', 10) || 0
-      const ms = Math.max(0, Date.parse(entry.stopped_at) - Date.parse(entry.started_at))
+      // The amount the invoice bills; non-billable time earns nothing.
       payloadEntry.revenue_cent =
-        entry.billable === 1 ? feeCent(billedMinutes(ms, step), effectiveRate) : 0
+        entry.billable === 1 ? lines.reduce((sum, l) => sum + (l.fee_cent ?? 0), 0) : 0
     }
   }
   if (privacy.exposePrivateNotes) {

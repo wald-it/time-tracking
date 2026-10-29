@@ -22,7 +22,6 @@
  * - Midnight-split entries stored as 2 separate rows in DB → 2 CSV rows (no special handling needed).
  */
 
-import { billedMinutes, effectiveRateCent, feeCent } from './currency'
 import { formatTimeHHMM } from './date'
 import { formatDuration } from './duration'
 import { deserializeTags } from './tags'
@@ -35,27 +34,19 @@ export interface CsvOptions {
   decimalSeparator?: ',' | '.'
   /** When true, entries are grouped by their first tag with subtotal rows. Default: false. */
   groupByTag?: boolean
-  /** Billing rounding step in minutes (`pdf_round_minutes`). Default: 0. */
-  roundMinutes?: number
-  /** project_id → project rate (null = inherits the client rate). */
-  projectRates?: Map<number, number | null>
 }
 
 /**
- * Rate and fee of one entry, exactly as the PDF invoice bills it. `null`
- * when no rate applies at all — the CSV leaves those cells empty.
+ * Rate and fee of one entry, exactly as the PDF invoice bills it: read from
+ * the money columns of `billing_lines` (design section 7), never computed
+ * here. `null` when no rate applies at all — the CSV leaves those cells empty.
  */
-function entryBilling(
-  entry: Entry,
-  clientMap: Map<number, Client>,
-  opts: CsvOptions
-): { rateCent: number; feeCent: number } | null {
-  const projectRate = entry.project_id != null ? opts.projectRates?.get(entry.project_id) : null
-  const rateCent = effectiveRateCent(projectRate, clientMap.get(entry.client_id)?.rate_cent ?? 0)
+function entryBilling(entry: Entry): { rateCent: number; feeCent: number } | null {
+  const rateCent = entry.rate_cent
+  if (rateCent == null || entry.fee_cent == null) return null
   // A goodwill project (explicit 0) is billed, at 0 €; only "no rate anywhere" is empty.
-  if (rateCent <= 0 && projectRate !== 0) return null
-  const ms = Math.max(0, Date.parse(entry.stopped_at!) - Date.parse(entry.started_at))
-  return { rateCent, feeCent: feeCent(billedMinutes(ms, opts.roundMinutes ?? 0), rateCent) }
+  if (rateCent <= 0 && entry.rate_is_project !== 1) return null
+  return { rateCent, feeCent: entry.fee_cent }
 }
 
 const HEADER = [
@@ -129,10 +120,10 @@ export function formatCsv(
   const rows: string[] = [headerRow]
 
   if (opts.groupByTag && validEntries.some((e) => deserializeTags(e.tags).length > 0)) {
-    appendGroupedRows(rows, validEntries, clientMap, sep, dec, opts)
+    appendGroupedRows(rows, validEntries, clientMap, sep, dec)
   } else {
     for (const entry of validEntries) {
-      rows.push(buildEntryRow(entry, clientMap, sep, dec, opts))
+      rows.push(buildEntryRow(entry, clientMap, sep, dec))
     }
   }
 
@@ -148,8 +139,7 @@ function buildEntryRow(
   entry: Entry,
   clientMap: Map<number, Client>,
   sep: string,
-  dec: string,
-  opts: CsvOptions
+  dec: string
 ): string {
   const start = new Date(entry.started_at)
   const stop = new Date(entry.stopped_at!)
@@ -157,7 +147,7 @@ function buildEntryRow(
 
   const client = clientMap.get(entry.client_id)
   const clientName = client?.name ?? ''
-  const billing = entryBilling(entry, clientMap, opts)
+  const billing = entryBilling(entry)
 
   const rateStr = billing ? formatDecimal(billing.rateCent / 100, dec) : ''
   const betragStr = billing ? formatDecimal(billing.feeCent / 100, dec) : ''
@@ -166,7 +156,11 @@ function buildEntryRow(
   const reference = entry.reference ?? ''
 
   return [
-    escapeField(formatDate(start), sep),
+    escapeField(
+      // The stored day when there is one, so the column matches the range filter.
+      entry.segment_date ? entry.segment_date.split('-').reverse().join('.') : formatDate(start),
+      sep
+    ),
     escapeField(formatTimeHHMM(start), sep),
     escapeField(formatTimeHHMM(stop), sep),
     escapeField(formatDuration(durationSec), sep),
@@ -199,8 +193,7 @@ function appendGroupedRows(
   entries: Entry[],
   clientMap: Map<number, Client>,
   sep: string,
-  dec: string,
-  opts: CsvOptions
+  dec: string
 ): void {
   // Build groups keyed by first tag ('' = no tag).
   const groupMap = new Map<string, Entry[]>()
@@ -237,14 +230,14 @@ function appendGroupedRows(
     let groupHasRate = false
 
     for (const entry of groupEntries) {
-      rows.push(buildEntryRow(entry, clientMap, sep, dec, opts))
+      rows.push(buildEntryRow(entry, clientMap, sep, dec))
 
       const start = new Date(entry.started_at)
       const stop = new Date(entry.stopped_at!)
       const durSec = Math.max(0, Math.floor((stop.getTime() - start.getTime()) / 1000))
       groupDurSec += durSec
 
-      const billing = entryBilling(entry, clientMap, opts)
+      const billing = entryBilling(entry)
       if (billing) {
         groupHasRate = true
         groupAmountCent += billing.feeCent

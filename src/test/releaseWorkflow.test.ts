@@ -426,6 +426,35 @@ function runScripts(workflowText: string): { line: number; body: string }[] {
 
 const WORKFLOW_DIR = join(REPO_ROOT, '.github', 'workflows')
 
+describe('release.yml package smoke (#312)', () => {
+  const text = readFileSync(WORKFLOW, 'utf8').replace(/\r\n/g, '\n')
+  const jobs = jobsOf(text)
+
+  it('has no inline smoke-test call', () => {
+    expect(text).not.toContain('--smoke-test=')
+  })
+
+  it.each([
+    ['build-windows', 'dist/win-unpacked/TimeTrack.exe', 'dist/win-unpacked/resources'],
+    [
+      'build-macos',
+      'dist/mac-arm64/TimeTrack.app/Contents/MacOS/TimeTrack',
+      'dist/mac-arm64/TimeTrack.app/Contents/Resources'
+    ]
+  ])('%s runs both shared probes on its package', (id, exe, resources) => {
+    const job = jobs[id] ?? ''
+    const scripts = runScripts(job).map((script) => script.body.replace(/\\\s*\n\s*/g, '').trim())
+    expect(scripts).toContain('node scripts/package-smoke.mjs smoke --exe "$APP_EXE"')
+    expect(scripts).toContain(
+      'node scripts/package-smoke.mjs mcp --exe "$APP_EXE" ' +
+        '--entry "$APP_RESOURCES/app.asar/out/mcp/mcp/server.js" ' +
+        '--server-source src/mcp/server.ts'
+    )
+    expect(job).toContain(`APP_EXE: ${exe}\n`)
+    expect(job).toContain(`APP_RESOURCES: ${resources}\n`)
+  })
+})
+
 describe('release.yml provenance', () => {
   const text = readFileSync(WORKFLOW, 'utf8').replace(/\r\n/g, '\n')
   const jobs = jobsOf(text)

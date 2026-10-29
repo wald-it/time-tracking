@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 import {
   readRoundMinutes,
   readRoundedTotals,
@@ -64,10 +65,12 @@ function daysAgoAt10(days: number): Date {
 }
 
 function addClosed(db: Database.Database, startedAt: string, minutes: number): void {
-  db.prepare(
-    `INSERT INTO entries (client_id, description, started_at, stopped_at, billable)
-     VALUES (1, 'x', ?, ?, 1)`
-  ).run(startedAt, new Date(Date.parse(startedAt) + minutes * 60_000).toISOString())
+  seedEntry(db, {
+    client_id: 1,
+    description: 'x',
+    started_at: startedAt,
+    stopped_at: new Date(Date.parse(startedAt) + minutes * 60_000).toISOString()
+  })
 }
 
 describe('readTotals', () => {
@@ -100,10 +103,12 @@ describe('readTotals', () => {
   })
 
   it('counts a running entry up to now, in both windows', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, billable)
-       VALUES (1, 'running', ?, 1)`
-    ).run(iso(-600_000))
+    seedEntry(db, {
+      client_id: 1,
+      description: 'running',
+      started_at: iso(-600_000),
+      stopped_at: null
+    })
     const t = readTotals(db)
     expect(t.today_seconds).toBeGreaterThanOrEqual(600)
     expect(t.today_seconds).toBeLessThan(660)
@@ -113,10 +118,12 @@ describe('readTotals', () => {
   it('counts a running entry started before midnight — the cross-midnight case', () => {
     const yesterdayEvening = daysAgoAt10(1)
     yesterdayEvening.setHours(22, 0, 0, 0)
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, billable)
-       VALUES (1, 'overnight', ?, 1)`
-    ).run(yesterdayEvening.toISOString())
+    seedEntry(db, {
+      client_id: 1,
+      description: 'overnight',
+      started_at: yesterdayEvening.toISOString(),
+      stopped_at: null
+    })
     // `OR stopped_at IS NULL` puts it in today's window even though it started
     // yesterday — the app, the tray and the dial all show it that way.
     //
@@ -133,10 +140,13 @@ describe('readTotals', () => {
   it('excludes deleted entries and entries older than the week window', () => {
     addClosed(db, daysAgoAt10(0).toISOString(), 60)
     addClosed(db, daysAgoAt10(30).toISOString(), 120)
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable, deleted_at)
-       VALUES (1, 'trash', ?, ?, 1, ?)`
-    ).run(iso(-7_200_000), iso(-3_600_000), iso(0))
+    seedEntry(db, {
+      client_id: 1,
+      description: 'trash',
+      started_at: iso(-7_200_000),
+      stopped_at: iso(-3_600_000),
+      deleted_at: iso(0)
+    })
 
     const t = readTotals(db)
     expect(t.today_seconds).toBe(60 * 60)
@@ -233,19 +243,33 @@ describe('readTotals', () => {
       addClosed(db, daysAgoAt10(2).toISOString(), 90)
       addClosed(db, daysAgoAt10(5).toISOString(), 75)
       addClosed(db, daysAgoAt10(20).toISOString(), 30)
-      db.prepare(
-        `INSERT INTO entries (client_id, description, started_at, billable)
-         VALUES (1, 'running', ?, 1)`
-      ).run(iso(-120_000))
+      seedEntry(db, {
+        client_id: 1,
+        description: 'running',
+        started_at: iso(-120_000),
+        stopped_at: null
+      })
 
+      // readTotals counts the running entry up to SQLite's own 'now', which a
+      // test cannot pin. Bracket it: getDashboard before and after must
+      // enclose it (a second boundary between two reads made CI red, 2820
+      // against 2821 on 2026-10-27).
+      const dashboardAt = (nowMs: number): ReturnType<typeof getDashboard> =>
+        getDashboard(
+          db as unknown as SqliteDb,
+          { exposeRates: false, exposePrivateNotes: false },
+          nowMs
+        )
+      const before = dashboardAt(Date.now() - 1000)
       const mine = readTotals(db)
-      const theirs = getDashboard(
-        db as unknown as SqliteDb,
-        { exposeRates: false, exposePrivateNotes: false },
-        Date.now()
-      )
-      expect(mine.today_seconds).toBe(theirs.today_seconds)
-      expect(mine.week_seconds).toBe(theirs.week_seconds)
+      const after = dashboardAt(Date.now() + 1000)
+      expect(mine.today_seconds).toBeGreaterThanOrEqual(before.today_seconds)
+      expect(mine.today_seconds).toBeLessThanOrEqual(after.today_seconds)
+      expect(mine.week_seconds).toBeGreaterThanOrEqual(before.week_seconds)
+      expect(mine.week_seconds).toBeLessThanOrEqual(after.week_seconds)
+      // The bracket is two seconds wide plus the time between the reads: a
+      // second definition that drifts by minutes still fails.
+      expect(after.today_seconds - before.today_seconds).toBeLessThan(10)
     })
   }
 })
@@ -326,10 +350,12 @@ describe('readWeekDaySeconds', () => {
   it('puts a timer running since yesterday evening into today, like readTotals', () => {
     const yesterdayEvening = daysAgoAt10(1)
     yesterdayEvening.setHours(22, 0, 0, 0)
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, billable)
-       VALUES (1, 'overnight', ?, 1)`
-    ).run(yesterdayEvening.toISOString())
+    seedEntry(db, {
+      client_id: 1,
+      description: 'overnight',
+      started_at: yesterdayEvening.toISOString(),
+      stopped_at: null
+    })
 
     const days = readWeekDaySeconds(db)
     const totals = readTotals(db)
@@ -340,10 +366,13 @@ describe('readWeekDaySeconds', () => {
   })
 
   it('ignores deleted entries', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable, deleted_at)
-       VALUES (1, 'trash', ?, ?, 1, ?)`
-    ).run(iso(-7_200_000), iso(-3_600_000), iso(0))
+    seedEntry(db, {
+      client_id: 1,
+      description: 'trash',
+      started_at: iso(-7_200_000),
+      stopped_at: iso(-3_600_000),
+      deleted_at: iso(0)
+    })
     expect(readWeekDaySeconds(db)).toEqual([0, 0, 0, 0, 0, 0, 0])
   })
 })
@@ -382,14 +411,19 @@ describe('readTodayEntries', () => {
     addClosed(db, daysAgoAt10(1).toISOString(), 30)
     const yesterdayEvening = daysAgoAt10(1)
     yesterdayEvening.setHours(22, 0, 0, 0)
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, billable)
-       VALUES (1, 'overnight', ?, 1)`
-    ).run(yesterdayEvening.toISOString())
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable, deleted_at)
-       VALUES (1, 'trash', ?, ?, 1, ?)`
-    ).run(iso(-7_200_000), iso(-3_600_000), iso(0))
+    seedEntry(db, {
+      client_id: 1,
+      description: 'overnight',
+      started_at: yesterdayEvening.toISOString(),
+      stopped_at: null
+    })
+    seedEntry(db, {
+      client_id: 1,
+      description: 'trash',
+      started_at: iso(-7_200_000),
+      stopped_at: iso(-3_600_000),
+      deleted_at: iso(0)
+    })
 
     const list = readTodayEntries(db)
     expect(list.map((e) => e.description).sort()).toEqual(['overnight', 'x'])
@@ -447,10 +481,13 @@ describe('readTopClients30d', () => {
 
   function entry(client: number, project: number | null, daysAgo: number): void {
     const start = daysAgoAt10(daysAgo).toISOString()
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, description, started_at, stopped_at, billable)
-       VALUES (?, ?, 'x', ?, ?, 1)`
-    ).run(client, project, start, new Date(Date.parse(start) + 3_600_000).toISOString())
+    seedEntry(db, {
+      client_id: client,
+      project_id: project,
+      description: 'x',
+      started_at: start,
+      stopped_at: new Date(Date.parse(start) + 3_600_000).toISOString()
+    })
   }
 
   beforeEach(() => {

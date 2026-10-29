@@ -10,6 +10,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../../../test/sqlite'
 import { seed } from '../../../test/bridgeKit'
+import { seedEntry } from '../../../test/entryFixtures'
 import { readRecentEntries } from '../../../main/dashboardTotals'
 import { readStartPair } from '../../../main/startRequest'
 import type { Client, Project } from '../../../shared/types'
@@ -56,17 +57,16 @@ function entry(
   day: string,
   deleted = false
 ): void {
-  db.prepare(
-    `INSERT INTO entries (client_id, project_id, description, started_at, stopped_at, heartbeat_at, deleted_at)
-     VALUES (?, ?, '', ?, ?, ?, ?)`
-  ).run(
-    client,
-    project,
-    `${day}T08:00:00.000Z`,
-    `${day}T09:00:00.000Z`,
-    `${day}T09:00:00.000Z`,
-    deleted ? `${day}T10:00:00.000Z` : null
-  )
+  // 2.0 P2: `entries` is a read-only view; the fixture writes the entry tables
+  // (a trashed entry is a deleted version, written at day T10:00).
+  seedEntry(db, {
+    client_id: client,
+    project_id: project,
+    started_at: `${day}T08:00:00.000Z`,
+    stopped_at: `${day}T09:00:00.000Z`,
+    heartbeat_at: `${day}T09:00:00.000Z`,
+    deleted_at: deleted ? `${day}T10:00:00.000Z` : null
+  })
 }
 
 // seed(): clients 1 + 2 active; projects 10 (active) and 30 (archived) of

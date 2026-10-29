@@ -1,3 +1,11 @@
+import {
+  exportRunToFile,
+  listRuns,
+  MissingClientShortCodeError,
+  openRunPdf,
+  releaseRun,
+  setInvoiceRef
+} from './billingRuns'
 import { isExternalUrlAllowed } from './externalLinks'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
@@ -25,15 +33,20 @@ import {
   updateManualEntry,
   switchTimerAndNotify,
   stopEntry,
+  stopEntryAt,
   deleteEntry,
-  undeleteEntry
+  undeleteEntry,
+  heartbeat,
+  listEntryVersions
 } from './entryMutations'
+import { deleteClientGuarded, deleteProjectGuarded } from './masterDataDelete'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
 import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 import { buildPdfHtml, buildPdfPayload, type PdfRequest } from './pdf'
 import { renderPdfBuffer } from './pdfWindow'
+import { discardViewerCopy, writeViewerCopy } from './runViewerCopy'
 import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
 import { handleCsvExport, type CsvRequest } from './csvExport'
 import { handleIcalExport, type IcalRequest } from './icalExport'
@@ -47,15 +60,29 @@ import {
 import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
 import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
+import {
+  readRates,
+  saveRate,
+  deleteRate,
+  readProfile,
+  saveProfile,
+  syncDueRates
+} from './rateEditor'
+import type { RateTarget, SaveRateInput, ProfileFields } from '../shared/rateEditor'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { budgetUsedMinutesSql } from '../shared/currency'
+import {
+  normaliseShortCodeInput,
+  SHORT_CODE_INVALID_ERROR,
+  SHORT_CODE_PATTERN,
+  SHORT_CODE_TAKEN_ERROR
+} from '../shared/clientShortCode'
 import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
   readRecentEntries,
-  readRoundMinutes,
   readTodayEntries,
   readTopClients30d,
   readTotals,
@@ -64,6 +91,7 @@ import {
 import type {
   Client,
   Entry,
+  EntryVersion,
   Project,
   CreateClientInput,
   UpdateClientInput,
@@ -113,7 +141,7 @@ function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
 /**
@@ -146,6 +174,47 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+  ipcMain.handle('rates:list', (_e, target: RateTarget) => {
+    try {
+      // The forms take the current rate from here, so it must be the due one.
+      syncDueRates(db)
+      return ok(readRates(db, target))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('rates:save', (_e, target: RateTarget, input: SaveRateInput) => {
+    try {
+      const result = saveRate(db, target, input)
+      hooks.refreshTrayClients()
+      return ok(result)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('rates:delete', (_e, target: RateTarget, id: number) => {
+    try {
+      const result = deleteRate(db, target, id)
+      hooks.refreshTrayClients()
+      return ok(result)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-profile:get', (_e, target: RateTarget) => {
+    try {
+      return ok(readProfile(db, target))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-profile:save', (_e, target: RateTarget, fields: ProfileFields) => {
+    try {
+      return ok(saveProfile(db, target, fields))
+    } catch (e) {
+      return fail(e)
+    }
+  })
   // Native dialogs, file names and cancel texts follow the app language
   // (#270, #296). Never throws (mainI18n.appLocale): with the handle closed
   // after a restore attempt, the language last read in this run, the same
@@ -193,8 +262,23 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ])
 
   // ── Clients ──────────────────────────────────────────────────
+  function normaliseClientShortCode(value: unknown, clientId?: number): string | null {
+    if (value === undefined || value === null) return null
+    if (typeof value !== 'string') throw new Error(SHORT_CODE_INVALID_ERROR)
+    const code = normaliseShortCodeInput(value)
+    if (code === null) return null
+    if (!SHORT_CODE_PATTERN.test(code)) throw new Error(SHORT_CODE_INVALID_ERROR)
+    const owner = db.prepare('SELECT id FROM clients WHERE short_code = ?').get(code) as
+      | { id: number }
+      | undefined
+    if (owner && owner.id !== clientId) throw new Error(SHORT_CODE_TAKEN_ERROR)
+    return code
+  }
+
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
     try {
+      // An app left open past a rate's valid-from day still shows the due rate.
+      syncDueRates(db)
       const rows = db.prepare(`SELECT * FROM clients ORDER BY name ASC`).all() as Client[]
       return ok(rows)
     } catch (e) {
@@ -205,18 +289,20 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('clients:create', (_e, input: CreateClientInput): IpcResult<Client> => {
     try {
       const rate = normaliseRateCent(input.rate_cent)
+      const shortCode = normaliseClientShortCode(input.short_code)
       const info = db
         .prepare(
-          `INSERT INTO clients (name, color, rate_cent,
+          `INSERT INTO clients (name, color, rate_cent, short_code,
              billing_address_line1, billing_address_line2,
              billing_address_line3, billing_address_line4,
              vat_id, contact_person, contact_email)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           input.name.trim(),
           input.color,
           rate,
+          shortCode,
           input.billing_address_line1?.trim() ?? null,
           input.billing_address_line2?.trim() ?? null,
           input.billing_address_line3?.trim() ?? null,
@@ -237,10 +323,17 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('clients:update', (_e, input: UpdateClientInput): IpcResult<Client> => {
     try {
-      const rate = normaliseRateCent(input.rate_cent)
+      // The form sends rate_cent only when the field was changed. Its copy
+      // may lag a due editor row, and writing it back would reset the rate.
+      const hasRate = input.rate_cent !== undefined
+      const rate = hasRate ? normaliseRateCent(input.rate_cent) : null
+      const hasShortCode = input.short_code !== undefined
+      const shortCode = hasShortCode ? normaliseClientShortCode(input.short_code, input.id) : null
       db.prepare(
         `UPDATE clients SET
-           name = ?, color = ?, active = ?, rate_cent = ?,
+           name = ?, color = ?, active = ?,
+           rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END,
+           short_code = CASE WHEN ? THEN ? ELSE short_code END,
            billing_address_line1 = ?, billing_address_line2 = ?,
            billing_address_line3 = ?, billing_address_line4 = ?,
            vat_id = ?, contact_person = ?, contact_email = ?
@@ -249,7 +342,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         input.name.trim(),
         input.color,
         input.active,
+        hasRate ? 1 : 0,
         rate,
+        hasShortCode ? 1 : 0,
+        shortCode,
         input.billing_address_line1?.trim() ?? null,
         input.billing_address_line2?.trim() ?? null,
         input.billing_address_line3?.trim() ?? null,
@@ -267,11 +363,13 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  // 2.0: refused while any entry version points at the client (owner
+  // decision 2026-10-26, see masterDataDelete.ts).
   ipcMain.handle('clients:delete', (_e, id: number): IpcResult<void> => {
     try {
-      db.prepare(`DELETE FROM clients WHERE id = ?`).run(id)
-      hooks.refreshTrayClients()
-      return ok(undefined)
+      const res = deleteClientGuarded(db, id)
+      if (res.ok) hooks.refreshTrayClients()
+      return res
     } catch (e) {
       return fail(e)
     }
@@ -320,12 +418,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  ipcMain.handle('entries:stopAt', (_e, id: number, stoppedAt: string): IpcResult<Entry> => {
+    try {
+      const res = stopEntryAt(db, id, stoppedAt, { source: 'idle' })
+      if (res.ok) emitWebhooks(db, 'timer.stopped', res.data, { log: logWebhookDelivery })
+      return res
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
   ipcMain.handle('entries:heartbeat', (_e, id: number): IpcResult<void> => {
     try {
-      db.prepare(`UPDATE entries SET heartbeat_at = ? WHERE id = ?`).run(
-        new Date().toISOString(),
-        id
-      )
+      heartbeat(db, id)
       return ok(undefined)
     } catch (e) {
       return fail(e)
@@ -343,6 +448,15 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           )
           .get() as Entry) ?? null
       return ok(row)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
+  ipcMain.handle('entries:versions', (_e, id: number): IpcResult<EntryVersion[]> => {
+    try {
+      if (!Number.isSafeInteger(id) || id <= 0) return fail(new Error('Ungültige Eintrag-ID'))
+      return ok(listEntryVersions(db, id))
     } catch (e) {
       return fail(e)
     }
@@ -394,17 +508,17 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    * Either half of an entry across midnight deletes the whole entry, and undo
    * brings back what that delete removed (#323, see `deleteEntry`).
    */
-  ipcMain.handle('entries:delete', (_e, id: number): IpcResult<void> => {
+  ipcMain.handle('entries:delete', (_e, id: number, reason?: string): IpcResult<void> => {
     try {
-      return deleteEntry(db, id)
+      return deleteEntry(db, id, { reason })
     } catch (e) {
       return fail(e)
     }
   })
 
-  ipcMain.handle('entries:undelete', (_e, id: number): IpcResult<Entry> => {
+  ipcMain.handle('entries:undelete', (_e, id: number, reason?: string): IpcResult<Entry> => {
     try {
-      return undeleteEntry(db, id)
+      return undeleteEntry(db, id, { reason })
     } catch (e) {
       return fail(e)
     }
@@ -445,8 +559,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     'projects:getAll',
     (_e, req?: { clientId?: number | null }): IpcResult<Project[]> => {
       try {
-        // Budget use counts like the invoice (#285), same step as the PDF.
-        const roundStep = readRoundMinutes(db)
+        syncDueRates(db)
+        // Budget use counts like the invoice (#285): billing_lines.
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,
@@ -456,7 +570,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
             SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
             FROM entries WHERE deleted_at IS NULL GROUP BY project_id
           ) ec ON ec.project_id = p.id
-          LEFT JOIN (${budgetUsedMinutesSql(roundStep)}) bud ON bud.project_id = p.id`
+          LEFT JOIN (${budgetUsedMinutesSql()}) bud ON bud.project_id = p.id`
         const order = `ORDER BY CASE WHEN p.status = 'active' THEN 0 WHEN p.status = 'paused' THEN 1 ELSE 2 END, p.name`
         let query: string
         let params: unknown[]
@@ -533,10 +647,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const status = input.status ?? 'active'
       // Keep `active` in sync with `status` for backward compatibility.
       const activeFlag = status === 'active' ? 1 : 0
+      // As for clients: no rate_cent keeps the column. A sent null is a real
+      // value (inherit the client rate).
+      const hasRate = input.rate_cent !== undefined
       const result = db
         .prepare(
           `UPDATE projects SET
-             client_id=?, name=?, color=?, rate_cent=?, active=?,
+             client_id=?, name=?, color=?,
+             rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END, active=?,
              external_project_number=?, start_date=?, end_date=?,
              budget_minutes=?, status=?, contact_person=?
            WHERE id=? RETURNING *`
@@ -545,6 +663,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           input.client_id ?? null,
           input.name.trim(),
           input.color ?? '',
+          hasRate ? 1 : 0,
           input.rate_cent ?? null,
           activeFlag,
           input.external_project_number?.trim() ?? null,
@@ -571,17 +690,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  // 2.0: refused while any entry version points at the project, deleted
+  // entries included (owner decision 2026-10-26, see masterDataDelete.ts).
   ipcMain.handle('projects:delete', (_e, id: number): IpcResult<void> => {
     try {
-      const tx = db.transaction(() => {
-        const countRow = db
-          .prepare(`SELECT COUNT(*) AS n FROM entries WHERE project_id = ? AND deleted_at IS NULL`)
-          .get(id) as { n: number }
-        if (countRow.n > 0) throw new Error('Projekt hat noch aktive Einträge')
-        db.prepare('DELETE FROM projects WHERE id = ?').run(id)
-      })
-      tx()
-      return ok(undefined)
+      return deleteProjectGuarded(db, id)
     } catch (e) {
       return fail(e)
     }
@@ -919,7 +1032,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle(
     'pdf:export',
-    async (_e, req: PdfRequest): Promise<IpcResult<{ path: string }>> => {
+    async (
+      _e,
+      req: PdfRequest
+    ): Promise<
+      IpcResult<{ path: string; runId?: number; runNumber?: string; excludedCount?: number }>
+    > => {
       try {
         if (!req || typeof req.clientId !== 'number' || !req.fromIso || !req.toIso) {
           return fail('Ungültige PDF-Anfrage')
@@ -963,17 +1081,77 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         ) as unknown as Settings
         const logoDataUrl = readLogoAsDataUrl(settings.pdf_logo_path ?? '')
 
-        const payload = buildPdfPayload(db, req, logoDataUrl)
-        const html = buildPdfHtml(payload)
-        const buf = await renderPdfBuffer({ html })
-        writeFileSync(result.filePath, buf)
+        let runId: number | undefined
+        let runNumber: string | undefined
+        let excludedCount: number | undefined
+        if (req.markAsBilled) {
+          const exported = await exportRunToFile(
+            db,
+            req,
+            (html) => renderPdfBuffer({ html }),
+            { logoDataUrl, appVersion: app.getVersion() },
+            result.filePath
+          )
+          runId = exported.runId
+          runNumber = exported.runNumber
+          excludedCount = exported.excludedCount
+        } else {
+          const payload = buildPdfPayload(db, req, logoDataUrl)
+          writeFileSync(result.filePath, await renderPdfBuffer({ html: buildPdfHtml(payload) }))
+        }
         rememberExportFolder(db, 'pdf', result.filePath)
-        return ok({ path: result.filePath })
+        return ok({
+          path: result.filePath,
+          ...(runId === undefined ? {} : { runId, runNumber, excludedCount })
+        })
       } catch (e) {
+        if (e instanceof MissingClientShortCodeError) {
+          return fail(dialogT(dialogLocale())('export.status.shortCodeMissing'))
+        }
         return fail(e)
       }
     }
   )
+
+  ipcMain.handle('billing-runs:list', (_e, clientId?: number) => {
+    try {
+      return ok(listRuns(db, clientId))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:open', async (_e, runId: number) => {
+    try {
+      const bytes = openRunPdf(db, runId)
+      // The renderer cannot open blob windows (guardWindowLinks). Hand only
+      // a verified archive copy, at a main-process-owned path, to the PDF viewer.
+      const filePath = writeViewerCopy(app.getPath('temp'), runId, bytes)
+      const error = await shell.openPath(filePath)
+      if (error) {
+        discardViewerCopy(filePath)
+        return fail(error)
+      }
+      return ok(undefined)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:release', (_e, runId: number, reason: string) => {
+    try {
+      releaseRun(db, runId, reason)
+      return ok(undefined)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:set-invoice-ref', (_e, runId: number, ref: string) => {
+    try {
+      setInvoiceRef(db, runId, ref)
+      return ok(undefined)
+    } catch (e) {
+      return fail(e)
+    }
+  })
 
   // PDF merge-export: renders the Stundennachweis and appends it to an
   // existing invoice PDF chosen by the user. The invoice file is never

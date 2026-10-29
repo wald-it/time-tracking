@@ -123,13 +123,23 @@ function formatUtcStamp(iso: string): string {
 }
 
 /**
- * Stabile, eindeutige UID pro Eintrags-Zeile. Aus der DB-ID abgeleitet, damit
- * ein erneuter Import denselben Termin aktualisiert statt zu duplizieren. Die
- * beiden Hälften eines Cross-Midnight-Eintrags haben verschiedene IDs → zwei
- * verschiedene UIDs → zwei eigenständige VEVENTs.
+ * Stabile, eindeutige UID pro Segment. Aus Eintrags-ID und gespeichertem
+ * Segment-Datum abgeleitet (Design 6: `timetrack-entry-<id>-<segment_date>`),
+ * damit ein erneuter Import denselben Termin aktualisiert statt zu
+ * duplizieren, auch wenn eine Bearbeitung vorne einen Tag ergänzt. Die beiden
+ * Tage eines Cross-Midnight-Eintrags teilen die ID, haben aber verschiedene
+ * Segment-Daten → zwei UIDs → zwei eigenständige VEVENTs. Ohne gespeichertes
+ * Datum (eine Zeile, die nicht aus der View kommt) zählt der lokale Tag des
+ * Beginns.
  */
 function buildUid(entry: Entry): string {
-  return `timetrack-entry-${entry.id}@wald-it.com`
+  return `timetrack-entry-${entry.id}-${entry.segment_date ?? localDate(entry.started_at)}@wald-it.com`
+}
+
+function localDate(iso: string): string {
+  const d = new Date(iso)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
 /**

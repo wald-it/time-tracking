@@ -7,6 +7,7 @@ import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import {
   createManualEntry,
+  deleteEntry,
   updateManualEntry,
   startTimer,
   stopEntry,
@@ -15,7 +16,8 @@ import {
   switchTimerAndNotify,
   validateProjectForClient
 } from './entryMutations'
-import { importCalendarEntries, importedEventIds } from './graphImport'
+import { importedEventIds } from './graphImport'
+import { seedEntry } from '../test/entryFixtures'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -59,7 +61,8 @@ describe('entryMutations', () => {
     if (!r.ok) return
     expect(r.data.description).toBe('Feature')
     expect(r.data.link_id).toBeNull()
-    expect(r.data.rounded_min).toBe(60)
+    // 2.0: no reader since #285, the view leaves it NULL (money columns in P4).
+    expect(r.data.rounded_min).toBeNull()
     expect(r.data.tags).toBe(',bug,')
   })
 
@@ -93,7 +96,7 @@ describe('entryMutations', () => {
     if (r.ok) expect(r.data.project_id).toBe(10)
   })
 
-  it('createManualEntry splits across local midnight into linked halves', () => {
+  it('createManualEntry splits across local midnight into two segments of one entry', () => {
     // Build local 23:00 → 01:00 next day so it crosses LOCAL midnight in any
     // timezone while staying under the 24h cap.
     const start = new Date(2026, 5, 10, 23, 0, 0)
@@ -106,11 +109,29 @@ describe('entryMutations', () => {
     })
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.data.link_id).not.toBeNull()
+    // The entry's own range; the view shows one row per segment, same id.
+    expect([r.data.started_at, r.data.stopped_at]).toEqual([
+      start.toISOString(),
+      stop.toISOString()
+    ])
+    expect(r.data.link_id).toBeNull()
     const rows = db
-      .prepare(`SELECT * FROM entries WHERE link_id = ?`)
-      .all(r.data.link_id) as Array<{ id: number }>
-    expect(rows.length).toBe(2)
+      .prepare(
+        `SELECT segment_seq, started_at, stopped_at FROM entries WHERE id = ? ORDER BY segment_seq`
+      )
+      .all(r.data.id)
+    expect(rows).toEqual([
+      {
+        segment_seq: 0,
+        started_at: start.toISOString(),
+        stopped_at: new Date(2026, 5, 11).toISOString()
+      },
+      {
+        segment_seq: 1,
+        started_at: new Date(2026, 5, 11).toISOString(),
+        stopped_at: stop.toISOString()
+      }
+    ])
   })
 
   it('createManualEntry rejects overlap, bad times, unknown client', () => {
@@ -164,8 +185,9 @@ describe('entryMutations', () => {
     expect(upd.ok).toBe(true)
     if (!upd.ok) return
     expect(upd.data.description).toBe('New')
-    expect(upd.data.rounded_min).toBe(120)
+    expect(upd.data.stopped_at).toBe('2026-06-10T11:00:00.000Z')
     expect(upd.data.tags).toBe(',x,')
+    expect(upd.data.id).toBe(created.data.id) // 2.0: an edit is a new version, not a new row
 
     const bad = updateManualEntry(db, {
       id: 99999,
@@ -322,10 +344,10 @@ describe('switchTimer (B1)', () => {
       started_at: '2026-06-10T11:00:00.000Z'
     })
     if (!ghost.ok) throw new Error('setup failed')
-    db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(
-      '2026-06-10T11:05:00.000Z',
-      ghost.data.id
-    )
+    // 2.0: deleting a running entry seals it where it stands (as L5 does for
+    // a 1.x row in that shape), so the trashed version is never open.
+    const del = deleteEntry(db, ghost.data.id, { now: '2026-06-10T11:05:00.000Z' })
+    if (!del.ok) throw new Error(del.error)
     const r = switchTimer(db, {
       client_id: 2,
       description: '',
@@ -333,13 +355,19 @@ describe('switchTimer (B1)', () => {
     })
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.data.stopped).toBeNull()
-    // The ghost is closed, but never before its own start: an undelete must
+    // The ghost is closed, and never before its own start: an undelete must
     // not bring back a negative duration.
     const row = db
-      .prepare(`SELECT started_at, stopped_at FROM entries WHERE id = ?`)
-      .get(ghost.data.id) as { started_at: string; stopped_at: string | null }
-    expect(row.stopped_at).not.toBeNull()
-    expect(Date.parse(row.stopped_at!)).toBeGreaterThanOrEqual(Date.parse(row.started_at))
+      .prepare(
+        `SELECT v.state, v.started_at, v.stopped_at FROM entry e
+           JOIN entry_version v ON v.id = e.current_version_id WHERE e.id = ?`
+      )
+      .get(ghost.data.id) as { state: string; started_at: string; stopped_at: string | null }
+    expect(row).toEqual({
+      state: 'sealed',
+      started_at: '2026-06-10T11:00:00.000Z',
+      stopped_at: '2026-06-10T11:05:00.000Z'
+    })
   })
 
   it('returns stopped: null when nothing ran', () => {
@@ -498,14 +526,16 @@ describe('overlap with a running entry', () => {
   })
 })
 
-// #299: an edit is saved as delete + reinsert (new id). The reinsert used to
-// drop the calendar import anchor — the next import preview offered the
-// meeting again — and the original creation time. Both now survive the edit.
+// #299: in 1.x an edit was saved as delete + reinsert (new id), and the
+// reinsert used to drop the calendar import anchor — the next import preview
+// offered the meeting again — and the original creation time. Since 2.0 an
+// edit is a new version of the same entry; the anchor and created_at belong
+// to the entry (design 4.1) and a trigger refuses to change them.
 describe('updateManualEntry keeps the import anchor and created_at (#299)', () => {
   let db: Database.Database
   const CREATED = '2026-01-02 08:00:00'
-  // Built from local parts: splitAtMidnight cuts at local midnight, so a
-  // single entry stays single and the pair below has two halves in any zone.
+  // Built from local parts: segments are cut at local midnight, so a single
+  // entry stays single and the pair below has two segments in any zone.
   const local = (d: number, h: number, m = 0): string => new Date(2026, 5, d, h, m).toISOString()
 
   beforeEach(() => {
@@ -513,25 +543,37 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
     seed(db)
   })
 
-  /** An entry imported from the calendar, written a while ago. */
+  /** An entry imported from the calendar, written a while ago; cut at local midnight. */
   function imported(startedAt: string, stoppedAt: string): number {
-    const res = importCalendarEntries(db, [
-      { graphEventId: 'EVT-1', description: 'Termin', startedAt, stoppedAt, clientId: 1 }
-    ])
-    if (res.created !== 1) throw new Error(`setup: ${JSON.stringify(res.failed)}`)
-    db.prepare(`UPDATE entries SET created_at = ?`).run(CREATED)
-    return (
-      db.prepare(`SELECT id FROM entries WHERE graph_event_id = 'EVT-1'`).get() as { id: number }
-    ).id
+    const stop = new Date(stoppedAt)
+    const midnight = new Date(stop.getFullYear(), stop.getMonth(), stop.getDate())
+    const segments =
+      midnight.getTime() > Date.parse(startedAt)
+        ? [
+            { started_at: startedAt, stopped_at: midnight.toISOString() },
+            { started_at: midnight.toISOString(), stopped_at: stoppedAt }
+          ]
+        : [{ started_at: startedAt, stopped_at: stoppedAt }]
+    return seedEntry(db, {
+      client_id: 1,
+      description: 'Termin',
+      segments,
+      graph_event_id: 'EVT-1',
+      created_at: CREATED,
+      created_source: 'import',
+      source: 'import'
+    })
   }
 
-  function edit(id: number, startedAt: string, stoppedAt: string): number {
+  /** The drawer's save: the times of the segment it opened (`segment_seq`), or the entry's. */
+  function edit(id: number, startedAt: string, stoppedAt: string, segment_seq?: number): number {
     const res = updateManualEntry(db, {
       id,
       client_id: 1,
       description: 'Termin (korrigiert)',
       started_at: startedAt,
-      stopped_at: stoppedAt
+      stopped_at: stoppedAt,
+      segment_seq
     })
     if (!res.ok) throw new Error(res.error)
     return res.data.id
@@ -544,67 +586,70 @@ describe('updateManualEntry keeps the import anchor and created_at (#299)', () =
 
   it('an edited imported entry still counts as imported', () => {
     const id = imported(local(10, 9), local(10, 10))
-    const newId = edit(id, local(10, 9, 15), local(10, 10))
-    expect(newId).not.toBe(id) // still delete + reinsert; only the two fields carry over
-    expect(rows()).toEqual([{ id: newId, graph_event_id: 'EVT-1', created_at: CREATED }])
+    const sameId = edit(id, local(10, 9, 15), local(10, 10))
+    expect(sameId).toBe(id)
+    expect(rows()).toEqual([{ id, graph_event_id: 'EVT-1', created_at: CREATED }])
     // The dedupe input of the import preview — the meeting is not offered again.
     expect([...importedEventIds(db)]).toEqual(['EVT-1'])
   })
 
   it('a plain manual entry keeps its created_at and gains no anchor', () => {
-    const made = createManualEntry(db, {
+    const id = seedEntry(db, {
       client_id: 1,
       description: 'Feature',
       started_at: local(10, 9),
-      stopped_at: local(10, 10)
+      stopped_at: local(10, 10),
+      created_at: CREATED
     })
-    if (!made.ok) throw new Error(made.error)
-    db.prepare(`UPDATE entries SET created_at = ?`).run(CREATED)
-    const newId = edit(made.data.id, local(10, 9), local(10, 11))
-    expect(rows()).toEqual([{ id: newId, graph_event_id: null, created_at: CREATED }])
+    edit(id, local(10, 9), local(10, 11))
+    expect(rows()).toEqual([{ id, graph_event_id: null, created_at: CREATED }])
   })
 
   const SPLIT: [string, string] = [local(10, 20), local(11, 4)]
 
-  it('a midnight-split pair keeps created_at on both halves, the anchor on the first', () => {
+  it('a midnight-split entry keeps created_at and the anchor on both segments', () => {
     const id = imported(...SPLIT)
     expect(rows()).toHaveLength(2)
-    // The first half's start is the entry's start (#311: the 0:00 edge stays).
-    edit(id, local(10, 20, 30), local(11, 0))
+    // The drawer on the first segment: its start is the entry's start, the
+    // 0:00 edge stays (#311).
+    edit(id, local(10, 20, 30), local(11, 0), 0)
     const after = rows()
     expect(after.map((r) => r.created_at)).toEqual([CREATED, CREATED])
-    expect(after.map((r) => r.graph_event_id)).toEqual(['EVT-1', null])
+    // The anchor belongs to the entry, so every segment row shows it (in
+    // 1.x only the first half carried it).
+    expect(after.map((r) => r.graph_event_id)).toEqual(['EVT-1', 'EVT-1'])
   })
 
-  it('editing the second half of a pair keeps the anchor too', () => {
-    imported(...SPLIT)
-    const second = rows()[1].id
-    edit(second, local(11, 0), local(11, 3))
-    expect(rows().map((r) => r.graph_event_id)).toEqual(['EVT-1', null])
+  it('editing the second segment keeps the anchor too', () => {
+    const id = imported(...SPLIT)
+    edit(id, local(11, 0), local(11, 3), 1)
+    expect(rows().map((r) => r.graph_event_id)).toEqual(['EVT-1', 'EVT-1'])
     expect([...importedEventIds(db)]).toEqual(['EVT-1'])
   })
 
   it('a single entry edited into a pair, and the pair edited again, keeps both fields', () => {
     const id = imported(local(10, 9), local(10, 10))
-    const pairId = edit(id, ...SPLIT)
+    expect(edit(id, ...SPLIT)).toBe(id)
     expect(rows().map((r) => [r.graph_event_id, r.created_at])).toEqual([
       ['EVT-1', CREATED],
-      [null, CREATED]
+      ['EVT-1', CREATED]
     ])
-    edit(pairId, local(10, 21), local(11, 0))
+    edit(id, local(10, 21), local(11, 0), 0)
     expect(rows().map((r) => [r.graph_event_id, r.created_at])).toEqual([
       ['EVT-1', CREATED],
-      [null, CREATED]
+      ['EVT-1', CREATED]
     ])
   })
 })
 
-// An edit writes the entry anew (delete + reinsert). Every column it does not
-// pass on is reset — that is how #299 lost graph_event_id and created_at. This
-// guard turns red for the next column: each one must be classified here, and
-// an edit that changes nothing must keep every value the entry owns.
+// In 1.x an edit wrote the entry anew (delete + reinsert), and every column it
+// did not pass on was reset — that is how #299 lost graph_event_id and
+// created_at. Since 2.0 an edit is a new version; the columns of the view
+// `entries` come from the entry, the version or the segment. This guard turns
+// red for the next column: each one must be classified here, and an edit must
+// keep every value the entry owns.
 describe('an edit keeps every column of the entry (guard)', () => {
-  /** Where updateManualEntry gets each column's value from. */
+  /** Where a row of the view gets each column's value from after an edit. */
   const COLUMNS: Record<string, 'input' | 'carried' | 'rebuilt'> = {
     client_id: 'input',
     description: 'input',
@@ -615,11 +660,26 @@ describe('an edit keeps every column of the entry (guard)', () => {
     billable: 'input',
     private_note: 'input',
     project_id: 'input',
+    // The entry's own: never change (trigger trg_entry_fixed_columns).
+    id: 'carried',
     graph_event_id: 'carried',
     created_at: 'carried',
-    // New rows: a new id and link_id, heartbeat = stop, minutes from the
-    // range, and a live row is not deleted.
-    id: 'rebuilt',
+    segment_seq: 'carried',
+    // The new version: its id and number; heartbeat = stop once sealed;
+    // link_id, rounded_min and deleted_at are NULL in every row of the view.
+    version_id: 'rebuilt',
+    version_no: 'rebuilt',
+    // Derived from the new version's segments (2.0 P3).
+    segment_count: 'rebuilt',
+    segment_date: 'rebuilt',
+    // The money of the segment from billing_lines (2.0 #374): worked out again
+    // from the new version, never carried.
+    billed_minutes: 'rebuilt',
+    rate_cent: 'rebuilt',
+    fee_cent: 'rebuilt',
+    rate_is_project: 'rebuilt',
+    interval_min: 'rebuilt',
+    min_unit_min: 'rebuilt',
     link_id: 'rebuilt',
     heartbeat_at: 'rebuilt',
     rounded_min: 'rebuilt',
@@ -637,10 +697,43 @@ describe('an edit keeps every column of the entry (guard)', () => {
     )
   })
 
-  it('an edit that changes nothing keeps every value the entry owns', () => {
+  it('an update that sends only the description keeps every field it did not send', () => {
     const db = new DatabaseImpl(':memory:')
     seed(db)
-    const made = createManualEntry(db, {
+    const stoppedAt = new Date(2026, 5, 10, 10, 30, 47).toISOString()
+    const id = seedEntry(db, {
+      client_id: 1,
+      project_id: 10,
+      description: 'All fields set',
+      started_at: new Date(2026, 5, 10, 9).toISOString(),
+      stopped_at: stoppedAt,
+      tags: ',a,',
+      reference: 'REF-1',
+      billable: 0,
+      private_note: 'Internal note',
+      graph_event_id: 'EVT-G',
+      created_at: '2026-01-02 08:00:00'
+    })
+    const before = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
+    const description = 'Only the description changed'
+    const res = updateManualEntry(db, { id, description })
+    if (!res.ok) throw new Error(res.error)
+    const after = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
+
+    expect(after).toEqual({
+      ...before,
+      description,
+      version_id: expect.any(Number),
+      version_no: (before.version_no as number) + 1
+    })
+    expect(after.version_id).not.toBe(before.version_id)
+    expect(after.stopped_at).toBe(stoppedAt)
+  })
+
+  it('an edit of one field keeps every other value the entry owns', () => {
+    const db = new DatabaseImpl(':memory:')
+    seed(db)
+    seedEntry(db, {
       client_id: 1,
       project_id: 10,
       description: 'Alles gesetzt',
@@ -649,18 +742,16 @@ describe('an edit keeps every column of the entry (guard)', () => {
       tags: ',a,',
       reference: 'REF-1',
       billable: 0,
-      private_note: 'intern'
+      private_note: 'intern',
+      graph_event_id: 'EVT-G',
+      created_at: '2026-01-02 08:00:00'
     })
-    if (!made.ok) throw new Error(made.error)
-    db.prepare(
-      `UPDATE entries SET graph_event_id = 'EVT-G', created_at = '2026-01-02 08:00:00'`
-    ).run()
     const before = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
     const res = updateManualEntry(db, {
       id: before.id as number,
       client_id: before.client_id as number,
       project_id: before.project_id as number,
-      description: before.description as string,
+      description: 'Eines geändert',
       started_at: before.started_at as string,
       stopped_at: before.stopped_at as string,
       tags: before.tags as string,
@@ -670,9 +761,13 @@ describe('an edit keeps every column of the entry (guard)', () => {
     })
     if (!res.ok) throw new Error(res.error)
     const after = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
-    const owned = Object.keys(COLUMNS).filter((c) => COLUMNS[c] !== 'rebuilt')
+    const owned = Object.keys(COLUMNS).filter(
+      (c) => COLUMNS[c] !== 'rebuilt' && c !== 'description'
+    )
     expect(Object.fromEntries(owned.map((c) => [c, after[c]]))).toEqual(
       Object.fromEntries(owned.map((c) => [c, before[c]]))
     )
+    expect(after.description).toBe('Eines geändert')
+    expect(after.version_no).toBe((before.version_no as number) + 1)
   })
 })
