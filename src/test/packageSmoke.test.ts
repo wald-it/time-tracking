@@ -269,6 +269,8 @@ describe('package-smoke async safeStorage proof', () => {
             ok: true,
             schemaVersion: 34,
             pdfBytes: 2000,
+            // A passing #272 sandbox probe, so only the safeStorage check decides.
+            sandbox: { api: 'object', electron: 'undefined', sandboxed: true },
             safeStorageAsync
           })
         },
