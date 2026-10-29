@@ -11,6 +11,10 @@ All notable changes to TimeTrack are documented here.
 
 - **The Windows installer names programs that block an update.** Before it replaces an existing installation, it asks Windows which programs still have files open in the install folder and lists each by name and process ID, with Retry, Ignore and Abort. It never closes anything itself. TimeTrack's own processes are left to the existing checks, and a silent install continues as before. Each check is logged to `%TEMP%\TimeTrack-setup-holders.log`. A program whose only link to the folder is its working directory is not detected (#222).
 
+### Fixed
+
+- **A silent install (`/S`) no longer waits forever at an invisible dialog when another program holds a file and prevents removal of the old version.** It logs the error to `%TEMP%\TimeTrack-setup-holders.log` and ends with exit code 2 ([#358](https://github.com/wald-it/time-tracking/issues/358)).
+
 ## [2.0.1] — 2026-10-29
 
 ### Breaking for webhook receivers

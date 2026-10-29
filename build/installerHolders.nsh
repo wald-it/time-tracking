@@ -10,8 +10,8 @@
 ; invisible to both. That is what blocked the v1.19.0 update (a crash handler
 ; of another vendor's software), and finding it took Resource Monitor.
 ;
-; Neither failing step has a hook, so we look before they run: the Restart
-; Manager answers "who has these files open", and we ask it about every file
+; Look before either step runs: the Restart Manager answers "who has these
+; files open", and we ask it about every file
 ; under $INSTDIR. Diagnostic only — nothing is ever terminated. Every failure
 ; inside this check counts as "no finding": it may miss a holder, but it must
 ; never be the reason an install stops.
@@ -397,6 +397,41 @@ FunctionEnd
 
     ttHoldersDone:
   ${EndIf}
+!macroend
+
+; #358 — custom uninstall checks replace electron-builder's default result
+; handler: installUtil.nsh returns immediately after expanding either hook.
+; Keep its launch-error return, but never let a nonzero exit open a silent
+; MessageBox. Both registry contexts use the same function.
+Function ttHandleUninstallResult
+  IfErrors 0 +3
+  DetailPrint "Uninstall was not successful. Not able to launch uninstaller!"
+  Return
+
+  ${If} $R0 != 0
+    Push "uninstall failed: $R0"
+    Call ttLogHolderPass
+
+    IfSilent ttUninstallFailedQuit
+    ${If} $LANGUAGE == 1031
+      StrCpy $TTHolderMsg "Die alte Version von TimeTrack konnte nicht entfernt werden. Beende Programme, die Dateien im Installationsordner verwenden, und starte das Setup erneut.$\r$\n$\r$\nFehlercode: $R0$\r$\nProtokoll: $TEMP\TimeTrack-setup-holders.log"
+    ${Else}
+      StrCpy $TTHolderMsg "The old version of TimeTrack could not be removed. Close programs using files in the install folder and run setup again.$\r$\n$\r$\nError code: $R0$\r$\nLog: $TEMP\TimeTrack-setup-holders.log"
+    ${EndIf}
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$TTHolderMsg" /SD IDOK
+
+    ttUninstallFailedQuit:
+    SetErrorLevel 2
+    Quit
+  ${EndIf}
+FunctionEnd
+
+!macro customUnInstallCheck
+  Call ttHandleUninstallResult
+!macroend
+
+!macro customUnInstallCheckCurrentUser
+  Call ttHandleUninstallResult
 !macroend
 
 !endif
