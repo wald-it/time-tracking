@@ -102,6 +102,9 @@ declare global {
         delete(id: number, reason?: string): Promise<IpcResult<void>>
         undelete(id: number, reason?: string): Promise<IpcResult<Entry>>
       }
+      feedbackRules: {
+        names(): Promise<IpcResult<string[]>>
+      }
       settings: {
         getAll(): Promise<IpcResult<Settings>>
         set(key: string, value: string): Promise<IpcResult<void>>

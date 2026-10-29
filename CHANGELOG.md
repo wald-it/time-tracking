@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Settings → Export holds format rules for feedback texts.** Allowed prefixes, a separator and forbidden words can be configured; contact persons from the master data always count as forbidden. Nothing checks entries yet ([#425](https://github.com/wald-it/time-tracking/issues/425)).
+
 ## [2.1.0] — 2026-10-29
 
 ### Added
