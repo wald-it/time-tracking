@@ -67,6 +67,8 @@ export function DayDetails({
   const headingId = useId()
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  // The edit form replaces the row, so history expansion must survive outside that row.
+  const [openHistories, setOpenHistories] = useState<Record<number, boolean>>({})
   const [creating, setCreating] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
 
@@ -346,6 +348,10 @@ export function DayDetails({
                     versionNo={e.version_no}
                     clients={clients}
                     projects={projects}
+                    open={openHistories[e.id] ?? false}
+                    onOpenChange={(open) =>
+                      setOpenHistories((current) => ({ ...current, [e.id]: open }))
+                    }
                   />
                 </div>
                 <div className="flex flex-none items-start">

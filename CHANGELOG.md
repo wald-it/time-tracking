@@ -14,6 +14,10 @@ All notable changes to TimeTrack are documented here.
 ### Fixed
 
 - **A rate dated in the future reaches MCP lists on its day.** `list_clients`, `list_projects` and the `timer.started` webhook now read the rate valid today from the dated rate rows, instead of the stored rate that changed only when the app next loaded its client or project list. A project without a rate of its own still inherits the client's. This lifts the known limit noted in 2.0.0 ([#392](https://github.com/wald-it/time-tracking/issues/392)).
+- **Old PDF viewer copies are removed at app start.** Copies of billing run PDFs older than a day are now also deleted when the app starts, not only when the next copy is written ([#388](https://github.com/wald-it/time-tracking/issues/388)).
+- **Error messages no longer show a double prefix.** Errors from the app now read "Fehler: …" instead of "Fehler: Error: …" ([#389](https://github.com/wald-it/time-tracking/issues/389)).
+- **Hidden rates no longer affect which clients or projects appear in MCP analytics.** With rates hidden, whether a client or project appears in `get_analytics` no longer depends on whether it has a rate. This privacy fix changes the MCP row set only in the edge case of a billable entry shorter than a second ([#360](https://github.com/wald-it/time-tracking/issues/360)).
+- **Entry history shows clear time spans and stays open after an edit.** Spans use an en dash and omit the stop date when both times fall on the same local day; arrows separate the old and new values. An open history remains open after saving in the day panel ([#387](https://github.com/wald-it/time-tracking/issues/387)).
 
 ## [2.0.0] — 2026-10-29
 

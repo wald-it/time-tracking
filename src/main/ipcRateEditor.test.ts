@@ -65,7 +65,7 @@ describe('rate and profile IPC', () => {
     const input = { id: 1, name: 'Renamed', color: '#123456', active: 1, rate_cent: 10000 }
     expect(invoke('clients:update', input)).toEqual({
       ok: false,
-      error: 'SqliteError: ' + RATE_EDITOR_CONFLICT_ERROR
+      error: RATE_EDITOR_CONFLICT_ERROR
     })
     expect(invoke('clients:update', { ...input, rate_cent: 9000 })).toMatchObject({
       ok: true,
@@ -121,7 +121,7 @@ describe('rate and profile IPC', () => {
       const client = { id: 1, name: 'A', color: '#123456', active: 1, rate_cent: 10000 }
       const project = { id: 10, client_id: 1, name: 'P', color: '', rate_cent: null }
       if (when === 'today') {
-        const conflict = { ok: false, error: 'SqliteError: ' + RATE_EDITOR_CONFLICT_ERROR }
+        const conflict = { ok: false, error: RATE_EDITOR_CONFLICT_ERROR }
         expect(invoke('clients:update', client)).toEqual(conflict)
         expect(invoke('projects:update', project)).toEqual(conflict)
         return

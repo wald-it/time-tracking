@@ -24,15 +24,18 @@ export function EntryHistory({
   entryId,
   versionNo,
   clients,
-  projects
+  projects,
+  open,
+  onOpenChange
 }: {
   entryId: number
   versionNo?: number
   clients: Client[]
   projects: Project[] | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }): React.JSX.Element {
   const t = useT()
-  const [open, setOpen] = useState(false)
   const mutationVersion = useEntriesStore((s) => s.version)
   const id = useId()
   return (
@@ -42,7 +45,7 @@ export function EntryHistory({
         className={DISCLOSURE}
         aria-expanded={open}
         aria-controls={id}
-        onClick={() => setOpen(!open)}
+        onClick={() => onOpenChange(!open)}
       >
         {t('history.toggle')}
       </button>
@@ -191,6 +194,7 @@ function VersionRow({
 }): React.JSX.Element {
   const t = useT()
   const { locale } = useLocale()
+  const intlLocale = locale === 'en' ? 'en-GB' : 'de-DE'
   // A source the app does not know yet (a newer writer) shows as stored.
   const sourceName = (source: string): string =>
     (SOURCE_NAMES as readonly string[]).includes(source)
@@ -198,18 +202,25 @@ function VersionRow({
       : source
   const formatDate = (iso: string): string => {
     const date = new Date(iso)
-    return Number.isNaN(date.getTime())
-      ? iso
-      : date.toLocaleString(locale === 'en' ? 'en-GB' : 'de-DE')
+    return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(intlLocale)
   }
   const value = (v: EntryVersion, field: EntryHistoryChange): string => {
     switch (field) {
       case 'times':
         return (v.segments.length ? v.segments : [v])
-          .map(
-            (s) =>
-              `${formatDate(s.started_at)} → ${s.stopped_at ? formatDate(s.stopped_at) : t('history.running')}`
-          )
+          .map((s) => {
+            let stopText = t('history.running')
+            if (s.stopped_at) {
+              const start = new Date(s.started_at)
+              const stop = new Date(s.stopped_at)
+              const sameDay =
+                start.getFullYear() === stop.getFullYear() &&
+                start.getMonth() === stop.getMonth() &&
+                start.getDate() === stop.getDate()
+              stopText = sameDay ? stop.toLocaleTimeString(intlLocale) : formatDate(s.stopped_at)
+            }
+            return `${formatDate(s.started_at)} – ${stopText}`
+          })
           .join('; ')
       case 'client':
         return clients.find((c) => c.id === v.client_id)?.name ?? `#${v.client_id}`

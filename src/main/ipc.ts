@@ -141,7 +141,7 @@ function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
 /**
