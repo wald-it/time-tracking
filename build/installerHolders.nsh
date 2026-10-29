@@ -6,17 +6,19 @@
 ; 7z copy retries and then gives up (extractAppPackage.nsh). Both end in the
 ; same "TimeTrack cannot be closed" dialog, and neither names anything. The
 ; app-running check and the MCP holder handshake (installer.nsh) only reach
-; TimeTrack's own processes; a foreign process with a file open in $INSTDIR is
+; TimeTrack's own processes; a foreign process with an installed file open is
 ; invisible to both. That is what blocked the v1.19.0 update (a crash handler
 ; of another vendor's software), and finding it took Resource Monitor.
 ;
 ; Look before either step runs: the Restart Manager answers "who has these
-; files open", and we ask it about every file
-; under $INSTDIR. Diagnostic only — nothing is ever terminated. Every failure
-; inside this check counts as "no finding": it may miss a holder, but it must
-; never be the reason an install stops.
+; files open", and we ask it about every file under $TTHolderRoot.
+; Diagnostic only — nothing is ever terminated. Every failure inside this
+; check counts as "no finding": it may miss a holder, but it must never be
+; the reason an install stops.
+; On a move (/D= to a new folder), we scan the registered old folder because
+; electron-builder removes the old version there.
 ;
-; What it cannot see: a process whose only tie to $INSTDIR is its working
+; What it cannot see: a process whose only tie to $TTHolderRoot is its working
 ; directory. The Restart Manager tracks files, not directories.
 ;
 ; Installer only. The uninstaller build (BUILD_UNINSTALLER) compiles the same
@@ -33,7 +35,7 @@
 ; More holders than this are summarised as a count. Keeps the dialog readable
 ; and the string below NSIS_MAX_STRLEN.
 !define TT_RM_MAX_LISTED 8
-; Bounds the walk if $INSTDIR is ever pointed at something much bigger than
+; Bounds the walk if $TTHolderRoot points at something much bigger than
 ; an app folder.
 ; Overridable only so a probe build can exercise the cut
 ; (makensis -DTT_RM_MAX_FILES=3); the installer build never sets it.
@@ -44,6 +46,8 @@
 ; where they stand, so they read the name from this variable; the macro at the
 ; end expands inside the install section, after common.nsh, and fills it.
 Var TTAppExe
+; The installed folder to scan, which can differ from the new $INSTDIR.
+Var TTHolderRoot
 Var TTRmSession
 ; Files visited, and of those registered with the Restart Manager.
 Var TTRmSeen
@@ -84,7 +88,7 @@ Var TTHolderMsg
   Pop $0
 !macroend
 
-; Registers every file below $INSTDIR<relative path on the stack> with the
+; Registers every file below $TTHolderRoot<relative path on the stack> with the
 ; open session. Same walk as electron-builder's un.atomicRMDir, so it covers
 ; exactly the files the uninstaller will try to move.
 Function ttRmRegisterDir
@@ -95,14 +99,14 @@ Function ttRmRegisterDir
   Push $R4
   Push $0
 
-  FindFirst $R1 $R2 "$INSTDIR$R0\*.*"
+  FindFirst $R1 $R2 "$TTHolderRoot$R0\*.*"
   loop:
     StrCmp $R2 "" done
     ; Once a file has been left out, stop everywhere, directories included.
     StrCmp $TTRmCut 1 done
     StrCmp $R2 "." next
     StrCmp $R2 ".." next
-    IfFileExists "$INSTDIR$R0\$R2\*.*" 0 isFile
+    IfFileExists "$TTHolderRoot$R0\$R2\*.*" 0 isFile
       Push "$R0\$R2"
       Call ttRmRegisterDir
       Goto next
@@ -116,7 +120,7 @@ Function ttRmRegisterDir
       ; RmRegisterResources takes an array of string pointers. One file per
       ; call keeps that array at a single element; registrations add up
       ; within a session.
-      StrCpy $R3 "$INSTDIR$R0\$R2"
+      StrCpy $R3 "$TTHolderRoot$R0\$R2"
       StrLen $R4 $R3
       IntOp $R4 $R4 + 1
       System::Call '*(&w$R4 "$R3")p.r0'
@@ -147,7 +151,7 @@ Function ttRmRegisterDir
 FunctionEnd
 
 ; One pass: fills $TTForeignHolders with "image.exe (PID n)" lines for every
-; process other than TimeTrack itself that holds a file under $INSTDIR, and
+; process other than TimeTrack itself that holds a file under $TTHolderRoot, and
 ; $TTRmStatus with how the pass went (for the log only).
 Function ttForeignHolderPass
   !insertmacro TT_SAVE_REGISTERS
@@ -336,7 +340,7 @@ Function ttLogHolderPass
     ${If} $1 == ""
       StrCpy $1 "-"
     ${EndIf}
-    FileWriteUTF16LE $0 "$R0 | $INSTDIR | $TTRmStatus | holders: $1$\r$\n"
+    FileWriteUTF16LE $0 "$R0 | $TTHolderRoot | $TTRmStatus | holders: $1$\r$\n"
     FileClose $0
   ${EndIf}
   ClearErrors
@@ -346,10 +350,27 @@ Function ttLogHolderPass
 FunctionEnd
 
 !macro TIMETRACK_FOREIGN_HOLDERS
-  ; Nothing installed yet means nothing to replace — and $INSTDIR may then be
-  ; any folder the user picked, which we have no business walking.
   StrCpy $TTAppExe "${APP_EXECUTABLE_FILENAME}"
+  StrCpy $TTHolderRoot ""
   ${If} ${FileExists} "$INSTDIR\$TTAppExe"
+    StrCpy $TTHolderRoot $INSTDIR
+  ${Else}
+    ; With /D=, the old version can be elsewhere. Use the same registry
+    ; contexts as electron-builder's uninstallOldVersion calls.
+    ReadRegStr $TTHolderRoot SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ${If} $TTHolderRoot == ""
+      ReadRegStr $TTHolderRoot HKEY_CURRENT_USER "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ${EndIf}
+    ${If} $TTHolderRoot != ""
+      ${IfNot} ${FileExists} "$TTHolderRoot\$TTAppExe"
+        StrCpy $TTHolderRoot ""
+      ${EndIf}
+    ${EndIf}
+    ClearErrors
+  ${EndIf}
+  ; Nothing installed means nothing to replace. Without TimeTrack's executable
+  ; in the folder, we have no business walking it.
+  ${If} $TTHolderRoot != ""
     ttHoldersCheck:
       Call ttForeignHolderPass
       Push "pass 1"
@@ -409,6 +430,11 @@ Function ttHandleUninstallResult
   Return
 
   ${If} $R0 != 0
+    ; The holder check can find no installed folder. Still name the target
+    ; in the failure log when the old uninstaller returns an error.
+    ${If} $TTHolderRoot == ""
+      StrCpy $TTHolderRoot $INSTDIR
+    ${EndIf}
     Push "uninstall failed: $R0"
     Call ttLogHolderPass
 
