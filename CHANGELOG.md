@@ -15,6 +15,10 @@ All notable changes to TimeTrack are documented here.
 
 - **A silent install (`/S`) no longer waits forever at an invisible dialog when another program holds a file and prevents removal of the old version.** It logs the error to `%TEMP%\TimeTrack-setup-holders.log` and ends with exit code 2 ([#358](https://github.com/wald-it/time-tracking/issues/358)).
 
+### Security
+
+- **App windows run sandboxed, and the packaged app is hardened with Electron fuses.** The main window and mini widget use a sandboxed preload that exposes only TimeTrack's API. The packaged binary loads app code only from its integrity-checked ASAR and ignores Node debugger arguments and `NODE_OPTIONS`. RunAsNode stays enabled for the MCP server and smoke cleaner. The fuse probe checks the packaged binary on Windows and macOS in both PR and release builds; the app smoke probe also checks the sandbox and preload API ([#272](https://github.com/wald-it/time-tracking/issues/272)).
+
 ## [2.0.1] — 2026-10-29
 
 ### Breaking for webhook receivers
