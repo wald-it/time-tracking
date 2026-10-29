@@ -85,6 +85,15 @@ afterEach(() => {
 })
 
 describe('settings:set allow-list', () => {
+  it('returns the error message without the Error prefix when a hook throws', async () => {
+    const failingHooks = hooks()
+    failingHooks.setHotkey = () => {
+      throw new Error('Hotkey registration failed')
+    }
+    const result = await writeSettingFromRenderer(db, failingHooks, 'hotkey_toggle', 'Alt+Shift+T')
+    expect(result).toEqual({ ok: false, error: 'Hotkey registration failed' })
+  })
+
   it('stores an allowed key and applies its side effect', async () => {
     const res = await writeSettingFromRenderer(db, hooks(), 'hotkey_toggle', 'Alt+Shift+T')
     expect(res).toEqual({ ok: true, data: undefined })

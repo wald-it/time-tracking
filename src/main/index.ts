@@ -38,6 +38,7 @@ import {
 import { clearShutdown, pruneDeadHolders } from '../mcp/holders'
 import { APP_ID, repairInstallLocation } from './installLocation'
 import { registerIpcHandlers } from './ipc'
+import { pruneViewerCopiesAtStart } from './runViewerCopy'
 import { guardWindowLinks } from './externalLinks'
 import {
   WINDOW_BOUNDS_KEY,
@@ -703,6 +704,8 @@ app.whenReady().then(async () => {
     }
     return
   }
+
+  pruneViewerCopiesAtStart(app.getPath('temp'))
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

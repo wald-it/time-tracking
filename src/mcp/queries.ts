@@ -838,6 +838,8 @@ export function getAnalytics(
     billable_billed_sec: number
   }
 
+  // List groups with worked time or billed billable time, so their presence
+  // cannot reveal whether a rate exists when rates are hidden.
   const byClient = db
     .prepare(
       `SELECT c.id AS client_id, c.name, c.color,
@@ -849,7 +851,7 @@ export function getAnalytics(
         WHERE e.stopped_at IS NOT NULL
           AND substr(e.segment_date, 1, 7) = ?
         GROUP BY c.id
-        HAVING seconds > 0 OR revenue_cent > 0
+        HAVING seconds > 0 OR SUM(CASE WHEN e.billable = 1 THEN ${BILLED_SEC} ELSE 0 END) > 0
         ORDER BY seconds DESC, c.name ASC`
     )
     .all(monthKey) as Array<{
@@ -874,7 +876,7 @@ export function getAnalytics(
         WHERE e.stopped_at IS NOT NULL
           AND substr(e.segment_date, 1, 7) = ?
         GROUP BY e.project_id
-        HAVING seconds > 0 OR revenue_cent > 0
+        HAVING seconds > 0 OR SUM(CASE WHEN e.billable = 1 THEN ${BILLED_SEC} ELSE 0 END) > 0
         ORDER BY seconds DESC, name ASC`
     )
     .all(monthKey) as Array<{

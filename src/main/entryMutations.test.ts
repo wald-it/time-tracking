@@ -697,6 +697,39 @@ describe('an edit keeps every column of the entry (guard)', () => {
     )
   })
 
+  it('an update that sends only the description keeps every field it did not send', () => {
+    const db = new DatabaseImpl(':memory:')
+    seed(db)
+    const stoppedAt = new Date(2026, 5, 10, 10, 30, 47).toISOString()
+    const id = seedEntry(db, {
+      client_id: 1,
+      project_id: 10,
+      description: 'All fields set',
+      started_at: new Date(2026, 5, 10, 9).toISOString(),
+      stopped_at: stoppedAt,
+      tags: ',a,',
+      reference: 'REF-1',
+      billable: 0,
+      private_note: 'Internal note',
+      graph_event_id: 'EVT-G',
+      created_at: '2026-01-02 08:00:00'
+    })
+    const before = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
+    const description = 'Only the description changed'
+    const res = updateManualEntry(db, { id, description })
+    if (!res.ok) throw new Error(res.error)
+    const after = db.prepare(`SELECT * FROM entries`).get() as Record<string, unknown>
+
+    expect(after).toEqual({
+      ...before,
+      description,
+      version_id: expect.any(Number),
+      version_no: (before.version_no as number) + 1
+    })
+    expect(after.version_id).not.toBe(before.version_id)
+    expect(after.stopped_at).toBe(stoppedAt)
+  })
+
   it('an edit of one field keeps every other value the entry owns', () => {
     const db = new DatabaseImpl(':memory:')
     seed(db)

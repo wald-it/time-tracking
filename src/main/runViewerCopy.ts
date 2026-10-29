@@ -4,7 +4,7 @@
  * The system PDF viewer needs a file on disk. Every copy lands in one fixed
  * folder under the OS temp directory, so customer data does not pile up in a
  * fresh folder per click. Copies older than a day (left by earlier sessions or
- * still locked by a viewer at the time) are removed before each new write.
+ * still locked by a viewer at the time) are removed at app start and before each new write.
  * Deletion failures are swallowed: an open viewer may hold the file.
  */
 import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
@@ -37,6 +37,15 @@ export function pruneViewerCopies(tempRoot: string, now = Date.now()): void {
     } catch {
       // Vanished in between.
     }
+  }
+}
+
+/** Removes old copies without letting a cleanup failure interrupt app startup. */
+export function pruneViewerCopiesAtStart(tempRoot: string, now?: number): void {
+  try {
+    pruneViewerCopies(tempRoot, now)
+  } catch {
+    // Cleanup must never prevent the app from starting.
   }
 }
 

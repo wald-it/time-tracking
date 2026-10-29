@@ -615,6 +615,43 @@ describe('query layer', () => {
     expect(zeta?.revenue_cent).toBe(100)
   })
 
+  it('getAnalytics with rates hidden lists clients and projects independently of their rates', () => {
+    db.prepare(`UPDATE settings SET value = '15' WHERE key = 'pdf_round_minutes'`).run()
+    // Each client has one billable 400 ms entry: no whole second, but 15 billed
+    // minutes. Both must appear even though only one has a rate.
+    db.prepare(
+      `INSERT INTO clients (id, name, color, active, rate_cent)
+       VALUES (3, 'Gamma', '#555555', 1, 6000), (4, 'Delta', '#666666', 1, 0)`
+    ).run()
+    db.prepare(
+      `INSERT INTO projects (id, client_id, name, color, rate_cent, active)
+       VALUES (12, 3, 'Gamma project', '#555555', NULL, 1),
+              (13, 4, 'Delta project', '#666666', NULL, 1)`
+    ).run()
+    for (const [clientId, projectId] of [
+      [3, 12],
+      [4, 13]
+    ]) {
+      seedEntry(db, {
+        client_id: clientId,
+        project_id: projectId,
+        started_at: '2026-06-26T12:00:00.000Z',
+        stopped_at: '2026-06-26T12:00:00.400Z',
+        billable: 1
+      })
+    }
+
+    const a = getAnalytics(sdb, HIDE, 2026, 6)
+    expect.soft(a.by_client.filter((c) => c.client_id === 3 || c.client_id === 4)).toEqual([
+      { client_id: 4, name: 'Delta', color: '#666666', seconds: 0 },
+      { client_id: 3, name: 'Gamma', color: '#555555', seconds: 0 }
+    ])
+    expect.soft(a.by_project.filter((p) => p.project_id === 12 || p.project_id === 13)).toEqual([
+      { project_id: 13, client_id: 4, name: 'Delta project', seconds: 0 },
+      { project_id: 12, client_id: 3, name: 'Gamma project', seconds: 0 }
+    ])
+  })
+
   it('migration 018 seeds MCP flags to off; readStoredPrivacy reflects them', () => {
     expect(getSetting(sdb, 'mcp_expose_rates')).toBe('0')
     expect(getSetting(sdb, 'mcp_expose_private_notes')).toBe('0')
