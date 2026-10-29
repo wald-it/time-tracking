@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { Client, Entry, Project } from '../../../../shared/types'
+import { entryRowKey } from '../../../../shared/entryKey'
 import { useLocale, useT } from '../../contexts/I18nContext'
 import { entrySecondsToday, formatClock, formatHm, layoutDayScale } from './dayScaleLayout'
 
@@ -129,7 +130,7 @@ export function DayScale({
           ].join(' · ')
           return (
             <button
-              key={e.id}
+              key={entryRowKey(e)}
               type="button"
               title={label}
               aria-label={label}

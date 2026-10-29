@@ -7,11 +7,13 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
 import {
   durationSeconds,
   listClients,
   listProjects,
   listEntries,
+  getEntryHistory,
   getRunningTimer,
   getAnalytics,
   getSetting,
@@ -51,15 +53,23 @@ function seed(db: Database.Database): void {
 
   // Entries in June 2026: two completed (client 1), one non-billable, one
   // soft-deleted (must be ignored), plus a running timer.
-  const ins = db.prepare(
-    `INSERT INTO entries
-       (id, client_id, project_id, description, started_at, stopped_at, tags,
-        reference, billable, private_note, deleted_at)
-     VALUES (@id, @client_id, @project_id, @description, @started_at, @stopped_at,
-        @tags, @reference, @billable, @private_note, @deleted_at)`
-  )
+  const ins = (e: {
+    id: number
+    client_id: number
+    project_id: number | null
+    description: string
+    started_at: string
+    stopped_at: string | null
+    tags: string
+    reference: string
+    billable: number
+    private_note: string
+    deleted_at: string | null
+  }): void => {
+    seedEntry(db, e)
+  }
   // 1h billable, project 10, tagged bug
-  ins.run({
+  ins({
     id: 100,
     client_id: 1,
     project_id: 10,
@@ -73,7 +83,7 @@ function seed(db: Database.Database): void {
     deleted_at: null
   })
   // 30m non-billable, no project
-  ins.run({
+  ins({
     id: 101,
     client_id: 1,
     project_id: null,
@@ -87,7 +97,7 @@ function seed(db: Database.Database): void {
     deleted_at: null
   })
   // soft-deleted — must never appear
-  ins.run({
+  ins({
     id: 102,
     client_id: 1,
     project_id: 10,
@@ -101,7 +111,7 @@ function seed(db: Database.Database): void {
     deleted_at: '2026-06-12T12:00:00.000Z'
   })
   // running (no stopped_at)
-  ins.run({
+  ins({
     id: 103,
     client_id: 1,
     project_id: null,
@@ -154,6 +164,61 @@ describe('query layer', () => {
     expect(clients.find((c) => c.name === 'Acme')?.rate_cent).toBe(12000)
   })
 
+  it('listClients reads the rate valid today without syncing the stale column', () => {
+    db.exec(`INSERT INTO rate (client_id, valid_from, rate_cent, source) VALUES
+      (1, date('now', 'localtime'), 16000, 'editor'),
+      (1, date('now', 'localtime', '+1 day'), 20000, 'editor')`)
+    db.pragma('query_only = ON')
+
+    expect(listClients(sdb, SHOW).find((c) => c.id === 1)?.rate_cent).toBe(16000)
+    expect(listClients(sdb, HIDE)[0]).not.toHaveProperty('rate_cent')
+    expect(db.prepare('SELECT rate_cent FROM clients WHERE id = 1').get()).toEqual({
+      rate_cent: 12000
+    })
+  })
+
+  it.each([18000, null, 0])(
+    'listProjects reads the rate valid today (%s), preserving inheritance and zero',
+    (rate) => {
+      db.prepare(
+        `INSERT INTO rate (project_id, valid_from, rate_cent, source)
+        VALUES (10, date('now', 'localtime'), ?, 'editor')`
+      ).run(rate)
+      db.exec(`INSERT INTO rate (project_id, valid_from, rate_cent, source)
+        VALUES (10, date('now', 'localtime', '+1 day'), 22000, 'editor')`)
+      db.pragma('query_only = ON')
+
+      expect(listProjects(sdb, SHOW).find((p) => p.id === 10)?.rate_cent).toBe(rate)
+      expect(listProjects(sdb, HIDE)[0]).not.toHaveProperty('rate_cent')
+      expect(db.prepare('SELECT rate_cent FROM projects WHERE id = 10').get()).toEqual({
+        rate_cent: 15000
+      })
+    }
+  )
+
+  it('keeps client and project columns without rate rows, including NULL inheritance', () => {
+    db.exec('DELETE FROM rate')
+    db.pragma('query_only = ON')
+
+    expect(listClients(sdb, SHOW)[0].rate_cent).toBe(12000)
+    const projects = listProjects(sdb, SHOW, { includeArchived: true })
+    expect(projects.find((p) => p.id === 10)?.rate_cent).toBe(15000)
+    expect(projects.find((p) => p.id === 11)?.rate_cent).toBeNull()
+  })
+
+  it('ignores tomorrow rates until their day, including a project with only a future row', () => {
+    db.exec(`INSERT INTO rate (client_id, project_id, valid_from, rate_cent, source) VALUES
+      (1, NULL, date('now', 'localtime', '+1 day'), 20000, 'editor'),
+      (NULL, 10, date('now', 'localtime', '+1 day'), 22000, 'editor'),
+      (NULL, 11, date('now', 'localtime', '+1 day'), 23000, 'editor')`)
+    db.pragma('query_only = ON')
+
+    expect(listClients(sdb, SHOW)[0].rate_cent).toBe(12000)
+    const projects = listProjects(sdb, SHOW, { includeArchived: true })
+    expect(projects.find((p) => p.id === 10)?.rate_cent).toBe(15000)
+    expect(projects.find((p) => p.id === 11)?.rate_cent).toBeNull()
+  })
+
   it('listProjects excludes archived by default and reports usage', () => {
     const projects = listProjects(sdb, HIDE, { clientId: 1 })
     expect(projects).toHaveLength(1)
@@ -178,15 +243,21 @@ describe('query layer', () => {
       `INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', '15')`
     ).run()
     // Non-billable 20 minutes on the same project: not billed, not counted.
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, billable)
-       VALUES (1, 10, '2026-06-14T09:00:00.000Z', '2026-06-14T09:20:00.000Z', 0)`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 10,
+      started_at: '2026-06-14T09:00:00.000Z',
+      stopped_at: '2026-06-14T09:20:00.000Z',
+      billable: 0
+    })
     // Billable 7:40 → 8 started minutes → 15.
-    db.prepare(
-      `INSERT INTO entries (client_id, project_id, started_at, stopped_at, billable)
-       VALUES (1, 10, '2026-06-15T09:00:00.000Z', '2026-06-15T09:07:40.000Z', 1)`
-    ).run()
+    seedEntry(db, {
+      client_id: 1,
+      project_id: 10,
+      started_at: '2026-06-15T09:00:00.000Z',
+      stopped_at: '2026-06-15T09:07:40.000Z',
+      billable: 1
+    })
     const website = listProjects(sdb, HIDE, { clientId: 1 }).find((p) => p.id === 10)!
     // Entry 100 (1 h) + 15; entry 102 is soft-deleted, 103 runs on no project.
     expect(website.used_minutes).toBe(75)
@@ -203,6 +274,105 @@ describe('query layer', () => {
     const running = res.entries!.find((e) => e.id === 103)!
     expect(running.running).toBe(true)
     expect(running.stopped_at).toBeNull()
+  })
+
+  describe('one item per entry (OQ7, 2.0 P3)', () => {
+    // 20:00 to 04:00 local across 20/21 June, plus an entry across the month
+    // boundary 30 June 22:00 to 1 July 02:00 (local, whatever the zone).
+    const local = (m: number, d: number, h: number): string =>
+      new Date(2026, m - 1, d, h, 0, 0).toISOString()
+    const nowMs = Date.parse('2026-08-01T00:00:00.000Z')
+
+    it('a midnight entry is one item with the whole range, its version, source and segments', () => {
+      const id = seedEntry(db, {
+        client_id: 1,
+        description: 'Nachtschicht',
+        source: 'mcp',
+        segments: [
+          { started_at: local(6, 20, 20), stopped_at: local(6, 21, 0) },
+          { started_at: local(6, 21, 0), stopped_at: local(6, 21, 4) }
+        ]
+      })
+      const res = listEntries(sdb, HIDE, { from: local(6, 20, 0), to: local(6, 22, 0) }, nowMs)
+      const items = res.entries!.filter((e) => e.id === id)
+      expect(items).toHaveLength(1)
+      const item = items[0]
+      expect(item.started_at).toBe(local(6, 20, 20))
+      expect(item.stopped_at).toBe(local(6, 21, 4))
+      expect(item.duration_seconds).toBe(8 * 3600)
+      expect(item.version).toBe(1)
+      expect(item.source).toBe('mcp')
+      expect(item.billed).toBeNull()
+      expect(typeof item.created_at).toBe('string')
+      expect(item.segments).toEqual([
+        {
+          seq: 0,
+          segment_date: '2026-06-20',
+          started_at: local(6, 20, 20),
+          stopped_at: local(6, 21, 0),
+          duration_seconds: 4 * 3600
+        },
+        {
+          seq: 1,
+          segment_date: '2026-06-21',
+          started_at: local(6, 21, 0),
+          stopped_at: local(6, 21, 4),
+          duration_seconds: 4 * 3600
+        }
+      ])
+    })
+
+    it('a single-day entry has no segments array', () => {
+      const res = listEntries(sdb, HIDE, { year: 2026, month: 6 }, nowMs)
+      expect(res.entries!.find((e) => e.id === 100)!.segments).toBeUndefined()
+    })
+
+    it('counts an entry once and keeps the whole range when only its second day is in the window', () => {
+      const id = seedEntry(db, {
+        client_id: 1,
+        segments: [
+          { started_at: local(6, 20, 20), stopped_at: local(6, 21, 0) },
+          { started_at: local(6, 21, 0), stopped_at: local(6, 21, 4) }
+        ]
+      })
+      const res = listEntries(sdb, HIDE, { from: local(6, 21, 0), to: local(6, 22, 0) }, nowMs)
+      const items = res.entries!.filter((e) => e.id === id)
+      expect(items).toHaveLength(1)
+      expect(items[0].started_at).toBe(local(6, 20, 20))
+      expect(items[0].stopped_at).toBe(local(6, 21, 4))
+      // Only the day inside the window counts towards the total.
+      expect(res.total_seconds).toBe(4 * 3600)
+      expect(res.count).toBe(1)
+    })
+
+    it('an entry over a month boundary shows in both months; each month totals its own part', () => {
+      const id = seedEntry(db, {
+        client_id: 1,
+        segments: [
+          { started_at: local(6, 30, 22), stopped_at: local(7, 1, 0) },
+          { started_at: local(7, 1, 0), stopped_at: local(7, 1, 2) }
+        ]
+      })
+      const june = listEntries(sdb, HIDE, { year: 2026, month: 6, clientId: 1 }, nowMs)
+      const july = listEntries(sdb, HIDE, { year: 2026, month: 7 }, nowMs)
+      expect(june.entries!.filter((e) => e.id === id)).toHaveLength(1)
+      expect(july.entries!.filter((e) => e.id === id)).toHaveLength(1)
+      expect(july.count).toBe(1)
+      expect(july.total_seconds).toBe(2 * 3600)
+      expect(june.entries!.find((e) => e.id === id)!.duration_seconds).toBe(4 * 3600)
+    })
+
+    it('a running entry has one segment and no money, as before', () => {
+      const res = listEntries(
+        sdb,
+        HIDE,
+        { year: 2026, month: 6 },
+        Date.parse('2026-06-13T09:30:00.000Z')
+      )
+      const running = res.entries!.find((e) => e.id === 103)!
+      expect(running.segments).toBeUndefined()
+      expect(running.version).toBe(1)
+    })
   })
 
   it('listEntries hides private_note by default, exposes when enabled', () => {
@@ -398,12 +568,14 @@ describe('query layer', () => {
     // worked time everywhere; the per-entry rounded figure has its own field.
     db.prepare(`UPDATE settings SET value = '15' WHERE key = 'pdf_round_minutes'`).run()
     // 10 completed minutes → rounded up to one 15-minute step.
-    db.prepare(
-      `INSERT INTO entries (id, client_id, project_id, description, started_at, stopped_at,
-                            tags, reference, billable, private_note)
-       VALUES (104, 1, 10, 'Kurz', '2026-06-14T09:00:00.000Z', '2026-06-14T09:10:00.000Z',
-               '', '', 1, '')`
-    ).run()
+    seedEntry(db, {
+      id: 104,
+      client_id: 1,
+      project_id: 10,
+      description: 'Kurz',
+      started_at: '2026-06-14T09:00:00.000Z',
+      stopped_at: '2026-06-14T09:10:00.000Z'
+    })
     const a = getAnalytics(sdb, HIDE, 2026, 6)
     expect(a.rounding_minutes).toBe(15)
     // 60min + 30min + 10min, raw — the same as list_entries for the window.
@@ -426,17 +598,58 @@ describe('query layer', () => {
   it('getAnalytics keeps a client whose only time is a sub-second entry that bills a minute', () => {
     // Zeta (client 2) gets a rate and a 400 ms entry: no whole second, but the
     // invoice bills one minute, so the breakdown must not drop it.
-    db.prepare(`UPDATE clients SET rate_cent = 6000 WHERE id = 2`).run()
+    // A rate set in the 1.x column applies from today, so the June entry takes the open-ended row.
     db.prepare(
-      `INSERT INTO entries (id, client_id, description, started_at, stopped_at,
-                            tags, reference, billable, private_note)
-       VALUES (105, 2, 'Blitz', '2026-06-15T09:00:00.000Z', '2026-06-15T09:00:00.400Z',
-               '', '', 1, '')`
+      `UPDATE rate SET rate_cent = 6000 WHERE client_id = 2 AND valid_from = '0001-01-01'`
     ).run()
+    seedEntry(db, {
+      id: 105,
+      client_id: 2,
+      description: 'Blitz',
+      started_at: '2026-06-15T09:00:00.000Z',
+      stopped_at: '2026-06-15T09:00:00.400Z'
+    })
     const a = getAnalytics(sdb, SHOW, 2026, 6)
     const zeta = a.by_client.find((c) => c.client_id === 2)
     expect(zeta?.seconds).toBe(0)
     expect(zeta?.revenue_cent).toBe(100)
+  })
+
+  it('getAnalytics with rates hidden lists clients and projects independently of their rates', () => {
+    db.prepare(`UPDATE settings SET value = '15' WHERE key = 'pdf_round_minutes'`).run()
+    // Each client has one billable 400 ms entry: no whole second, but 15 billed
+    // minutes. Both must appear even though only one has a rate.
+    db.prepare(
+      `INSERT INTO clients (id, name, color, active, rate_cent)
+       VALUES (3, 'Gamma', '#555555', 1, 6000), (4, 'Delta', '#666666', 1, 0)`
+    ).run()
+    db.prepare(
+      `INSERT INTO projects (id, client_id, name, color, rate_cent, active)
+       VALUES (12, 3, 'Gamma project', '#555555', NULL, 1),
+              (13, 4, 'Delta project', '#666666', NULL, 1)`
+    ).run()
+    for (const [clientId, projectId] of [
+      [3, 12],
+      [4, 13]
+    ]) {
+      seedEntry(db, {
+        client_id: clientId,
+        project_id: projectId,
+        started_at: '2026-06-26T12:00:00.000Z',
+        stopped_at: '2026-06-26T12:00:00.400Z',
+        billable: 1
+      })
+    }
+
+    const a = getAnalytics(sdb, HIDE, 2026, 6)
+    expect.soft(a.by_client.filter((c) => c.client_id === 3 || c.client_id === 4)).toEqual([
+      { client_id: 4, name: 'Delta', color: '#666666', seconds: 0 },
+      { client_id: 3, name: 'Gamma', color: '#555555', seconds: 0 }
+    ])
+    expect.soft(a.by_project.filter((p) => p.project_id === 12 || p.project_id === 13)).toEqual([
+      { project_id: 13, client_id: 4, name: 'Delta project', seconds: 0 },
+      { project_id: 12, client_id: 3, name: 'Gamma project', seconds: 0 }
+    ])
   })
 
   it('migration 018 seeds MCP flags to off; readStoredPrivacy reflects them', () => {
@@ -447,6 +660,59 @@ describe('query layer', () => {
 
     db.prepare(`UPDATE settings SET value = '1' WHERE key = 'mcp_expose_rates'`).run()
     expect(readStoredPrivacy(sdb)).toEqual({ exposeRates: true, exposePrivateNotes: false })
+  })
+})
+
+describe('getEntryHistory (2.0 P3)', () => {
+  let db: Database.Database
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    seed(db)
+  })
+
+  it('returns every version of a trashed entry, oldest first, with source and written_at', () => {
+    const id = seedEntry(db, {
+      client_id: 1,
+      description: 'Konzept',
+      private_note: 'intern',
+      source: 'mcp',
+      started_at: '2026-06-02T08:00:00.000Z',
+      stopped_at: '2026-06-02T09:00:00.000Z',
+      deleted_at: '2026-06-03T10:00:00.000Z'
+    })
+    const h = getEntryHistory(db, HIDE, id)!
+    expect(h.id).toBe(id)
+    expect(h.versions.map((v) => [v.version, v.deleted])).toEqual([
+      [1, false],
+      [2, true]
+    ])
+    expect(h.versions[0].source).toBe('mcp')
+    expect(h.versions[0].description).toBe('Konzept')
+    expect(typeof h.versions[0].written_at).toBe('string')
+    expect(h.versions[0].reason).toBeNull()
+    expect(h.versions[0].private_note).toBeUndefined()
+  })
+
+  it('shows the private note only when the privacy gate is open', () => {
+    const id = seedEntry(db, {
+      client_id: 1,
+      private_note: 'intern',
+      started_at: '2026-06-02T08:00:00.000Z',
+      stopped_at: '2026-06-02T09:00:00.000Z'
+    })
+    const open = { exposeRates: false, exposePrivateNotes: true }
+    expect(getEntryHistory(db, open, id)!.versions[0].private_note).toBe('intern')
+  })
+
+  it('resolves a 1.x id through entry_legacy_id and returns null for an unknown id', () => {
+    const id = seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-06-02T08:00:00.000Z',
+      stopped_at: '2026-06-02T09:00:00.000Z'
+    })
+    db.prepare(`INSERT INTO entry_legacy_id (legacy_id, entry_id) VALUES (?, ?)`).run(9001, id)
+    expect(getEntryHistory(db, HIDE, 9001)!.id).toBe(id)
+    expect(getEntryHistory(db, HIDE, 424242)).toBeNull()
   })
 })
 

@@ -53,14 +53,26 @@ export function roundMinutes(minutes: number, step: number): number {
 }
 
 /**
+ * THE billing rule (2.0 design section 7), the only place that rounds money
+ * minutes. `rawMin` are the whole minutes of a segment, already rounded up
+ * (0 stays 0). A minimum unit lifts a shorter segment, then the interval
+ * rounds up to the next multiple; interval 0 means "off".
+ */
+export function billedMinutesRule(rawMin: number, intervalMin: number, minUnitMin: number): number {
+  if (rawMin <= 0) return 0
+  const lifted = Math.max(rawMin, minUnitMin)
+  return intervalMin > 0 ? Math.ceil(lifted / intervalMin) * intervalMin : lifted
+}
+
+/**
  * Billed minutes for an entry of `rawMs` milliseconds: ceil to whole
  * minutes (a few-second entry counts as 1 minute, never vanishes to 0),
- * then round up to `step` via `roundMinutes`. Shared by the PDF pipeline
- * and the calendar's day revenue so both bill the same minutes.
+ * then `billedMinutesRule`. Shared by the PDF pipeline and the calendar's
+ * day revenue so both bill the same minutes.
  */
-export function billedMinutes(rawMs: number, step: number): number {
+export function billedMinutes(rawMs: number, step: number, minUnit = 0): number {
   const rawMin = rawMs > 0 ? Math.ceil(rawMs / 60000) : 0
-  return roundMinutes(rawMin, step)
+  return billedMinutesRule(rawMin, step, minUnit)
 }
 
 /**
@@ -86,14 +98,32 @@ export function effectiveRateCent(
 export const EFFECTIVE_RATE_SQL = 'COALESCE(p.rate_cent, c.rate_cent, 0)'
 
 /**
- * Billed minutes of the entry aliased `e`, like `billedMinutes`: whole
+ * Whole minutes of the entry aliased `e`, like `billedMinutes`: whole
  * milliseconds (julianday, since strftime('%s') drops them), ceiled to
- * minutes, then up to `step`.
+ * minutes.
+ */
+export function rawMinutesSql(startedAt: string, stoppedAt: string): string {
+  const ms = `MAX(0, CAST(ROUND((julianday(${stoppedAt}) - julianday(${startedAt})) * 86400000) AS INTEGER))`
+  return `((${ms} + 59999) / 60000)`
+}
+
+/**
+ * SQL twin of `billedMinutesRule` over column expressions, because interval
+ * and minimum unit differ per row once clients have a billing profile.
+ */
+export function billedMinutesRuleSql(raw: string, interval: string, minUnit: string): string {
+  const lifted = `MAX(${raw}, ${minUnit})`
+  return `CASE WHEN ${raw} <= 0 THEN 0
+    WHEN ${interval} > 0 THEN ((${lifted} + ${interval} - 1) / ${interval} * ${interval})
+    ELSE ${lifted} END`
+}
+
+/**
+ * Billed minutes of the entry aliased `e` with a constant step (no minimum
+ * unit): the 1.x shape, kept for tests that compare the twin to the rule.
  */
 export function billedMinutesSql(step: number): string {
-  const ms = `MAX(0, CAST(ROUND((julianday(e.stopped_at) - julianday(e.started_at)) * 86400000) AS INTEGER))`
-  const min = `((${ms} + 59999) / 60000)`
-  return step > 0 ? `((${min} + ${step} - 1) / ${step} * ${step})` : min
+  return billedMinutesRuleSql(rawMinutesSql('e.started_at', 'e.stopped_at'), String(step), '0')
 }
 
 /** Fee in cents of the entry aliased `e`, like `feeCent`: rounded per entry. */
@@ -105,15 +135,15 @@ export function feeCentSql(step: number): string {
  * Budget consumption per project, one row per `project_id` with
  * `used_minutes` (#285): what the invoice bills — completed, live, billable
  * entries, each rounded by `billedMinutes` — over all time. Computed from the
- * timestamps, not the stored `rounded_min`, which the timer never writes.
+ * the view `billing_lines` (profile, minimum unit and all).
  * Every budget reader (projects:getAll, projects:getBudgetStatus, MCP
  * list_projects) uses this one query.
  */
-export function budgetUsedMinutesSql(step: number): string {
+export function budgetUsedMinutesSql(): string {
   return `SELECT e.project_id AS project_id,
-            COALESCE(SUM(${billedMinutesSql(step)}), 0) AS used_minutes
-          FROM entries e
-          WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL AND e.billable = 1
+            COALESCE(SUM(e.billed_minutes), 0) AS used_minutes
+          FROM billing_lines e
+          WHERE e.stopped_at IS NOT NULL AND e.billable = 1
           GROUP BY e.project_id`
 }
 

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useLocale, useT } from '../contexts/I18nContext'
 import { useNow } from '../contexts/NowContext'
-import { useRounding } from '../contexts/RoundingContext'
 import type { AnalyticsSummary } from '../../../shared/types'
 import type { Locale } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/locales/de'
@@ -96,7 +95,6 @@ function pctDelta(cur: number, prev: number, vs: string, locale: Locale): KpiDel
 export default function AuswertungView(): React.JSX.Element {
   const t = useT()
   const { locale } = useLocale()
-  const { roundMinutes } = useRounding()
   const now = new Date(useNow())
 
   // Month navigation state — default to the current month.
@@ -292,10 +290,17 @@ export default function AuswertungView(): React.JSX.Element {
               )}
               sub={
                 data.month.hoursRounded !== null
-                  ? t('analytics.month.rounded', {
-                      total: hm(data.month.hoursRounded),
-                      step: roundMinutes
-                    })
+                  ? data.month.roundingRule?.kind === 'interval'
+                    ? t('analytics.month.rounded', {
+                        total: hm(data.month.hoursRounded),
+                        step: data.month.roundingRule.minutes
+                      })
+                    : data.month.roundingRule?.kind === 'minimum'
+                      ? t('analytics.month.minimum', {
+                          total: hm(data.month.hoursRounded),
+                          min: data.month.roundingRule.minutes
+                        })
+                      : t('analytics.month.roundedOnly', { total: hm(data.month.hoursRounded) })
                   : undefined
               }
             />

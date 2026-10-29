@@ -1,4 +1,5 @@
 import type { Client, Entry, Project } from '../../../../shared/types'
+import { entryRowKey } from '../../../../shared/entryKey'
 import { clockSeconds, pctOf, type DayRange } from '../heute/dayScaleLayout'
 import { miniBar, miniTicks } from './monthScale'
 
@@ -36,7 +37,7 @@ export function MiniDayScale({
         const color = project?.color || clientsById.get(e.client_id)?.color || 'var(--tick)'
         return (
           <span
-            key={e.id}
+            key={entryRowKey(e)}
             data-testid="mini-bar"
             data-running={bar.running ? 'true' : undefined}
             className="absolute top-0 h-[8px]"

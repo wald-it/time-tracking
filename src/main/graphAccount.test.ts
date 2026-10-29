@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DEFAULT_CLIENT_ID, MSA_TENANT_ID, type StoredTokens } from '../shared/graphAuth'
 import {
   CLIENT_ID_SETTING,
+  connect,
   disconnect,
   effectiveClientId,
   getAccessToken,
@@ -253,5 +254,497 @@ describe('disconnect', () => {
 
   it('is safe when nothing is connected', () => {
     expect(() => disconnect(deps())).not.toThrow()
+  })
+})
+
+// #308: Entra refreshes only scopes "equivalent to or a subset of" the ones
+// granted. With Teams presence switched on but not yet consented (no
+// reconnect, or the tenant needs an admin), every refresh asked for
+// Presence.ReadWrite and failed — the calendar import stopped working.
+describe('a refused refresh with feature scopes falls back to the calendar scopes (#308)', () => {
+  /** Answers each refresh in turn and records the scopes it asked for. */
+  function server(...answers: Array<'ok' | string>): {
+    asked: string[][]
+    fetchFn: typeof fetch
+  } {
+    const asked: string[][] = []
+    const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+      const scope = new URLSearchParams(String(init?.body ?? '')).get('scope') ?? ''
+      asked.push(scope.split(' ').filter(Boolean))
+      const a = answers[asked.length - 1] ?? 'ok'
+      return (a === 'ok'
+        ? {
+            ok: true,
+            status: 200,
+            json: async () => ({ access_token: 'access-2', expires_in: 3600, scope })
+          }
+        : {
+            ok: false,
+            status: 400,
+            json: async () => ({ error: a, error_description: 'AADSTS65001' })
+          }) as unknown as Response
+    }) as unknown as typeof fetch
+    return { asked, fetchFn }
+  }
+
+  function presenceOn(fetchFn: typeof fetch): GraphAccountDeps {
+    return withSettings({ presence_enabled: '1' }, { auth: { now: () => NOW, fetchFn } })
+  }
+
+  for (const code of ['invalid_grant', 'consent_required', 'interaction_required']) {
+    it(`presence not consented (${code}): the import still gets a token, the connection stays`, async () => {
+      const s = server(code, 'ok')
+      const d = presenceOn(s.fetchFn)
+      saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+      await expect(getAccessToken(d)).resolves.toBe('access-2')
+      expect(s.asked).toHaveLength(2)
+      expect(s.asked[0]).toContain('Presence.ReadWrite')
+      expect(s.asked[1]).toEqual(['offline_access', 'openid', 'profile', 'Calendars.Read'])
+      expect(loadTokens(d.store)?.accessToken).toBe('access-2')
+    })
+  }
+
+  it('presence consented: one refresh, and the token carries it again', async () => {
+    const s = server('ok')
+    const d = presenceOn(s.fetchFn)
+    // Even when the stored list lost the scope (presence was off for a while).
+    saveTokens(tokens({ expiresAtMs: NOW + 1000, grantedScopes: ['Calendars.Read'] }), d.store)
+    await getAccessToken(d)
+    expect(s.asked).toHaveLength(1)
+    expect(s.asked[0]).toContain('Presence.ReadWrite')
+    expect(loadTokens(d.store)?.grantedScopes).toContain('Presence.ReadWrite')
+  })
+
+  it('the calendar-only refresh failing too means the grant is gone', async () => {
+    const s = server('invalid_grant', 'invalid_grant')
+    const d = presenceOn(s.fetchFn)
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(loadTokens(d.store)).toBeNull()
+  })
+
+  it('without feature scopes there is no second attempt', async () => {
+    const s = server('invalid_grant')
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(s.asked).toHaveLength(1)
+  })
+  it('after the fallback the stored scopes are the calendar scopes, so settings asks to reconnect', async () => {
+    const s = server('consent_required', 'ok')
+    const d = presenceOn(s.fetchFn)
+    // The stored list still names the scope, e.g. after the consent was revoked.
+    saveTokens(
+      tokens({ expiresAtMs: NOW + 1000, grantedScopes: ['Calendars.Read', 'Presence.ReadWrite'] }),
+      d.store
+    )
+    await getAccessToken(d)
+    expect(loadTokens(d.store)?.grantedScopes).not.toContain('Presence.ReadWrite')
+  })
+
+  for (const code of ['temporarily_unavailable', 'server_error']) {
+    it(`a transient error (${code}) is not a refusal: no fallback, presence keeps its scope`, async () => {
+      const s = server(code)
+      const d = presenceOn(s.fetchFn)
+      const before = tokens({
+        expiresAtMs: NOW + 1000,
+        grantedScopes: ['Calendars.Read', 'Presence.ReadWrite']
+      })
+      saveTokens(before, d.store)
+      await expect(getAccessToken(d)).rejects.toThrow()
+      expect(s.asked).toHaveLength(1)
+      expect(loadTokens(d.store)?.grantedScopes).toEqual(before.grantedScopes)
+    })
+  }
+})
+
+// #341: the presence pokes and the calendar import can ask for a token at the
+// same moment. Without a guard both refresh with the same refresh token;
+// Entra rotates it on the first refresh, and the second, sent with the spent
+// token, gets invalid_grant — which deletes the whole stored connection.
+describe('concurrent token requests share one refresh (#341)', () => {
+  /** A token endpoint that rotates the refresh token and refuses a spent one. */
+  function rotatingServer(): { requests: () => number; fetchFn: typeof fetch } {
+    let valid = 'refresh-1'
+    let n = 0
+    const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+      n++
+      const sent = new URLSearchParams(String(init?.body ?? '')).get('refresh_token')
+      // Let the other caller start before this one answers.
+      await new Promise((r) => setTimeout(r, 10))
+      if (sent !== valid) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant', error_description: 'AADSTS70000 spent' })
+        } as unknown as Response
+      }
+      valid = `refresh-${n + 1}`
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: `access-${n + 1}`,
+          refresh_token: valid,
+          expires_in: 3600
+        })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    return { requests: () => n, fetchFn }
+  }
+
+  it('two callers at once: one refresh, both get the token, the connection stays', async () => {
+    const s = rotatingServer()
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    const [a, b] = await Promise.all([getAccessToken(d), getAccessToken(d)])
+    expect([a, b]).toEqual(['access-2', 'access-2'])
+    expect(s.requests()).toBe(1)
+    expect(loadTokens(d.store)?.refreshToken).toBe('refresh-2')
+  })
+
+  it('a later call after the shared refresh refreshes again only when needed', async () => {
+    const s = rotatingServer()
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await Promise.all([getAccessToken(d), getAccessToken(d)])
+    // The new token is fresh: no further request.
+    await expect(getAccessToken(d)).resolves.toBe('access-2')
+    expect(s.requests()).toBe(1)
+  })
+  /** A token endpoint that answers after `during` ran, with `answer`. */
+  function slowServer(
+    answer: 'ok' | 'invalid_grant' | 'network',
+    during: () => void
+  ): { requests: () => number; fetchFn: typeof fetch } {
+    let n = 0
+    const fetchFn = (async () => {
+      n++
+      await new Promise((r) => setTimeout(r, 10))
+      during()
+      if (answer === 'network') throw new TypeError('fetch failed')
+      return (answer === 'ok'
+        ? {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              access_token: 'access-2',
+              refresh_token: 'rt-2',
+              expires_in: 3600
+            })
+          }
+        : {
+            ok: false,
+            status: 400,
+            json: async () => ({ error: 'invalid_grant' })
+          }) as unknown as Response
+    }) as unknown as typeof fetch
+    return { requests: () => n, fetchFn }
+  }
+
+  it('a new connection made during a refused refresh is not deleted', async () => {
+    const fresh = tokens({ accessToken: 'access-new', refreshToken: 'rt-new' })
+    const store = { dir, secretBox: fakeBox() }
+    const s = slowServer('invalid_grant', () => saveTokens(fresh, store))
+    const d = deps({ store, auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBe('access-new')
+    expect(loadTokens(d.store)?.refreshToken).toBe('rt-new')
+  })
+
+  it('a failed shared refresh reaches every caller once and is not kept', async () => {
+    const s = slowServer('network', () => {})
+    const d = deps({ auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    const results = await Promise.allSettled([getAccessToken(d), getAccessToken(d)])
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected'])
+    expect(s.requests()).toBe(1)
+    // The next call starts a new refresh instead of reusing the failed one.
+    await getAccessToken(d).catch(() => {})
+    expect(s.requests()).toBe(2)
+    expect(loadTokens(d.store)).not.toBeNull()
+  })
+  it('an unreadable store after a refused refresh is not deleted', async () => {
+    const store = { dir, secretBox: fakeBox() }
+    // The file becomes unreadable while the refresh runs (another process,
+    // a broken key): nothing is deleted on the strength of it.
+    const s = slowServer('invalid_grant', () =>
+      writeFileSync(join(dir, 'graph-account.enc'), 'garbage')
+    )
+    const d = deps({ store, auth: { now: () => NOW, fetchFn: s.fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(existsSync(join(dir, 'graph-account.enc'))).toBe(true)
+  })
+  it('a replaced grant that is itself expiring gets one refresh of its own', async () => {
+    const store = { dir, secretBox: fakeBox() }
+    const replaced = tokens({
+      accessToken: 'access-old',
+      refreshToken: 'rt-new',
+      expiresAtMs: NOW + 1000
+    })
+    const sent: string[] = []
+    const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+      const rt = new URLSearchParams(String(init?.body ?? '')).get('refresh_token') ?? ''
+      sent.push(rt)
+      if (rt === 'refresh-1') {
+        // Someone else stores another grant while the first refresh runs.
+        saveTokens(replaced, store)
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant' })
+        } as unknown as Response
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'access-3', refresh_token: 'rt-3', expires_in: 3600 })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    const d = deps({ store, auth: { now: () => NOW, fetchFn } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), store)
+    await expect(getAccessToken(d)).resolves.toBe('access-3')
+    expect(sent).toEqual(['refresh-1', 'rt-new'])
+    expect(loadTokens(store)?.refreshToken).toBe('rt-3')
+  })
+})
+
+// #348: a refresh that is still running when the user disconnects, or
+// connects another account, must not write its result over that. The signal
+// is a connection generation in memory, not a re-read of the token file — a
+// briefly unreadable file must not cost a rotated refresh token (#341).
+describe('a refresh does not undo a disconnect or a reconnect made while it ran (#348)', () => {
+  /**
+   * One fetch for both flows: the refresh of account A answers after
+   * `during` ran; the code exchange of a new connection answers with B.
+   */
+  function flows(during: () => Promise<void> | void): typeof fetch {
+    return (async (_url: unknown, init?: { body?: unknown }) => {
+      const body = new URLSearchParams(String(init?.body ?? ''))
+      if (body.get('grant_type') === 'authorization_code') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            access_token: 'access-B',
+            refresh_token: 'refresh-B',
+            expires_in: 3600,
+            scope: 'Calendars.Read offline_access'
+          })
+        } as unknown as Response
+      }
+      await during()
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'access-A2',
+          refresh_token: 'refresh-A2',
+          expires_in: 3600
+        })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+  }
+
+  /** Connect deps whose browser step answers at once with a matching callback. */
+  function browserThatSignsIn(): Record<string, unknown> {
+    let deliver: ((url: string) => void) | null = null
+    const result = new Promise((resolve) => {
+      deliver = (url) =>
+        resolve({ kind: 'code', code: 'code-B', state: new URL(url).searchParams.get('state') })
+    })
+    return {
+      startLoopbackFn: async () => ({
+        port: 51234,
+        redirectUri: 'http://localhost:51234/timetrack',
+        result,
+        close: () => {}
+      }),
+      openExternalForTest: (url: string) => deliver?.(url)
+    }
+  }
+
+  it('a disconnect during the refresh stays a disconnect', async () => {
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = flows(() => {
+      disconnect(holder.d!)
+    })
+    const d = deps({ auth: { now: () => NOW, fetchFn } })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(loadTokens(d.store)).toBeNull()
+  })
+
+  it('a reconnect with account B during the refresh keeps B', async () => {
+    const browser = browserThatSignsIn()
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = flows(async () => {
+      await connect(holder.d!)
+    })
+    const d = deps({
+      openExternal: browser.openExternalForTest as (url: string) => void,
+      auth: { now: () => NOW, fetchFn, ...browser } as GraphAccountDeps['auth']
+    })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    const got = await getAccessToken(d)
+    expect(loadTokens(d.store)?.refreshToken).toBe('refresh-B')
+    expect(got).toBe('access-B')
+  })
+
+  it('without a change in between the refresh is stored as before', async () => {
+    const d = deps({ auth: { now: () => NOW, fetchFn: flows(() => {}) } })
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBe('access-A2')
+    expect(loadTokens(d.store)?.refreshToken).toBe('refresh-A2')
+  })
+  it('a refused refresh after a reconnect hands over to B, and B gets its own refresh', async () => {
+    const browser = browserThatSignsIn()
+    const holder: { d?: GraphAccountDeps } = {}
+    const sent: string[] = []
+    const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+      const body = new URLSearchParams(String(init?.body ?? ''))
+      const ok = (json: Record<string, unknown>): Response =>
+        ({ ok: true, status: 200, json: async () => json }) as unknown as Response
+      if (body.get('grant_type') === 'authorization_code') {
+        // B arrives with a token that already needs renewing (60 s < skew).
+        return ok({ access_token: 'access-B', refresh_token: 'refresh-B', expires_in: 60 })
+      }
+      const rt = body.get('refresh_token') ?? ''
+      sent.push(rt)
+      // Entra rotates: a refresh token works once.
+      if (sent.indexOf(rt) !== sent.length - 1) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant' })
+        } as unknown as Response
+      }
+      if (rt === 'refresh-1') {
+        await connect(holder.d!)
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant' })
+        } as unknown as Response
+      }
+      return ok({ access_token: 'access-B2', refresh_token: 'refresh-B2', expires_in: 3600 })
+    }) as unknown as typeof fetch
+    const d = deps({
+      openExternal: browser.openExternalForTest as (url: string) => void,
+      auth: { now: () => NOW, fetchFn, ...browser } as GraphAccountDeps['auth']
+    })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBe('access-B2')
+    expect(sent).toEqual(['refresh-1', 'refresh-B'])
+    // B's rotated refresh token is kept, not thrown away as "changed meanwhile".
+    expect(loadTokens(d.store)?.refreshToken).toBe('refresh-B2')
+  })
+  /** A store whose encryption refuses one account (to make saveTokens throw). */
+  function storeRefusing(marker: string): { dir: string; secretBox: SecretBox } {
+    const box = fakeBox()
+    return {
+      dir,
+      secretBox: {
+        ...box,
+        encryptString: (plain: string) => {
+          if (plain.includes(marker)) throw new Error('encryption failed')
+          return box.encryptString(plain)
+        }
+      }
+    }
+  }
+
+  function oneFetch(
+    onRefresh: () => Promise<void> | void,
+    refreshAnswer: 'ok' | 'network'
+  ): typeof fetch {
+    const used = new Set<string>()
+    return (async (_url: unknown, init?: { body?: unknown }) => {
+      const body = new URLSearchParams(String(init?.body ?? ''))
+      const ok = (json: Record<string, unknown>): Response =>
+        ({ ok: true, status: 200, json: async () => json }) as unknown as Response
+      if (body.get('grant_type') === 'authorization_code') {
+        return ok({ access_token: 'access-B', refresh_token: 'refresh-B', expires_in: 3600 })
+      }
+      // Entra rotates: a refresh token works once.
+      const rt = body.get('refresh_token') ?? ''
+      if (used.has(rt)) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: 'invalid_grant' })
+        } as unknown as Response
+      }
+      used.add(rt)
+      await onRefresh()
+      if (refreshAnswer === 'network') throw new TypeError('fetch failed')
+      return ok({ access_token: 'access-A2', refresh_token: 'refresh-A2', expires_in: 3600 })
+    }) as unknown as typeof fetch
+  }
+
+  it('callers that joined the old refresh before a reconnect get B', async () => {
+    const browser = browserThatSignsIn()
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = oneFetch(async () => {
+      await connect(holder.d!)
+    }, 'ok')
+    const d = deps({
+      openExternal: browser.openExternalForTest as (url: string) => void,
+      auth: { now: () => NOW, fetchFn, ...browser } as GraphAccountDeps['auth']
+    })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(Promise.all([getAccessToken(d), getAccessToken(d)])).resolves.toEqual([
+      'access-B',
+      'access-B'
+    ])
+  })
+
+  it('an error of the old refresh after a reconnect is not the new connection’s error', async () => {
+    const browser = browserThatSignsIn()
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = oneFetch(async () => {
+      await connect(holder.d!)
+    }, 'network')
+    const d = deps({
+      openExternal: browser.openExternalForTest as (url: string) => void,
+      auth: { now: () => NOW, fetchFn, ...browser } as GraphAccountDeps['auth']
+    })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBe('access-B')
+  })
+
+  it('a connect whose save fails leaves the old connection and its renewal in place', async () => {
+    const browser = browserThatSignsIn()
+    const store = storeRefusing('refresh-B')
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = oneFetch(async () => {
+      await expect(connect(holder.d!)).rejects.toThrow()
+    }, 'ok')
+    const d = deps({
+      store,
+      openExternal: browser.openExternalForTest as (url: string) => void,
+      auth: { now: () => NOW, fetchFn, ...browser } as GraphAccountDeps['auth']
+    })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), store)
+    await expect(getAccessToken(d)).resolves.toBe('access-A2')
+    expect(loadTokens(store)?.refreshToken).toBe('refresh-A2')
+  })
+  it('an error of the old refresh after a disconnect means: not connected', async () => {
+    const holder: { d?: GraphAccountDeps } = {}
+    const fetchFn = oneFetch(() => {
+      disconnect(holder.d!)
+    }, 'network')
+    const d = deps({ auth: { now: () => NOW, fetchFn } })
+    holder.d = d
+    saveTokens(tokens({ expiresAtMs: NOW + 1000 }), d.store)
+    await expect(getAccessToken(d)).resolves.toBeNull()
+    expect(loadTokens(d.store)).toBeNull()
   })
 })

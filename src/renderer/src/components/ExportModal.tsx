@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import type { Client, Project } from '../../../shared/types'
+import type { BillingRunSummary } from '../../../main/billingRuns'
 import { useT } from '../contexts/I18nContext'
 import { useSettingsStore } from '../store/settingsStore'
 import { Dialog } from './Dialog'
@@ -13,6 +14,8 @@ interface Props {
   onClose: () => void
   /** Pre-fills the range when opened from a quick-filter. */
   prefilledRange?: { fromIso: string; toIso: string }
+  replacementRun?: BillingRunSummary
+  onRunsChanged?: () => void
 }
 
 // Pref shape, defaults, parsing/validation, and the legacy localStorage key
@@ -30,7 +33,7 @@ interface Props {
  * modal. Opened from the Export tab (its own tab since #153).
  */
 export function ExportModal(props: Props): React.JSX.Element {
-  const { open, onClose, prefilledRange } = props
+  const { open, onClose, prefilledRange, replacementRun, onRunsChanged } = props
   const t = useT()
   // Names the switches by their row labels (aria-labelledby).
   const labelId = useId()
@@ -48,11 +51,11 @@ export function ExportModal(props: Props): React.JSX.Element {
   // modal opens. Lazy useState: parse once per mount, not on every render.
   const [initialPrefs] = useState<ExportPrefs>(() => parsePrefs(exportPrefs ?? readLegacyPrefs()))
 
-  const [tab, setTab] = useState<Tab>(initialPrefs.tab)
+  const [tab, setTab] = useState<Tab>(replacementRun ? 'pdf' : initialPrefs.tab)
   const [clients, setClients] = useState<Client[]>([])
-  const [clientId, setClientId] = useState<number | null>(null)
+  const [clientId, setClientId] = useState<number | null>(replacementRun?.client_id ?? null)
   const [projects, setProjects] = useState<Project[]>([])
-  const [projectId, setProjectId] = useState<number | null>(null)
+  const [projectId, setProjectId] = useState<number | null>(replacementRun?.project_id ?? null)
   const [fromIso, setFromIso] = useState(prefilledRange?.fromIso ?? '')
   const [toIso, setToIso] = useState(prefilledRange?.toIso ?? '')
 
@@ -60,6 +63,9 @@ export function ExportModal(props: Props): React.JSX.Element {
   const [includeSignatures, setIncludeSignatures] = useState(initialPrefs.includeSignatures)
   const [groupBy, setGroupBy] = useState<GroupBy>(initialPrefs.groupBy)
   const [hideFeeColumn, setHideFeeColumn] = useState(initialPrefs.hideFeeColumn)
+  // Deliberately outside ExportPrefs: each ordinary export starts unchecked.
+  const [markAsBilled, setMarkAsBilled] = useState(Boolean(replacementRun))
+  const [createdRun, setCreatedRun] = useState(false)
 
   // CSV-specific
   const [csvFormat, setCsvFormat] = useState<CsvFormat>(initialPrefs.csvFormat)
@@ -132,7 +138,7 @@ export function ExportModal(props: Props): React.JSX.Element {
     void window.api.clients.getAll().then((res) => {
       if (res.ok) {
         setClients(res.data)
-        if (res.data.length === 1) {
+        if (!replacementRun && res.data.length === 1) {
           setClientId(res.data[0].id)
         }
       } else {
@@ -140,7 +146,7 @@ export function ExportModal(props: Props): React.JSX.Element {
         setStatusMsg(t('export.status.clientsError', { error: res.error }))
       }
     })
-  }, [open, clients.length])
+  }, [open, clients.length, replacementRun, t])
 
   // Sync the prefilled range if it changes after mount (e.g. quick-filters).
   useEffect(() => {
@@ -167,14 +173,14 @@ export function ExportModal(props: Props): React.JSX.Element {
     }
     void window.api.projects.getAll({ clientId }).then((res) => {
       if (res.ok) {
-        const active = res.data.filter((p) => p.active === 1)
+        const active = res.data.filter((p) => p.active === 1 || p.id === replacementRun?.project_id)
         setProjects(active)
-        setProjectId(null)
+        if (!replacementRun) setProjectId(null)
       }
     })
-  }, [clientId])
+  }, [clientId, replacementRun])
 
-  const canExport = clientId != null && fromIso !== '' && toIso !== '' && !busy
+  const canExport = clientId != null && fromIso !== '' && toIso !== '' && !busy && !createdRun
 
   function validateRange(): boolean {
     if (fromIso > toIso) {
@@ -187,27 +193,55 @@ export function ExportModal(props: Props): React.JSX.Element {
 
   async function handlePdfExport(): Promise<void> {
     if (!canExport || !validateRange()) return
+    if (markAsBilled && clients.some((c) => c.id === clientId && !c.short_code)) {
+      setStatusKind('error')
+      setStatusMsg(t('export.status.shortCodeMissing'))
+      return
+    }
     setBusy(true)
     setStatusMsg(t('export.status.pdfCreating'))
     setStatusKind('info')
-    const res = await window.api.pdf.export({
-      clientId: clientId!,
-      fromIso,
-      toIso,
-      projectId: projectId ?? undefined,
-      includeSignatures,
-      groupBy,
-      hideFeeColumn
-    })
-    setBusy(false)
-    if (res.ok) {
-      setStatusKind('success')
-      setStatusMsg(t('export.status.pdfSaved', { path: res.data.path }))
-    } else if (res.error === 'Export abgebrochen') {
-      setStatusMsg(null)
-    } else {
+    try {
+      const res = await window.api.pdf.export({
+        clientId: clientId!,
+        fromIso,
+        toIso,
+        projectId: projectId ?? undefined,
+        includeSignatures,
+        groupBy,
+        hideFeeColumn,
+        markAsBilled,
+        replacesRunId: replacementRun?.id
+      })
+      if (res.ok) {
+        setStatusKind('success')
+        if (res.data.runId !== undefined) {
+          setCreatedRun(true)
+        }
+        setStatusMsg(
+          [
+            t('export.status.pdfSaved', { path: res.data.path }),
+            ...(res.data.runNumber
+              ? [t('export.status.runCreated', { number: res.data.runNumber })]
+              : []),
+            ...((res.data.excludedCount ?? 0) > 0
+              ? [t('export.status.excluded', { count: res.data.excludedCount! })]
+              : [])
+          ].join(' ')
+        )
+      } else if (res.code === 'cancelled') {
+        setStatusMsg(null)
+      } else {
+        setStatusKind('error')
+        setStatusMsg(t('export.status.error', { error: res.error }))
+      }
+    } catch (error) {
       setStatusKind('error')
-      setStatusMsg(t('export.status.error', { error: res.error }))
+      setStatusMsg(t('export.status.error', { error: String(error) }))
+    } finally {
+      setBusy(false)
+      // A run may have been committed even if writing the chosen file failed.
+      if (markAsBilled) onRunsChanged?.()
     }
   }
 
@@ -228,7 +262,7 @@ export function ExportModal(props: Props): React.JSX.Element {
     if (res.ok) {
       setStatusKind('success')
       setStatusMsg(t('export.status.csvSaved', { path: res.data.path }))
-    } else if (res.error === 'Export abgebrochen') {
+    } else if (res.code === 'cancelled') {
       setStatusMsg(null)
     } else {
       setStatusKind('error')
@@ -252,7 +286,7 @@ export function ExportModal(props: Props): React.JSX.Element {
     if (res.ok) {
       setStatusKind('success')
       setStatusMsg(t('export.status.icalSaved', { path: res.data.path }))
-    } else if (res.error === 'Export abgebrochen') {
+    } else if (res.code === 'cancelled') {
       setStatusMsg(null)
     } else {
       setStatusKind('error')
@@ -263,14 +297,27 @@ export function ExportModal(props: Props): React.JSX.Element {
   const inputClass = INPUT
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('export.title')} widthClass="w-[520px]">
+    <Dialog
+      open={open}
+      onClose={() => {
+        if (!busy) onClose()
+      }}
+      title={t('export.title')}
+      widthClass="w-[520px]"
+    >
       <div className="flex flex-col gap-4">
+        {replacementRun && (
+          <p className="text-sm text-[var(--ink2)]">
+            {t('billingRuns.replacing', { number: replacementRun.number })}
+          </p>
+        )}
         {/* Tab bar */}
         <div className="flex gap-1 rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] p-1">
           {(['pdf', 'csv', 'ical'] as Tab[]).map((tabKey) => (
             <button
               key={tabKey}
               type="button"
+              disabled={busy || Boolean(replacementRun) || createdRun}
               onClick={() => handleTabChange(tabKey)}
               aria-pressed={tab === tabKey}
               className={`min-h-9 flex-1 rounded-[var(--r-fine)] text-[13px] font-semibold ${FOCUS} ${
@@ -298,7 +345,7 @@ export function ExportModal(props: Props): React.JSX.Element {
             onChange={(e) =>
               setClientId(e.target.value === '' ? null : Number.parseInt(e.target.value, 10))
             }
-            disabled={busy}
+            disabled={busy || Boolean(replacementRun) || createdRun}
             className={inputClass}
           >
             <option value="">{t('export.client.placeholder')}</option>
@@ -325,7 +372,7 @@ export function ExportModal(props: Props): React.JSX.Element {
               onChange={(e) =>
                 setProjectId(e.target.value === '' ? null : Number.parseInt(e.target.value, 10))
               }
-              disabled={busy}
+              disabled={busy || Boolean(replacementRun) || createdRun}
               className={inputClass}
             >
               <option value="">{t('export.project.placeholder')}</option>
@@ -347,7 +394,7 @@ export function ExportModal(props: Props): React.JSX.Element {
               type="date"
               value={fromIso}
               onChange={(e) => setFromIso(e.target.value)}
-              disabled={busy}
+              disabled={busy || Boolean(replacementRun) || createdRun}
               className={inputClass}
             />
           </label>
@@ -359,7 +406,7 @@ export function ExportModal(props: Props): React.JSX.Element {
               type="date"
               value={toIso}
               onChange={(e) => setToIso(e.target.value)}
-              disabled={busy}
+              disabled={busy || Boolean(replacementRun) || createdRun}
               className={inputClass}
             />
           </label>
@@ -368,6 +415,16 @@ export function ExportModal(props: Props): React.JSX.Element {
         {/* PDF-specific options */}
         {tab === 'pdf' && (
           <div className="flex flex-col gap-3">
+            <label className="flex min-h-11 items-center gap-3 text-sm text-[var(--ink)]">
+              <input
+                type="checkbox"
+                checked={markAsBilled}
+                onChange={(e) => setMarkAsBilled(e.target.checked)}
+                disabled={busy || Boolean(replacementRun) || createdRun}
+                className={`accent-[var(--ink)] ${FOCUS}`}
+              />
+              {t('export.pdf.markAsBilled')}
+            </label>
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
                 <span className="text-sm" style={{ color: 'var(--ink)' }}>

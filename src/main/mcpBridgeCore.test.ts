@@ -7,6 +7,7 @@ import type Database from 'better-sqlite3'
 import { handleRequest, type BridgeRequest } from './mcpBridgeCore'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { CREATE, countEntries, makeCtx, seed } from '../test/bridgeKit'
+import { seedEntry } from '../test/entryFixtures'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -106,8 +107,9 @@ describe('handleRequest', () => {
       args: { id, description: 'Renamed', tags: ',x,' }
     })
     expect(res.ok).toBe(true)
-    // update deletes + reinserts, yielding a new row id — read it back from the result.
+    // 2.0: an update is a new version of the same entry, the id stays.
     const newId = res.ok ? (res.data as { id: number }).id : id
+    expect(newId).toBe(id)
     const row = db
       .prepare(`SELECT description, tags, started_at FROM entries WHERE id = ?`)
       .get(newId) as {
@@ -118,6 +120,30 @@ describe('handleRequest', () => {
     expect(row.description).toBe('Renamed')
     expect(row.tags).toBe(',x,')
     expect(row.started_at).toBe('2026-06-10T09:00:00.000Z') // untouched
+  })
+
+  it('update_entry_fields keeps the import anchor and created_at (#299)', async () => {
+    const { ctx } = makeCtx(db)
+    // An imported entry written a while ago (both columns are fixed on the
+    // entry since 2.0, so they are seeded, not updated).
+    const id = seedEntry(db, {
+      client_id: 1,
+      description: 'Feature',
+      started_at: '2026-06-10T09:00:00.000Z',
+      stopped_at: '2026-06-10T10:00:00.000Z',
+      graph_event_id: 'EVT-9',
+      created_at: '2026-01-02 08:00:00'
+    })
+    const res = await handleRequest(ctx, {
+      v: 1,
+      token: 'secret',
+      op: 'update_entry_fields',
+      args: { id, description: 'Renamed' }
+    })
+    expect(res.ok).toBe(true)
+    expect(db.prepare(`SELECT graph_event_id, created_at FROM entries`).all()).toEqual([
+      { graph_event_id: 'EVT-9', created_at: '2026-01-02 08:00:00' }
+    ])
   })
 
   it('update_entry_fields refuses a running entry even if stopped_at is supplied', async () => {
@@ -449,10 +475,12 @@ describe('handleRequest — controller scope', () => {
     // the test went red at night (#213).
     const midnight = new Date()
     midnight.setHours(0, 0, 0, 0)
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable)
-       VALUES (1, 'closed', ?, ?, 1)`
-    ).run(midnight.toISOString(), new Date(midnight.getTime() + 1_800_000).toISOString())
+    seedEntry(db, {
+      client_id: 1,
+      description: 'closed',
+      started_at: midnight.toISOString(),
+      stopped_at: new Date(midnight.getTime() + 1_800_000).toISOString()
+    })
     await handleRequest(ctx, ctl('toggle_timer', { client_id: 1, project_id: 10 }))
 
     const busy = await handleRequest(ctx, ctl('get_summary'))
@@ -488,10 +516,7 @@ describe('handleRequest — controller scope', () => {
     midnight.setHours(0, 0, 0, 0)
     const started = midnight.toISOString()
     const stopped = new Date(midnight.getTime() + (6 * 3600 + 24 * 60) * 1000).toISOString()
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable)
-       VALUES (1, 'x', ?, ?, 1)`
-    ).run(started, stopped)
+    seedEntry(db, { client_id: 1, description: 'x', started_at: started, stopped_at: stopped })
 
     const { ctx } = makeCtx(db)
     const res = await handleRequest(ctx, ctl('get_summary'))
@@ -507,10 +532,10 @@ describe('handleRequest — controller scope', () => {
     // Exact now that the fixture is exact — the old range only existed to
     // absorb the drift of measuring against `now` (#213).
     expect(data.today_seconds).toBe(6 * 3600 + 24 * 60)
+    // 1.23.0 promised the old names stay. Since #374 they carry the billed
+    // minutes of billing_lines (per segment), the same number as *_rounded_seconds.
     expect(data.today_display_seconds).toBe(6 * 3600 + 30 * 60)
     expect(data.week_display_seconds).toBe(6 * 3600 + 30 * 60)
-    // The rounded pair under names that say what it is; *_display_seconds
-    // keeps its meaning for plugins that already read it.
     const named = res.data as { today_rounded_seconds: number; week_rounded_seconds: number }
     expect(named.today_rounded_seconds).toBe(6 * 3600 + 30 * 60)
     expect(named.week_rounded_seconds).toBe(6 * 3600 + 30 * 60)
@@ -518,16 +543,23 @@ describe('handleRequest — controller scope', () => {
 
   it('get_summary passes the raw seconds through when rounding is off', async () => {
     const started = new Date(Date.now() - 3_600_000).toISOString()
-    db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, billable)
-       VALUES (1, 'x', ?, ?, 1)`
-    ).run(started, new Date().toISOString())
+    seedEntry(db, {
+      client_id: 1,
+      description: 'x',
+      started_at: started,
+      stopped_at: new Date().toISOString()
+    })
 
     const { ctx } = makeCtx(db)
     const res = await handleRequest(ctx, ctl('get_summary'))
     expect(res.ok).toBe(true)
     if (!res.ok) return
-    const data = res.data as { today_seconds: number; today_display_seconds: number }
+    const data = res.data as {
+      today_seconds: number
+      today_rounded_seconds: number
+      today_display_seconds: number
+    }
+    expect(data.today_rounded_seconds).toBe(data.today_seconds)
     expect(data.today_display_seconds).toBe(data.today_seconds)
   })
 

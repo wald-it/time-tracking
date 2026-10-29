@@ -45,7 +45,7 @@ export function isSameOrInside(
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
-/** True only for a `timetrack-smoke-*` directory strictly inside `tmpRoot`. */
+/** True only for a `SMOKE_DIR_PREFIX*` directory strictly inside `tmpRoot`. */
 export function isRemovableSmokeDir(dir: string, tmpRoot: string = tmpdir()): boolean {
   return (
     basename(resolve(dir)).startsWith(SMOKE_DIR_PREFIX) &&
@@ -131,6 +131,10 @@ export function removeSmokeUserDataDir(dir: string, tmpRoot: string = tmpdir()):
  * ignores it; tests wait for it instead of the cleaner's exit, because under
  * load Windows can take many seconds to finish tearing down an exited
  * process, and Node's `exit` event waits for that (#264).
+ *
+ * The prefix it accepts is SMOKE_DIR_PREFIX, built into the script text
+ * (#289): a fixed limit no caller can widen, unlike a value passed in the
+ * environment next to TT_SMOKE_DIR. JSON.stringify quotes it safely.
  */
 const CLEANER_SCRIPT = `
 const { rmSync } = require('fs')
@@ -145,7 +149,7 @@ const tick = () => {
   try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch { outcome = 'failed' }
   process.stdout.write(outcome + '\\n')
 }
-if (!dir || !basename(dir).startsWith('timetrack-smoke-')) process.stdout.write('skipped\\n')
+if (!dir || !basename(dir).startsWith(${JSON.stringify(SMOKE_DIR_PREFIX)})) process.stdout.write('skipped\\n')
 else tick()
 `
 

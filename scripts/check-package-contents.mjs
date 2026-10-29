@@ -3,7 +3,7 @@
  * Check what a packaged build ships (release 1.22): the asar must hold what
  * the app reads at runtime and nothing from the rest of the checkout.
  *
- * Usage: node scripts/check-package-contents.mjs <path to app.asar>
+ * Usage: node scripts/check-package-contents.mjs <path to app.asar> [<platform>-<arch>]
  *
  * Fails (exit 1) when
  *  - a required file is missing (main, preload, renderer, MCP server,
@@ -32,7 +32,7 @@ const REQUIRED = [
 
 const asarPath = process.argv[2]
 if (!asarPath) {
-  console.error('usage: check-package-contents.mjs <app.asar>')
+  console.error('usage: check-package-contents.mjs <app.asar> [<platform>-<arch>]')
   process.exit(2)
 }
 
@@ -47,9 +47,23 @@ const unexpected = [...new Set(files.map((f) => f.split('/')[0]))].filter(
 )
 const missing = REQUIRED.filter((r) => !fileSet.has(r))
 
-if (unexpected.length || missing.length) {
+// #269: exactly the native SQLite binary of the package's target, none of the
+// other seven. The target defaults to the machine running this script (the
+// build runner builds natively); pass `<platform>-<arch>` as the second
+// argument for a cross build, e.g. `darwin-x64`.
+const PREBUILDS = 'node_modules/better-sqlite3/prebuilds/'
+const target = process.argv[3] ?? `${process.platform}-${process.arch}`
+const ownPrebuild = `${PREBUILDS}${target}.node`
+const prebuilds = files.filter((f) => f.startsWith(PREBUILDS) && f.endsWith('.node'))
+const prebuildProblem =
+  prebuilds.length === 1 && prebuilds[0] === ownPrebuild
+    ? null
+    : `expected only ${ownPrebuild}, found [${prebuilds.join(', ')}]`
+
+if (unexpected.length || missing.length || prebuildProblem) {
   if (unexpected.length) console.error(`Unexpected top-level entries: ${unexpected.join(', ')}`)
   if (missing.length) console.error(`Missing runtime files: ${missing.join(', ')}`)
+  if (prebuildProblem) console.error(`Native SQLite binaries: ${prebuildProblem}`)
   process.exit(1)
 }
 console.log(`Package contents ok: ${files.length} entries under ${[...ALLOWED_TOP].join(', ')}`)

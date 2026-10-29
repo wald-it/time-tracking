@@ -16,7 +16,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { executeMigration, migrations } from './index'
-import { loadSqlite, type DatabaseCtor } from '../../test/sqlite'
+import { loadSqlite, openScratchDb, type DatabaseCtor } from '../../test/sqlite'
 import { readTotals } from '../dashboardTotals'
 
 let DatabaseImpl: DatabaseCtor
@@ -52,7 +52,7 @@ describe('migration 027 — Heute totals before and after', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'tt-m027-totals-'))
-    db = new DatabaseImpl(join(tmpDir, 'test.sqlite'))
+    db = openScratchDb(DatabaseImpl, join(tmpDir, 'test.sqlite'))
     db.exec(
       `CREATE TABLE IF NOT EXISTS schema_version (
         version INTEGER PRIMARY KEY,

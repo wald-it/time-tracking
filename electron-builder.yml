@@ -1,5 +1,8 @@
 appId: com.timetrack.app
 productName: TimeTrack
+# The copyright holder from LICENSE. Without this key electron-builder writes
+# "Copyright © <year> ${author}" (wald-it, the publisher) into the exe.
+copyright: Copyright (c) 2026 Robin Wald
 directories:
   buildResources: build
 # Positive list (release 1.22): only what the app reads at runtime goes into
@@ -14,6 +17,10 @@ files:
   - resources/**
   - package.json
   - LICENSE
+  # #269: better-sqlite3 13 ships prebuilt binaries for eight platforms; the
+  # package needs only its own (about 2 MB each, unpacked from the asar).
+  # check-package-contents.mjs fails when a foreign one is left in.
+  - '!node_modules/better-sqlite3/prebuilds/!(${platform}-${arch}).node'
 asarUnpack:
   - resources/**
   - '**/*.node'

@@ -1,6 +1,8 @@
 // Shared types between main process and renderer
 
 export interface Client {
+  /** Client code in the timesheet run number. */
+  short_code: string | null
   id: number
   name: string
   color: string
@@ -18,6 +20,8 @@ export interface Client {
 }
 
 export interface Entry {
+  /** Any active billing run item for this logical entry, across all versions/days (0 or 1). */
+  billed?: number
   id: number
   client_id: number
   description: string
@@ -30,8 +34,8 @@ export interface Entry {
   /**
    * v1.3 PR B: when an entry crosses local midnight, it's stored as
    * multiple rows that share the same UUID. NULL for plain single-day
-   * entries. The Drawer offers a "auch zweite Hälfte löschen?" prompt
-   * when the user deletes a row with a non-null link_id.
+   * entries. Deleting either row deletes all rows of the entry, and undo
+   * restores them together (#323).
    */
   link_id: string | null
   /**
@@ -61,6 +65,60 @@ export interface Entry {
    * v1.9 #75: optional project association. NULL means "no project / general".
    */
   project_id?: number | null
+  /**
+   * 2.0 (P2): the segment of the entry this row shows (0 = the first day of a
+   * midnight-split entry), the current version's id and number. Present on
+   * rows of the `entries` view and on what the write path returns; the edit
+   * form sends `segment_seq` back so an edit of one half maps onto the entry.
+   */
+  segment_seq?: number
+  version_id?: number
+  version_no?: number
+  /**
+   * 2.0 (P4): the money of this row from the view `billing_lines`, present on
+   * rows of the view `entries` (calendar, Heute, export): billed minutes, the rate valid on
+   * the day, the fee, and whether the rate came from a project row.
+   */
+  billed_minutes?: number
+  rate_cent?: number | null
+  fee_cent?: number | null
+  rate_is_project?: number
+  /**
+   * 2.0 (P4, #374): the profile values `billed_minutes` was computed with, so a
+   * running segment can tick by the rule of `currency.ts`. 0 = off.
+   */
+  interval_min?: number
+  min_unit_min?: number
+  /** 2.0 (P3, #372): how many day segments the entry has; > 1 across midnight. */
+  segment_count?: number
+  /** 2.0 (P3): the stored local date (YYYY-MM-DD) of the segment this row shows. */
+  segment_date?: string
+}
+
+/** One stored version, as exposed to the app renderer (including its internal note). */
+export interface EntryVersion {
+  version_id: number
+  version_no: number
+  state: 'open' | 'sealed'
+  deleted: boolean
+  written_at: string
+  source: string
+  reason: string | null
+  client_id: number
+  project_id: number | null
+  description: string
+  started_at: string
+  stopped_at: string | null
+  tags: string
+  reference: string
+  billable: number
+  private_note: string
+  segments: Array<{
+    seq: number
+    segment_date: string
+    started_at: string
+    stopped_at: string | null
+  }>
 }
 
 // ── Projects (v1.9 #75) ───────────────────────────────────────────────────
@@ -232,6 +290,7 @@ export interface Settings {
 }
 
 export interface CreateClientInput {
+  short_code?: string | null
   name: string
   color: string
   /**
@@ -250,6 +309,8 @@ export interface CreateClientInput {
 }
 
 export interface UpdateClientInput {
+  /** Omitted = keep the current code; null or empty = clear it. */
+  short_code?: string | null
   id: number
   name: string
   color: string
@@ -303,24 +364,53 @@ export interface CreateManualEntryInput {
   private_note?: string
   /** v1.9 #75: optional project association. */
   project_id?: number | null
+  /**
+   * 2.0 (P2): who writes, recorded on the version (`entry_version.source`).
+   * The idle prompt's pause entry sends `idle`; everything else is `app`.
+   */
+  source?: 'idle'
 }
 
+/**
+ * An edit of an entry (2.0 P2, design section 5, D3): a PATCH. Every field
+ * but `id` is optional; a field that is left out keeps its value, it is never
+ * defaulted. The edit form sends the full set, the quick note only
+ * `description`, the idle prompt only `stopped_at` for the running entry.
+ */
 export interface UpdateEntryInput {
   id: number
-  client_id: number
-  description: string
-  started_at: string
-  stopped_at: string
-  /** Serialized tags string (e.g. `,bug,ux,`). Optional — defaults to '' */
+  client_id?: number
+  description?: string
+  started_at?: string
+  stopped_at?: string
+  /** Serialized tags string (e.g. `,bug,ux,`). */
   tags?: string
-  /** Free-text ticket/reference (e.g. 'JIRA-123'). Optional — defaults to '' */
+  /** Free-text ticket/reference (e.g. 'JIRA-123'). */
   reference?: string
-  /** 1 = billable (default), 0 = non-billable. Optional — defaults to 1 */
+  /** 1 = billable, 0 = non-billable. */
   billable?: number
-  /** Internal-only note, never exported. Optional — defaults to '' */
+  /** Internal-only note, never exported. */
   private_note?: string
   /** v1.9 #75: optional project association. */
   project_id?: number | null
+  /**
+   * The segment the caller edited (the `segment_seq` of the row it showed).
+   * With it, the times apply to that half of a midnight-split entry and an
+   * edge at the midnight cut must stay where it is (#311).
+   */
+  segment_seq?: number
+  /**
+   * Set by the edit form and the quick note, which show times cut to the
+   * minute: a time equal to the stored one to the minute is no change, so a
+   * description-only save keeps the entry's seconds (#335 case 4).
+   */
+  from_form?: boolean
+  /** The version the caller read; the write fails if the entry moved on. */
+  expected_version?: number
+  /** Who writes, recorded on the version. Default `app`. */
+  source?: 'idle' | 'quicknote'
+  /** Why (billed entries, from P5 on). */
+  reason?: string
 }
 
 export interface MonthQuery {
@@ -328,7 +418,14 @@ export interface MonthQuery {
   month: number // 1-12
 }
 
-export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string }
+/**
+ * Why a call did not succeed, where the renderer must act on the reason and
+ * not on the wording of `error` (#296). `cancelled`: the user closed a
+ * dialog or declined; show nothing. `error` still carries a text for logs.
+ */
+export type IpcErrorCode = 'cancelled'
+
+export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string; code?: IpcErrorCode }
 
 export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
 
@@ -392,6 +489,8 @@ export interface LicenseEntry {
 
 // ── Analytics (v1.10 #93) ─────────────────────────────────────────────────
 
+export type RoundingRule = { kind: 'interval' | 'minimum'; minutes: number }
+
 export interface AnalyticsSummary {
   month: {
     /** Worked seconds in the selected month (raw, owner decision 2026-10-22). */
@@ -401,6 +500,8 @@ export interface AnalyticsSummary {
      * "gerundet … h" sub-line. null when no rounding step is set.
      */
     hoursRounded: number | null
+    /** Uniform pure interval or minimum of the month's completed segments, else null. */
+    roundingRule: RoundingRule | null
     /** Worked seconds in the comparison period (see `comparison`). */
     hoursPrev: number
     /** Total revenue in cents for the selected month. */

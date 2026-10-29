@@ -16,6 +16,8 @@ import {
 } from './graphImport'
 import { learnDomain } from './clientDomains'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { seedEntry } from '../test/entryFixtures'
+import { ANCHOR_REUSED_ERROR, writeEntry } from './entryMutations'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -117,18 +119,25 @@ describe('graphImport', () => {
 
   describe('importedEventIds', () => {
     it('collects ids of live entries and ignores soft-deleted ones', () => {
-      db.prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at, graph_event_id)
-         VALUES (1, '2026-07-01T09:00:00Z', '2026-07-01T10:00:00Z', 'evt-live')`
-      ).run()
-      db.prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at, graph_event_id, deleted_at)
-         VALUES (1, '2026-07-02T09:00:00Z', '2026-07-02T10:00:00Z', 'evt-deleted', '2026-07-03T00:00:00Z')`
-      ).run()
-      db.prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at)
-         VALUES (1, '2026-07-03T09:00:00Z', '2026-07-03T10:00:00Z')`
-      ).run()
+      // 2.0 P2: `entries` is a read-only view; the fixture writes the entry tables.
+      seedEntry(db, {
+        client_id: 1,
+        started_at: '2026-07-01T09:00:00Z',
+        stopped_at: '2026-07-01T10:00:00Z',
+        graph_event_id: 'evt-live'
+      })
+      seedEntry(db, {
+        client_id: 1,
+        started_at: '2026-07-02T09:00:00Z',
+        stopped_at: '2026-07-02T10:00:00Z',
+        graph_event_id: 'evt-deleted',
+        deleted_at: '2026-07-03T00:00:00Z'
+      })
+      seedEntry(db, {
+        client_id: 1,
+        started_at: '2026-07-03T09:00:00Z',
+        stopped_at: '2026-07-03T10:00:00Z'
+      })
       // The deleted entry's event must be offered again — deleting meant
       // "not this one", not "never again" (see migration 021).
       expect(importedEventIds(db)).toEqual(new Set(['evt-live']))
@@ -164,10 +173,12 @@ describe('graphImport', () => {
 
     it('maps events into drafts: own domain stripped, mapping applied, dedupe honored', async () => {
       learnDomain(db, 'kunde.de', 1)
-      db.prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at, graph_event_id)
-         VALUES (1, '2026-07-01T09:00:00Z', '2026-07-01T10:00:00Z', 'evt-done')`
-      ).run()
+      seedEntry(db, {
+        client_id: 1,
+        started_at: '2026-07-01T09:00:00Z',
+        stopped_at: '2026-07-01T10:00:00Z',
+        graph_event_id: 'evt-done'
+      })
 
       const events = [
         event(),
@@ -254,26 +265,49 @@ describe('graphImport', () => {
       expect(again.failed[0].error).toContain('bereits übernommen')
     })
 
-    it('re-imports an event whose entry was soft-deleted — the anchor is released first', () => {
+    it('re-imports an event whose entry was soft-deleted — the anchor stays with the old entry', () => {
       importCalendarEntries(db, [item()])
-      db.prepare(`UPDATE entries SET deleted_at = '2026-07-02T00:00:00Z'`).run()
+      const oldId = (db.prepare(`SELECT id FROM entry`).get() as { id: number }).id
+      // 2.0 P2: through the write path (op delete), not an UPDATE on the view.
+      expect(writeEntry(db, { op: 'delete', id: oldId }, { source: 'app' }).ok).toBe(true)
       const again = importCalendarEntries(db, [item()])
       expect(again).toEqual({ created: 1, failed: [] })
+      // 2.0 P2: the anchor belongs to the entry for good (design 4.1) and is no
+      // longer released on delete; the unique index only covers live entries.
       const rows = db
-        .prepare(`SELECT graph_event_id, deleted_at FROM entries ORDER BY id`)
-        .all() as Array<{ graph_event_id: string | null; deleted_at: string | null }>
-      // The old row lost its anchor, the new one holds it.
-      expect(rows).toEqual([
-        { graph_event_id: null, deleted_at: '2026-07-02T00:00:00Z' },
-        { graph_event_id: 'evt-1', deleted_at: null }
+        .prepare(`SELECT id, graph_event_id, is_deleted FROM entry ORDER BY id`)
+        .all() as Array<{ id: number; graph_event_id: string | null; is_deleted: number }>
+      expect(rows.map((r) => [r.graph_event_id, r.is_deleted])).toEqual([
+        ['evt-1', 1],
+        ['evt-1', 0]
       ])
+      expect(rows[0].id).toBe(oldId)
+      // The view shows only the live one.
+      const view = db.prepare(`SELECT id, graph_event_id FROM entries`).all()
+      expect(view).toEqual([{ id: rows[1].id, graph_event_id: 'evt-1' }])
+    })
+
+    it('refuses to undelete an entry whose event anchor a live entry holds again', () => {
+      importCalendarEntries(db, [item()])
+      const oldId = (db.prepare(`SELECT id FROM entry`).get() as { id: number }).id
+      expect(writeEntry(db, { op: 'delete', id: oldId }, { source: 'app' }).ok).toBe(true)
+      // Re-imported at another time, so the undelete meets the anchor and not the
+      // overlap check.
+      const reimport = item({
+        startedAt: '2026-07-02T09:00:00.000Z',
+        stoppedAt: '2026-07-02T10:00:00.000Z'
+      })
+      expect(importCalendarEntries(db, [reimport])).toEqual({ created: 1, failed: [] })
+      const res = writeEntry(db, { op: 'undelete', id: oldId }, { source: 'app' })
+      expect(res).toEqual({ ok: false, error: ANCHOR_REUSED_ERROR })
     })
 
     it('fails per event, not per batch — one overlap does not sink the rest', () => {
-      db.prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at)
-         VALUES (1, '2026-07-01T09:30:00.000Z', '2026-07-01T11:00:00.000Z')`
-      ).run()
+      seedEntry(db, {
+        client_id: 1,
+        started_at: '2026-07-01T09:30:00.000Z',
+        stopped_at: '2026-07-01T11:00:00.000Z'
+      })
       const result = importCalendarEntries(db, [
         item(), // overlaps the existing entry
         item({
@@ -288,7 +322,7 @@ describe('graphImport', () => {
       ])
     })
 
-    it('puts the event id on the first segment only when a meeting crosses midnight', () => {
+    it('keeps one entry with two segments, both carrying the event id, when a meeting crosses midnight', () => {
       // Built from local wall-clock time so the range crosses LOCAL midnight
       // (the split boundary) no matter which timezone the test runs in.
       const start = new Date(2026, 6, 1, 23, 0)
@@ -297,14 +331,25 @@ describe('graphImport', () => {
         item({ startedAt: start.toISOString(), stoppedAt: stop.toISOString() })
       ])
       expect(result).toEqual({ created: 1, failed: [] })
+      // 2.0 P2: one entry, two segments (view rows with the same id and
+      // segment_seq 0/1); the anchor belongs to the entry, so both rows carry it
+      // and there is no link_id any more.
       const rows = db
-        .prepare(`SELECT graph_event_id, link_id FROM entries ORDER BY started_at`)
-        .all() as Array<{ graph_event_id: string | null; link_id: string | null }>
+        .prepare(`SELECT id, graph_event_id, link_id, segment_seq FROM entries ORDER BY started_at`)
+        .all() as Array<{
+        id: number
+        graph_event_id: string | null
+        link_id: string | null
+        segment_seq: number
+      }>
       expect(rows).toHaveLength(2)
       expect(rows[0].graph_event_id).toBe('evt-1')
-      expect(rows[1].graph_event_id).toBeNull()
-      expect(rows[0].link_id).toBe(rows[1].link_id)
-      expect(rows[0].link_id).not.toBeNull()
+      expect(rows[1].graph_event_id).toBe('evt-1')
+      expect(rows[0].id).toBe(rows[1].id)
+      expect(rows.map((r) => r.segment_seq)).toEqual([0, 1])
+      expect(rows[0].link_id).toBeNull()
+      expect(rows[1].link_id).toBeNull()
+      expect((db.prepare(`SELECT COUNT(*) AS n FROM entry`).get() as { n: number }).n).toBe(1)
       // And the dedupe still sees the event as imported.
       expect(importedEventIds(db)).toEqual(new Set(['evt-1']))
     })

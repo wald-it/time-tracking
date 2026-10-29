@@ -16,8 +16,7 @@ import type Database from 'better-sqlite3'
 import { getAccessToken, getStatus, type GraphAccountDeps } from './graphAccount'
 import { fetchCalendarView, GraphCalendarError, type CalendarRange } from './graphCalendar'
 import { domainMapping } from './clientDomains'
-import { insertEntrySegments, validateManualEntry } from './entryMutations'
-import { splitAtMidnight } from '../shared/midnightSplit'
+import { writeEntry } from './entryMutations'
 import { domainOf, mapEvents, type FilterOptions, type MappedEvents } from '../shared/graphCalendar'
 
 export interface PreviewDeps {
@@ -110,9 +109,10 @@ export interface ImportResult {
  * batch because of one double-booked slot. This way the user gets four entries
  * and one explained failure instead of five failures.
  *
- * Soft-deleted entries holding the same event id give up their anchor first —
- * they are the "imported this once, then deleted it" case, and without the
- * release the unique index would refuse the re-import the preview just offered.
+ * A soft-deleted entry holding the same event id keeps its anchor (2.0,
+ * design 4.1: `graph_event_id` belongs to the entry for good, and the unique
+ * index covers live entries only), so the re-import the preview offered goes
+ * through; the deleted entry then cannot be restored (ANCHOR_REUSED_ERROR).
  */
 export function importCalendarEntries(
   db: Database.Database,
@@ -133,20 +133,6 @@ export function importCalendarEntries(
         .get(graphEventId)
       if (dupe) throw new Error('Termin wurde bereits übernommen.')
 
-      db.prepare(
-        `UPDATE entries SET graph_event_id = NULL
-         WHERE graph_event_id = ? AND deleted_at IS NOT NULL`
-      ).run(graphEventId)
-
-      const input = {
-        client_id: item.clientId,
-        description: item.description ?? '',
-        started_at: item.startedAt,
-        stopped_at: item.stoppedAt
-      }
-      const err = validateManualEntry(db, input)
-      if (err) throw new Error(err)
-
       const projectId = item.projectId ?? null
       if (projectId !== null) {
         // Same rule as learnDomain: a project from another client would book
@@ -157,8 +143,22 @@ export function importCalendarEntries(
         if (!project) throw new Error('Projekt gehört nicht zum gewählten Kunden.')
       }
 
-      const segments = splitAtMidnight(new Date(item.startedAt), new Date(item.stoppedAt))
-      insertEntrySegments(db, input, segments, '', '', 1, '', projectId, graphEventId)
+      const res = writeEntry(
+        db,
+        {
+          op: 'create',
+          fields: {
+            client_id: item.clientId,
+            description: item.description ?? '',
+            started_at: item.startedAt,
+            stopped_at: item.stoppedAt,
+            project_id: projectId
+          },
+          graph_event_id: graphEventId
+        },
+        { source: 'import' }
+      )
+      if (!res.ok) throw new Error(res.error)
     })
     try {
       tx()

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { translate } from './i18n'
+import { localeFromSetting, translate } from './i18n'
 import type { TranslationKey } from './locales/de'
 import { de } from './locales/de'
 import { en } from './locales/en'
@@ -39,6 +39,27 @@ describe('translate()', () => {
 
   it('returns key when strings map is empty', () => {
     expect(translate({}, 'update.checking')).toBe('update.checking')
+  })
+
+  // #296: one pass, so outside data in a value is never read as a slot.
+  it('a value that looks like a slot stays as written', () => {
+    const strings = { k: '{a} and {b}' }
+    expect(translate(strings, 'k', { a: '{b}', b: 'B' })).toBe('{b} and B')
+    expect(translate(strings, 'k', { a: 'A' })).toBe('A and {b}')
+  })
+
+  it('fills a slot that appears twice', () => {
+    expect(translate({ k: '{x}-{x}' }, 'k', { x: 1 })).toBe('1-1')
+  })
+})
+
+describe('localeFromSetting()', () => {
+  it('en is English, anything else German', () => {
+    expect(localeFromSetting('en')).toBe('en')
+    expect(localeFromSetting('de')).toBe('de')
+    expect(localeFromSetting(undefined)).toBe('de')
+    expect(localeFromSetting(null)).toBe('de')
+    expect(localeFromSetting('fr')).toBe('de')
   })
 })
 

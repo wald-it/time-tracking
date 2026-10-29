@@ -347,7 +347,7 @@ rg -n "backdrop-blur|backdrop-filter|linear-gradient|accent-glow|--blur|indigo-|
 - [ ] `DESIGN.md` is rewritten and the CHANGELOG has an entry. The owner map in the vault (`timetrack-architektur.md`) is updated if structure or data flow changed (new summary/analytics fields count).
 
 ### Repo guardrails (from CLAUDE.md, repeated because they bite)
-- **Never run `pnpm rebuild better-sqlite3`**, not even "just for the tests". Run tests with `pnpm test`. If the binary is ever wrong: `pnpm exec electron-rebuild -f -w better-sqlite3` (the `-f` is mandatory).
+- Run tests with `pnpm test`, never `vitest` directly (it refuses to run outside Electron). `better-sqlite3` is N-API since #269: do not add a native rebuild (`electron-rebuild`, `pnpm rebuild`) back.
 - A three-digit skip count means a broken environment, not a green run. Report it.
 - Repository docs are written in English; code comments and identifiers are English.
 
@@ -361,6 +361,6 @@ rg -n "backdrop-blur|backdrop-filter|linear-gradient|accent-glow|--blur|indigo-|
    - An anchored dark popover: it needs positioning and flip logic, and it puts a second dark window on the page next to the display.
 
 1. **Client colour presets.** The 10 stored presets are not colour-blind-safe (DESIGN.md limitation L2). A validated replacement set is possible, but it touches user data, so it needs a separate issue and a decision.
-2. **App icon / tray glyph** are still the glass versions (`timetrack_icon_glass_*.svg`). They need a separate design pass.
+2. **App icon / tray glyph** were still the glass versions when this was written. Done in 1.23.2 (#365, #366): the dial drawn in `build/icon-src/*.svg`, rendered by `scripts/sync-icon.mjs`.
 3. **PDF timesheet template** is unaffected (it has its own accent-colour setting).
 4. If Kunden, Export or Einstellungen need **structural** changes beyond restyling, ask for a mockup instead of improvising.

@@ -7,11 +7,10 @@
  * environment into a green summary — `334 passed | 201 skipped` reads as
  * success, not as "a third of your coverage did not run".
  *
- * `pnpm test` now runs on the Electron binary in Node mode (see
- * `scripts/run-vitest.mjs`), so the ABI always matches and there is no longer
- * a legitimate reason for these suites to be unavailable. `loadSqlite()`
- * therefore **throws** instead of skipping: if the module cannot load, the run
- * is red and says exactly what to do about it.
+ * Since #269 `better-sqlite3` is an N-API module with prebuilt binaries for
+ * every runtime the suite uses, so there is no legitimate reason for these
+ * suites to be unavailable. `loadSqlite()` therefore **throws** instead of
+ * skipping: if the module cannot load, the run is red and says what to do.
  */
 import { copyFileSync } from 'fs'
 import { join } from 'path'
@@ -24,21 +23,15 @@ export type DatabaseCtor = new (path: string) => Database.Database
 const HINT = [
   'better-sqlite3 could not be loaded — the DB-backed tests cannot run.',
   '',
-  'The binary is compiled against the Electron ABI (the app needs that at',
-  'runtime), so the suite must run on Electron in Node mode. Use the package',
-  'script, which does that for you:',
+  'The package ships prebuilt N-API binaries in',
+  'node_modules/better-sqlite3/prebuilds/ that load under Node and Electron',
+  'alike, so this means the install is broken: the file for this platform is',
+  'missing or was replaced. Reinstall:',
   '',
-  '    pnpm test',
+  '    pnpm install --frozen-lockfile',
   '',
-  'Running `vitest` directly under a system Node will always fail here.',
-  '',
-  'If `pnpm test` itself fails this way, the binary is stale — most likely',
-  'because `pnpm rebuild better-sqlite3` replaced it with a Node-ABI build.',
-  'Note that `pnpm install` does NOT repair this: electron-builder caches the',
-  'ABI marker in node_modules/better-sqlite3/build/Release/.forge-meta and',
-  'skips the rebuild. Force it:',
-  '',
-  '    pnpm exec electron-rebuild -f -w better-sqlite3'
+  'Do not rebuild the module (electron-rebuild, pnpm rebuild): nothing needs',
+  'compiling, and without Visual Studio or Xcode the rebuild fails.'
 ].join('\n')
 
 let cached: DatabaseCtor | null = null
@@ -65,13 +58,27 @@ export async function loadSqlite(): Promise<DatabaseCtor> {
 }
 
 /**
+ * The last 1.x schema version: `entries` is still a table here. Suites that
+ * write 1.x rows (the legacy generator, the migration-027 tests, the 028
+ * tests themselves) migrate up to this version and no further.
+ */
+export const LAST_V1_VERSION = 27
+
+/**
  * Bring an empty database up to the current schema by running every migration
- * in order, exactly as `runMigrations` does in production.
+ * in order, exactly as `runMigrations` does in production. `upTo` stops after
+ * that version (see LAST_V1_VERSION).
  *
  * Deliberately does not touch `PRAGMA foreign_keys`: some suites enable it and
  * some rely on it being off, so that stays with the caller.
  */
-export function applyMigrations(db: Database.Database): void {
+export function applyMigrations(db: Database.Database, upTo = Number.MAX_SAFE_INTEGER): void {
+  // Test databases are disposable files: each commit's fsync costs about 20 ms
+  // on the Windows runner (#378). Keep handles already in WAL mode untouched,
+  // so suites that enable WAL before calling us still exercise WAL backups.
+  if (db.pragma('journal_mode', { simple: true }) !== 'wal') {
+    db.pragma('synchronous = OFF')
+  }
   db.exec(
     `CREATE TABLE IF NOT EXISTS schema_version (
        version INTEGER PRIMARY KEY,
@@ -79,7 +86,7 @@ export function applyMigrations(db: Database.Database): void {
        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
      )`
   )
-  for (const m of migrations) {
+  for (const m of migrations.filter((mm) => mm.version <= upTo)) {
     db.transaction(() => {
       executeMigration(db, m)
       db.prepare('INSERT INTO schema_version (version, name) VALUES (?, ?)').run(m.version, m.name)
@@ -98,11 +105,15 @@ export function applyMigrations(db: Database.Database): void {
  * duplicate safely. Do not switch the template to WAL, or a copy could miss
  * pages still sitting in the `-wal` file.
  */
-export function createMigratedTemplate(Ctor: DatabaseCtor, dir: string): string {
+export function createMigratedTemplate(
+  Ctor: DatabaseCtor,
+  dir: string,
+  upTo = Number.MAX_SAFE_INTEGER
+): string {
   const path = join(dir, 'template.sqlite')
   const db = new Ctor(path)
   try {
-    applyMigrations(db)
+    applyMigrations(db, upTo)
   } finally {
     db.close()
   }
@@ -121,5 +132,24 @@ export function openMigratedCopy(
 ): Database.Database {
   const path = join(dir, 'test.sqlite')
   copyFileSync(templatePath, path)
-  return new Ctor(path)
+  const db = new Ctor(path)
+  // Test databases are disposable files: each commit's fsync costs about 20 ms
+  // on the Windows runner (#378). The template uses rollback journaling.
+  db.pragma('synchronous = OFF')
+  return db
+}
+
+/**
+ * Open a throwaway database file for a suite that migrates it step by step
+ * itself (one transaction per migration) instead of through
+ * {@link applyMigrations} or a template copy (#381). Testdatenbanken sind
+ * Wegwerfdateien: with the default `synchronous` every commit is an fsync,
+ * about 20 ms on the Windows runner (#378), and 28 migrations per test added
+ * up to 110 s for migrations.test.ts. Only for suites that do not test
+ * journal or WAL behaviour; those open their handle themselves.
+ */
+export function openScratchDb(Ctor: DatabaseCtor, path: string): Database.Database {
+  const db = new Ctor(path)
+  db.pragma('synchronous = OFF')
+  return db
 }

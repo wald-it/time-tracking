@@ -1,6 +1,15 @@
+import type { BillingRunSummary } from '../main/billingRuns'
+import type {
+  RateTarget,
+  RateEditorData,
+  SaveRateInput,
+  ProfileFields,
+  ProfileEditorData
+} from '../shared/rateEditor'
 import type {
   Client,
   Entry,
+  EntryVersion,
   Project,
   CreateClientInput,
   UpdateClientInput,
@@ -29,6 +38,15 @@ import type { FilterOptions, MappedEvents } from '../shared/graphCalendar'
 declare global {
   interface Window {
     api: {
+      rates: {
+        list(target: RateTarget): Promise<IpcResult<RateEditorData>>
+        save(target: RateTarget, input: SaveRateInput): Promise<IpcResult<RateEditorData>>
+        delete(target: RateTarget, id: number): Promise<IpcResult<RateEditorData>>
+      }
+      billingProfile: {
+        get(target: RateTarget): Promise<IpcResult<ProfileEditorData>>
+        save(target: RateTarget, fields: ProfileFields): Promise<IpcResult<ProfileEditorData>>
+      }
       tray: {
         update(
           isRunning: boolean,
@@ -49,6 +67,7 @@ declare global {
         end(): void
       }
       onHotkeyToggle(callback: () => void): () => void
+      onOpenStart(callback: () => void): () => void
       onTrayQuickStart(callback: (clientId: number) => void): () => void
       onTrayStop(callback: () => void): () => void
       onDataChanged(callback: () => void): () => void
@@ -65,16 +84,18 @@ declare global {
         delete(id: number): Promise<IpcResult<void>>
       }
       entries: {
+        versions(id: number): Promise<IpcResult<EntryVersion[]>>
         start(input: CreateEntryInput): Promise<IpcResult<Entry>>
         switch(input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>>
         stop(id: number): Promise<IpcResult<Entry>>
+        stopAt(id: number, stoppedAt: string): Promise<IpcResult<Entry>>
         heartbeat(id: number): Promise<IpcResult<void>>
         getRunning(): Promise<IpcResult<Entry | null>>
         getByMonth(query: MonthQuery): Promise<IpcResult<Entry[]>>
         create(input: CreateManualEntryInput): Promise<IpcResult<Entry>>
         update(input: UpdateEntryInput): Promise<IpcResult<Entry>>
-        delete(id: number, cascadeLinked?: boolean): Promise<IpcResult<void>>
-        undelete(id: number): Promise<IpcResult<Entry>>
+        delete(id: number, reason?: string): Promise<IpcResult<void>>
+        undelete(id: number, reason?: string): Promise<IpcResult<Entry>>
       }
       settings: {
         getAll(): Promise<IpcResult<Settings>>
@@ -134,8 +155,16 @@ declare global {
         merge(source: string, target: string): Promise<IpcResult<void>>
         delete(name: string): Promise<IpcResult<void>>
       }
+      billingRuns: {
+        list(clientId?: number): Promise<IpcResult<BillingRunSummary[]>>
+        open(runId: number): Promise<IpcResult<void>>
+        release(runId: number, reason: string): Promise<IpcResult<void>>
+        setInvoiceRef(runId: number, ref: string): Promise<IpcResult<void>>
+      }
       pdf: {
         export(req: {
+          markAsBilled?: boolean
+          replacesRunId?: number
           clientId: number
           fromIso: string
           toIso: string
@@ -145,7 +174,9 @@ declare global {
           hideFeeColumn?: boolean
           /** @deprecated use groupBy instead. */
           groupByTag?: boolean
-        }): Promise<IpcResult<{ path: string }>>
+        }): Promise<
+          IpcResult<{ path: string; runId?: number; runNumber?: string; excludedCount?: number }>
+        >
         mergeExport(req: {
           clientId: number
           fromIso: string

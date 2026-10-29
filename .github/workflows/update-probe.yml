@@ -1,0 +1,212 @@
+name: Update probe
+
+# #269: what the in-app updater of an installed 1.22.0 does with an update.
+#
+# 1.22.0 is the first version that ships electron-updater 6.8.11 /
+# builder-util-runtime 9.7.0, so that updater runs for the first time on the
+# update to the next release. This workflow builds the checked-out code as a
+# throw-away version 1.22.99 (never published, artifact only), installs the
+# real 1.22.0 from its GitHub release, points the installed app's updater at a
+# local feed that serves the throw-away build, starts the app and reads its
+# log.
+#
+# - macOS: the build is signed ad hoc only. electron-updater downloads the
+#   update itself, but hands it to Squirrel.Mac only when the user clicks
+#   (autoInstallOnAppQuit is off), and Squirrel then checks the update against
+#   the designated requirement of the running app. The job makes that same
+#   check on the update the 1.22.0 updater downloaded, with a positive control
+#   on the release itself: is an ad-hoc-signed update accepted? (owner
+#   decision 2026-10-23: a rejection is reported in the release notes, it does
+#   not block #269).
+# - Windows: the log shows download and SHA-512 check. Installing needs a click
+#   on "Jetzt neu starten", which a runner cannot give; that step runs in the
+#   Windows Sandbox with the installer this job uploads.
+#
+# It is a measurement, not a gate: the job fails only when the probe itself
+# could not run (no install, no app start, no updater outcome in the log).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/update-probe.yml
+
+permissions: {}
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      PROBE_VERSION: 1.22.99
+      OLD_VERSION: 1.22.0
+      FEED_PORT: '8765'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the throw-away update (version only, not committed)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # electron-builder skips signing in a pull request; the release
+          # (tag) build signs ad hoc, and the update must be signed like it.
+          CSC_FOR_PULL_REQUEST: true
+        run: |
+          set -euo pipefail
+          node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f,'utf8'));p.version=process.env.PROBE_VERSION;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          pnpm run build
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pnpm exec electron-builder --win nsis --publish never
+          else
+            pnpm exec electron-builder --mac zip --publish never
+          fi
+          mkdir -p "$RUNNER_TEMP/feed"
+          cp dist/latest*.yml "$RUNNER_TEMP/feed/"
+          cp dist/*"$PROBE_VERSION"* "$RUNNER_TEMP/feed/"
+          ls -la "$RUNNER_TEMP/feed"
+
+      - name: Install the released 1.22.0
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/old"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            gh release download "v$OLD_VERSION" -R "$GITHUB_REPOSITORY" -p "time-tracking-$OLD_VERSION-setup.exe" -D "$RUNNER_TEMP/old"
+            pwsh -NoProfile -Command "Start-Process -Wait -FilePath \"$RUNNER_TEMP/old/time-tracking-$OLD_VERSION-setup.exe\" -ArgumentList '/S'"
+            APP_DIR="$(cygpath -u "$LOCALAPPDATA")/Programs/TimeTrack"
+            RESOURCES="$APP_DIR/resources"
+            APP_EXE="$APP_DIR/TimeTrack.exe"
+            LOG_FILE="$(cygpath -u "$APPDATA")/time-tracking/logs/main.log"
+          else
+            gh release download "v$OLD_VERSION" -R "$GITHUB_REPOSITORY" -p "TimeTrack-$OLD_VERSION-arm64-mac.zip" -D "$RUNNER_TEMP/old"
+            ditto -x -k "$RUNNER_TEMP/old/TimeTrack-$OLD_VERSION-arm64-mac.zip" "$RUNNER_TEMP/old"
+            APP_DIR="$RUNNER_TEMP/old/TimeTrack.app"
+            RESOURCES="$APP_DIR/Contents/Resources"
+            APP_EXE="$APP_DIR/Contents/MacOS/TimeTrack"
+            LOG_FILE="$HOME/Library/Logs/time-tracking/main.log"
+          fi
+          test -x "$APP_EXE" || { echo "::error::1.22.0 not installed at $APP_EXE"; exit 1; }
+          echo "--- shipped app-update.yml"
+          cat "$RESOURCES/app-update.yml"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # Everything about the release's own signature is read BEFORE the
+            # feed edit below touches the bundle.
+            echo "--- signature of the released 1.22.0"
+            codesign -dv "$APP_DIR" 2>&1 | grep -E 'Signature|TeamIdentifier|flags|Identifier=' || true
+            # The designated requirement of the app as users have it. Squirrel
+            # checks every update against the running app's requirement. For
+            # an ad-hoc signature codesign prints the implicit one as a
+            # comment ("# designated => cdhash H\"...\"").
+            codesign -d -r- "$APP_DIR" > "$RUNNER_TEMP/requirement.txt" 2>&1 || true
+            cat "$RUNNER_TEMP/requirement.txt"
+            OLD_REQUIREMENT="$(sed -n 's/^#* *designated => //p' "$RUNNER_TEMP/requirement.txt" | head -n 1)"
+            test -n "$OLD_REQUIREMENT" || { echo "::error::no designated requirement on 1.22.0"; exit 1; }
+            echo "OLD_REQUIREMENT=$OLD_REQUIREMENT" >> "$GITHUB_ENV"
+            # Positive control for the check after the download: an untouched
+            # copy of the release must satisfy its own requirement, or the
+            # check proves nothing.
+            ditto "$APP_DIR" "$RUNNER_TEMP/pristine/TimeTrack.app"
+            codesign --verify --deep --strict --test-requirement="=$OLD_REQUIREMENT" "$RUNNER_TEMP/pristine/TimeTrack.app" \
+              || { echo "::error::the released 1.22.0 does not satisfy its own requirement; the signature check cannot be trusted"; exit 1; }
+            echo "positive control: released 1.22.0 satisfies its own designated requirement"
+          fi
+          # Same updater config, only the feed points at the local server.
+          printf 'provider: generic\nurl: http://127.0.0.1:%s/\nupdaterCacheDirName: time-tracking-updater\n' "$FEED_PORT" > "$RESOURCES/app-update.yml"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # Editing Resources breaks the seal of the ad-hoc signature. Sign
+            # again with the flags the release has (adhoc, runtime — compared
+            # in the two printouts) and the release entitlements.
+            codesign --force --deep --sign - --options runtime \
+              --entitlements build/entitlements.mac.plist "$APP_DIR"
+            echo "--- signature after the feed edit"
+            codesign -dv "$APP_DIR" 2>&1 | grep -E 'Signature|TeamIdentifier|flags|Identifier=' || true
+          fi
+          {
+            echo "APP_EXE=$APP_EXE"
+            echo "LOG_FILE=$LOG_FILE"
+          } >> "$GITHUB_ENV"
+
+      - name: Start 1.22.0 against the local feed and read what its updater does
+        run: |
+          set -uo pipefail
+          python3 -m http.server "$FEED_PORT" --bind 127.0.0.1 --directory "$RUNNER_TEMP/feed" > "$RUNNER_TEMP/feed.log" 2>&1 &
+          FEED_PID=$!
+          sleep 2
+          "$APP_EXE" > "$RUNNER_TEMP/app.log" 2>&1 &
+          APP_PID=$!
+          # Updater errors only; the app may log others at start, and the
+          # differential-download fallback is an expected [error] line.
+          UPDATER_ERROR='error.*(updat|squirrel|signature)|(updat|squirrel|signature).*error|did not pass validation'
+          OUTCOME=""
+          for _ in $(seq 1 120); do
+            sleep 2
+            [ -f "$LOG_FILE" ] || continue
+            if grep -qiE 'has been downloaded' "$LOG_FILE"; then OUTCOME=downloaded; break; fi
+            # Via a file, not a pipe: with pipefail an early grep -q exit would
+            # make the pipeline report failure and hide the match.
+            grep -viE 'Cannot download differentially' "$LOG_FILE" > "$RUNNER_TEMP/log-filtered.txt" || true
+            if grep -qiE "$UPDATER_ERROR" "$RUNNER_TEMP/log-filtered.txt"; then OUTCOME=error; break; fi
+          done
+          echo "--- feed requests"; cat "$RUNNER_TEMP/feed.log" || true
+          echo "--- main.log of the installed 1.22.0"; cat "$LOG_FILE" 2>/dev/null || echo "(no main.log at $LOG_FILE)"
+          kill "$APP_PID" 2>/dev/null || true
+          if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM TimeTrack.exe > /dev/null 2>&1 || true; fi
+          kill "$FEED_PID" 2>/dev/null || true
+
+          if [ "$OUTCOME" = downloaded ] && [ "$RUNNER_OS" = "macOS" ]; then
+            # electron-updater hands the zip to Squirrel.Mac only inside
+            # quitAndInstall() when autoInstallOnAppQuit is off, as TimeTrack
+            # sets it (electron-updater 6.8.11, MacUpdater.js) — so the app
+            # never reaches Squirrel's signature check without the click.
+            # Make that check here: Squirrel (SQRLCodeSignature) verifies the
+            # new bundle against the designated requirement of the running
+            # app, taken above from the released 1.22.0.
+            PENDING="$(sed -n 's/.*has been downloaded to \(.*\.zip\).*/\1/p' "$LOG_FILE" | tail -n 1)"
+            echo "--- downloaded update: $PENDING"
+            test -f "$PENDING" || { echo "::error::cannot find the downloaded update ($PENDING) in main.log"; exit 1; }
+            mkdir -p "$RUNNER_TEMP/new"
+            ditto -x -k "$PENDING" "$RUNNER_TEMP/new" || { echo "::error::cannot unpack $PENDING"; exit 1; }
+            NEW_APP="$RUNNER_TEMP/new/TimeTrack.app"
+            test -d "$NEW_APP" || { echo "::error::no TimeTrack.app in $PENDING"; exit 1; }
+            codesign -dv "$NEW_APP" 2>&1 | grep -E 'Signature|flags' || true
+            if codesign --verify --deep --strict --test-requirement="=$OLD_REQUIREMENT" "$NEW_APP" > "$RUNNER_TEMP/verify.txt" 2>&1; then
+              OUTCOME=signature-accepted
+            else
+              OUTCOME=rejected-signature
+            fi
+            echo "--- codesign --verify against the 1.22.0 requirement"; cat "$RUNNER_TEMP/verify.txt"
+          fi
+          case "$OUTCOME" in
+            downloaded) echo "::notice::$RUNNER_OS: the 1.22.0 updater downloaded $PROBE_VERSION and checked it (SHA-512); installing needs the click" ;;
+            signature-accepted) echo "::notice::$RUNNER_OS: the 1.22.0 updater downloaded $PROBE_VERSION, and the update satisfies 1.22.0's designated requirement (Squirrel.Mac's check)" ;;
+            rejected-signature) echo "::warning::$RUNNER_OS: the 1.22.0 updater downloads $PROBE_VERSION, but the update does not satisfy 1.22.0's designated requirement, so Squirrel.Mac will refuse to install it (see codesign output above)" ;;
+            error) echo "::warning::$RUNNER_OS: the 1.22.0 updater reported an error (see main.log above)" ;;
+            *) echo "::error::$RUNNER_OS: no updater outcome in main.log within 240 s"; exit 1 ;;
+          esac
+
+      - name: Upload the throw-away update for the Windows Sandbox step
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: update-probe-feed-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/feed/*
+          retention-days: 7
+          if-no-files-found: error

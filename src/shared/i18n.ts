@@ -12,21 +12,30 @@
 export type Locale = 'de' | 'en'
 
 /**
+ * The app language from the `language` setting: `en` is English, anything
+ * else (including no value yet) German, the app default (migration 002).
+ * The one rule for renderer and main process (#296).
+ */
+export function localeFromSetting(value: string | null | undefined): Locale {
+  return value === 'en' ? 'en' : 'de'
+}
+
+/**
  * Translate a single key with optional variable substitution.
  *
  * Falls back to the key string itself when no translation is found so the
  * UI never shows `undefined`.
+ *
+ * Every `{name}` slot is filled in one pass (#296): a value that itself
+ * contains `{…}` (a client name, an error text, a path) stays as written
+ * instead of being filled in turn. An unknown slot stays as written too.
  */
 export function translate(
   strings: Record<string, string>,
   key: string,
-  vars?: Record<string, string | number>
+  vars: Record<string, string | number> = {}
 ): string {
-  let s = strings[key] ?? key
-  if (vars) {
-    for (const [k, v] of Object.entries(vars)) {
-      s = s.replaceAll(`{${k}}`, String(v))
-    }
-  }
-  return s
+  return (strings[key] ?? key).replace(/\{(\w+)\}/g, (slot, name: string) =>
+    Object.hasOwn(vars, name) ? String(vars[name]) : slot
+  )
 }

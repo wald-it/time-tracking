@@ -13,8 +13,10 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
-import { billedMinutesSql, budgetUsedMinutesSql, feeCentSql } from '../shared/currency'
+import { budgetUsedMinutesSql } from '../shared/currency'
+import { readDefaultIntervalMin } from '../shared/billingProfile'
 import { localMonthRange } from '../shared/dateRanges'
+import { dueRateSql } from '../shared/dueRate'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
 import type { PrivacyConfig } from './privacy'
@@ -76,6 +78,24 @@ export interface McpEntry {
   billable: boolean
   /** Only present when TIMETRACK_MCP_EXPOSE_PRIVATE_NOTES is enabled. */
   private_note?: string
+  /** 2.0: the entry's current version; pass it back as `expected_version`. */
+  version: number
+  /** 2.0: what wrote the current version (`app`, `mcp`, `idle`, …). */
+  source: string
+  created_at: string
+  /** 2.0: run numbers once an entry is billed (billing runs come with P5); null until then. */
+  billed: string[] | null
+  /** 2.0: the day segments of an entry across midnight; absent when there is only one. */
+  segments?: McpEntrySegment[]
+}
+
+export interface McpEntrySegment {
+  seq: number
+  /** The stored local date the segment belongs to. */
+  segment_date: string
+  started_at: string
+  stopped_at: string | null
+  duration_seconds: number
 }
 
 // ── Raw row types (as stored) ───────────────────────────────────────────────
@@ -107,6 +127,7 @@ interface ProjectRow {
 }
 
 interface EntryRow {
+  billed_numbers: string
   id: number
   client_id: number
   project_id: number | null
@@ -118,6 +139,11 @@ interface EntryRow {
   reference: string
   billable: number
   private_note: string
+  segment_seq: number
+  segment_date: string
+  version_no: number
+  source: string
+  created_at: string
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────
@@ -200,22 +226,48 @@ function shapeProject(row: ProjectRow, privacy: PrivacyConfig): McpProject {
   return out
 }
 
-function shapeEntry(row: EntryRow, privacy: PrivacyConfig, nowMs: number): McpEntry {
+/**
+ * One item per entry (OQ7): `rows` are the segments of one entry in day order.
+ * The item carries the entry's whole range and the sum of its segments'
+ * seconds, so a client that reads it and writes the times back changes
+ * nothing (#372: an id shared by two half-day rows let an update shorten the
+ * whole entry).
+ */
+function shapeEntry(rows: EntryRow[], privacy: PrivacyConfig, nowMs: number): McpEntry {
+  const first = rows[0]
+  const last = rows[rows.length - 1]
+  const segmentSeconds = rows.map((r) => durationSeconds(r.started_at, r.stopped_at ?? null, nowMs))
   const out: McpEntry = {
-    id: row.id,
-    client_id: row.client_id,
-    project_id: row.project_id ?? null,
-    description: row.description,
-    started_at: row.started_at,
-    stopped_at: row.stopped_at ?? null,
-    duration_seconds: durationSeconds(row.started_at, row.stopped_at ?? null, nowMs),
-    running: row.stopped_at == null,
-    rounded_min: row.rounded_min ?? null,
-    tags: deserializeTags(row.tags),
-    reference: row.reference ?? '',
-    billable: row.billable === 1
+    id: first.id,
+    client_id: first.client_id,
+    project_id: first.project_id ?? null,
+    description: first.description,
+    started_at: first.started_at,
+    stopped_at: last.stopped_at ?? null,
+    duration_seconds: segmentSeconds.reduce((a, b) => a + b, 0),
+    running: last.stopped_at == null,
+    rounded_min: first.rounded_min ?? null,
+    tags: deserializeTags(first.tags),
+    reference: first.reference ?? '',
+    billable: first.billable === 1,
+    version: first.version_no,
+    source: first.source,
+    created_at: first.created_at,
+    billed:
+      first.billed_numbers && first.billed_numbers !== '[]'
+        ? JSON.parse(first.billed_numbers)
+        : null
   }
-  if (privacy.exposePrivateNotes) out.private_note = row.private_note ?? ''
+  if (rows.length > 1) {
+    out.segments = rows.map((r, i) => ({
+      seq: r.segment_seq,
+      segment_date: r.segment_date,
+      started_at: r.started_at,
+      stopped_at: r.stopped_at ?? null,
+      duration_seconds: segmentSeconds[i]
+    }))
+  }
+  if (privacy.exposePrivateNotes) out.private_note = first.private_note ?? ''
   return out
 }
 
@@ -235,7 +287,13 @@ export function listClients(
   opts: ListClientsOptions = {}
 ): McpClient[] {
   const where = opts.includeArchived ? '' : 'WHERE active = 1'
-  const rows = db.prepare(`SELECT * FROM clients ${where} ORDER BY name ASC`).all() as ClientRow[]
+  const rows = db
+    .prepare(
+      `SELECT id, name, color, active, vat_id, contact_person,
+        ${dueRateSql('clients', 'client_id')} AS rate_cent
+      FROM clients ${where} ORDER BY name ASC`
+    )
+    .all() as ClientRow[]
   return rows
     .filter(
       (r) => matchesFilter(r.name, opts.name) && matchesFilter(r.contact_person, opts.contactPerson)
@@ -257,13 +315,11 @@ export function listProjects(
   privacy: PrivacyConfig,
   opts: ListProjectsOptions = {}
 ): McpProject[] {
-  // Budget use counts like the invoice (#285), same step as the PDF.
-  const roundRow = db
-    .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-    .get() as { value: string } | undefined
-  const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
+  // Budget use counts like the invoice (#285): billing_lines.
   const base = `
-    SELECT p.*,
+    SELECT p.id, p.client_id, p.name, p.color, p.status, p.external_project_number,
+      p.start_date, p.end_date, p.budget_minutes,
+      ${dueRateSql('p', 'project_id')} AS rate_cent,
       COALESCE(ec.cnt, 0) AS entry_count,
       ec.last_used_at,
       COALESCE(bud.used_minutes, 0) AS used_minutes
@@ -272,7 +328,7 @@ export function listProjects(
       SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
       FROM entries WHERE deleted_at IS NULL GROUP BY project_id
     ) ec ON ec.project_id = p.id
-    LEFT JOIN (${budgetUsedMinutesSql(roundStep)}) bud ON bud.project_id = p.id`
+    LEFT JOIN (${budgetUsedMinutesSql()}) bud ON bud.project_id = p.id`
   const filters: string[] = []
   const params: unknown[] = []
   if (opts.clientId === null) {
@@ -416,24 +472,85 @@ export function listEntries(
   // drift from that sum (a millisecond-exact julianday expression would be
   // needed should personal-scale DBs ever outgrow this scan). Only the
   // returned slice pays the shaping cost; summary-only shapes nothing.
+  //
+  // An entry matches when any of its segments does (the window and the
+  // filters see segments), and then comes back whole, once, with all its
+  // segments. Its total counts only the segments inside the window, so a
+  // month's total agrees with the calendar and the PDF (owner decision
+  // 2026-10-26); an entry that lies wholly inside the window adds exactly its
+  // `duration_seconds`.
   const rows = db
     .prepare(
-      `SELECT * FROM entries WHERE ${filters.join(' AND ')}
-       ORDER BY started_at ASC`
+      `SELECT e.*, v.source AS source,
+       (SELECT json_group_array(number) FROM (
+         SELECT DISTINCT r.number FROM billing_run_item i JOIN billing_run r ON r.id = i.run_id
+         WHERE i.entry_id = e.id AND i.active = 1 ORDER BY r.number
+       )) AS billed_numbers
+         FROM entries e JOIN entry_version v ON v.id = e.version_id
+        WHERE e.id IN (SELECT id FROM entries WHERE ${filters.join(' AND ')})
+        ORDER BY e.id, e.segment_seq`
     )
     .all(...params) as EntryRow[]
 
-  const total_seconds = rows.reduce(
-    (sum, r) => sum + durationSeconds(r.started_at, r.stopped_at ?? null, nowMs),
+  const groups: EntryRow[][] = []
+  for (const r of rows) {
+    const g = groups[groups.length - 1]
+    if (g && g[0].id === r.id) g.push(r)
+    else groups.push([r])
+  }
+  groups.sort((x, y) =>
+    x[0].started_at < y[0].started_at
+      ? -1
+      : x[0].started_at > y[0].started_at
+        ? 1
+        : x[0].id - y[0].id
+  )
+
+  const inWindow = (r: EntryRow): boolean =>
+    (from === undefined || r.started_at >= from) && (to === undefined || r.started_at < to)
+  const total_seconds = groups.reduce(
+    (sum, g) =>
+      sum +
+      g
+        .filter(inWindow)
+        .reduce((s2, r) => s2 + durationSeconds(r.started_at, r.stopped_at ?? null, nowMs), 0),
     0
   )
-  if (opts.summaryOnly) return { count: rows.length, total_seconds }
+  if (opts.summaryOnly) return { count: groups.length, total_seconds }
   const limit = Math.min(Math.max(1, opts.limit ?? 1000), 10000)
   return {
-    count: rows.length,
+    count: groups.length,
     total_seconds,
-    entries: rows.slice(0, limit).map((r) => shapeEntry(r, privacy, nowMs))
+    entries: groups.slice(0, limit).map((g) => shapeEntry(g, privacy, nowMs))
   }
+}
+
+/** The given entries, whole and in the given order, one item each. */
+function loadEntries(
+  db: SqliteDb,
+  privacy: PrivacyConfig,
+  ids: number[],
+  nowMs: number
+): McpEntry[] {
+  if (ids.length === 0) return []
+  const rows = db
+    .prepare(
+      `SELECT e.*, v.source AS source,
+       (SELECT json_group_array(number) FROM (
+         SELECT DISTINCT r.number FROM billing_run_item i JOIN billing_run r ON r.id = i.run_id
+         WHERE i.entry_id = e.id AND i.active = 1 ORDER BY r.number
+       )) AS billed_numbers
+         FROM entries e JOIN entry_version v ON v.id = e.version_id
+        WHERE e.id IN (${ids.map(() => '?').join(', ')})
+        ORDER BY e.id, e.segment_seq`
+    )
+    .all(...ids) as EntryRow[]
+  const byId = new Map<number, EntryRow[]>()
+  for (const r of rows) byId.set(r.id, [...(byId.get(r.id) ?? []), r])
+  return ids.flatMap((id) => {
+    const g = byId.get(id)
+    return g ? [shapeEntry(g, privacy, nowMs)] : []
+  })
 }
 
 export function getRunningTimer(
@@ -441,14 +558,112 @@ export function getRunningTimer(
   privacy: PrivacyConfig,
   nowMs: number
 ): McpEntry | null {
-  const row = db
+  // One statement, so the entry found and the rows shaped come from the same
+  // snapshot: the app may stop or delete the timer at any moment.
+  const rows = db
     .prepare(
-      `SELECT * FROM entries
-       WHERE stopped_at IS NULL AND deleted_at IS NULL
-       ORDER BY started_at DESC LIMIT 1`
+      `SELECT e.*, v.source AS source,
+       (SELECT json_group_array(number) FROM (
+         SELECT DISTINCT r.number FROM billing_run_item i JOIN billing_run r ON r.id = i.run_id
+         WHERE i.entry_id = e.id AND i.active = 1 ORDER BY r.number
+       )) AS billed_numbers
+         FROM entries e JOIN entry_version v ON v.id = e.version_id
+        WHERE e.id = (SELECT id FROM entries
+                       WHERE stopped_at IS NULL AND deleted_at IS NULL
+                       ORDER BY started_at DESC LIMIT 1)
+        ORDER BY e.segment_seq`
     )
-    .get() as EntryRow | undefined
-  return row ? shapeEntry(row, privacy, nowMs) : null
+    .all() as EntryRow[]
+  return rows.length ? shapeEntry(rows, privacy, nowMs) : null
+}
+
+export interface McpEntryVersion {
+  /** The version number; pass the newest one back as `expected_version`. */
+  version: number
+  state: 'open' | 'sealed'
+  deleted: boolean
+  source: string
+  written_at: string
+  reason: string | null
+  client_id: number
+  project_id: number | null
+  description: string
+  started_at: string
+  stopped_at: string | null
+  tags: string[]
+  reference: string
+  billable: boolean
+  /** Only present when TIMETRACK_MCP_EXPOSE_PRIVATE_NOTES is enabled. */
+  private_note?: string
+}
+
+export interface McpEntryHistory {
+  id: number
+  versions: McpEntryVersion[]
+}
+
+interface EntryVersionRow {
+  version_no: number
+  state: 'open' | 'sealed'
+  deleted: number
+  source: string
+  written_at: string
+  reason: string | null
+  client_id: number
+  project_id: number | null
+  description: string
+  started_at: string
+  stopped_at: string | null
+  tags: string
+  reference: string
+  billable: number
+  private_note: string
+}
+
+/**
+ * Every version of one entry, oldest first. The id is an entry id; a 1.x id
+ * from before the migration resolves through `entry_legacy_id`. Null when no
+ * such entry exists. A deleted entry keeps its history.
+ */
+export function getEntryHistory(
+  db: SqliteDb,
+  privacy: PrivacyConfig,
+  id: number
+): McpEntryHistory | null {
+  let entryId: number | undefined = (
+    db.prepare(`SELECT id FROM entry WHERE id = ?`).get(id) as { id: number } | undefined
+  )?.id
+  if (entryId === undefined) {
+    entryId = (
+      db.prepare(`SELECT entry_id FROM entry_legacy_id WHERE legacy_id = ?`).get(id) as
+        | { entry_id: number }
+        | undefined
+    )?.entry_id
+  }
+  if (entryId === undefined) return null
+  const rows = db
+    .prepare(`SELECT * FROM entry_version WHERE entry_id = ? ORDER BY version_no`)
+    .all(entryId) as EntryVersionRow[]
+  return {
+    id: entryId,
+    versions: rows.map((r) => ({
+      version: r.version_no,
+      state: r.state,
+      deleted: r.deleted === 1,
+      source: r.source,
+      written_at: r.written_at,
+      reason: r.reason,
+      client_id: r.client_id,
+      project_id: r.project_id,
+      description: r.description,
+      started_at: r.started_at,
+      stopped_at: r.stopped_at,
+      tags: deserializeTags(r.tags),
+      reference: r.reference,
+      billable: r.billable === 1,
+      ...(privacy.exposePrivateNotes ? { private_note: r.private_note } : {})
+    }))
+  }
 }
 
 export interface McpDashboard {
@@ -491,12 +706,12 @@ export function getDashboard(db: SqliteDb, privacy: PrivacyConfig, nowMs: number
     )
     .get() as { seconds: number }
 
-  const recentRows = db
+  const recentIds = db
     .prepare(
-      `SELECT * FROM entries WHERE deleted_at IS NULL
-       ORDER BY started_at DESC LIMIT 5`
+      `SELECT id FROM entries WHERE deleted_at IS NULL
+       GROUP BY id ORDER BY MIN(started_at) DESC LIMIT 5`
     )
-    .all() as EntryRow[]
+    .all() as Array<{ id: number }>
 
   const topRows = db
     .prepare(
@@ -522,7 +737,12 @@ export function getDashboard(db: SqliteDb, privacy: PrivacyConfig, nowMs: number
   return {
     today_seconds: Math.max(0, Math.floor(today.seconds ?? 0)),
     week_seconds: Math.max(0, Math.floor(week.seconds ?? 0)),
-    recent_entries: recentRows.map((r) => shapeEntry(r, privacy, nowMs)),
+    recent_entries: loadEntries(
+      db,
+      privacy,
+      recentIds.map((r) => r.id),
+      nowMs
+    ),
     top_clients_30d: topRows.map((r) => ({
       client_id: r.client_id,
       name: r.name,
@@ -587,18 +807,13 @@ export function getAnalytics(
   year: number,
   month: number
 ): McpAnalytics {
-  const roundRow = db
-    .prepare(`SELECT value FROM settings WHERE key = 'pdf_round_minutes'`)
-    .get() as { value: string } | undefined
-  const roundStep = parseInt(roundRow?.value ?? '0', 10) || 0
-
   // Seconds are worked time, raw — the same rule as the app's Auswertung
   // (owner decision 2026-10-22). `rounded_seconds` is the month rounded per
   // entry like the invoice. Revenue follows the invoice rule (REVENUE).
   const ENTRY_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
-  const BILLED_SEC = `(${billedMinutesSql(roundStep)} * 60)`
+  const BILLED_SEC = `(e.billed_minutes * 60)`
   // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
-  const REVENUE = feeCentSql(roundStep)
+  const REVENUE = 'e.fee_cent'
   const monthKey = `${year}-${String(month).padStart(2, '0')}`
 
   const totals = db
@@ -609,11 +824,11 @@ export function getAnalytics(
          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent,
          COALESCE(SUM(${BILLED_SEC}), 0) AS billed_sec,
          COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${BILLED_SEC} ELSE 0 END), 0) AS billable_billed_sec
-       FROM entries e
+       FROM billing_lines e
        JOIN clients c ON c.id = e.client_id
        LEFT JOIN projects p ON p.id = e.project_id
-       WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
-         AND strftime('%Y-%m', e.started_at, 'localtime') = ?`
+       WHERE e.stopped_at IS NOT NULL
+         AND substr(e.segment_date, 1, 7) = ?`
     )
     .get(monthKey) as {
     total_sec: number
@@ -623,18 +838,20 @@ export function getAnalytics(
     billable_billed_sec: number
   }
 
+  // List groups with worked time or billed billable time, so their presence
+  // cannot reveal whether a rate exists when rates are hidden.
   const byClient = db
     .prepare(
       `SELECT c.id AS client_id, c.name, c.color,
               COALESCE(SUM(${ENTRY_SEC}), 0) AS seconds,
               COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent
-         FROM entries e
+         FROM billing_lines e
          JOIN clients c ON c.id = e.client_id
          LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
+        WHERE e.stopped_at IS NOT NULL
+          AND substr(e.segment_date, 1, 7) = ?
         GROUP BY c.id
-        HAVING seconds > 0 OR revenue_cent > 0
+        HAVING seconds > 0 OR SUM(CASE WHEN e.billable = 1 THEN ${BILLED_SEC} ELSE 0 END) > 0
         ORDER BY seconds DESC, c.name ASC`
     )
     .all(monthKey) as Array<{
@@ -652,14 +869,14 @@ export function getAnalytics(
               COALESCE(pr.name, '(kein Projekt)') AS name,
               COALESCE(SUM(${ENTRY_SEC}), 0) AS seconds,
               COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent
-         FROM entries e
+         FROM billing_lines e
          JOIN clients c ON c.id = e.client_id
          LEFT JOIN projects p ON p.id = e.project_id
          LEFT JOIN projects pr ON pr.id = e.project_id
-        WHERE e.deleted_at IS NULL AND e.stopped_at IS NOT NULL
-          AND strftime('%Y-%m', e.started_at, 'localtime') = ?
+        WHERE e.stopped_at IS NOT NULL
+          AND substr(e.segment_date, 1, 7) = ?
         GROUP BY e.project_id
-        HAVING seconds > 0 OR revenue_cent > 0
+        HAVING seconds > 0 OR SUM(CASE WHEN e.billable = 1 THEN ${BILLED_SEC} ELSE 0 END) > 0
         ORDER BY seconds DESC, name ASC`
     )
     .all(monthKey) as Array<{
@@ -677,7 +894,7 @@ export function getAnalytics(
     billable_seconds: Math.max(0, Math.floor(totals.billable_sec ?? 0)),
     rounded_seconds: Math.max(0, Math.round(totals.billed_sec ?? 0)),
     billable_rounded_seconds: Math.max(0, Math.round(totals.billable_billed_sec ?? 0)),
-    rounding_minutes: roundStep,
+    rounding_minutes: readDefaultIntervalMin(db),
     distinct_client_count: byClient.length,
     by_client: byClient.map((r) => ({
       client_id: r.client_id,

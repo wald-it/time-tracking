@@ -3,9 +3,10 @@
  * → Updates, and the manual "Check now" works either way.
  *
  * Runs the real initAutoUpdater against a stubbed electron-updater: with the
- * switch off, the start path must not call checkForUpdatesAndNotify (no
- * request to GitHub, so nothing to download), while the `update:check` handler
- * still calls checkForUpdates.
+ * switch off, the start path must not check (no request to GitHub, so nothing
+ * to download), while the `update:check` handler still checks. Both call
+ * checkForUpdates; the start path no longer uses checkForUpdatesAndNotify,
+ * whose own download handler leaves an unhandled rejection (#309).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -43,7 +44,8 @@ let initAutoUpdater: typeof import('./updater').initAutoUpdater
 function init(stored: string | undefined, isDev = false): void {
   initAutoUpdater({
     isDev,
-    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined)
+    getSetting: (key) => (key === UPDATE_CHECK_SETTING_KEY ? stored : undefined),
+    getLocale: () => 'de'
   })
 }
 
@@ -75,12 +77,14 @@ describe('update check at start (#273)', () => {
 
   it('switched on: checks at start', () => {
     init('1')
-    expect(updater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1)
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(updater.checkForUpdatesAndNotify).not.toHaveBeenCalled()
   })
 
   it('never set (existing installations): checks at start', () => {
     init(undefined)
-    expect(updater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1)
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(updater.checkForUpdatesAndNotify).not.toHaveBeenCalled()
   })
 
   it('a failed settings read does not abort startup, skips the check at start and logs it', () => {
@@ -89,7 +93,8 @@ describe('update check at start (#273)', () => {
         isDev: false,
         getSetting: () => {
           throw new Error('database is locked')
-        }
+        },
+        getLocale: () => 'de'
       })
     ).not.toThrow()
     expect(updater.checkForUpdatesAndNotify).not.toHaveBeenCalled()
@@ -103,6 +108,7 @@ describe('update check at start (#273)', () => {
 
   it('dev mode: no check at start even when switched on', () => {
     init('1', true)
+    expect(updater.checkForUpdates).not.toHaveBeenCalled()
     expect(updater.checkForUpdatesAndNotify).not.toHaveBeenCalled()
   })
 })

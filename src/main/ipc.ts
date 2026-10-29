@@ -1,3 +1,11 @@
+import {
+  exportRunToFile,
+  listRuns,
+  MissingClientShortCodeError,
+  openRunPdf,
+  releaseRun,
+  setInvoiceRef
+} from './billingRuns'
 import { isExternalUrlAllowed } from './externalLinks'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
@@ -7,37 +15,74 @@ import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
+import { createBackup, listBackups, restoreListedBackupOrReport } from './backup'
 import {
-  createBackup,
-  listBackups,
-  restoreListedBackupOrReport,
-  RESTORE_FAILED_TITLE
-} from './backup'
-import { readSettingSync, writeSettingFromRenderer } from './settingsWrite'
+  readSettingSync,
+  writeSettingFromRenderer,
+  type SensitiveSettingChange
+} from './settingsWrite'
+import {
+  MAIN_ONLY_SETTING_KEYS,
+  rememberPickedPdf,
+  ShellTargets,
+  SHELL_REFUSED_MESSAGE,
+  unpickedPdfError
+} from './handedOutPaths'
 import {
   createManualEntry,
   updateManualEntry,
   switchTimerAndNotify,
-  stopEntry
+  stopEntry,
+  stopEntryAt,
+  deleteEntry,
+  undeleteEntry,
+  heartbeat,
+  listEntryVersions
 } from './entryMutations'
+import { deleteClientGuarded, deleteProjectGuarded } from './masterDataDelete'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
+import { exportDefaultPath, rememberExportFolder } from './exportFolders'
 import { buildPdfHtml, buildPdfPayload, type PdfRequest } from './pdf'
 import { renderPdfBuffer } from './pdfWindow'
+import { discardViewerCopy, writeViewerCopy } from './runViewerCopy'
 import { readLogoAsDataUrl, removeLogo, saveLogo } from './logo'
 import { handleCsvExport, type CsvRequest } from './csvExport'
 import { handleIcalExport, type IcalRequest } from './icalExport'
-import { mergeExportHandler, mergeOnlyHandler, pdfInfoHandler } from './pdfMergeHandlers'
+import {
+  mergeExportHandler,
+  mergeOnlyHandler,
+  pdfInfoHandler,
+  realFsDeps,
+  saveDialogIn
+} from './pdfMergeHandlers'
+import { cancelledResult, dialogT, exportFileName, appLocale, type DialogT } from './mainI18n'
+import type { Locale } from '../shared/i18n'
 import { registerAnalyticsHandlers } from './analyticsHandlers'
+import {
+  readRates,
+  saveRate,
+  deleteRate,
+  readProfile,
+  saveProfile,
+  syncDueRates
+} from './rateEditor'
+import type { RateTarget, SaveRateInput, ProfileFields } from '../shared/rateEditor'
 import { registerBudgetHandlers } from './budgetHandlers'
 import { budgetUsedMinutesSql } from '../shared/currency'
+import {
+  normaliseShortCodeInput,
+  SHORT_CODE_INVALID_ERROR,
+  SHORT_CODE_PATTERN,
+  SHORT_CODE_TAKEN_ERROR
+} from '../shared/clientShortCode'
 import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
-  readRoundMinutes,
+  readRecentEntries,
   readTodayEntries,
   readTopClients30d,
   readTotals,
@@ -46,6 +91,7 @@ import {
 import type {
   Client,
   Entry,
+  EntryVersion,
   Project,
   CreateClientInput,
   UpdateClientInput,
@@ -63,14 +109,17 @@ import type {
   LicenseEntry
 } from '../shared/types'
 import { monthEntries } from './entryRanges'
+import type { HotkeyChange } from './hotkeySlot'
 
 export interface IpcHooks {
   refreshTrayClients(): void
-  setHotkey(accelerator: string): boolean
+  /** Rebuild tray menu and tooltip after the app language changed (#296). */
+  refreshTrayLanguage(): void
+  setHotkey(accelerator: string): HotkeyChange
   setAutoStart(enabled: boolean): void
   setIdleThreshold(minutes: number): void
   setMiniEnabled(enabled: boolean): void
-  setMiniHotkey(accelerator: string): boolean
+  setMiniHotkey(accelerator: string): HotkeyChange
   setMcpWriteEnabled(enabled: boolean): void
   setControllerEnabled(enabled: boolean): void
   /** Re-run the presence reconciler (#132) after a relevant settings change. */
@@ -79,13 +128,20 @@ export interface IpcHooks {
   setIcalFeedEnabled(enabled: boolean): void
   /** Restart the feed server after a port/token change (no-op when disabled). */
   restartIcalFeed(): void
+  /**
+   * #272 (A3): ask natively before a settings change that widens access to the
+   * user's data (settingsWrite.ts → sensitiveSettingChange). True = go ahead.
+   */
+  confirmSensitiveSetting(change: SensitiveSettingChange): Promise<boolean>
+  /** #301: end any MCP start/stop approval (the confirm mode changed). */
+  forgetMcpApproval(): void
 }
 
 function ok<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 function fail(error: unknown): IpcResult<never> {
-  return { ok: false, error: String(error) }
+  return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
 /**
@@ -118,10 +174,111 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+  ipcMain.handle('rates:list', (_e, target: RateTarget) => {
+    try {
+      // The forms take the current rate from here, so it must be the due one.
+      syncDueRates(db)
+      return ok(readRates(db, target))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('rates:save', (_e, target: RateTarget, input: SaveRateInput) => {
+    try {
+      const result = saveRate(db, target, input)
+      hooks.refreshTrayClients()
+      return ok(result)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('rates:delete', (_e, target: RateTarget, id: number) => {
+    try {
+      const result = deleteRate(db, target, id)
+      hooks.refreshTrayClients()
+      return ok(result)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-profile:get', (_e, target: RateTarget) => {
+    try {
+      return ok(readProfile(db, target))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-profile:save', (_e, target: RateTarget, fields: ProfileFields) => {
+    try {
+      return ok(saveProfile(db, target, fields))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  // Native dialogs, file names and cancel texts follow the app language
+  // (#270, #296). Never throws (mainI18n.appLocale): with the handle closed
+  // after a restore attempt, the language last read in this run, the same
+  // answer the tray gets. The restore reads it once, before it can close the
+  // handle.
+  const dialogLocale = (): Locale =>
+    appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
+  const tDialog: DialogT = (key, vars) => dialogT(dialogLocale())(key, vars)
+
+  /**
+   * The app's own locations, without touching the file system (no mkdir of a
+   * possibly dead network share). The shell helpers accept these, plus the
+   * default backup folder and the files a merge wrote. `paths:get` reports
+   * them too, with its own `backups` value (which creates the folder).
+   */
+  function appLocations(): { db: string; backups: string; logs: string; logFile: string } {
+    // electron-log returns a File transport whose `getFile()` resolves
+    // the on-disk log path lazily; the directory is its parent.
+    const logFile = log.transports.file.getFile().path
+    return {
+      db: getDbPath(),
+      backups: readBackupPathSetting(db) ?? getDefaultBackupsDir(),
+      logs: dirname(logFile),
+      logFile
+    }
+  }
+
+  /** #272: why a PDF request is refused, or null. A DB error refuses too. */
+  function pdfRequestRefusal(req: unknown): string | null {
+    try {
+      return unpickedPdfError(db, req)
+    } catch (e) {
+      return String(e)
+    }
+  }
+
+  // #272: what the shell helpers may open or reveal. The default backup
+  // folder stays allowed while a custom one is set (Settings falls back to it).
+  const shellTargets = new ShellTargets(() => [
+    ...Object.values(appLocations()),
+    getDefaultBackupsDir()
+  ])
 
   // ── Clients ──────────────────────────────────────────────────
+  function normaliseClientShortCode(value: unknown, clientId?: number): string | null {
+    if (value === undefined || value === null) return null
+    if (typeof value !== 'string') throw new Error(SHORT_CODE_INVALID_ERROR)
+    const code = normaliseShortCodeInput(value)
+    if (code === null) return null
+    if (!SHORT_CODE_PATTERN.test(code)) throw new Error(SHORT_CODE_INVALID_ERROR)
+    const owner = db.prepare('SELECT id FROM clients WHERE short_code = ?').get(code) as
+      | { id: number }
+      | undefined
+    if (owner && owner.id !== clientId) throw new Error(SHORT_CODE_TAKEN_ERROR)
+    return code
+  }
+
   ipcMain.handle('clients:getAll', (): IpcResult<Client[]> => {
     try {
+      // An app left open past a rate's valid-from day still shows the due rate.
+      syncDueRates(db)
       const rows = db.prepare(`SELECT * FROM clients ORDER BY name ASC`).all() as Client[]
       return ok(rows)
     } catch (e) {
@@ -132,18 +289,20 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('clients:create', (_e, input: CreateClientInput): IpcResult<Client> => {
     try {
       const rate = normaliseRateCent(input.rate_cent)
+      const shortCode = normaliseClientShortCode(input.short_code)
       const info = db
         .prepare(
-          `INSERT INTO clients (name, color, rate_cent,
+          `INSERT INTO clients (name, color, rate_cent, short_code,
              billing_address_line1, billing_address_line2,
              billing_address_line3, billing_address_line4,
              vat_id, contact_person, contact_email)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           input.name.trim(),
           input.color,
           rate,
+          shortCode,
           input.billing_address_line1?.trim() ?? null,
           input.billing_address_line2?.trim() ?? null,
           input.billing_address_line3?.trim() ?? null,
@@ -164,10 +323,17 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle('clients:update', (_e, input: UpdateClientInput): IpcResult<Client> => {
     try {
-      const rate = normaliseRateCent(input.rate_cent)
+      // The form sends rate_cent only when the field was changed. Its copy
+      // may lag a due editor row, and writing it back would reset the rate.
+      const hasRate = input.rate_cent !== undefined
+      const rate = hasRate ? normaliseRateCent(input.rate_cent) : null
+      const hasShortCode = input.short_code !== undefined
+      const shortCode = hasShortCode ? normaliseClientShortCode(input.short_code, input.id) : null
       db.prepare(
         `UPDATE clients SET
-           name = ?, color = ?, active = ?, rate_cent = ?,
+           name = ?, color = ?, active = ?,
+           rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END,
+           short_code = CASE WHEN ? THEN ? ELSE short_code END,
            billing_address_line1 = ?, billing_address_line2 = ?,
            billing_address_line3 = ?, billing_address_line4 = ?,
            vat_id = ?, contact_person = ?, contact_email = ?
@@ -176,7 +342,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         input.name.trim(),
         input.color,
         input.active,
+        hasRate ? 1 : 0,
         rate,
+        hasShortCode ? 1 : 0,
+        shortCode,
         input.billing_address_line1?.trim() ?? null,
         input.billing_address_line2?.trim() ?? null,
         input.billing_address_line3?.trim() ?? null,
@@ -194,11 +363,13 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  // 2.0: refused while any entry version points at the client (owner
+  // decision 2026-10-26, see masterDataDelete.ts).
   ipcMain.handle('clients:delete', (_e, id: number): IpcResult<void> => {
     try {
-      db.prepare(`DELETE FROM clients WHERE id = ?`).run(id)
-      hooks.refreshTrayClients()
-      return ok(undefined)
+      const res = deleteClientGuarded(db, id)
+      if (res.ok) hooks.refreshTrayClients()
+      return res
     } catch (e) {
       return fail(e)
     }
@@ -247,12 +418,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  ipcMain.handle('entries:stopAt', (_e, id: number, stoppedAt: string): IpcResult<Entry> => {
+    try {
+      const res = stopEntryAt(db, id, stoppedAt, { source: 'idle' })
+      if (res.ok) emitWebhooks(db, 'timer.stopped', res.data, { log: logWebhookDelivery })
+      return res
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
   ipcMain.handle('entries:heartbeat', (_e, id: number): IpcResult<void> => {
     try {
-      db.prepare(`UPDATE entries SET heartbeat_at = ? WHERE id = ?`).run(
-        new Date().toISOString(),
-        id
-      )
+      heartbeat(db, id)
       return ok(undefined)
     } catch (e) {
       return fail(e)
@@ -270,6 +448,15 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           )
           .get() as Entry) ?? null
       return ok(row)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
+  ipcMain.handle('entries:versions', (_e, id: number): IpcResult<EntryVersion[]> => {
+    try {
+      if (!Number.isSafeInteger(id) || id <= 0) return fail(new Error('Ungültige Eintrag-ID'))
+      return ok(listEntryVersions(db, id))
     } catch (e) {
       return fail(e)
     }
@@ -318,35 +505,20 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   /**
    * Soft-delete: flip deleted_at instead of removing the row, so the Toast
    * "Rückgängig" path can restore the SAME id (preserves future PDF FKs — E10).
-   *
-   * v1.3 PR B: when `cascadeLinked` is true and the row has a `link_id`,
-   * all rows sharing that id are soft-deleted in one transaction (used by
-   * the Drawer's "auch zweite Hälfte löschen" confirm).
+   * Either half of an entry across midnight deletes the whole entry, and undo
+   * brings back what that delete removed (#323, see `deleteEntry`).
    */
-  ipcMain.handle('entries:delete', (_e, id: number, cascadeLinked = false): IpcResult<void> => {
+  ipcMain.handle('entries:delete', (_e, id: number, reason?: string): IpcResult<void> => {
     try {
-      const now = new Date().toISOString()
-      if (cascadeLinked) {
-        const row = db.prepare(`SELECT link_id FROM entries WHERE id = ?`).get(id) as
-          | { link_id: string | null }
-          | undefined
-        if (row?.link_id) {
-          db.prepare(`UPDATE entries SET deleted_at = ? WHERE link_id = ?`).run(now, row.link_id)
-          return ok(undefined)
-        }
-      }
-      db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(now, id)
-      return ok(undefined)
+      return deleteEntry(db, id, { reason })
     } catch (e) {
       return fail(e)
     }
   })
 
-  ipcMain.handle('entries:undelete', (_e, id: number): IpcResult<Entry> => {
+  ipcMain.handle('entries:undelete', (_e, id: number, reason?: string): IpcResult<Entry> => {
     try {
-      db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(id)
-      const row = db.prepare(`SELECT * FROM entries WHERE id = ?`).get(id) as Entry
-      return ok(row)
+      return undeleteEntry(db, id, { reason })
     } catch (e) {
       return fail(e)
     }
@@ -387,8 +559,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     'projects:getAll',
     (_e, req?: { clientId?: number | null }): IpcResult<Project[]> => {
       try {
-        // Budget use counts like the invoice (#285), same step as the PDF.
-        const roundStep = readRoundMinutes(db)
+        syncDueRates(db)
+        // Budget use counts like the invoice (#285): billing_lines.
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,
@@ -398,7 +570,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
             SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
             FROM entries WHERE deleted_at IS NULL GROUP BY project_id
           ) ec ON ec.project_id = p.id
-          LEFT JOIN (${budgetUsedMinutesSql(roundStep)}) bud ON bud.project_id = p.id`
+          LEFT JOIN (${budgetUsedMinutesSql()}) bud ON bud.project_id = p.id`
         const order = `ORDER BY CASE WHEN p.status = 'active' THEN 0 WHEN p.status = 'paused' THEN 1 ELSE 2 END, p.name`
         let query: string
         let params: unknown[]
@@ -475,10 +647,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       const status = input.status ?? 'active'
       // Keep `active` in sync with `status` for backward compatibility.
       const activeFlag = status === 'active' ? 1 : 0
+      // As for clients: no rate_cent keeps the column. A sent null is a real
+      // value (inherit the client rate).
+      const hasRate = input.rate_cent !== undefined
       const result = db
         .prepare(
           `UPDATE projects SET
-             client_id=?, name=?, color=?, rate_cent=?, active=?,
+             client_id=?, name=?, color=?,
+             rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END, active=?,
              external_project_number=?, start_date=?, end_date=?,
              budget_minutes=?, status=?, contact_person=?
            WHERE id=? RETURNING *`
@@ -487,6 +663,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           input.client_id ?? null,
           input.name.trim(),
           input.color ?? '',
+          hasRate ? 1 : 0,
           input.rate_cent ?? null,
           activeFlag,
           input.external_project_number?.trim() ?? null,
@@ -513,17 +690,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  // 2.0: refused while any entry version points at the project, deleted
+  // entries included (owner decision 2026-10-26, see masterDataDelete.ts).
   ipcMain.handle('projects:delete', (_e, id: number): IpcResult<void> => {
     try {
-      const tx = db.transaction(() => {
-        const countRow = db
-          .prepare(`SELECT COUNT(*) AS n FROM entries WHERE project_id = ? AND deleted_at IS NULL`)
-          .get(id) as { n: number }
-        if (countRow.n > 0) throw new Error('Projekt hat noch aktive Einträge')
-        db.prepare('DELETE FROM projects WHERE id = ?').run(id)
-      })
-      tx()
-      return ok(undefined)
+      return deleteProjectGuarded(db, id)
     } catch (e) {
       return fail(e)
     }
@@ -570,13 +741,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         // the Stream Deck dial can never drift apart (#186).
         const totals = readTotals(db)
 
-        const recentEntries = db
-          .prepare(
-            `SELECT * FROM entries
-               WHERE deleted_at IS NULL
-               ORDER BY started_at DESC LIMIT 5`
-          )
-          .all() as Entry[]
+        const recentEntries = readRecentEntries(db, 5)
 
         return {
           todaySeconds: totals.today_seconds,
@@ -600,17 +765,20 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         key: string
         value: string
       }[]
-      const settings = Object.fromEntries(rows.map((r) => [r.key, r.value])) as unknown as Settings
+      const settings = Object.fromEntries(
+        rows.filter((r) => !MAIN_ONLY_SETTING_KEYS.has(r.key)).map((r) => [r.key, r.value])
+      ) as unknown as Settings
       return ok(settings)
     } catch (e) {
       return fail(e)
     }
   })
 
-  // #272: only keys on the renderer allow-list (see settingsWrite.ts).
+  // #272: only keys on the renderer allow-list, sensitive ones after a native
+  // confirmation (see settingsWrite.ts).
   ipcMain.handle(
     'settings:set',
-    (_e, key: unknown, value: unknown): IpcResult<void> =>
+    (_e, key: unknown, value: unknown): Promise<IpcResult<void>> =>
       writeSettingFromRenderer(db, hooks, key, value)
   )
 
@@ -681,19 +849,24 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle(
     'backup:restore',
     (_e, filename: unknown): IpcResult<{ safetyBackupPath: string }> => {
+      const locale = dialogLocale()
       try {
         return restoreListedBackupOrReport(
           db,
           filename,
           getBackupPathSetting() || undefined,
           getDbPath(),
+          locale,
           (title, message) => dialog.showErrorBox(title, message)
         )
       } catch (e) {
         // Same rule as inside: the renderer relaunches next, so say it here.
-        const message = `Wiederherstellung nicht durchgeführt: ${e instanceof Error ? e.message : String(e)}`
+        const t = dialogT(locale)
+        const message = t('mainDialog.restore.failed', {
+          cause: e instanceof Error ? e.message : String(e)
+        })
         try {
-          dialog.showErrorBox(RESTORE_FAILED_TITLE, message)
+          dialog.showErrorBox(t('mainDialog.restore.title'), message)
         } catch {
           // The dialog itself may be what failed; still answer the renderer.
         }
@@ -706,7 +879,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openDirectory', 'createDirectory'],
-        title: 'Backup-Pfad wählen'
+        title: tDialog('mainDialog.backupPath.title')
       })
       if (canceled || filePaths.length === 0) return ok('')
       const dir = filePaths[0]
@@ -769,8 +942,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   })
 
   // ── Shell helpers ────────────────────────────────
-  ipcMain.handle('shell:openPath', async (_e, path: string): Promise<IpcResult<void>> => {
-    const err = await shell.openPath(path)
+  // #272: only the app's own locations and files it wrote (handedOutPaths.ts).
+  ipcMain.handle('shell:openPath', async (_e, path: unknown): Promise<IpcResult<void>> => {
+    if (!shellTargets.allows(path)) return fail(SHELL_REFUSED_MESSAGE)
+    const err = await shell.openPath(path as string)
     if (err) return fail(err)
     return ok(undefined)
   })
@@ -781,8 +956,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     return ok(undefined)
   })
 
-  ipcMain.handle('shell:showItemInFolder', (_e, path: string): IpcResult<void> => {
-    shell.showItemInFolder(path)
+  ipcMain.handle('shell:showItemInFolder', (_e, path: unknown): IpcResult<void> => {
+    if (!shellTargets.allows(path)) return fail(SHELL_REFUSED_MESSAGE)
+    shell.showItemInFolder(path as string)
     return ok(undefined)
   })
 
@@ -796,20 +972,16 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       logFile: string
       mcp: McpRegistration
     }> => {
-      // electron-log returns a File transport whose `getFile()` resolves
-      // the on-disk log path lazily; the directory is its parent.
-      const logFile = log.transports.file.getFile().path
-      let backupsDir: string
+      // Settings opens the backup folder from here, so create it if missing.
+      let backups: string
       try {
-        backupsDir = getBackupsDir(getBackupPathSetting() || undefined)
+        backups = getBackupsDir(getBackupPathSetting() || undefined)
       } catch {
-        backupsDir = getDefaultBackupsDir()
+        backups = getDefaultBackupsDir()
       }
       return ok({
-        db: getDbPath(),
-        backups: backupsDir,
-        logs: dirname(logFile),
-        logFile,
+        ...appLocations(),
+        backups,
         // Settings → Integrationen renders this as a copy-paste `.mcp.json`.
         mcp: buildMcpRegistration(process.execPath, app.getAppPath())
       })
@@ -834,17 +1006,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('export:json', async (): Promise<IpcResult<{ path: string; bytes: number }>> => {
     try {
       const today = new Date().toISOString().slice(0, 10)
+      const locale = dialogLocale()
       const result = await dialog.showSaveDialog({
-        title: 'Datenexport speichern',
-        defaultPath: `timetrack-export-${today}.json`,
+        title: dialogT(locale)('mainDialog.exportJson.title'),
+        defaultPath: await exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
-        return fail('Export abgebrochen')
+        return cancelledResult(locale, 'mainError.exportCancelled')
       }
       const payload = buildJsonExportPayload(db, app.getVersion())
       const json = JSON.stringify(payload, null, 2)
       writeFileSync(result.filePath, json, 'utf8')
+      rememberExportFolder(db, 'json', result.filePath)
       return ok({ path: result.filePath, bytes: Buffer.byteLength(json, 'utf8') })
     } catch (e) {
       return fail(e)
@@ -858,7 +1032,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle(
     'pdf:export',
-    async (_e, req: PdfRequest): Promise<IpcResult<{ path: string }>> => {
+    async (
+      _e,
+      req: PdfRequest
+    ): Promise<
+      IpcResult<{ path: string; runId?: number; runNumber?: string; excludedCount?: number }>
+    > => {
       try {
         if (!req || typeof req.clientId !== 'number' || !req.fromIso || !req.toIso) {
           return fail('Ungültige PDF-Anfrage')
@@ -868,26 +1047,29 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           | undefined
         if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
 
-        const monthHint = req.fromIso.slice(0, 7) // YYYY-MM
-        // Strip filesystem-hostile chars from the client name for the suggested filename.
-        const safeName = client.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Kunde'
-        // v1.9 #75: append project name when filtered to a single project.
-        let projectSuffix = ''
-        if (req.projectId != null) {
-          const proj = db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
-            | { name: string }
-            | undefined
-          if (proj) {
-            projectSuffix = `-${proj.name.replace(/[\\/:*?"<>|]/g, '_').trim()}`
-          }
-        }
+        // v1.9 #75: the project name goes into the file name when filtered to one.
+        const proj =
+          req.projectId != null
+            ? (db.prepare(`SELECT name FROM projects WHERE id = ?`).get(req.projectId) as
+                | { name: string }
+                | undefined)
+            : undefined
+        const locale = dialogLocale()
         const result = await dialog.showSaveDialog({
-          title: 'Stundennachweis speichern',
-          defaultPath: `Stundennachweis-${safeName}${projectSuffix}-${monthHint}.pdf`,
+          title: dialogT(locale)('mainDialog.pdf.saveTitle'),
+          defaultPath: await exportDefaultPath(
+            db,
+            'pdf',
+            exportFileName(locale, 'pdf', {
+              client: client.name,
+              project: proj?.name ?? null,
+              month: req.fromIso.slice(0, 7) // YYYY-MM
+            })
+          ),
           filters: [{ name: 'PDF', extensions: ['pdf'] }]
         })
         if (result.canceled || !result.filePath) {
-          return fail('Export abgebrochen')
+          return cancelledResult(locale, 'mainError.exportCancelled')
         }
 
         const settingsRows = db.prepare(`SELECT key, value FROM settings`).all() as Array<{
@@ -899,16 +1081,77 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         ) as unknown as Settings
         const logoDataUrl = readLogoAsDataUrl(settings.pdf_logo_path ?? '')
 
-        const payload = buildPdfPayload(db, req, logoDataUrl)
-        const html = buildPdfHtml(payload)
-        const buf = await renderPdfBuffer({ html })
-        writeFileSync(result.filePath, buf)
-        return ok({ path: result.filePath })
+        let runId: number | undefined
+        let runNumber: string | undefined
+        let excludedCount: number | undefined
+        if (req.markAsBilled) {
+          const exported = await exportRunToFile(
+            db,
+            req,
+            (html) => renderPdfBuffer({ html }),
+            { logoDataUrl, appVersion: app.getVersion() },
+            result.filePath
+          )
+          runId = exported.runId
+          runNumber = exported.runNumber
+          excludedCount = exported.excludedCount
+        } else {
+          const payload = buildPdfPayload(db, req, logoDataUrl)
+          writeFileSync(result.filePath, await renderPdfBuffer({ html: buildPdfHtml(payload) }))
+        }
+        rememberExportFolder(db, 'pdf', result.filePath)
+        return ok({
+          path: result.filePath,
+          ...(runId === undefined ? {} : { runId, runNumber, excludedCount })
+        })
       } catch (e) {
+        if (e instanceof MissingClientShortCodeError) {
+          return fail(dialogT(dialogLocale())('export.status.shortCodeMissing'))
+        }
         return fail(e)
       }
     }
   )
+
+  ipcMain.handle('billing-runs:list', (_e, clientId?: number) => {
+    try {
+      return ok(listRuns(db, clientId))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:open', async (_e, runId: number) => {
+    try {
+      const bytes = openRunPdf(db, runId)
+      // The renderer cannot open blob windows (guardWindowLinks). Hand only
+      // a verified archive copy, at a main-process-owned path, to the PDF viewer.
+      const filePath = writeViewerCopy(app.getPath('temp'), runId, bytes)
+      const error = await shell.openPath(filePath)
+      if (error) {
+        discardViewerCopy(filePath)
+        return fail(error)
+      }
+      return ok(undefined)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:release', (_e, runId: number, reason: string) => {
+    try {
+      releaseRun(db, runId, reason)
+      return ok(undefined)
+    } catch (e) {
+      return fail(e)
+    }
+  })
+  ipcMain.handle('billing-runs:set-invoice-ref', (_e, runId: number, ref: string) => {
+    try {
+      setInvoiceRef(db, runId, ref)
+      return ok(undefined)
+    } catch (e) {
+      return fail(e)
+    }
+  })
 
   // PDF merge-export: renders the Stundennachweis and appends it to an
   // existing invoice PDF chosen by the user. The invoice file is never
@@ -916,15 +1159,44 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // <stem>_inkl_Stundennachweis.pdf. Falls back to a save dialog when the
   // target directory is not writable (e.g. a corporate archive folder).
   // Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-export', (_e, req) => mergeExportHandler(db, req))
+  // #272: every input PDF must have been picked in pdf:open-pdf-dialog, and the
+  // written file becomes a path the shell helpers may reveal.
+  ipcMain.handle('pdf:merge-export', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await mergeExportHandler(db, req, realFsDeps, saveDialogIn(dialogLocale))
+    if (res.ok) shellTargets.rememberWritten(res.data.path)
+    return res
+  })
 
   // PDF merge-only: merges two existing PDFs (Stundennachweis + invoice) without
   // re-rendering. Core logic lives in pdfMergeHandlers.ts for testability.
-  ipcMain.handle('pdf:merge-only', (_e, req) => mergeOnlyHandler(req))
+  ipcMain.handle('pdf:merge-only', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await mergeOnlyHandler(req, realFsDeps, saveDialogIn(dialogLocale))
+    if (res.ok) shellTargets.rememberWritten(res.data.path)
+    return res
+  })
 
   // PDF info: returns page count for a given PDF path. Used by the renderer to
   // show page counts before confirming a merge.
-  ipcMain.handle('pdf:pdf-info', (_e, req) => pdfInfoHandler(req))
+  // The PDF it read is refreshed in the pick list, so a selection the merge
+  // dialog keeps using never ages out. A failing refresh does not fail the read.
+  ipcMain.handle('pdf:pdf-info', async (_e, req) => {
+    const refused = pdfRequestRefusal(req)
+    if (refused) return fail(refused)
+    const res = await pdfInfoHandler(req)
+    const filePath = (req as { filePath?: unknown }).filePath
+    if (res.ok && typeof filePath === 'string') {
+      try {
+        rememberPickedPdf(db, filePath)
+      } catch (e) {
+        log.warn('[pdf:pdf-info] could not refresh the pick list:', e)
+      }
+    }
+    return res
+  })
 
   // PDF open dialog: opens a native file picker and returns the selected path.
   // Safer than relying on file.path in the renderer (not available with contextIsolation).
@@ -933,11 +1205,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     async (): Promise<IpcResult<{ filePath: string } | null>> => {
       try {
         const result = await dialog.showOpenDialog({
-          title: 'PDF auswählen',
+          title: tDialog('mainDialog.pdf.openTitle'),
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
           properties: ['openFile']
         })
         if (result.canceled || !result.filePaths[0]) return ok(null)
+        rememberPickedPdf(db, result.filePaths[0])
         return ok({ filePath: result.filePaths[0] })
       } catch (e) {
         return fail(e)
@@ -949,13 +1222,17 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // and persists the path into settings.pdf_logo_path.
   ipcMain.handle('logo:set', async (): Promise<IpcResult<{ path: string }>> => {
     try {
+      const locale = dialogLocale()
+      const t = dialogT(locale)
       const result = await dialog.showOpenDialog({
-        title: 'Logo auswählen',
+        title: t('mainDialog.logo.title'),
         properties: ['openFile'],
-        filters: [{ name: 'Bilder', extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }]
+        filters: [
+          { name: t('mainDialog.logo.filter'), extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }
+        ]
       })
       if (result.canceled || result.filePaths.length === 0) {
-        return fail('Auswahl abgebrochen')
+        return cancelledResult(locale, 'mainError.selectionCancelled')
       }
       const userDataDir = app.getPath('userData')
       const target = saveLogo(result.filePaths[0], userDataDir)

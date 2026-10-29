@@ -1,14 +1,16 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNow } from '../../contexts/NowContext'
-import { useRounding } from '../../contexts/RoundingContext'
 import { formatEur } from '../../../../shared/currency'
 import { dayRevenueCent } from './dayRevenue'
 import type { Client, Entry, Project } from '../../../../shared/types'
+import { entryRowKey } from '../../../../shared/entryKey'
 import { deserializeTags, entryHasTag } from '../../../../shared/tags'
 import { useEntriesStore } from '../../store/entriesStore'
 import { useToastStore } from '../../store/toastStore'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { BilledChip } from '../BilledChip'
 import { EntryEditForm } from '../EntryEditForm'
+import { EntryHistory } from './EntryHistory'
 import { useLocale, useT } from '../../contexts/I18nContext'
 import type { TFunction } from '../../contexts/I18nContext'
 
@@ -61,11 +63,12 @@ export function DayDetails({
   const t = useT()
   const { locale } = useLocale()
   const nowMs = useNow()
-  const { roundMinutes } = useRounding()
   const sectionRef = useRef<HTMLElement>(null)
   const headingId = useId()
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  // The edit form replaces the row, so history expansion must survive outside that row.
+  const [openHistories, setOpenHistories] = useState<Record<number, boolean>>({})
   const [creating, setCreating] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
 
@@ -165,27 +168,28 @@ export function DayDetails({
     month: '2-digit'
   }).format(day)
 
-  async function confirmDelete(entry: Entry): Promise<void> {
+  async function confirmDelete(entry: Entry, reason?: string): Promise<void> {
     setDeleteCandidate(null)
-    const res = await window.api.entries.delete(entry.id)
+    const res = await window.api.entries.delete(entry.id, reason)
     if (!res.ok) {
       showToast(t('common.entryDeleteFailed', { error: res.error }))
+      // A refused delete means the row is no longer live (a confirm that
+      // fired twice, for example): reload so the list shows what is stored.
+      useEntriesStore.getState().bumpVersion()
       return
     }
     useEntriesStore.getState().bumpVersion()
     showToast(t('common.entryDeleted'), {
       label: t('common.undo'),
       type: 'undo_delete',
-      data: { entryId: entry.id }
+      data: { entryId: entry.id, billed: !!entry.billed }
     })
   }
 
   const totalSeconds = filteredEntries.reduce((sum, e) => sum + durationSeconds(e, nowMs), 0)
   // Same entries as the hours beside it: under a tag filter both show the
   // filtered part of the day, never hours of one set next to euros of another.
-  const revenueCent = projects
-    ? dayRevenueCent(filteredEntries, clients, projects, roundMinutes, nowMs)
-    : 0
+  const revenueCent = dayRevenueCent(filteredEntries)
 
   return (
     <section
@@ -272,7 +276,7 @@ export function DayDetails({
             const entryTags = deserializeTags(e.tags)
             if (editingId === e.id) {
               return (
-                <li key={e.id} className="border-t border-[var(--line)] py-[10px]">
+                <li key={entryRowKey(e)} className="border-t border-[var(--line)] py-[10px]">
                   <EntryEditForm
                     entry={e}
                     clients={clients}
@@ -286,7 +290,10 @@ export function DayDetails({
               )
             }
             return (
-              <li key={e.id} className="flex gap-2 border-t border-[var(--line)] py-[10px]">
+              <li
+                key={entryRowKey(e)}
+                className="flex gap-2 border-t border-[var(--line)] py-[10px]"
+              >
                 <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
                   <div className="flex justify-between gap-[10px]">
                     <span className="font-num text-[12px] text-[var(--ink2)]">
@@ -314,6 +321,7 @@ export function DayDetails({
                       )}
                     </span>
                   </div>
+                  {!!e.billed && <BilledChip />}
                   {e.description && (
                     <p
                       className="m-0 line-clamp-2 text-[13px] text-[var(--ink)] [overflow-wrap:anywhere]"
@@ -335,6 +343,16 @@ export function DayDetails({
                       ))}
                     </div>
                   )}
+                  <EntryHistory
+                    entryId={e.id}
+                    versionNo={e.version_no}
+                    clients={clients}
+                    projects={projects}
+                    open={openHistories[e.id] ?? false}
+                    onOpenChange={(open) =>
+                      setOpenHistories((current) => ({ ...current, [e.id]: open }))
+                    }
+                  />
                 </div>
                 <div className="flex flex-none items-start">
                   <button
@@ -406,7 +424,8 @@ export function DayDetails({
         confirmLabel={t('common.delete')}
         cancelLabel={t('common.cancel')}
         variant="danger"
-        onConfirm={() => deleteCandidate && void confirmDelete(deleteCandidate)}
+        requireReason={!!deleteCandidate?.billed}
+        onConfirm={(reason) => deleteCandidate && void confirmDelete(deleteCandidate, reason)}
         onCancel={() => setDeleteCandidate(null)}
       />
     </section>
@@ -516,10 +535,13 @@ function buildDeleteMessage(
   const date = new Date(entry.started_at)
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   const name = client?.name ?? t('common.unknown')
-  return t('common.deleteEntryMessage', { client: name, date: dateStr, duration: dur })
+  // One half of an entry across midnight: the delete takes both days (#323).
+  const key =
+    (entry.segment_count ?? 1) > 1 ? 'common.deleteEntryMessageLinked' : 'common.deleteEntryMessage'
+  return t(key, { client: name, date: dateStr, duration: dur })
 }
 
-/** `HH:MM` — kept for the delete question, whose wording is unchanged. */
+/** `HH:MM` for the delete question. */
 function formatHHMM(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
   const h = Math.floor(total / 3600)

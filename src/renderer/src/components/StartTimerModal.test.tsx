@@ -11,6 +11,7 @@ import { StartTimerModal } from './StartTimerModal'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useTimerStore } from '../store/timerStore'
 import { useToastStore } from '../store/toastStore'
+import { useStartTimerModalStore } from '../store/startTimerModalStore'
 import type { Client, Project } from '../../../shared/types'
 
 afterEach(() => {
@@ -19,8 +20,24 @@ afterEach(() => {
 })
 
 const CLIENTS: Client[] = [
-  { id: 1, name: 'Acme', color: '#111111', active: 1, rate_cent: 0, created_at: '' },
-  { id: 2, name: 'Beta', color: '#222222', active: 1, rate_cent: 0, created_at: '' }
+  {
+    id: 1,
+    name: 'Acme',
+    color: '#111111',
+    active: 1,
+    rate_cent: 0,
+    short_code: null,
+    created_at: ''
+  },
+  {
+    id: 2,
+    name: 'Beta',
+    color: '#222222',
+    active: 1,
+    rate_cent: 0,
+    short_code: null,
+    created_at: ''
+  }
 ]
 
 const PROJECTS: Project[] = [
@@ -80,6 +97,7 @@ describe('StartTimerModal — prefill (B6)', () => {
       created_at: ''
     })
     CLIENTS.push({
+      short_code: null,
       id: 3,
       name: 'Gamma',
       color: '#333333',
@@ -118,6 +136,7 @@ describe('StartTimerModal — prefill (B6)', () => {
       created_at: ''
     })
     CLIENTS.push({
+      short_code: null,
       id: 3,
       name: 'Gamma',
       color: '#333333',
@@ -309,5 +328,100 @@ describe('StartTimerModal — a refused start or switch', () => {
     expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual([
       'Start fehlgeschlagen: Kunde existiert nicht'
     ])
+  })
+})
+
+// #297 review: a selection left from a client archived since is not in the
+// client list, so it must not be startable with Enter.
+describe('StartTimerModal — a selected archived client (#297)', () => {
+  it('cannot be started', async () => {
+    setup()
+    const archived: Client = {
+      short_code: null,
+      id: 9,
+      name: 'Alt',
+      color: '#999999',
+      active: 0,
+      rate_cent: 0,
+      created_at: ''
+    }
+    useTimerStore.setState({ clients: [...CLIENTS, archived], selectedClientId: 9 })
+    render(
+      <I18nProvider>
+        <StartTimerModal open onClose={() => {}} />
+      </I18nProvider>
+    )
+    const startKey = await screen.findByRole('button', { name: 'Timer starten' })
+    expect((startKey as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+// #297: the dialog's prefill comes from the shared "last pair" rule. When the
+// last entry's project is archived, the rule leaves it out — and the dialog
+// must then behave as if the user had just picked the client: its single
+// active project is chosen. An explicit "no project" would block that.
+describe('StartTimerModal — prefill when the last project is archived (#297)', () => {
+  afterEach(() => {
+    useStartTimerModalStore.setState({ open: false, prefill: null })
+  })
+
+  it('offers the client’s single active project', async () => {
+    const clients: Client[] = [
+      {
+        id: 4,
+        name: 'Delta',
+        color: '#444444',
+        active: 1,
+        rate_cent: 0,
+        short_code: null,
+        created_at: ''
+      }
+    ]
+    const projects: Project[] = [
+      { id: 40, client_id: 4, name: 'Alt', color: '', rate_cent: null, active: 0, created_at: '' },
+      { id: 41, client_id: 4, name: 'Neu', color: '', rate_cent: null, active: 1, created_at: '' }
+    ]
+    const api = {
+      entries: { getRunning: async () => ({ ok: true as const, data: null }) },
+      clients: { getAll: async () => ({ ok: true as const, data: clients }) },
+      projects: {
+        getAll: async ({ clientId }: { clientId?: number }) => ({
+          ok: true as const,
+          data: projects.filter((p) => clientId == null || p.client_id === clientId)
+        })
+      },
+      dashboard: {
+        todayTotal: async () => ({ ok: true as const, data: 0 }),
+        summary: async () => ({
+          ok: true as const,
+          // The last entry was booked on the project that is archived now.
+          data: { recentEntries: [{ id: 1, client_id: 4, project_id: 40 }] }
+        })
+      },
+      tray: { update: vi.fn() },
+      idle: { dismiss: vi.fn() },
+      onHotkeyToggle: () => {},
+      onTrayQuickStart: () => {},
+      onTrayStop: () => {},
+      onDataChanged: () => {},
+      onIdleDetected: () => {}
+    }
+    ;(window as unknown as { api: typeof api }).api = api
+    useTimerStore.setState({ clients })
+
+    await useStartTimerModalStore.getState().openStart()
+    const prefill = useStartTimerModalStore.getState().prefill
+    render(
+      <I18nProvider>
+        <StartTimerModal open onClose={() => {}} prefill={prefill} />
+      </I18nProvider>
+    )
+
+    const selects = await screen.findAllByRole('combobox')
+    await waitFor(() => expect((selects[0] as HTMLSelectElement).value).toBe('4'))
+    await waitFor(() => {
+      const project = screen.getAllByRole('combobox')[1] as HTMLSelectElement
+      expect(project.value).toBe('41')
+    })
   })
 })

@@ -1,7 +1,7 @@
-import { useId, useRef } from 'react'
+import { useId, useRef, useState } from 'react'
 import { useT } from '../contexts/I18nContext'
 import { Dialog } from './Dialog'
-import { FOCUS, KEY, KEY_INV } from './instrumentClasses'
+import { FIELD_LABEL, FOCUS, KEY, KEY_INV, TEXTAREA } from './instrumentClasses'
 
 interface Props {
   open: boolean
@@ -11,7 +11,8 @@ interface Props {
   cancelLabel?: string
   /** Visual style for the confirm button. 'danger' = red. */
   variant?: 'danger' | 'primary'
-  onConfirm: () => void
+  requireReason?: boolean
+  onConfirm: (reason?: string) => void
   onCancel: () => void
 }
 
@@ -32,16 +33,54 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   variant = 'primary',
+  requireReason = false,
   onConfirm,
   onCancel
 }: Props): React.ReactElement | null {
+  // Mount fresh contents on each opening: a previous reason must never carry over.
+  return open ? (
+    <ConfirmDialogContent
+      {...{
+        title,
+        message,
+        confirmLabel,
+        cancelLabel,
+        variant,
+        requireReason,
+        onConfirm,
+        onCancel
+      }}
+    />
+  ) : null
+}
+
+function ConfirmDialogContent({
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  variant,
+  requireReason,
+  onConfirm,
+  onCancel
+}: Omit<Props, 'open'>): React.ReactElement {
   const t = useT()
   const cancelRef = useRef<HTMLButtonElement>(null)
   const messageId = useId()
+  const [reason, setReason] = useState('')
+  const [reasonError, setReasonError] = useState(false)
+
+  function confirm(): void {
+    if (requireReason && !reason.trim()) {
+      setReasonError(true)
+      return
+    }
+    onConfirm(requireReason ? reason.trim() : undefined)
+  }
 
   return (
     <Dialog
-      open={open}
+      open
       onClose={onCancel}
       title={title}
       widthClass="w-[440px]"
@@ -54,13 +93,34 @@ export function ConfirmDialog({
       <p id={messageId} className="mb-6 text-sm text-[var(--ink2)]">
         {message}
       </p>
+      {requireReason && (
+        <label className="mb-6 flex flex-col gap-2">
+          <span className={FIELD_LABEL}>{t('entry.billed.reason')}</span>
+          <textarea
+            value={reason}
+            onChange={(e) => {
+              setReason(e.target.value)
+              setReasonError(false)
+            }}
+            aria-required="true"
+            aria-invalid={reasonError}
+            rows={3}
+            className={TEXTAREA}
+          />
+          {reasonError && (
+            <span role="alert" className="text-xs text-[var(--danger)]">
+              {t('entry.billed.reasonRequired')}
+            </span>
+          )}
+        </label>
+      )}
       <div className="flex justify-end gap-2">
         <button ref={cancelRef} type="button" onClick={onCancel} className={KEY}>
           {cancelLabel ?? t('common.cancel')}
         </button>
         <button
           type="button"
-          onClick={onConfirm}
+          onClick={confirm}
           className={variant === 'danger' ? KEY_DANGER : KEY_INV}
         >
           {confirmLabel ?? t('common.ok')}

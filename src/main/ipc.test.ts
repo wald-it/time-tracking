@@ -13,6 +13,8 @@ import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { executeMigration, migrations } from './migrations'
 import { normaliseBudgetMinutes } from './ipc'
+import { PROJECT_HAS_ENTRIES_ERROR, deleteProjectGuarded } from './masterDataDelete'
+import { seedEntry } from '../test/entryFixtures'
 import {
   createMigratedTemplate,
   loadSqlite,
@@ -228,10 +230,7 @@ describe('entries:create / entries:update validation contract', () => {
   })
 
   it('rejects overlapping entry on same client', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (1, ?, ?)`
-    ).run(todayAt(9, 0), todayAt(10, 0))
+    seedEntry(db, { client_id: 1, started_at: todayAt(9, 0), stopped_at: todayAt(10, 0) })
     const err = validateManualEntry(db, {
       client_id: 1,
       description: '',
@@ -242,10 +241,7 @@ describe('entries:create / entries:update validation contract', () => {
   })
 
   it('allows overlap with a different client', () => {
-    db.prepare(
-      `INSERT INTO entries (client_id, started_at, stopped_at)
-       VALUES (1, ?, ?)`
-    ).run(todayAt(9, 0), todayAt(10, 0))
+    seedEntry(db, { client_id: 1, started_at: todayAt(9, 0), stopped_at: todayAt(10, 0) })
     const err = validateManualEntry(db, {
       client_id: 2,
       description: '',
@@ -256,13 +252,15 @@ describe('entries:create / entries:update validation contract', () => {
   })
 
   it('ignores soft-deleted entries when checking overlap', () => {
-    const info = db
-      .prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at, deleted_at)
-         VALUES (1, ?, ?, ?)`
-      )
-      .run(todayAt(9, 0), todayAt(10, 0), new Date().toISOString())
-    expect(info.changes).toBe(1)
+    const id = seedEntry(db, {
+      client_id: 1,
+      started_at: todayAt(9, 0),
+      stopped_at: todayAt(10, 0),
+      deleted_at: new Date().toISOString()
+    })
+    expect(db.prepare(`SELECT is_deleted FROM entry WHERE id = ?`).get(id)).toEqual({
+      is_deleted: 1
+    })
     const err = validateManualEntry(db, {
       client_id: 1,
       description: '',
@@ -273,13 +271,11 @@ describe('entries:create / entries:update validation contract', () => {
   })
 
   it('allows updating an entry without overlapping itself', () => {
-    const info = db
-      .prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at)
-         VALUES (1, ?, ?)`
-      )
-      .run(todayAt(9, 0), todayAt(10, 0))
-    const id = info.lastInsertRowid as number
+    const id = seedEntry(db, {
+      client_id: 1,
+      started_at: todayAt(9, 0),
+      stopped_at: todayAt(10, 0)
+    })
     const err = validateManualEntry(
       db,
       {
@@ -467,42 +463,40 @@ describe('reference field — insertEntrySegments round-trip', () => {
   })
 
   it('persists non-empty reference and returns it on the inserted row', () => {
-    const linkId: string | null = null
-    const insertStmt = db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at, rounded_min, link_id, tags, reference)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    const start = todayAt(8, 0)
-    const stop = todayAt(9, 30)
-    const info = insertStmt.run(1, 'work', start, stop, stop, 90, linkId, '', 'JIRA-123')
-    const row = db
-      .prepare('SELECT reference FROM entries WHERE id = ?')
-      .get(info.lastInsertRowid) as { reference: string }
+    const id = seedEntry(db, {
+      client_id: 1,
+      description: 'work',
+      started_at: todayAt(8, 0),
+      stopped_at: todayAt(9, 30),
+      reference: 'JIRA-123'
+    })
+    const row = db.prepare('SELECT reference FROM entries WHERE id = ?').get(id) as {
+      reference: string
+    }
     expect(row.reference).toBe('JIRA-123')
   })
 
   it('persists empty reference (default) and returns empty string', () => {
-    const insertStmt = db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at, rounded_min, link_id, tags, reference)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    const start = todayAt(10, 0)
-    const stop = todayAt(11, 0)
-    const info = insertStmt.run(1, 'work', start, stop, stop, 60, null, '', '')
-    const row = db
-      .prepare('SELECT reference FROM entries WHERE id = ?')
-      .get(info.lastInsertRowid) as { reference: string }
+    const id = seedEntry(db, {
+      client_id: 1,
+      description: 'work',
+      started_at: todayAt(10, 0),
+      stopped_at: todayAt(11, 0)
+    })
+    const row = db.prepare('SELECT reference FROM entries WHERE id = ?').get(id) as {
+      reference: string
+    }
     expect(row.reference).toBe('')
   })
 
   it('reference column is included in SELECT * FROM entries', () => {
-    const insertStmt = db.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at, rounded_min, link_id, tags, reference)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    const start = todayAt(14, 0)
-    const stop = todayAt(15, 30)
-    insertStmt.run(1, 'review', start, stop, stop, 90, null, '', 'GH-42')
+    seedEntry(db, {
+      client_id: 1,
+      description: 'review',
+      started_at: todayAt(14, 0),
+      stopped_at: todayAt(15, 30),
+      reference: 'GH-42'
+    })
     const row = db.prepare('SELECT * FROM entries').get() as Record<string, unknown>
     expect('reference' in row).toBe(true)
     expect(row.reference).toBe('GH-42')
@@ -537,28 +531,14 @@ describe('billable + private_note — DB round-trip', () => {
   })
 
   function insertEntry(overrides: { billable?: number; private_note?: string } = {}): number {
-    const start = todayAt(8, 0)
-    const stop = todayAt(9, 0)
-    const info = db
-      .prepare(
-        `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at,
-        rounded_min, link_id, tags, reference, billable, private_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        1,
-        'work',
-        start,
-        stop,
-        stop,
-        60,
-        null,
-        '',
-        '',
-        overrides.billable ?? 1,
-        overrides.private_note ?? ''
-      )
-    return Number(info.lastInsertRowid)
+    return seedEntry(db, {
+      client_id: 1,
+      description: 'work',
+      started_at: todayAt(8, 0),
+      stopped_at: todayAt(9, 0),
+      billable: overrides.billable,
+      private_note: overrides.private_note
+    })
   }
 
   it('billable defaults to 1', () => {
@@ -729,13 +709,13 @@ describe('projects — SQL contract tests', () => {
   ): number {
     const start = new Date(Date.now() - 2 * 3600 * 1000).toISOString()
     const stop = new Date(Date.now() - 1 * 3600 * 1000).toISOString()
-    const info = db
-      .prepare(
-        `INSERT INTO entries (client_id, started_at, stopped_at, project_id, deleted_at)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-      .run(clientId, start, stop, projectId, deletedAt)
-    return info.lastInsertRowid as number
+    return seedEntry(db, {
+      client_id: clientId,
+      project_id: projectId,
+      started_at: start,
+      stopped_at: stop,
+      deleted_at: deletedAt
+    })
   }
 
   it('projects:update — blocks client_id change when entries exist', () => {
@@ -776,32 +756,30 @@ describe('projects — SQL contract tests', () => {
       .prepare(`SELECT COUNT(*) AS n FROM entries WHERE project_id = ? AND deleted_at IS NULL`)
       .get(pid) as { n: number }
     expect(n).toBe(1)
-    // Should throw inside the transaction
-    expect(() => {
-      const tx = db.transaction(() => {
-        const countRow = db
-          .prepare(`SELECT COUNT(*) AS n FROM entries WHERE project_id = ? AND deleted_at IS NULL`)
-          .get(pid) as { n: number }
-        if (countRow.n > 0) throw new Error('Projekt hat noch aktive Einträge')
-        db.prepare('DELETE FROM projects WHERE id = ?').run(pid)
-      })
-      tx()
-    }).toThrow(/aktive Einträge/)
+    // The handler's own guard (masterDataDelete.ts).
+    expect(deleteProjectGuarded(db, pid)).toEqual({ ok: false, error: PROJECT_HAS_ENTRIES_ERROR })
     // Project must still exist
     const still = db.prepare('SELECT id FROM projects WHERE id = ?').get(pid)
     expect(still).toBeDefined()
   })
 
-  it('projects:delete — succeeds when only soft-deleted entries exist', () => {
+  // 2.0 P2 (owner decision 2026-10-26): 1.x deleted the project here; now a
+  // deleted entry's versions still point at it, so the delete is refused.
+  it('projects:delete — blocked when only soft-deleted entries exist', () => {
     const pid = createProject(1, 'App')
     createEntry(1, pid, new Date().toISOString()) // soft-deleted
     const { n } = db
       .prepare(`SELECT COUNT(*) AS n FROM entries WHERE project_id = ? AND deleted_at IS NULL`)
       .get(pid) as { n: number }
     expect(n).toBe(0)
-    db.prepare('DELETE FROM projects WHERE id = ?').run(pid)
-    const gone = db.prepare('SELECT id FROM projects WHERE id = ?').get(pid)
-    expect(gone).toBeUndefined()
+    expect(deleteProjectGuarded(db, pid)).toEqual({ ok: false, error: PROJECT_HAS_ENTRIES_ERROR })
+    expect(db.prepare('SELECT id FROM projects WHERE id = ?').get(pid)).toBeDefined()
+  })
+
+  it('projects:delete — succeeds when no entry version points at the project', () => {
+    const pid = createProject(1, 'App')
+    expect(deleteProjectGuarded(db, pid)).toEqual({ ok: true, data: undefined })
+    expect(db.prepare('SELECT id FROM projects WHERE id = ?').get(pid)).toBeUndefined()
   })
 
   it('projects:getAll — entry_count excludes soft-deleted entries', () => {
@@ -864,10 +842,8 @@ describe('dashboard:summary — duration precision', () => {
     }
   })
 
-  afterEach(() => {
-    if (!db) return
-    db.prepare('DELETE FROM entries').run()
-  })
+  // One test, one entry: nothing to clear between tests (entries are never
+  // deleted physically since 2.0).
 
   it('returns exactly 3600 seconds for a 1-hour entry (not 3599)', () => {
     const d = db!
@@ -880,10 +856,7 @@ describe('dashboard:summary — duration precision', () => {
     // Insert an entry that is exactly 1 hour (3600 s)
     const start = '2026-01-01T10:00:00.000Z'
     const stop = '2026-01-01T11:00:00.000Z'
-    d.prepare(
-      `INSERT INTO entries (client_id, description, started_at, stopped_at, heartbeat_at, rounded_min, link_id, tags)
-         VALUES (?, '', ?, ?, ?, 60, NULL, '')`
-    ).run(clientId, start, stop, stop)
+    seedEntry(d, { client_id: Number(clientId), started_at: start, stopped_at: stop })
 
     const row = d
       .prepare(

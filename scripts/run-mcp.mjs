@@ -1,11 +1,11 @@
 /**
  * Runs the MCP server from a dev checkout.
  *
- * `better-sqlite3` here is compiled against the Electron ABI (postinstall runs
- * `electron-builder install-app-deps`), so a system Node cannot load it. We
- * therefore run the server on Electron's own binary in Node mode — the same
- * thing a packaged install does with `TimeTrack.exe`, so dev and production
- * exercise the identical launch path.
+ * The server runs on Electron's own binary in Node mode — the same thing a
+ * packaged install does with `TimeTrack.exe` — so dev and production exercise
+ * the identical launch path and the same Node version. (Before #269 this was
+ * also forced by better-sqlite3's Electron-only ABI; the N-API build would
+ * load under a system Node too, but the launch path is what is worth testing.)
  *
  * Setting `ELECTRON_RUN_AS_NODE` inline is not portable across cmd.exe and
  * POSIX shells, hence this wrapper instead of a shell one-liner.
