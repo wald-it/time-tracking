@@ -648,6 +648,67 @@ describe('a refresh does not undo a disconnect or a reconnect made while it ran 
     expect(await loadTokens(d.store)).toBeNull()
   })
 
+  it('getStatus reports a disconnect made during async decryption', async () => {
+    const d = deps()
+    const box = fakeBox()
+    let firstRead = true
+    d.store.secretBox = {
+      ...box,
+      decryptStringAsync: async (cipher) => {
+        const result = await box.decryptStringAsync(cipher)
+        if (firstRead) {
+          firstRead = false
+          await disconnect(d)
+        }
+        return result
+      }
+    }
+    await saveTokens(tokens(), d.store)
+    expect(await getStatus(d)).toMatchObject({ connected: false, account: null })
+  })
+
+  it('getStatus reports account B after a reconnect during async decryption', async () => {
+    const browser = browserThatSignsIn()
+    const accountB = { username: 'b@example.com', displayName: 'Account B', tenantId: 'tid-B' }
+    const claims = Buffer.from(
+      JSON.stringify({
+        preferred_username: accountB.username,
+        name: accountB.displayName,
+        tid: accountB.tenantId
+      })
+    ).toString('base64url')
+    const fetchFn = (async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'access-B',
+          refresh_token: 'refresh-B',
+          expires_in: 3600,
+          id_token: `header.${claims}.signature`
+        })
+      }) as Response) as typeof fetch
+    const d = deps({
+      openExternal: browser.openExternalForTest as (url: string) => void,
+      auth: { now: () => NOW, fetchFn, ...browser } as GraphAccountDeps['auth']
+    })
+    const box = fakeBox()
+    let firstRead = true
+    d.store.secretBox = {
+      ...box,
+      decryptStringAsync: async (cipher) => {
+        const result = await box.decryptStringAsync(cipher)
+        if (firstRead) {
+          firstRead = false
+          await connect(d)
+        }
+        return result
+      }
+    }
+    await saveTokens(tokens(), d.store)
+    expect(await getStatus(d)).toMatchObject({ connected: true, account: accountB })
+  })
+
   it('a disconnect during the refresh stays a disconnect', async () => {
     const holder: { d?: GraphAccountDeps } = {}
     const fetchFn = flows(async () => {

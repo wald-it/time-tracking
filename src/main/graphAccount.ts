@@ -84,16 +84,21 @@ function configOf(deps: GraphAccountDeps): GraphAuthConfig {
 }
 
 export async function getStatus(deps: GraphAccountDeps): Promise<AccountStatus> {
-  const storageAvailable = await isStorageAvailable(deps.store)
-  const tokens = storageAvailable ? await loadTokens(deps.store) : null
-  const custom = deps.getSetting(CLIENT_ID_SETTING)?.trim()
-  return {
-    connected: tokens !== null,
-    account: tokens?.account ?? null,
-    personalAccount: isPersonalAccount(tokens?.account ?? null),
-    grantedScopes: tokens?.grantedScopes ?? [],
-    storageAvailable,
-    usingCustomClientId: Boolean(custom && custom.length > 0)
+  for (;;) {
+    const generation = currentGeneration(storeKey(deps))
+    const storageAvailable = await isStorageAvailable(deps.store)
+    const tokens = storageAvailable ? await loadTokens(deps.store) : null
+    // #348/#354: read again if the connection changed during the async read.
+    if (connectionMoved(deps, generation)) continue
+    const custom = deps.getSetting(CLIENT_ID_SETTING)?.trim()
+    return {
+      connected: tokens !== null,
+      account: tokens?.account ?? null,
+      personalAccount: isPersonalAccount(tokens?.account ?? null),
+      grantedScopes: tokens?.grantedScopes ?? [],
+      storageAvailable,
+      usingCustomClientId: Boolean(custom && custom.length > 0)
+    }
   }
 }
 
