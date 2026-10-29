@@ -241,16 +241,21 @@ async function probeTimed(
 
 const TOOLS = ['list_clients', 'get_dashboard']
 
-describe('package-smoke async safeStorage proof', () => {
-  function smokeReport(safeStorageAsync: unknown): { status: number | null; output: string } {
-    const dir = mkdtempSync(join(tmpdir(), 'package-smoke-report-'))
-    try {
-      // Replace only process launch: exercise the CLI's real report checks with
-      // a fake app result, without opening a GUI or using a real user profile.
-      const script = join(dir, 'package-smoke.mjs')
-      const source = readFileSync(SCRIPT, 'utf8').replace(
-        "import { spawn } from 'node:child_process'",
-        `import { EventEmitter } from 'node:events'
+function smokeReport(
+  safeStorageAsync: unknown,
+  // A passing #272 sandbox probe by default, so only the safeStorage check decides.
+  { sandbox }: { sandbox?: unknown } = {
+    sandbox: { api: 'object', electron: 'undefined', sandboxed: true }
+  }
+): { status: number | null; output: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'package-smoke-report-'))
+  try {
+    // Replace only process launch: exercise the CLI's real report checks with
+    // a fake app result, without opening a GUI or using a real user profile.
+    const script = join(dir, 'package-smoke.mjs')
+    const source = readFileSync(SCRIPT, 'utf8').replace(
+      "import { spawn } from 'node:child_process'",
+      `import { EventEmitter } from 'node:events'
          function spawn(_exe, args) {
            const child = new EventEmitter()
            child.pid = 123
@@ -259,30 +264,30 @@ describe('package-smoke async safeStorage proof', () => {
            process.nextTick(() => { child.emit('exit', 0, null); child.emit('close', 0, null) })
            return child
          }`
-      )
-      writeFileSync(script, source)
-      const proc = spawnSync(process.execPath, [script, 'smoke', '--exe', process.execPath], {
-        env: {
-          ...process.env,
-          CI: 'true',
-          FAKE_SMOKE_REPORT: JSON.stringify({
-            ok: true,
-            schemaVersion: 34,
-            pdfBytes: 2000,
-            // A passing #272 sandbox probe, so only the safeStorage check decides.
-            sandbox: { api: 'object', electron: 'undefined', sandboxed: true },
-            safeStorageAsync
-          })
-        },
-        encoding: 'utf8',
-        timeout: PROBE_LIMIT_MS
-      })
-      return { status: proc.status, output: `${proc.stdout}\n${proc.stderr}` }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+    )
+    writeFileSync(script, source)
+    const proc = spawnSync(process.execPath, [script, 'smoke', '--exe', process.execPath], {
+      env: {
+        ...process.env,
+        CI: 'true',
+        FAKE_SMOKE_REPORT: JSON.stringify({
+          ok: true,
+          schemaVersion: 34,
+          pdfBytes: 2000,
+          sandbox,
+          safeStorageAsync
+        })
+      },
+      encoding: 'utf8',
+      timeout: PROBE_LIMIT_MS
+    })
+    return { status: proc.status, output: `${proc.stdout}\n${proc.stderr}` }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
+}
 
+describe('package-smoke async safeStorage proof', () => {
   it.each([
     ['missing', undefined],
     ['failed', { ok: false, reason: 'decrypted value differs' }],
@@ -297,6 +302,47 @@ describe('package-smoke async safeStorage proof', () => {
     const r = smokeReport({ ok: true })
     expect(r.status, r.output).toBe(0)
     expect(r.output).toContain('safeStorage async compatibility proven')
+  })
+})
+
+describe('package-smoke sandbox probe', () => {
+  it('rejects a missing sandbox probe', () => {
+    const r = smokeReport({ ok: true }, {})
+    expect(r.status, r.output).toBe(1)
+    expect(r.output).toContain('smoke report has no sandbox probe')
+  })
+
+  it('rejects a renderer that is not sandboxed', () => {
+    const r = smokeReport(
+      { ok: true },
+      { sandbox: { api: 'object', electron: 'undefined', sandboxed: false } }
+    )
+    expect(r.status, r.output).toBe(1)
+    expect(r.output).toContain("the app window's renderer is not sandboxed")
+  })
+
+  it('rejects a missing window.api', () => {
+    const r = smokeReport(
+      { ok: true },
+      { sandbox: { api: 'undefined', electron: 'undefined', sandboxed: true } }
+    )
+    expect(r.status, r.output).toBe(1)
+    expect(r.output).toContain('sandboxed preload did not expose window.api')
+  })
+
+  it('rejects an exposed window.electron', () => {
+    const r = smokeReport(
+      { ok: true },
+      { sandbox: { api: 'object', electron: 'object', sandboxed: true } }
+    )
+    expect(r.status, r.output).toBe(1)
+    expect(r.output).toContain('window.electron is exposed again')
+  })
+
+  it('accepts a passing sandbox probe', () => {
+    const r = smokeReport({ ok: true })
+    expect(r.status, r.output).toBe(0)
+    expect(r.output).toContain('Smoke test passed')
   })
 })
 
