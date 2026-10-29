@@ -56,6 +56,7 @@ import {
   generateControllerToken,
   clearControllerToken,
   forgetMcpApproval,
+  getMcpApprovalState,
   type BridgeDeps
 } from './mcpBridge'
 import { initAutoUpdater } from './updater'
@@ -750,6 +751,8 @@ app.whenReady().then(async () => {
       if (enabled) {
         generateWriteToken()
         startMcpBridge(mcpBridgeDeps())
+        // Enabling writes also changes state when the controller already hosts the bridge.
+        forgetMcpApproval()
       } else {
         clearWriteToken()
         // #301: switching write access off ends any approval, also while the
@@ -783,6 +786,7 @@ app.whenReady().then(async () => {
       }
     },
     forgetMcpApproval,
+    getMcpApprovalState,
     // #272 (A3): the native confirmation for a setting that widens access.
     confirmSensitiveSetting: async (change) => {
       const opts = sensitiveSettingDialog(appLanguage(), change)

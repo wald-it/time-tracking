@@ -289,6 +289,8 @@ export const en: Record<TranslationKey, string> = {
   'today.quickstart.switchTo': 'Switch to {name}',
   'today.quickstart.alreadyRunning': '{name} is already running',
   'header.navAria': 'Main navigation',
+  'header.approval.window': 'MCP approval: {minutes} min. and {writes} writes remaining.',
+  'header.approval.silent': 'MCP writes are allowed without confirmation.',
   'today.table.editAria': 'Edit entry {time}',
   'today.table.deleteAria': 'Delete entry {time}',
   'today.dayscale.running': 'running',

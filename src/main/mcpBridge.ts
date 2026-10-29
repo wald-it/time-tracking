@@ -28,6 +28,7 @@ import { logWebhookDelivery } from './webhookLog'
 import { socketPathForDir, tokenPathForDir, controllerTokenPathForDir } from '../mcp/socketPath'
 import { mcpConfirmDialog } from './mainI18n'
 import type { Locale } from '../shared/i18n'
+import type { McpApprovalState } from '../shared/types'
 
 export interface BridgeDeps {
   getDb: () => Database.Database
@@ -41,7 +42,9 @@ let server: net.Server | null = null
 let deps: BridgeDeps | null = null
 // #301: "remember" and the 'session' mode approve start/stop for a bounded
 // window; reset whenever the bridge (re)starts.
-const approval = new ApprovalWindow()
+const approval = new ApprovalWindow(undefined, undefined, () => {
+  deps?.broadcast('mcp:approval-changed', getMcpApprovalState())
+})
 let backupDone = false
 
 // Anchor token + socket on the DIRECTORY OF THE DB the app actually uses
@@ -111,6 +114,10 @@ export function clearControllerToken(): void {
 function confirmMode(): 'per-write' | 'session' | 'silent' {
   const v = deps?.getSetting('mcp_write_confirm_mode')
   return v === 'silent' || v === 'session' ? v : 'per-write'
+}
+
+export function getMcpApprovalState(): McpApprovalState {
+  return approval.getState(deps?.getSetting('mcp_write_enabled') === '1', confirmMode())
 }
 
 /**
@@ -253,6 +260,7 @@ export function startMcpBridge(d: BridgeDeps): void {
 
 /** Stop the bridge and clean up the socket file. Idempotent. */
 export function stopMcpBridge(): void {
+  approval.reset()
   if (server) {
     try {
       server.close()
