@@ -23,12 +23,14 @@ it.each(['month', 'today'] as const)(
   '%s rows carry the current version source, not the creation source',
   (surface) => {
     const now = new Date()
+    // Local start of today: inside the queried day and month at any wall time.
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const id = seedEntry(db, {
       client_id: 1,
       source: 'mcp',
       created_source: 'import',
-      started_at: new Date(now.getTime() - 120000).toISOString(),
-      stopped_at: new Date(now.getTime() - 60000).toISOString()
+      started_at: dayStart.toISOString(),
+      stopped_at: new Date(dayStart.getTime() + 60000).toISOString()
     })
     const rows = (): Entry[] =>
       surface === 'month'
