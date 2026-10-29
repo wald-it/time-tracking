@@ -29,10 +29,10 @@ import type { StoredTokens } from '../shared/graphAuth'
 export const TOKEN_FILENAME = 'graph-account.enc'
 
 /** The slice of Electron's `safeStorage` this module needs. Injectable for tests. */
-export interface SecretBox {
-  isEncryptionAvailable: () => boolean
-  encryptString: (plain: string) => Buffer
-  decryptString: (cipher: Buffer) => string
+export interface AsyncSecretBox {
+  isAsyncEncryptionAvailable: () => Promise<boolean>
+  encryptStringAsync: (plain: string) => Promise<Buffer>
+  decryptStringAsync: (cipher: Buffer) => Promise<{ shouldReEncrypt: boolean; result: string }>
 }
 
 export interface TokenStoreDeps {
@@ -53,7 +53,7 @@ export interface TokenStoreDeps {
    * takes it from the database the app actually opened.
    */
   dir: string
-  secretBox?: SecretBox
+  secretBox?: AsyncSecretBox
   log?: (message: string) => void
 }
 
@@ -74,9 +74,14 @@ export class TokenStoreError extends Error {
  * unit-tested under `ELECTRON_RUN_AS_NODE`, where `require('electron')` yields
  * a path string instead of the API.
  */
-function electronSecretBox(): SecretBox {
+async function electronSecretBox(): Promise<AsyncSecretBox> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- #130: lazy, see above
-  const { safeStorage } = require('electron') as { safeStorage: SecretBox }
+  const { app, safeStorage } = require('electron') as typeof import('electron')
+  // The asynchronous encryptor is initialized lazily the first time
+  // isAsyncEncryptionAvailable, encryptStringAsync or decryptStringAsync is
+  // called after the app is ready. Its promise resolves after initialization.
+  // Keep this boundary here so even a new caller cannot initialize it early.
+  await app.whenReady()
   return safeStorage
 }
 
@@ -91,21 +96,20 @@ export function tokenDirForDbPath(dbPath: string): string {
 }
 
 function resolve(deps: TokenStoreDeps): {
-  box: SecretBox
   file: string
   log: (m: string) => void
 } {
   return {
-    box: deps.secretBox ?? electronSecretBox(),
     file: join(deps.dir, TOKEN_FILENAME),
     log: deps.log ?? ((): void => {})
   }
 }
 
 /** Whether tokens can be stored at all on this machine. */
-export function isStorageAvailable(deps: TokenStoreDeps): boolean {
+export async function isStorageAvailable(deps: TokenStoreDeps): Promise<boolean> {
   try {
-    return resolve(deps).box.isEncryptionAvailable()
+    const box = deps.secretBox ?? (await electronSecretBox())
+    return await box.isAsyncEncryptionAvailable()
   } catch {
     return false
   }
@@ -118,16 +122,37 @@ export function isStorageAvailable(deps: TokenStoreDeps): boolean {
  * leave a half-written blob that decrypts to garbage and silently drops the
  * connection.
  */
-export function saveTokens(tokens: StoredTokens, deps: TokenStoreDeps): void {
-  const { box, file, log } = resolve(deps)
-  if (!box.isEncryptionAvailable()) {
+export async function saveTokens(tokens: StoredTokens, deps: TokenStoreDeps): Promise<void> {
+  const write = await prepareTokenWrite(tokens, deps)
+  write()
+}
+
+/**
+ * Encrypt first, then return a synchronous atomic write. The account can check
+ * its connection generation after encryption and write + bump it without an
+ * await between them (#348). Failed encryption never changes the stored file.
+ */
+export async function prepareTokenWrite(
+  tokens: StoredTokens,
+  deps: TokenStoreDeps
+): Promise<() => void> {
+  const { file, log } = resolve(deps)
+  const box = deps.secretBox ?? (await electronSecretBox())
+  if (!(await box.isAsyncEncryptionAvailable())) {
     throw new TokenStoreError(
       'Die sichere Ablage des Systems ist nicht verfügbar, deshalb wird die Verbindung nicht ' +
         'gespeichert. Unter Linux fehlt dafür meist ein Schlüsselbund (z. B. gnome-keyring).',
       'encryption_unavailable'
     )
   }
-  const cipher = box.encryptString(JSON.stringify(tokens))
+  const cipher = await box.encryptStringAsync(JSON.stringify(tokens))
+  return () => {
+    writeCipher(file, cipher)
+    log('graph token store: tokens saved')
+  }
+}
+
+function writeCipher(file: string, cipher: Buffer): void {
   const tmp = `${file}.tmp`
   try {
     writeFileSync(tmp, cipher, { mode: 0o600 })
@@ -148,7 +173,6 @@ export function saveTokens(tokens: StoredTokens, deps: TokenStoreDeps): void {
       'write_failed'
     )
   }
-  log('graph token store: tokens saved')
 }
 
 /** Shape check — a decrypted blob from an older or corrupted file may be anything. */
@@ -174,12 +198,18 @@ function isStoredTokens(v: unknown): v is StoredTokens {
  * file. Throwing here would turn a restored backup on a new machine into a
  * crash on startup.
  */
-export function loadTokens(deps: TokenStoreDeps): StoredTokens | null {
-  const { box, file, log } = resolve(deps)
+export async function loadTokens(deps: TokenStoreDeps): Promise<StoredTokens | null> {
+  const { file, log } = resolve(deps)
   if (!existsSync(file)) return null
   let parsed: unknown
+  let box: AsyncSecretBox
+  let cipher: Buffer
+  let decrypted: { result: string; shouldReEncrypt: boolean }
   try {
-    parsed = JSON.parse(box.decryptString(readFileSync(file)))
+    box = deps.secretBox ?? (await electronSecretBox())
+    cipher = readFileSync(file)
+    decrypted = await box.decryptStringAsync(cipher)
+    parsed = JSON.parse(decrypted.result)
   } catch (err) {
     // Typically: the file was copied from another machine, or the OS key
     // changed. Deliberately no token material in the message.
@@ -190,12 +220,25 @@ export function loadTokens(deps: TokenStoreDeps): StoredTokens | null {
     log('graph token store: stored connection has an unexpected shape, ignoring')
     return null
   }
+  // result is the decrypted string; shouldReEncrypt means the key has rotated
+  // or a new key offers a different security level. Encrypt that same string
+  // again, best effort: a failed upgrade must not discard a usable connection.
+  if (decrypted.shouldReEncrypt) {
+    try {
+      const updated = await box.encryptStringAsync(decrypted.result)
+      // Encryption yields: do not overwrite a newer connection or undo a
+      // disconnect that happened while the OS keychain was working.
+      if (existsSync(file) && readFileSync(file).equals(cipher)) writeCipher(file, updated)
+    } catch {
+      log('graph token store: re-encryption failed, keeping the stored connection')
+    }
+  }
   return parsed
 }
 
 /** True when a connection is stored and usable. */
-export function hasStoredTokens(deps: TokenStoreDeps): boolean {
-  return loadTokens(deps) !== null
+export async function hasStoredTokens(deps: TokenStoreDeps): Promise<boolean> {
+  return (await loadTokens(deps)) !== null
 }
 
 /** Remove the stored connection. Idempotent — "disconnect" when nothing is stored is fine. */

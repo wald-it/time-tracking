@@ -42,8 +42,8 @@ export function importedEventIds(db: Database.Database): Set<string> {
  * domain is "own" and every attendee counts as external, which is the honest
  * fallback.
  */
-export function ownDomains(deps: GraphAccountDeps): string[] {
-  const domain = domainOf(getStatus(deps).account?.username)
+export async function ownDomains(deps: GraphAccountDeps): Promise<string[]> {
+  const domain = domainOf((await getStatus(deps)).account?.username)
   return domain ? [domain] : []
 }
 
@@ -77,7 +77,7 @@ export async function previewCalendarImport(
 
   const events = await fetchCalendarView(token, range, { fetchFn: deps.fetchFn, log: deps.log })
   return mapEvents(events, {
-    ownDomains: ownDomains(deps.account),
+    ownDomains: await ownDomains(deps.account),
     mapping: domainMapping(db),
     alreadyImported: importedEventIds(db),
     filters

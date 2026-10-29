@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { StoredTokens } from '../shared/graphAuth'
 import type { GraphEvent } from '../shared/graphCalendar'
-import { saveTokens, type SecretBox } from './graphTokenStore'
+import { saveTokens, type AsyncSecretBox } from './graphTokenStore'
 import type { GraphAccountDeps } from './graphAccount'
 import { GraphCalendarError, type CalendarRange } from './graphCalendar'
 import {
@@ -25,14 +25,15 @@ beforeAll(async () => {
   DatabaseImpl = await loadSqlite()
 })
 
-function fakeBox(): SecretBox {
+function fakeBox(): AsyncSecretBox {
   return {
-    isEncryptionAvailable: () => true,
-    encryptString: (plain) => Buffer.from(`enc:${Buffer.from(plain, 'utf8').toString('base64')}`),
-    decryptString: (cipher) => {
+    isAsyncEncryptionAvailable: async () => true,
+    encryptStringAsync: async (plain) =>
+      Buffer.from(`enc:${Buffer.from(plain, 'utf8').toString('base64')}`),
+    decryptStringAsync: async (cipher) => {
       const s = cipher.toString('utf8')
       if (!s.startsWith('enc:')) throw new Error('bad ciphertext')
-      return Buffer.from(s.slice(4), 'base64').toString('utf8')
+      return { result: Buffer.from(s.slice(4), 'base64').toString('utf8'), shouldReEncrypt: false }
     }
   }
 }
@@ -106,9 +107,9 @@ describe('graphImport', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  function accountDeps(connected = true): GraphAccountDeps {
+  async function accountDeps(connected = true): Promise<GraphAccountDeps> {
     const store = { dir: storeDir, secretBox: fakeBox() }
-    if (connected) saveTokens(tokens(), store)
+    if (connected) await saveTokens(tokens(), store)
     return {
       getSetting: () => undefined,
       openExternal: () => {},
@@ -145,18 +146,18 @@ describe('graphImport', () => {
   })
 
   describe('ownDomains', () => {
-    it('derives the own domain from the connected account', () => {
-      expect(ownDomains(accountDeps())).toEqual(['wald-it.com'])
+    it('derives the own domain from the connected account', async () => {
+      expect(await ownDomains(await accountDeps())).toEqual(['wald-it.com'])
     })
 
-    it('is empty when nothing is connected', () => {
-      expect(ownDomains(accountDeps(false))).toEqual([])
+    it('is empty when nothing is connected', async () => {
+      expect(await ownDomains(await accountDeps(false))).toEqual([])
     })
   })
 
   describe('previewCalendarImport', () => {
     it('rejects an invalid range before touching the network', async () => {
-      const deps = { account: accountDeps() }
+      const deps = { account: await accountDeps() }
       await expect(
         previewCalendarImport(db, { startIso: 'quatsch', endIso: RANGE.endIso }, deps)
       ).rejects.toThrow(/Zeitraum/)
@@ -167,7 +168,7 @@ describe('graphImport', () => {
 
     it('says plainly when no account is connected', async () => {
       await expect(
-        previewCalendarImport(db, RANGE, { account: accountDeps(false) })
+        previewCalendarImport(db, RANGE, { account: await accountDeps(false) })
       ).rejects.toThrow(/Kein Microsoft-Konto verbunden/)
     })
 
@@ -193,7 +194,10 @@ describe('graphImport', () => {
       ]
       const fetchFn = (async () => pageResponse(events)) as unknown as typeof fetch
 
-      const result = await previewCalendarImport(db, RANGE, { account: accountDeps(), fetchFn })
+      const result = await previewCalendarImport(db, RANGE, {
+        account: await accountDeps(),
+        fetchFn
+      })
 
       expect(result.drafts).toHaveLength(2)
       const [first, second] = result.drafts
@@ -222,7 +226,10 @@ describe('graphImport', () => {
       db.prepare(`INSERT INTO projects (id, client_id, name) VALUES (7, 1, 'Endkunde A')`).run()
       learnDomain(db, 'kunde.de', 1, 7)
       const fetchFn = (async () => pageResponse([event()])) as unknown as typeof fetch
-      const result = await previewCalendarImport(db, RANGE, { account: accountDeps(), fetchFn })
+      const result = await previewCalendarImport(db, RANGE, {
+        account: await accountDeps(),
+        fetchFn
+      })
       expect(result.drafts[0]).toMatchObject({ clientId: 1, projectId: 7, clientHint: 'matched' })
     })
 
@@ -230,7 +237,7 @@ describe('graphImport', () => {
       const fetchFn = (async () =>
         ({ ok: false, status: 401, json: async () => ({}) }) as unknown as Response) as typeof fetch
       await expect(
-        previewCalendarImport(db, RANGE, { account: accountDeps(), fetchFn })
+        previewCalendarImport(db, RANGE, { account: await accountDeps(), fetchFn })
       ).rejects.toThrow(GraphCalendarError)
     })
   })

@@ -66,9 +66,9 @@ export function registerGraphHandlers(db: Database.Database): void {
   // first rather than leaving two listeners and two browser tabs behind.
   let inFlight: AbortController | null = null
 
-  ipcMain.handle('graph:status', (): IpcResult<AccountStatus> => {
+  ipcMain.handle('graph:status', async (): Promise<IpcResult<AccountStatus>> => {
     try {
-      return ok(getStatus(deps))
+      return ok(await getStatus(deps))
     } catch (e) {
       return fail(e)
     }
@@ -101,13 +101,13 @@ export function registerGraphHandlers(db: Database.Database): void {
     }
   })
 
-  ipcMain.handle('graph:disconnect', (): IpcResult<AccountStatus> => {
+  ipcMain.handle('graph:disconnect', async (): Promise<IpcResult<AccountStatus>> => {
     try {
       // A sign-in still running would otherwise write its tokens back moments
       // after the user asked to be disconnected.
       inFlight?.abort()
       inFlight = null
-      return ok(disconnect(deps))
+      return ok(await disconnect(deps))
     } catch (e) {
       return fail(e)
     }

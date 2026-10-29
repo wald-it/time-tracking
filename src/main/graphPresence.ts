@@ -46,7 +46,7 @@ export interface PresenceAccountView {
 
 export interface PresenceDeps {
   getSetting: (key: string) => string | undefined
-  getAccountStatus: () => PresenceAccountView
+  getAccountStatus: () => PresenceAccountView | Promise<PresenceAccountView>
   getAccessToken: () => Promise<string | null>
   /** The effective app client id — doubles as the presence session id. */
   getClientId: () => string
@@ -365,7 +365,7 @@ async function reconcileOnce(deps: PresenceDeps, running: RunningStatus | null):
     }
   }
 
-  const view = deps.getAccountStatus()
+  const view = await deps.getAccountStatus()
   if (!view.connected || view.personalAccount) return
   if (!scopeGranted(view)) {
     log('presence: Presence.ReadWrite not granted — reconnect required')
