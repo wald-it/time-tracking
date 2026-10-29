@@ -1,6 +1,6 @@
 # TimeTrack
 
-A desktop time tracker for freelancers and consultants — Windows and macOS, a
+A desktop time tracker for freelancers and consultants — Windows only, a
 local SQLite database, invoices-ready PDF timesheets, and integrations for
 Microsoft 365 calendars, AI clients (MCP), webhooks and hardware keys. No
 account, no server, no telemetry.
@@ -14,7 +14,8 @@ the running timer, hard keys, scales with ticks, in two themes (**Papier**,
 | Platform | Build | Notes |
 | -------- | ----- | ----- |
 | Windows 10/11 (x64) | NSIS installer | not code-signed — SmartScreen warns on first run |
-| macOS 13 or later (Apple silicon) | DMG / ZIP (arm64) | signed ad hoc, not notarized — macOS 15 and later: System Settings → Privacy & Security → Open Anyway; older versions: right-click → Open; Intel Macs: no build yet ([#168](https://github.com/wald-it/time-tracking/issues/168)) |
+
+macOS is no longer supported. The last macOS version is 2.0.1; its DMG and ZIP stay on the [2.0.1 release](https://github.com/wald-it/time-tracking/releases/tag/v2.0.1). Resuming macOS is tracked in [#416](https://github.com/wald-it/time-tracking/issues/416).
 
 Every release lists SHA-256 checksums and carries a build provenance
 attestation; see [SECURITY.md](SECURITY.md#release-integrity) for how to check a
@@ -80,7 +81,7 @@ pnpm typecheck
 # Run tests
 pnpm test
 
-# Build the Windows installer (macOS: pnpm build:mac)
+# Build the Windows installer
 pnpm build:win
 ```
 
@@ -215,7 +216,7 @@ Recommendation: call write tools with `preview: true` first, then commit.
 
 Releases are built by `.github/workflows/release.yml` from a `v*` tag (or a manual
 run started from that tag). The workflow builds exactly the tagged commit, runs the
-tests, packages the Windows installer, the macOS DMG/ZIP (arm64) and the Stream Deck
+tests, packages the Windows installer and the Stream Deck
 plugin, checks the package contents, smoke-tests the packaged app against its
 database and PDF pipeline, attests build provenance and publishes the GitHub Release
 with SHA-256 checksums in the notes. Releases are not code-signed (see
@@ -297,7 +298,7 @@ On start the app stops entries whose heartbeat is older than five minutes (crash
 
 - Renderer in the OS sandbox with `contextIsolation`, no Node integration, a strict Content Security Policy; all database access in the main process.
 - The installed app is locked with Electron fuses: it loads its code only from its own, unchanged package, and it ignores debugger flags and `NODE_OPTIONS`. Node mode stays available, because the MCP server runs through it.
-- PR and release builds check the packaged fuses, sandboxed preload and MCP server on Windows and macOS.
+- PR and release builds check the packaged fuses, sandboxed preload and MCP server on Windows.
 - Links leave the app only as `http(s)` links; app windows never navigate away from the app.
 - Local interfaces (MCP write bridge, hardware keys, iCal feed) are off by default and protected by random tokens.
 - Releases are not code-signed; checksums and build provenance are published. TimeTrack runs on Electron 44, which receives security updates until March 2027.

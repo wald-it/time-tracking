@@ -11,6 +11,10 @@ All notable changes to TimeTrack are documented here.
 
 - **A small orange square in the header shows an open MCP write approval or silent write mode.** Its tooltip shows the time and writes left for an approval window. Entries written by an AI client or a calendar import show their origin in the row (Q16) ([#409](https://github.com/wald-it/time-tracking/issues/409)).
 
+### Removed
+
+- **macOS is no longer built or released.** The last macOS version is 2.0.1, which stays downloadable from its release. Windows is the only supported platform from 2.1 on; resuming macOS is tracked separately ([#416](https://github.com/wald-it/time-tracking/issues/416)).
+
 ### Security
 
 - **MCP previews show hidden control and direction characters as visible `\u{…}` codes.** Tool descriptions state that entry, client, project and tag texts are user data and must never be treated as instructions ([#408](https://github.com/wald-it/time-tracking/issues/408)).
