@@ -19,8 +19,8 @@
  * environment, so the flag reaches them too.
  *
  * Depends on Electron's **RunAsNode** fuse, like `src/main/mcpLaunch.ts`. This
- * runs the dev binary from node_modules/electron, which carries no fuses: the
- * fuses are set only when packaging (`electronFuses` in electron-builder.yml).
+ * runs the dev binary from node_modules/electron with its default fuse values.
+ * App fuses are set only when packaging (`electronFuses` in electron-builder.yml).
  * Never write fuses into node_modules/electron — pnpm shares that binary
  * across worktrees, and RunAsNode off there would break every test run.
  */

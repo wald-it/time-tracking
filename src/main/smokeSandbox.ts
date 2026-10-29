@@ -17,6 +17,7 @@
  */
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { appWebPreferences } from './appWebPreferences'
+import { guardWindowLinks } from './externalLinks'
 
 export interface SandboxProbe {
   api: string
@@ -34,6 +35,7 @@ export async function probeSandboxedWindow(): Promise<SandboxProbe> {
   ipcMain.on('settings:getSync', themeRead)
   const win = new BrowserWindow({ show: false, webPreferences: appWebPreferences() })
   try {
+    guardWindowLinks(win)
     const load = win.loadURL('data:text/html,<!doctype html><title>smoke</title>')
     let timer: NodeJS.Timeout | undefined
     const timeout = new Promise<never>((_, reject) => {

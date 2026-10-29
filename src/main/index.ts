@@ -921,6 +921,9 @@ app.on('will-quit', () => {
 })
 
 app.on('window-all-closed', () => {
+  // Smoke mode closes the PDF and sandbox probe windows before writing its
+  // report. Only finishSmoke may exit it, after the report and DB cleanup.
+  if (smokeTestArg !== undefined) return
   if (process.platform !== 'darwin') {
     app.quit()
   }

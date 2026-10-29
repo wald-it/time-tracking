@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- **App windows run sandboxed, and the packaged app is hardened with Electron fuses.** The main window and mini widget use a sandboxed preload that exposes only TimeTrack's API. The packaged binary loads app code only from its integrity-checked ASAR and ignores Node debugger arguments and `NODE_OPTIONS`. RunAsNode stays enabled for the MCP server and smoke cleaner. The fuse probe checks the packaged binary on Windows and macOS in both PR and release builds; the app smoke probe also checks the sandbox and preload API ([#272](https://github.com/wald-it/time-tracking/issues/272)).
+
 ## [2.0.1] — 2026-10-29
 
 ### Breaking for webhook receivers
@@ -140,7 +144,6 @@ If you call TimeTrack's MCP tools from your own scripts or agents, or receive it
 - **Narrower IPC surface, part 1 (#272).** The app window now gets only TimeTrack's own API. The generic `window.electron` object (raw IPC access and `process.env`) is gone. The main process saves only the settings the app's own screens write. The backup folder, the PDF logo path, the window position and the iCal feed token can no longer be set from the window. The theme is now the only setting the window can read synchronously. A backup restore now takes the file name of a backup from the backup list instead of a path, and refuses a file that is not a SQLite database before the open database is touched. The unused `update:getVersion` channel is gone as well (#281).
 - **Narrower IPC surface, part 2 (#272).** The main process now opens, reveals and reads only files it handed out. "Open folder" and "Show in folder" accept the database, the log folder and log file, the backup folder and the PDFs this session's merges wrote. The PDF merge reads only PDFs picked in the file dialog. TimeTrack remembers the 50 most recently used picks across restarts, so the merge dialog still restores its last invoice and time sheets. Once after this update, a remembered selection from before it has to be picked again.
 - **Settings that widen access ask first (#272, part 3).** Turning on MCP write access, hardware keys or "Do not ask", adding a webhook address and setting a different Microsoft app ID now each show a native confirmation in TimeTrack before they are saved. Switching off, removing and clearing never ask. The webhook address is saved when you leave the field, so the question comes once per address.
-- **App windows run sandboxed; the installed app is locked with fuses (#272, part 4).** The main window and the mini widget now run in the operating system's sandbox, with a preload that loads nothing but Electron's own bridge. The installed binary carries Electron fuses: it loads TimeTrack's code only from its own package and only if that package is unchanged, and it ignores `--inspect` debugger flags and the `NODE_OPTIONS` variable. Node mode stays on, because the MCP server runs through it. A check on every pull request reads the fuses from the built app on Windows and macOS and opens a sandboxed window there. The unused `@electron-toolkit/preload` package is gone.
 
 ## [1.22.0] — 2026-10-23
 

@@ -20,7 +20,7 @@
  * (`electronFuses` in `electron-builder.yml`) with `runAsNode: true`; turned
  * off, `ELECTRON_RUN_AS_NODE=1` is ignored and the MCP server fails to launch
  * with no visible error. The package smoke (scripts/package-smoke.mjs) checks
- * the fuse and starts the server this way on every PR.
+ * the fuse and starts the server this way in PR and release builds.
  */
 import { existsSync } from 'fs'
 import { join } from 'path'
