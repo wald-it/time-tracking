@@ -40,6 +40,18 @@ import { getQuickRange, type QuickRangeKind } from '../../../shared/dateRanges'
 // previous render.
 afterEach(cleanup)
 
+it('uses the shared width and an adaptive grid for all export sections (#420)', async () => {
+  const { container } = await renderHost()
+  const root = container.firstElementChild as HTMLElement
+  expect(root.classList.contains('max-w-[920px]')).toBe(false)
+  expect(root.classList.contains('w-full')).toBe(true)
+  const grid = root.querySelector<HTMLElement>(':scope > .grid')!
+  expect(grid).not.toBeNull()
+  expect(grid.style.gridTemplateColumns).toBe('repeat(auto-fit, minmax(min(440px, 100%), 1fr))')
+  expect(grid.querySelectorAll(':scope > section')).toHaveLength(3)
+  expect(grid.classList.contains('[&_p]:max-w-[65ch]')).toBe(true)
+})
+
 /** Same local-day formatting the view applies before handing the range over. */
 function isoDay(d: Date): string {
   const y = d.getFullYear()

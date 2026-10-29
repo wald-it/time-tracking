@@ -59,53 +59,58 @@ export default function ExportView(): React.JSX.Element {
   )
 
   return (
-    <div className="flex w-full max-w-[920px] flex-col gap-10">
+    <div className="flex w-full min-w-0 flex-col gap-10">
       <h1 className={VIEW_TITLE}>{t('export.view.title')}</h1>
 
-      <Card>
-        <CardHeading title={t('export.view.timesTitle')} hint={t('export.view.timesHint')} />
+      <div
+        className="grid min-w-0 items-start gap-8 [&>section]:min-w-0 [&_p]:max-w-[65ch] [&_p]:[overflow-wrap:anywhere]"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(440px, 100%), 1fr))' }}
+      >
+        <Card>
+          <CardHeading title={t('export.view.timesTitle')} hint={t('export.view.timesHint')} />
 
-        {/* Trigger row, moved verbatim from CalendarView. Hero "Letzter Monat"
+          {/* Trigger row, moved verbatim from CalendarView. Hero "Letzter Monat"
             is the inverse ink key — it is the most common rechnungs-flow. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onQuickRange('lastMonth')}
-            className={KEY_INV}
-            title={t('export.view.lastMonthTitle')}
-          >
-            {t('export.view.lastMonth')}
-          </button>
-          <span className={`ml-2 ${FIELD_LABEL}`}>{t('export.view.rangeLabel')}</span>
-          {(['thisWeek', 'lastWeek', 'thisMonth'] as const).map((k) => (
-            <button key={k} type="button" onClick={() => onQuickRange(k)} className={KEY}>
-              {t(('export.range.' + k) as TranslationKey)}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onQuickRange('lastMonth')}
+              className={KEY_INV}
+              title={t('export.view.lastMonthTitle')}
+            >
+              {t('export.view.lastMonth')}
             </button>
-          ))}
-        </div>
-      </Card>
+            <span className={`ml-2 ${FIELD_LABEL}`}>{t('export.view.rangeLabel')}</span>
+            {(['thisWeek', 'lastWeek', 'thisMonth'] as const).map((k) => (
+              <button key={k} type="button" onClick={() => onQuickRange(k)} className={KEY}>
+                {t(('export.range.' + k) as TranslationKey)}
+              </button>
+            ))}
+          </div>
+        </Card>
 
-      <BillingRunList
-        refreshKey={runsRevision}
-        onRebill={(run) => {
-          setReplacementRun(run)
-          setPdfRange({ fromIso: run.period_from, toIso: run.period_to })
-        }}
-      />
+        <BillingRunList
+          refreshKey={runsRevision}
+          onRebill={(run) => {
+            setReplacementRun(run)
+            setPdfRange({ fromIso: run.period_from, toIso: run.period_to })
+          }}
+        />
 
-      <Card>
-        <CardHeading title={t('export.view.mergeTitle')} hint={t('export.view.mergeHint')} />
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setMergeOpen(true)}
-            className={KEY}
-            title={t('export.view.mergeButtonTitle')}
-          >
-            {t('export.view.merge')}
-          </button>
-        </div>
-      </Card>
+        <Card>
+          <CardHeading title={t('export.view.mergeTitle')} hint={t('export.view.mergeHint')} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMergeOpen(true)}
+              className={KEY}
+              title={t('export.view.mergeButtonTitle')}
+            >
+              {t('export.view.merge')}
+            </button>
+          </div>
+        </Card>
+      </div>
 
       {/* The `key` remounts the modal per open so it re-reads the stored prefs
           (its `initialPrefs` is a lazy useState). Dropping it leaves the prefs
