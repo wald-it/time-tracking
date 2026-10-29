@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { Client, Entry, EntryVersion, IpcResult } from '../../../../shared/types'
+import type { Client, Entry, EntryVersion, IpcResult, Settings } from '../../../../shared/types'
 import { I18nProvider } from '../../contexts/I18nContext'
 import { useEntriesStore } from '../../store/entriesStore'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -92,6 +92,91 @@ function install(
   Object.defineProperty(window, 'api', { configurable: true, value: { entries: { versions } } })
   return versions
 }
+
+const local = (day: number, hour: number, minute = 0): string =>
+  new Date(2026, 9, day, hour, minute).toISOString()
+
+async function showTimes(versions: EntryVersion[]): Promise<HTMLElement> {
+  install(vi.fn().mockResolvedValue({ ok: true, data: versions }))
+  render(panel())
+  fireEvent.click(screen.getByRole('button', { name: /Verlauf|History/ }))
+  return screen.findByRole('list', { name: /Verlauf|History/ })
+}
+
+describe.each([
+  { locale: 'de', date: '28.10.2026', nextDate: '29.10.2026', running: 'Läuft' },
+  { locale: 'en', date: '28/10/2026', nextDate: '29/10/2026', running: 'Running' }
+])('history time spans ($locale)', ({ locale, date, nextDate, running }) => {
+  function setLanguage(): void {
+    useSettingsStore.setState({ settings: { language: locale } as Settings })
+  }
+
+  it('shows a same-day span with an en dash and the stop time without its date', async () => {
+    setLanguage()
+    const history = await showTimes([
+      {
+        ...first,
+        segments: [
+          {
+            seq: 0,
+            segment_date: '2026-10-28',
+            started_at: local(28, 9),
+            stopped_at: local(28, 10)
+          }
+        ]
+      }
+    ])
+    expect(within(history).getByText(`${date}, 09:00:00 – 10:00:00`)).toBeVisible()
+  })
+
+  it('keeps both dates for a span across local midnight', async () => {
+    setLanguage()
+    const history = await showTimes([
+      { ...first, segments: [], started_at: local(28, 23, 30), stopped_at: local(29, 0, 30) }
+    ])
+    expect(within(history).getByText(`${date}, 23:30:00 – ${nextDate}, 00:30:00`)).toBeVisible()
+  })
+
+  it('uses exactly one arrow between the old and new time spans', async () => {
+    setLanguage()
+    const before = { ...first, segments: [], started_at: local(28, 9), stopped_at: local(28, 10) }
+    const after = {
+      ...before,
+      version_id: 2,
+      version_no: 2,
+      written_at: local(28, 12),
+      stopped_at: local(28, 11)
+    }
+    const history = await showTimes([before, after])
+    const row = within(history).getByText('Version 2').closest('li')!
+    const change = within(row).getByText(
+      (_, element) => element?.tagName === 'SPAN' && (element.textContent ?? '').includes('→')
+    )
+    expect(change.textContent?.match(/→/g)).toHaveLength(1)
+    expect(change).toHaveTextContent(`${date}, 09:00:00 – 10:00:00 → ${date}, 09:00:00 – 11:00:00`)
+  })
+
+  it('joins segments with a semicolon and keeps the translated running stop', async () => {
+    setLanguage()
+    const history = await showTimes([
+      {
+        ...first,
+        segments: [
+          {
+            seq: 0,
+            segment_date: '2026-10-28',
+            started_at: local(28, 9),
+            stopped_at: local(28, 10)
+          },
+          { seq: 1, segment_date: '2026-10-28', started_at: local(28, 11), stopped_at: null }
+        ]
+      }
+    ])
+    expect(
+      within(history).getByText(`${date}, 09:00:00 – 10:00:00; ${date}, 11:00:00 – ${running}`)
+    ).toBeVisible()
+  })
+})
 
 describe('day panel entry history', () => {
   it('loads only on expansion and shows metadata, adjacent diffs and expandable capture additions', async () => {

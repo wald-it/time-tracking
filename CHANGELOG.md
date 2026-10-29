@@ -13,6 +13,7 @@ All notable changes to TimeTrack are documented here.
 - **Old PDF viewer copies are removed at app start.** Copies of billing run PDFs older than a day are now also deleted when the app starts, not only when the next copy is written ([#388](https://github.com/wald-it/time-tracking/issues/388)).
 - **Error messages no longer show a double prefix.** Errors from the app now read "Fehler: …" instead of "Fehler: Error: …" ([#389](https://github.com/wald-it/time-tracking/issues/389)).
 - **Hidden rates no longer affect which clients or projects appear in MCP analytics.** With rates hidden, whether a client or project appears in `get_analytics` no longer depends on whether it has a rate. This privacy fix changes the MCP row set only in the edge case of a billable entry shorter than a second ([#360](https://github.com/wald-it/time-tracking/issues/360)).
+- **Entry history shows clear time spans and stays open after an edit.** Spans use an en dash and omit the stop date when both times fall on the same local day; arrows separate the old and new values. An open history remains open after saving in the day panel ([#387](https://github.com/wald-it/time-tracking/issues/387)).
 
 ## [2.0.0] — 2026-10-29
 
