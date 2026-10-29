@@ -11,6 +11,10 @@ All notable changes to TimeTrack are documented here.
 
 - **Client and project editors now set timesheet columns, language, the fee column and grouping.** Each field inherits like interval and minimum unit. These settings do not affect the PDF yet ([#421](https://github.com/wald-it/time-tracking/issues/421)).
 
+### Changed
+
+- **Clients, Export and Settings use the window width like Today, Analytics and Calendar.** Settings rows run label left, control right; Export cards sit side by side; the client list is wider ([#420](https://github.com/wald-it/time-tracking/issues/420)).
+
 ## [2.1.0] — 2026-10-29
 
 ### Added

@@ -290,8 +290,8 @@ export default function ClientsView(): React.JSX.Element {
   const inactiveClients = clients.filter((c) => !c.active)
 
   return (
-    <div className="w-full max-w-3xl">
-      <div className="mb-8 flex items-center justify-between gap-4">
+    <div className="w-full min-w-0">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <h1 className={VIEW_TITLE}>{t('clients.title')}</h1>
         <button onClick={openNew} className={KEY_INV}>
           <Icons.Plus />
@@ -534,7 +534,7 @@ function ClientItem({
     <li className="border-t border-[var(--line)] first:border-t-0">
       {/* Client row */}
       <div
-        className="flex min-h-14 items-center gap-3 py-1.5 hover:bg-[var(--key)]"
+        className="flex min-h-14 min-w-0 items-center gap-3 py-1.5 min-[960px]:gap-5 hover:bg-[var(--key)]"
         style={c.contact_person ? { alignItems: 'flex-start' } : {}}
       >
         {/* Chevron toggle */}
@@ -564,8 +564,8 @@ function ClientItem({
         />
         {/* Archived: --ink3 and a legend instead of a faded row, which fell
             below --ink3's contrast. */}
-        <span className="flex-1 min-w-0">
-          <span className="flex flex-wrap items-center gap-1.5">
+        <span className="flex-1 min-w-0 [overflow-wrap:anywhere]">
+          <span className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
             <span
               className="font-semibold"
               style={{ color: dimmed ? 'var(--ink3)' : 'var(--ink)' }}
@@ -736,9 +736,9 @@ function ProjectItem({
   const budgetWarn = hasBudget && budgetPct >= 80
 
   return (
-    <li className="group flex min-h-11 items-center gap-2.5 border-t border-[var(--line)] py-1 first:border-t-0 hover:bg-[var(--key)]">
+    <li className="group flex min-h-11 min-w-0 items-center gap-2.5 border-t border-[var(--line)] py-1 min-[960px]:gap-5 first:border-t-0 hover:bg-[var(--key)]">
       <span className="h-2 w-2 shrink-0 self-start mt-1.5" style={{ backgroundColor: dotColor }} />
-      <span className="flex-1 min-w-0">
+      <span className="flex-1 min-w-0 [overflow-wrap:anywhere]">
         <span className="flex items-center gap-1.5 flex-wrap">
           <span
             className="text-sm font-medium"

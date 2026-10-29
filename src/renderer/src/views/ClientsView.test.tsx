@@ -18,6 +18,17 @@ import { RATE_EDITOR_CONFLICT_ERROR } from '../../../shared/rateEditor'
 
 afterEach(cleanup)
 
+it('uses the shared width with flexible client names and spaced actions (#420)', async () => {
+  await renderView()
+  const root = screen.getByRole('heading', { level: 1 }).parentElement!.parentElement!
+  expect(root).not.toHaveClass('max-w-3xl')
+  expect(root).toHaveClass('w-full', 'min-w-0')
+  const row = screen.getByRole('button', { name: 'Bearbeiten: Acme' }).parentElement!
+  expect(row).toHaveClass('min-[960px]:gap-5')
+  expect(screen.getByText('ACME').parentElement).toHaveClass('justify-between')
+  expect(screen.getByText('Acme').parentElement!.parentElement).toHaveClass('flex-1', 'min-w-0')
+})
+
 const CLIENTS: Client[] = [
   {
     id: 1,
