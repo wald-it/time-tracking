@@ -71,6 +71,7 @@ interface ApiMock {
   start: ReturnType<typeof vi.fn>
   switch: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
+  stopAt: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
   create: ReturnType<typeof vi.fn>
   heartbeat: ReturnType<typeof vi.fn>
@@ -151,6 +152,10 @@ function mockApi(opts: MockOpts = {}): ApiMock {
     ok: true as const,
     data: makeEntry(payload)
   }))
+  const stopAt = vi.fn(async (id: number, stoppedAt: string) => ({
+    ok: true as const,
+    data: makeEntry({ ...current, id, stopped_at: stoppedAt })
+  }))
   // entries:create — a closed entry in one step (the idle pause, #298).
   const create = vi.fn(async (payload: UpdatePayload & { billable?: number }) => ({
     ok: true as const,
@@ -168,6 +173,7 @@ function mockApi(opts: MockOpts = {}): ApiMock {
       start,
       switch: switchFn,
       stop,
+      stopAt,
       update,
       create,
       heartbeat
@@ -224,6 +230,7 @@ function mockApi(opts: MockOpts = {}): ApiMock {
     start,
     switch: switchFn,
     stop,
+    stopAt,
     update,
     create,
     heartbeat,
@@ -1064,7 +1071,7 @@ describe('useTimer — a rejected call never leaves isLoading set', () => {
     const { api, hook } = await setup()
     await startTimer(hook)
     act(() => api.listeners.idleDetected?.(IDLE))
-    api.update.mockRejectedValueOnce(new Error('ipc gone'))
+    api.stopAt.mockRejectedValueOnce(new Error('ipc gone'))
 
     await act(async () => {
       await hook.result.current.idleStopAtIdle().catch(() => {})
@@ -1080,7 +1087,7 @@ describe('useTimer — a rejected call never leaves isLoading set', () => {
     const { api, hook } = await setup()
     await startTimer(hook)
     act(() => api.listeners.idleDetected?.(IDLE))
-    api.update.mockRejectedValueOnce(new Error('ipc gone'))
+    api.stopAt.mockRejectedValueOnce(new Error('ipc gone'))
 
     await act(async () => {
       await hook.result.current.idleMarkPause().catch(() => {})
@@ -1139,6 +1146,7 @@ describe('useTimer — idle transitions', () => {
     expect(hook.result.current.idleEvent).toBeNull()
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
     expect(hook.result.current.runningEntry?.id).toBe(entry.id)
+    expect(api.stopAt).not.toHaveBeenCalled()
     expect(api.update).not.toHaveBeenCalled()
   })
 
@@ -1151,14 +1159,8 @@ describe('useTimer — idle transitions', () => {
       await hook.result.current.idleStopAtIdle()
     })
 
-    // Since 2.0 an update is a patch (design D3): only the stop time is sent,
-    // every other field keeps its value in main (#313), and the source names
-    // the idle prompt on the version.
-    expect(api.update).toHaveBeenCalledWith({
-      id: entry.id,
-      stopped_at: IDLE.idleSince,
-      source: 'idle'
-    })
+    expect(api.stopAt).toHaveBeenCalledExactlyOnceWith(entry.id, IDLE.idleSince)
+    expect(api.update).not.toHaveBeenCalled()
     expect(hook.result.current.runningEntry).toBeNull()
     expect(hook.result.current.idleEvent).toBeNull()
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
@@ -1182,13 +1184,7 @@ describe('useTimer — idle transitions', () => {
     })
 
     // 1. The running entry is closed at the moment idleness began.
-    expect(api.update).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        id: entry.id,
-        stopped_at: IDLE.idleSince
-      })
-    )
+    expect(api.stopAt).toHaveBeenCalledExactlyOnceWith(entry.id, IDLE.idleSince)
     // 2. A "Pause" entry covers idleSince → now, booked closed and not
     // billable in one step (#298: it used to be started as a running timer
     // and closed afterwards, which left a running billable pause whenever
@@ -1203,7 +1199,7 @@ describe('useTimer — idle transitions', () => {
       source: 'idle'
     })
     expect(api.start).toHaveBeenCalledTimes(1) // startTimer() above, not the pause
-    expect(api.update).toHaveBeenCalledTimes(1)
+    expect(api.update).not.toHaveBeenCalled()
     expect(hook.result.current.runningEntry).toBeNull()
     expect(hook.result.current.idleEvent).toBeNull()
     expect(api.idleDismiss).toHaveBeenCalledTimes(1)
@@ -1316,8 +1312,8 @@ describe('useTimer — handleOpenStart (#297)', () => {
 
 // #313: the idle prompt used to send the whole running entry, because
 // entries:update re-inserted the row and defaulted every field it was not
-// sent. Since 2.0 (design D3) an update is a patch: the prompt sends the stop
-// time only, and project, billable, tags, reference and note keep their
+// sent. The stopAt operation sends the stop time only, and project,
+// billable, tags, reference and note keep their
 // values in main (entryWrite.test.ts, "amend ... keeps every field"). This
 // pins that the prompt sends nothing but the stop, so no stale copy of a
 // field can overwrite what the entry has by then.
@@ -1330,7 +1326,6 @@ describe('useTimer — the idle prompt sends only the stop time (#313, 2.0)', ()
     reference: 'JIRA-7',
     private_note: 'intern'
   })
-  const SENT = { id: 5, stopped_at: IDLE.idleSince, source: 'idle' }
 
   it('idleStopAtIdle()', async () => {
     const { api, hook } = await setup({ running: RUNNING })
@@ -1341,7 +1336,8 @@ describe('useTimer — the idle prompt sends only the stop time (#313, 2.0)', ()
       await hook.result.current.idleStopAtIdle()
     })
 
-    expect(api.update).toHaveBeenCalledWith(SENT)
+    expect(api.stopAt).toHaveBeenCalledExactlyOnceWith(5, IDLE.idleSince)
+    expect(api.update).not.toHaveBeenCalled()
   })
 
   it('idleMarkPause()', async () => {
@@ -1353,6 +1349,7 @@ describe('useTimer — the idle prompt sends only the stop time (#313, 2.0)', ()
       await hook.result.current.idleMarkPause()
     })
 
-    expect(api.update).toHaveBeenNthCalledWith(1, SENT)
+    expect(api.stopAt).toHaveBeenCalledExactlyOnceWith(5, IDLE.idleSince)
+    expect(api.update).not.toHaveBeenCalled()
   })
 })

@@ -88,6 +88,7 @@ declare global {
         start(input: CreateEntryInput): Promise<IpcResult<Entry>>
         switch(input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>>
         stop(id: number): Promise<IpcResult<Entry>>
+        stopAt(id: number, stoppedAt: string): Promise<IpcResult<Entry>>
         heartbeat(id: number): Promise<IpcResult<void>>
         getRunning(): Promise<IpcResult<Entry | null>>
         getByMonth(query: MonthQuery): Promise<IpcResult<Entry[]>>

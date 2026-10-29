@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import type { Client, Entry, IpcResult, UpdateEntryInput } from '../../../shared/types'
+import type { Client, Entry, IpcResult } from '../../../shared/types'
 import { useTimerStore } from '../store/timerStore'
 import { useClientsStore } from '../store/clientsStore'
 import { readLastStartPair, useStartTimerModalStore } from '../store/startTimerModalStore'
@@ -84,17 +84,6 @@ async function withLoading<T>(call: () => Promise<IpcResult<T>>): Promise<IpcRes
   } finally {
     useTimerStore.getState().setIsLoading(false)
   }
-}
-
-/**
- * The entries:update input that stops `entry` at `stoppedAt` and otherwise
- * keeps it. Since 2.0 an update is a patch (design D3): every field not sent
- * keeps its value, so project, billable, tags, reference and note stay as
- * they are without travelling along (#313). The source names the idle prompt
- * on the version.
- */
-function stopAtInput(entry: Entry, stoppedAt: string): UpdateEntryInput {
-  return { id: entry.id, stopped_at: stoppedAt, source: 'idle' }
 }
 
 // Refs shared across all useTimer() instances so listeners are registered ONCE
@@ -487,7 +476,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     setIsLoading(true)
     let res: IpcResult<Entry>
     try {
-      res = await window.api.entries.update(stopAtInput(entry, ev.idleSince))
+      res = await window.api.entries.stopAt(entry.id, ev.idleSince)
     } finally {
       setIsLoading(false)
     }
@@ -511,7 +500,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     // rejection still reaches the caller, but never leaves it set.
     try {
       // 1. Stop the running entry at idleSince
-      const stopRes = await window.api.entries.update(stopAtInput(entry, ev.idleSince))
+      const stopRes = await window.api.entries.stopAt(entry.id, ev.idleSince)
       if (stopRes.ok) {
         // 2. Book the pause from idleSince to now in one step, closed and not
         // billable: it is time not worked and must stay off the client's
