@@ -8,6 +8,7 @@ import type {
 } from '../shared/rateEditor'
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  McpApprovalState,
   Client,
   Entry,
   EntryVersion,
@@ -51,6 +52,14 @@ document.addEventListener('DOMContentLoaded', () => {
 // ──────────────────────────────────────────────────────────────────────────
 
 const api = {
+  mcpApproval: {
+    get: (): Promise<IpcResult<McpApprovalState>> => ipcRenderer.invoke('mcp:approval-state'),
+    onChanged: (callback: (state: McpApprovalState) => void): (() => void) => {
+      const handler = (_e: unknown, state: McpApprovalState): void => callback(state)
+      ipcRenderer.on('mcp:approval-changed', handler)
+      return () => ipcRenderer.removeListener('mcp:approval-changed', handler)
+    }
+  },
   rates: {
     list: (target: RateTarget): Promise<IpcResult<RateEditorData>> =>
       ipcRenderer.invoke('rates:list', target),

@@ -7,12 +7,17 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **A small orange square in the header shows an open MCP write approval or silent write mode.** Its tooltip shows the time and writes left for an approval window. Entries written by an AI client or a calendar import show their origin in the row (Q16) ([#409](https://github.com/wald-it/time-tracking/issues/409)).
+
 ### Changed
 
 - **The Microsoft account token is now read and written with Electron's asynchronous `safeStorage` API.** This prepares for Electron 46, which removes the synchronous API; existing sign-ins stay valid ([#354](https://github.com/wald-it/time-tracking/issues/354)).
 
 ### Security
 
+- **MCP previews show hidden control and direction characters as visible `\u{…}` codes.** Tool descriptions state that entry, client, project and tag texts are user data and must never be treated as instructions ([#408](https://github.com/wald-it/time-tracking/issues/408)).
 - **App windows run sandboxed, and the packaged app is hardened with Electron fuses.** The main window and mini widget use a sandboxed preload that exposes only TimeTrack's API. The packaged binary loads app code only from its integrity-checked ASAR and ignores Node debugger arguments and `NODE_OPTIONS`. RunAsNode stays enabled for the MCP server and smoke cleaner. The fuse probe checks the packaged binary on Windows and macOS in both PR and release builds; the app smoke probe also checks the sandbox and preload API ([#272](https://github.com/wald-it/time-tracking/issues/272)).
 
 ## [2.0.1] — 2026-10-29

@@ -2,6 +2,7 @@ import { useTimer } from '../../hooks/useTimer'
 import { useNow } from '../../contexts/NowContext'
 import { useT } from '../../contexts/I18nContext'
 import { LogoMark } from './LogoMark'
+import { ApprovalSquare } from './ApprovalSquare'
 
 export type View = 'today' | 'calendar' | 'clients' | 'analytics' | 'export' | 'settings'
 
@@ -59,6 +60,7 @@ export function AppHeader({
           >
             TimeTrack
           </span>
+          <ApprovalSquare />
         </div>
 
         <nav aria-label={t('header.navAria')} className="flex flex-auto gap-0.5">

@@ -56,6 +56,7 @@ function hooks(hotkey: HotkeyChange = { ok: true }): IpcHooks {
     setIcalFeedEnabled: record('setIcalFeedEnabled'),
     restartIcalFeed: record('restartIcalFeed'),
     forgetMcpApproval: record('forgetMcpApproval'),
+    getMcpApprovalState: () => ({ state: 'off' }),
     confirmSensitiveSetting: async (change) => {
       asked.push(change)
       return answer
