@@ -1,6 +1,8 @@
 import type Database from 'better-sqlite3'
 import { dueRateSql } from '../shared/dueRate'
 import {
+  PROFILE_CHOICES,
+  PROFILE_CHOICE_ERROR,
   PROFILE_INTERVAL_ERROR,
   PROFILE_MINIMUM_ERROR,
   RATE_BASELINE_ERROR,
@@ -11,6 +13,7 @@ import {
   RATE_VALUE_ERROR,
   type ProfileEditorData,
   type ProfileFields,
+  type ResolvedProfileFields,
   type RateRow,
   type RateTarget,
   type SaveRateInput,
@@ -142,13 +145,27 @@ export function deleteRate(db: Db, target: RateTarget, id: number): RateEditorDa
   })()
 }
 
-function profileFields(db: Db, column: string, id?: number): ProfileFields {
+const PROFILE_DEFAULTS: ResolvedProfileFields = {
+  interval_min: 0,
+  min_unit_min: 0,
+  columns: 'times',
+  language: 'de',
+  fee_column: 'auto',
+  group_by: 'none'
+}
+const PROFILE_KEYS = Object.keys(PROFILE_DEFAULTS) as (keyof ProfileFields)[]
+
+function profileFields(db: Db, column: string, id?: number): Required<ProfileFields> {
   return (
     (db
-      .prepare(`SELECT interval_min, min_unit_min FROM billing_profile WHERE ${column}`)
-      .get(...(id === undefined ? [] : [id])) as ProfileFields | undefined) ?? {
+      .prepare(`SELECT ${PROFILE_KEYS.join(', ')} FROM billing_profile WHERE ${column}`)
+      .get(...(id === undefined ? [] : [id])) as Required<ProfileFields> | undefined) ?? {
       interval_min: null,
-      min_unit_min: null
+      min_unit_min: null,
+      columns: null,
+      language: null,
+      fee_column: null,
+      group_by: null
     }
   )
 }
@@ -159,13 +176,15 @@ export function readProfile(db: Db, target: RateTarget): ProfileEditorData {
   const parent =
     target.kind === 'project' && clientId !== null
       ? profileFields(db, 'client_id = ?', clientId)
-      : defaults
+      : null
   return {
     ...profileFields(db, `${column} = ?`, target.id),
-    inherited: {
-      interval_min: parent.interval_min ?? defaults.interval_min ?? 0,
-      min_unit_min: parent.min_unit_min ?? defaults.min_unit_min ?? 0
-    }
+    inherited: Object.fromEntries(
+      PROFILE_KEYS.map((key) => [key, parent?.[key] ?? defaults[key] ?? PROFILE_DEFAULTS[key]])
+    ) as ResolvedProfileFields,
+    inherited_source: Object.fromEntries(
+      PROFILE_KEYS.map((key) => [key, parent?.[key] != null ? 'client' : 'default'])
+    ) as ProfileEditorData['inherited_source']
   }
 }
 
@@ -175,15 +194,25 @@ export function saveProfile(db: Db, target: RateTarget, fields: ProfileFields): 
     ['interval_min', 60, PROFILE_INTERVAL_ERROR],
     ['min_unit_min', Number.MAX_SAFE_INTEGER, PROFILE_MINIMUM_ERROR]
   ] as const) {
+    if (fields && !Object.hasOwn(fields, key)) continue
     const value = fields?.[key]
     if (value !== null && (!Number.isSafeInteger(value) || value < 0 || value > max))
       throw new Error(message)
   }
-  // Only these two fields are ever written, including on conflict.
+  for (const key of Object.keys(PROFILE_CHOICES) as (keyof typeof PROFILE_CHOICES)[]) {
+    if (!Object.hasOwn(fields, key)) continue
+    const value = fields[key]
+    const allowed: readonly string[] = PROFILE_CHOICES[key]
+    if (value !== null && (typeof value !== 'string' || !allowed.includes(value)))
+      throw new Error(PROFILE_CHOICE_ERROR)
+  }
+  // Write only supplied editor fields, including on conflict; never write alignment or defaults.
+  const keys = PROFILE_KEYS.filter((key) => Object.hasOwn(fields, key))
+  if (keys.length === 0) return readProfile(db, target)
   db.prepare(
-    `INSERT INTO billing_profile (${column}, interval_min, min_unit_min) VALUES (?, ?, ?)
+    `INSERT INTO billing_profile (${column}, ${keys.join(', ')}) VALUES (?, ${keys.map(() => '?').join(', ')})
     ON CONFLICT (${column}) WHERE ${column} IS NOT NULL DO UPDATE
-    SET interval_min = excluded.interval_min, min_unit_min = excluded.min_unit_min`
-  ).run(target.id, fields.interval_min, fields.min_unit_min)
+    SET ${keys.map((key) => `${key} = excluded.${key}`).join(', ')}`
+  ).run(target.id, ...keys.map((key) => fields[key]))
   return readProfile(db, target)
 }

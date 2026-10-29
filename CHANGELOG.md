@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Client and project editors now set timesheet columns, language, the fee column and grouping.** Each field inherits like interval and minimum unit. These settings do not affect the PDF yet ([#421](https://github.com/wald-it/time-tracking/issues/421)).
+
 ## [2.1.0] — 2026-10-29
 
 ### Added
