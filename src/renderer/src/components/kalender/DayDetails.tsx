@@ -9,6 +9,7 @@ import { useEntriesStore } from '../../store/entriesStore'
 import { useToastStore } from '../../store/toastStore'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { BilledChip } from '../BilledChip'
+import { EntryOrigin } from '../EntryOrigin'
 import { EntryEditForm } from '../EntryEditForm'
 import { EntryHistory } from './EntryHistory'
 import { useLocale, useT } from '../../contexts/I18nContext'
@@ -322,6 +323,7 @@ export function DayDetails({
                     </span>
                   </div>
                   {!!e.billed && <BilledChip />}
+                  <EntryOrigin source={e.source} />
                   {e.description && (
                     <p
                       className="m-0 line-clamp-2 text-[13px] text-[var(--ink)] [overflow-wrap:anywhere]"

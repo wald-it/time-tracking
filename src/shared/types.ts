@@ -1,5 +1,10 @@
 // Shared types between main process and renderer
 
+export type McpApprovalState =
+  | { state: 'off' }
+  | { state: 'silent' }
+  | { state: 'window'; until: number; writesLeft: number }
+
 export interface Client {
   /** Client code in the timesheet run number. */
   short_code: string | null
@@ -20,6 +25,8 @@ export interface Client {
 }
 
 export interface Entry {
+  /** Source of the current version, supplied by the day and month row queries. */
+  source?: string | null
   /** Any active billing run item for this logical entry, across all versions/days (0 or 1). */
   billed?: number
   id: number

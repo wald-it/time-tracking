@@ -16,6 +16,7 @@ const ALLOWED: Record<string, string> = {
   'shared/currency.ts': 'the rule itself (JS side)',
   'main/pdf.ts': 'snapToStepLocal: grid alignment of the displayed start time, set by the profile',
   'main/analyticsHandlers.ts': 'ISO week number, not billing',
+  'renderer/src/components/heute/ApprovalSquare.tsx': 'remaining MCP approval minutes, not billing',
   'renderer/src/components/auswertung/ClientHours.tsx': 'chart axis maximum, not billing'
 }
 
