@@ -154,6 +154,8 @@ const api = {
     switch: (input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>> =>
       ipcRenderer.invoke('entries:switch', input),
     stop: (id: number): Promise<IpcResult<Entry>> => ipcRenderer.invoke('entries:stop', id),
+    stopAt: (id: number, stoppedAt: string): Promise<IpcResult<Entry>> =>
+      ipcRenderer.invoke('entries:stopAt', id, stoppedAt),
     heartbeat: (id: number): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('entries:heartbeat', id),
     getRunning: (): Promise<IpcResult<Entry | null>> => ipcRenderer.invoke('entries:getRunning'),

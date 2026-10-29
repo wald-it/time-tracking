@@ -1266,6 +1266,21 @@ export function stopEntry(db: Db, id: number, ctx?: Partial<WriteCtx>): IpcResul
   return res.ok ? ok(toLegacyEntry(res.data)) : res
 }
 
+/** Stop a running entry at a given time without changing its other fields. */
+export function stopEntryAt(
+  db: Db,
+  id: number,
+  stoppedAt: string,
+  ctx?: Partial<WriteCtx>
+): IpcResult<Entry> {
+  const res = writeEntry(
+    db,
+    { op: 'seal', id, stopped_at: stoppedAt },
+    { ...ctx, source: ctx?.source ?? 'app' }
+  )
+  return res.ok ? ok(toLegacyEntry(res.data)) : res
+}
+
 /** Stop the currently running timer, if any. Returns null when nothing runs. */
 export function stopRunningTimer(db: Db, ctx?: Partial<WriteCtx>): IpcResult<Entry | null> {
   const running = liveRunning(db)[0]
