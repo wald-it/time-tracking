@@ -27,6 +27,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Changed
 
+- **2.0: the P7 performance gate uses absolute bounds** (owner decision 2026-10-29, "Regel absolut, Ursache als Issue"). At 50,000 entries the median of the Auswertung (`buildAnalyticsSummary`) must stay under 200 ms and the month view (`monthEntries`) under 50 ms. This replaces the relative bound of at most 20% over v1.23.2. The ratio against v1.23.2 is still printed for information. The scaling question is tracked in [#397](https://github.com/wald-it/time-tracking/issues/397).
 - **2.0: indexes for the month view and Auswertung on large databases.** Migration 034 adds indexes on the current version of an entry and on segment start and date; results are unchanged. Without them both views scanned every entry of the database.
 - **2.0: rounding labels name a minimum time.** When every row rounds by the same minimum time and no interval, Heute, the calendar, the timer and Auswertung say "mind. 30 Min" instead of naming no rule. Auswertung now takes the rule from the profiles of the month's segments instead of the global interval setting. The first rate row of a client reads "seit Beginn" instead of `0001-01-01`.
 - **2.0: entries in the calendar day panel show their version history**, with field changes, source and reason, grouping additions within five minutes of capture under an expandable row.

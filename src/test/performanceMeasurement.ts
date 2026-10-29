@@ -13,9 +13,39 @@ export const PERF = {
   entries: 50_000,
   now: '2026-10-28T12:00:00.000Z',
   warmup: 10,
-  runs: 30,
-  limit: 1.2
+  runs: 30
 } as const
+
+/**
+ * Absolute bounds on the median at 50,000 entries (owner decision 2026-10-29,
+ * "Regel absolut, Ursache als Issue"; the scaling question is #397). The ratio
+ * against v1.23.2 is printed for information and does not decide PASS or FAIL.
+ */
+export const BOUNDS_MS = { monthEntries: 50, buildAnalyticsSummary: 200 } as const
+
+export interface Verdict {
+  name: keyof typeof BOUNDS_MS
+  before: number
+  after: number
+  ratio: number
+  pass: boolean
+  line: string
+}
+
+/** Judge a current report against the absolute bounds; the baseline only feeds the ratio. */
+export function judgePerformance(
+  baseline: PerformanceReport,
+  current: PerformanceReport
+): Verdict[] {
+  return (Object.keys(BOUNDS_MS) as (keyof typeof BOUNDS_MS)[]).map((name) => {
+    const before = baseline.medians[name]
+    const after = current.medians[name]
+    const ratio = after / before
+    const pass = after < BOUNDS_MS[name]
+    const line = `${name}: v1.23.2=${before.toFixed(3)} ms; 2.0=${after.toFixed(3)} ms; ratio=${ratio.toFixed(3)}; bound < ${BOUNDS_MS[name]} ms; ${pass ? 'PASS' : 'FAIL'}`
+    return { name, before, after, ratio, pass, line }
+  })
+}
 
 interface Target {
   Ctor: DatabaseCtor
