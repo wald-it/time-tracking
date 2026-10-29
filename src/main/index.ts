@@ -694,7 +694,19 @@ app.whenReady().then(async () => {
           const plain = 'TimeTrack safeStorage legacy compatibility #354'
           const file = join(smokeUserData, 'safe-storage-legacy.enc')
           writeFileSync(file, safeStorage.encryptString(plain))
-          const { result } = await safeStorage.decryptStringAsync(readFileSync(file))
+          // PROBE #354 variant 2 (never merged): delayed retries, each logged.
+          let result = ''
+          for (let attempt = 1; ; attempt++) {
+            try {
+              ;({ result } = await safeStorage.decryptStringAsync(readFileSync(file)))
+              console.log(`[probe354] attempt ${attempt}: ok`)
+              break
+            } catch (e) {
+              console.log(`[probe354] attempt ${attempt}: ${(e as Error).message}`)
+              if (attempt >= 6) throw e
+              await new Promise((r) => setTimeout(r, 2000))
+            }
+          }
           safeStorageAsync =
             result === plain ? { ok: true } : { ok: false, reason: 'Decrypted value differs' }
         }
