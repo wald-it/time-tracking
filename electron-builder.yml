@@ -64,12 +64,7 @@ nsis:
 #   (nothing in TimeTrack uses either).
 # grantFileProtocolExtraPrivileges stays at its default: the renderer loads
 # over file://.
-electronFuses:
-  runAsNode: true
-  onlyLoadAppFromAsar: true
-  enableEmbeddedAsarIntegrityValidation: true
-  enableNodeCliInspectArguments: false
-  enableNodeOptionsEnvironmentVariable: false
+# PROBE #354 (never merged): fuses off to isolate the macOS keychain failure.
 npmRebuild: false
 publish:
   provider: github
