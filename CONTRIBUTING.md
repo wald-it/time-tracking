@@ -36,7 +36,7 @@ This is written down so the gap reads as a decision rather than as neglect — t
 
 ## Local development
 
-Requirements: **Node.js 22** and **pnpm 10** (what CI uses), Windows or macOS.
+Requirements: **Node.js 22** and **pnpm 10** (what CI uses), Windows (macOS is no longer built, see [#416](https://github.com/wald-it/time-tracking/issues/416)).
 
 ```powershell
 pnpm install        # dependencies + native modules (better-sqlite3 for Electron)
@@ -71,7 +71,7 @@ to build the package (`pnpm.ignoredBuiltDependencies` in `package.json`). The
 since Electron 42 the package no longer does that itself, and `pnpm dev` needs
 it. Please
 do not add a rebuild back: none is needed, and on a machine without Visual
-Studio (Windows) or Xcode (macOS) it makes `pnpm install` fail.
+Studio (Windows) it makes `pnpm install` fail.
 
 A green run is **0 skipped** across all Vitest projects. If you see a
 three-digit skip count, the environment is broken — not the code. There is
@@ -192,7 +192,7 @@ finds forgotten spots.
 1. Merge stage PRs against `main` (squash).
 2. Bump the version in `package.json`, turn `[Unreleased]` in `CHANGELOG.md` into the version heading.
 3. Push the tag `v{X.Y.Z}` on that commit (or start the Release workflow from the tag). The workflow
-   checks that tag, `package.json` and the built commit agree, builds Windows, macOS (arm64) and the
+   checks that tag, `package.json` and the built commit agree, builds Windows and the
    Stream Deck plugin, checks the package contents, runs the packaged smoke test, attests build
    provenance and publishes the release with SHA-256 checksums.
 4. Check the published release (notes, assets, `gh attestation verify` on one installer) → the
