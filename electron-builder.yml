@@ -50,12 +50,26 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
   createStartMenuShortcut: true
-# Electron fuses hardening — currently NOT configured (no `electronFuses:`
-# block, no @electron/fuses afterPack hook). If you ever add one to harden the
-# packaged binary, the RunAsNode fuse MUST stay enabled: since v1.14.2 the
-# bundled MCP server runs the app binary in Node mode (ELECTRON_RUN_AS_NODE=1,
-# see src/main/mcpLaunch.ts). Disabling RunAsNode silently breaks the MCP
-# integration — the server would refuse to launch with no visible error.
+# Electron fuses (#272): set here, in the packaging step only, never in
+# node_modules/electron (the unfused dev binary runs the test runner and
+# `pnpm dev`). scripts/package-smoke.mjs reads the fuse wire of the packaged
+# binary and checks every value below on each PR.
+# - runAsNode MUST stay true: the bundled MCP server runs the app binary in
+#   Node mode (ELECTRON_RUN_AS_NODE=1, src/main/mcpLaunch.ts), and so does the
+#   smoke test's cleaner. Off, both fail with no visible error.
+# - onlyLoadAppFromAsar + enableEmbeddedAsarIntegrityValidation: the app code
+#   loads only from the packaged app.asar, and only if it is unchanged.
+# - enableNodeCliInspectArguments / enableNodeOptionsEnvironmentVariable off:
+#   no --inspect debugger and no NODE_OPTIONS injection into the packaged app
+#   (nothing in TimeTrack uses either).
+# grantFileProtocolExtraPrivileges stays at its default: the renderer loads
+# over file://.
+electronFuses:
+  runAsNode: true
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+  enableNodeCliInspectArguments: false
+  enableNodeOptionsEnvironmentVariable: false
 npmRebuild: false
 publish:
   provider: github

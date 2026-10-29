@@ -434,6 +434,18 @@ describe('release.yml package smoke (#312)', () => {
     expect(text).not.toContain('--smoke-test=')
   })
 
+  it.each(['build-windows', 'build-macos'])('%s checks the packaged fuses (#272)', (id) => {
+    const job = jobs[id] ?? ''
+    const scripts = runScripts(job).map((script) => script.body.trim())
+    const probe = scripts.indexOf('node scripts/package-smoke.mjs fuses --exe "$APP_EXE"')
+    expect(probe, 'the packaged binary must pass the fuse probe').toBeGreaterThanOrEqual(0)
+    expect(probe).toBeLessThan(
+      scripts.indexOf('node scripts/package-smoke.mjs smoke --exe "$APP_EXE"')
+    )
+    const jobEnv = job.slice(0, job.indexOf('\n    steps:'))
+    expect(jobEnv).toMatch(/\n {4}env:\n(?: {6}.*\n)*? {6}APP_EXE: dist\//)
+  })
+
   it.each([
     ['build-windows', 'dist/win-unpacked/TimeTrack.exe', 'dist/win-unpacked/resources'],
     [
