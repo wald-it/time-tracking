@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **A small orange square in the header shows an open MCP write approval or silent write mode.** Its tooltip shows the time and writes left for an approval window. Entries written by an AI client or a calendar import show their origin in the row (Q16) ([#409](https://github.com/wald-it/time-tracking/issues/409)).
+
 ### Security
 
 - **MCP previews show hidden control and direction characters as visible `\u{…}` codes.** Tool descriptions state that entry, client, project and tag texts are user data and must never be treated as instructions ([#408](https://github.com/wald-it/time-tracking/issues/408)).
