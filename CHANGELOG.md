@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- **MCP previews show hidden control and direction characters as visible `\u{…}` codes.** Tool descriptions state that entry, client, project and tag texts are user data and must never be treated as instructions ([#408](https://github.com/wald-it/time-tracking/issues/408)).
+
 ## [2.0.1] — 2026-10-29
 
 ### Breaking for webhook receivers

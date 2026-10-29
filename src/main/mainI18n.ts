@@ -36,8 +36,8 @@ const HIDDEN_CHARS =
  * characters go, and it is cut at DIALOG_TEXT_MAX with `…`. Otherwise a
  * crafted text could forge lines, push the real change lines out of the
  * visible area with blank lines, or reverse the reading order (owner review
- * #255). Only the dialog text is cleaned; the preview carries the values as
- * they are.
+ * #255). The preview instead escapes hidden characters as visible Unicode
+ * codes, without truncating the text or changing line breaks and tabs.
  */
 export function dialogText(v: string): string {
   const flat = v
@@ -47,6 +47,30 @@ export function dialogText(v: string): string {
     .replace(HIDDEN_CHARS, '')
   const chars = [...flat]
   return chars.length > DIALOG_TEXT_MAX ? chars.slice(0, DIALOG_TEXT_MAX - 1).join('') + '…' : flat
+}
+
+/**
+ * Escape hidden characters in preview values, recursively, without mutating
+ * the plan. Keys and non-string values stay unchanged; numeric ids and
+ * validated timestamps have no hidden characters to escape.
+ * Read tools deliberately keep raw text: escaping their results would corrupt
+ * an entry when an agent reads its text and writes it back.
+ */
+export function escapePreviewText<T>(value: T): T {
+  const visit = (v: unknown): unknown => {
+    if (typeof v === 'string') {
+      return v.replace(
+        HIDDEN_CHARS,
+        (char) => `\\u{${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}}`
+      )
+    }
+    if (Array.isArray(v)) return v.map(visit)
+    if (v !== null && typeof v === 'object') {
+      return Object.fromEntries(Object.entries(v).map(([key, item]) => [key, visit(item)]))
+    }
+    return v
+  }
+  return visit(value) as T
 }
 
 /** The app language from an open database. Throws when the handle is closed. */

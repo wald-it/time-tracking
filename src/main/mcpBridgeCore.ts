@@ -41,7 +41,7 @@ import {
 } from '../shared/zonedTimestamp'
 import { deserializeTags } from '../shared/tags'
 import type { Locale } from '../shared/i18n'
-import { dialogT, dialogText, readLanguage, type DialogT } from './mainI18n'
+import { dialogT, dialogText, escapePreviewText, readLanguage, type DialogT } from './mainI18n'
 
 type Db = Database.Database
 
@@ -374,6 +374,7 @@ function planOp(
         ),
         preview: {
           action: 'create_manual_entry',
+          description: input.description,
           client_id: input.client_id,
           client_name: client,
           started_at: input.started_at,
@@ -755,6 +756,7 @@ function planOp(
         ),
         preview: {
           action: 'start_timer',
+          description: input.description,
           client_id: input.client_id,
           started_at: input.started_at,
           started_local: toLocalIso(input.started_at),
@@ -953,13 +955,13 @@ async function handleControllerRequest(
   if (req.preview) {
     return {
       ok: true,
-      data: {
+      data: escapePreviewText({
         preview: true,
         action: matches ? 'stop' : running ? 'switch' : 'start',
         client_id,
         project_id,
         running
-      }
+      })
     }
   }
 
@@ -1089,7 +1091,7 @@ export async function handleRequest(ctx: BridgeCtx, req: BridgeRequest): Promise
   if ('error' in plan) return err('invalid', plan.error)
 
   if (req.preview) {
-    return { ok: true, data: { preview: true, ...plan.preview } }
+    return { ok: true, data: { preview: true, ...escapePreviewText(plan.preview) } }
   }
 
   const approved = await ctx.confirm(plan.summary, say.locale, req.op as WriteOp)
