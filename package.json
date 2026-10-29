@@ -1,6 +1,6 @@
 {
   "name": "time-tracking",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Lean desktop time tracker for Windows — local, no cloud.",
   "main": "./out/main/index.js",
   "author": "wald-it",

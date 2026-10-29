@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-10-29
+
 ### Added
 
 - **The Windows installer names programs that block an update.** Before it replaces an existing installation, it asks Windows which programs still have files open in the install folder and lists each by name and process ID, with Retry, Ignore and Abort. It never closes anything itself. TimeTrack's own processes are left to the existing checks, and a silent install continues as before. Each check is logged to `%TEMP%\TimeTrack-setup-holders.log`. A program whose only link to the folder is its working directory is not detected (#222).
@@ -18,7 +20,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Removed
 
-- **macOS is no longer built or released.** The last macOS version is 2.0.1, which stays downloadable from its release. Windows is the only supported platform from 2.1 on; resuming macOS is tracked separately ([#416](https://github.com/wald-it/time-tracking/issues/416)).
+- **macOS is no longer built or released.** The last macOS version is 2.0.1, which stays downloadable from its release. Windows is the only supported platform from 2.1 on; resuming macOS is tracked separately ([#416](https://github.com/wald-it/time-tracking/issues/416)). On macOS, 2.0.1 now reports an error when it checks for updates, because this release has no macOS update file; the app keeps working, and nothing is installed or changed.
 
 ### Fixed
 
