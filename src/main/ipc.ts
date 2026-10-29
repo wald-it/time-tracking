@@ -33,6 +33,7 @@ import {
   updateManualEntry,
   switchTimerAndNotify,
   stopEntry,
+  stopEntryAt,
   deleteEntry,
   undeleteEntry,
   heartbeat,
@@ -410,6 +411,16 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('entries:stop', (_e, id: number): IpcResult<Entry> => {
     try {
       const res = stopEntry(db, id)
+      if (res.ok) emitWebhooks(db, 'timer.stopped', res.data, { log: logWebhookDelivery })
+      return res
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
+  ipcMain.handle('entries:stopAt', (_e, id: number, stoppedAt: string): IpcResult<Entry> => {
+    try {
+      const res = stopEntryAt(db, id, stoppedAt, { source: 'idle' })
       if (res.ok) emitWebhooks(db, 'timer.stopped', res.data, { log: logWebhookDelivery })
       return res
     } catch (e) {

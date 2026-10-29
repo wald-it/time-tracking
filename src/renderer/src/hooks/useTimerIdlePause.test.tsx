@@ -1,7 +1,7 @@
 /**
  * "Als Pause markieren" end to end, renderer and main process together (#298):
- * `useTimer().idleMarkPause` → `entries:update` stops the running entry at
- * idleSince (the real `updateManualEntry`), `entries:create` books the pause
+ * `useTimer().idleMarkPause` → `entries:stopAt` stops the running entry at
+ * idleSince (the real `stopEntryAt`), `entries:create` books the pause
  * from idleSince to now (the real `createManualEntry`) — on a real database.
  *
  * The pause is time the user did not work. It must not be billable, or it
@@ -14,10 +14,10 @@ import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../../../test/sqlite'
 import { seed } from '../../../test/bridgeKit'
 import { seedEntry } from '../../../test/entryFixtures'
-import { createManualEntry, updateManualEntry } from '../../../main/entryMutations'
+import { createManualEntry, stopEntryAt } from '../../../main/entryMutations'
 import { buildPdfPayload } from '../../../main/pdf'
 import { localDateKey } from '../../../shared/dateRanges'
-import type { Client, CreateManualEntryInput, Entry, UpdateEntryInput } from '../../../shared/types'
+import type { Client, CreateManualEntryInput, Entry } from '../../../shared/types'
 
 let DatabaseImpl: DatabaseCtor
 
@@ -63,7 +63,8 @@ function installApi(db: Database.Database): {
         throw new Error('the idle pause must not be started as a timer')
       },
       create: async (input: CreateManualEntryInput) => createManualEntry(db, input),
-      update: async (input: UpdateEntryInput) => updateManualEntry(db, input),
+      stopAt: async (id: number, stoppedAt: string) =>
+        stopEntryAt(db, id, stoppedAt, { source: 'idle' }),
       heartbeat: async () => ({ ok: true as const, data: undefined })
     },
     dashboard: { todayTotal: async () => ({ ok: true as const, data: 0 }) },
@@ -85,7 +86,7 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
   it('books the pause as not billable, so it stays off the timesheet', async () => {
     const db = new DatabaseImpl(':memory:')
     seed(db)
-    // Local noon today: no entry crosses midnight, which updateManualEntry
+    // Local noon today: no entry crosses midnight, which stopEntryAt
     // (the stopped work entry) and createManualEntry (the pause) would each
     // split into two rows. The clock is pinned to it after setup.
     const today = new Date()
@@ -152,13 +153,12 @@ describe('idle → "Als Pause markieren" (real main-process mutations)', () => {
   })
 })
 
-// #313: stopping the running entry at idleSince goes through entries:update,
-// which used to re-insert the row and default every field it is not given (2.0
-// P2: it is a patch now, so the fields are kept by construction). Both idle
+// #313: stopping the running entry at idleSince keeps every field through
+// entries:stopAt, which seals the open version in place. Both idle
 // actions must keep the stopped entry as it was. Of the optional fields, a
 // running entry only ever carries a project (switchTimer sets no other), so
 // the seed is a running entry with a project; the other fields are checked to
-// stay at what the entry had. useTimer.test.tsx pins that they are sent along.
+// stay at what the entry had. useTimer.test.tsx pins that only id and time are sent.
 describe('idle prompt keeps the stopped entry as it was (#313)', () => {
   async function runIdle(action: 'idleStopAtIdle' | 'idleMarkPause'): Promise<{
     db: Database.Database
