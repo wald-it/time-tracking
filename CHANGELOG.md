@@ -11,6 +11,10 @@ All notable changes to TimeTrack are documented here.
 
 - **A rate dated in the future reaches MCP lists on its day.** `list_clients`, `list_projects` and the `timer.started` webhook now read the rate valid today from the dated rate rows, instead of the stored rate that changed only when the app next loaded its client or project list. A project without a rate of its own still inherits the client's. This lifts the known limit noted in 2.0.0 ([#392](https://github.com/wald-it/time-tracking/issues/392)).
 
+### Changed
+
+- **Release builds now run the same package smoke checks as every PR.** Windows and macOS use `scripts/package-smoke.mjs` for the app smoke test and the MCP server probe on the shipped package ([#312](https://github.com/wald-it/time-tracking/issues/312)).
+
 ## [2.0.0] — 2026-10-29
 
 ### Added
