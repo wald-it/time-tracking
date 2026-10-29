@@ -164,6 +164,61 @@ describe('query layer', () => {
     expect(clients.find((c) => c.name === 'Acme')?.rate_cent).toBe(12000)
   })
 
+  it('listClients reads the rate valid today without syncing the stale column', () => {
+    db.exec(`INSERT INTO rate (client_id, valid_from, rate_cent, source) VALUES
+      (1, date('now', 'localtime'), 16000, 'editor'),
+      (1, date('now', 'localtime', '+1 day'), 20000, 'editor')`)
+    db.pragma('query_only = ON')
+
+    expect(listClients(sdb, SHOW).find((c) => c.id === 1)?.rate_cent).toBe(16000)
+    expect(listClients(sdb, HIDE)[0]).not.toHaveProperty('rate_cent')
+    expect(db.prepare('SELECT rate_cent FROM clients WHERE id = 1').get()).toEqual({
+      rate_cent: 12000
+    })
+  })
+
+  it.each([18000, null, 0])(
+    'listProjects reads the rate valid today (%s), preserving inheritance and zero',
+    (rate) => {
+      db.prepare(
+        `INSERT INTO rate (project_id, valid_from, rate_cent, source)
+        VALUES (10, date('now', 'localtime'), ?, 'editor')`
+      ).run(rate)
+      db.exec(`INSERT INTO rate (project_id, valid_from, rate_cent, source)
+        VALUES (10, date('now', 'localtime', '+1 day'), 22000, 'editor')`)
+      db.pragma('query_only = ON')
+
+      expect(listProjects(sdb, SHOW).find((p) => p.id === 10)?.rate_cent).toBe(rate)
+      expect(listProjects(sdb, HIDE)[0]).not.toHaveProperty('rate_cent')
+      expect(db.prepare('SELECT rate_cent FROM projects WHERE id = 10').get()).toEqual({
+        rate_cent: 15000
+      })
+    }
+  )
+
+  it('keeps client and project columns without rate rows, including NULL inheritance', () => {
+    db.exec('DELETE FROM rate')
+    db.pragma('query_only = ON')
+
+    expect(listClients(sdb, SHOW)[0].rate_cent).toBe(12000)
+    const projects = listProjects(sdb, SHOW, { includeArchived: true })
+    expect(projects.find((p) => p.id === 10)?.rate_cent).toBe(15000)
+    expect(projects.find((p) => p.id === 11)?.rate_cent).toBeNull()
+  })
+
+  it('ignores tomorrow rates until their day, including a project with only a future row', () => {
+    db.exec(`INSERT INTO rate (client_id, project_id, valid_from, rate_cent, source) VALUES
+      (1, NULL, date('now', 'localtime', '+1 day'), 20000, 'editor'),
+      (NULL, 10, date('now', 'localtime', '+1 day'), 22000, 'editor'),
+      (NULL, 11, date('now', 'localtime', '+1 day'), 23000, 'editor')`)
+    db.pragma('query_only = ON')
+
+    expect(listClients(sdb, SHOW)[0].rate_cent).toBe(12000)
+    const projects = listProjects(sdb, SHOW, { includeArchived: true })
+    expect(projects.find((p) => p.id === 10)?.rate_cent).toBe(15000)
+    expect(projects.find((p) => p.id === 11)?.rate_cent).toBeNull()
+  })
+
   it('listProjects excludes archived by default and reports usage', () => {
     const projects = listProjects(sdb, HIDE, { clientId: 1 })
     expect(projects).toHaveLength(1)

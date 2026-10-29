@@ -19,6 +19,7 @@
 import { createHmac } from 'crypto'
 import type Database from 'better-sqlite3'
 import { effectiveRateCent } from '../shared/currency'
+import { dueRateSql } from '../shared/dueRate'
 import { deserializeTags } from '../shared/tags'
 import { parseWebhookTargets, type WebhookEvent, type WebhookTarget } from '../shared/webhooks'
 import { resolvePrivacy } from '../mcp/privacy'
@@ -96,16 +97,20 @@ export function buildWebhookPayload(
         )
 
   const clientRow = db
-    .prepare(`SELECT id, name, rate_cent FROM clients WHERE id = ?`)
+    .prepare(
+      `SELECT id, name, ${dueRateSql('clients', 'client_id')} AS rate_cent FROM clients WHERE id = ?`
+    )
     .get(entry.client_id) as { id: number; name: string; rate_cent: number } | undefined
 
   const projectId = entry.project_id ?? null
   const projectRow =
     projectId === null
       ? undefined
-      : (db.prepare(`SELECT id, name, rate_cent FROM projects WHERE id = ?`).get(projectId) as
-          | { id: number; name: string; rate_cent: number | null }
-          | undefined)
+      : (db
+          .prepare(
+            `SELECT id, name, ${dueRateSql('projects', 'project_id')} AS rate_cent FROM projects WHERE id = ?`
+          )
+          .get(projectId) as { id: number; name: string; rate_cent: number | null } | undefined)
 
   const payloadEntry: PayloadEntry = {
     id: entry.id,
@@ -125,7 +130,7 @@ export function buildWebhookPayload(
     // Money comes from billing_lines (design section 7): the rate valid on the
     // day and the fee per segment, summed over the entry's segments so a
     // minimum unit or interval applies per day. A running entry has no fee yet
-    // and falls back to today's rate columns for the informational rate.
+    // and falls back to the rate valid today for the informational rate.
     const lines = db
       .prepare(
         `SELECT rate_cent, fee_cent FROM billing_lines WHERE entry_id = ? ORDER BY segment_seq`

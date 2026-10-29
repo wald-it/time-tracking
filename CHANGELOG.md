@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A rate dated in the future reaches MCP lists on its day.** `list_clients`, `list_projects` and the `timer.started` webhook now read the rate valid today from the dated rate rows, instead of the stored rate that changed only when the app next loaded its client or project list. A project without a rate of its own still inherits the client's. This lifts the known limit noted in 2.0.0 ([#392](https://github.com/wald-it/time-tracking/issues/392)).
+
 ## [2.0.0] — 2026-10-29
 
 ### Added

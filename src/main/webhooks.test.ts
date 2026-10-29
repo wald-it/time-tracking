@@ -395,6 +395,58 @@ describe('buildWebhookPayload', () => {
     expect(p.entry.revenue_cent).toBe(4500)
   })
 
+  it.each([
+    { projectId: null, projectRate: null, expected: 16000 },
+    { projectId: 1, projectRate: 18000, expected: 18000 },
+    { projectId: 1, projectRate: null, expected: 16000 },
+    { projectId: 1, projectRate: 0, expected: 0 }
+  ])(
+    'timer.started reads due editor rates with stale columns ($projectId, $projectRate)',
+    ({ projectId, projectRate, expected }) => {
+      db.exec(`INSERT INTO rate (client_id, valid_from, rate_cent, source) VALUES
+        (1, date('now', 'localtime'), 16000, 'editor'),
+        (1, date('now', 'localtime', '+1 day'), 20000, 'editor')`)
+      if (projectId !== null) {
+        db.prepare(
+          `INSERT INTO rate (project_id, valid_from, rate_cent, source)
+          VALUES (1, date('now', 'localtime'), ?, 'editor')`
+        ).run(projectRate)
+        db.exec(`INSERT INTO rate (project_id, valid_from, rate_cent, source)
+          VALUES (1, date('now', 'localtime', '+1 day'), 22000, 'editor')`)
+      }
+      const r = startTimer(db, {
+        client_id: 1,
+        project_id: projectId,
+        description: 'Due rate',
+        started_at: new Date().toISOString()
+      })
+      if (!r.ok) throw new Error('setup failed')
+      expect(
+        db
+          .prepare('SELECT rate_cent, fee_cent FROM billing_lines WHERE entry_id = ?')
+          .all(r.data.id)
+      ).toEqual([{ rate_cent: null, fee_cent: null }])
+      db.pragma('query_only = ON')
+
+      const p = buildWebhookPayload(
+        db,
+        'timer.started',
+        r.data,
+        { exposeRates: true, exposePrivateNotes: false },
+        { deliveryId: 'due-rate', now: Date.now() }
+      )
+      expect(p.entry.rate_cent).toBe(expected)
+      expect(p.entry.stopped_at).toBeNull()
+      expect(p.entry).not.toHaveProperty('revenue_cent')
+      expect(db.prepare('SELECT rate_cent FROM clients WHERE id = 1').get()).toEqual({
+        rate_cent: 12000
+      })
+      expect(db.prepare('SELECT rate_cent FROM projects WHERE id = 1').get()).toEqual({
+        rate_cent: 9000
+      })
+    }
+  )
+
   it('reports duration_seconds null for a running timer and omits revenue', () => {
     const r = startTimer(db, {
       client_id: 1,

@@ -16,6 +16,7 @@
 import { budgetUsedMinutesSql } from '../shared/currency'
 import { readDefaultIntervalMin } from '../shared/billingProfile'
 import { localMonthRange } from '../shared/dateRanges'
+import { dueRateSql } from '../shared/dueRate'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
 import type { PrivacyConfig } from './privacy'
@@ -286,7 +287,13 @@ export function listClients(
   opts: ListClientsOptions = {}
 ): McpClient[] {
   const where = opts.includeArchived ? '' : 'WHERE active = 1'
-  const rows = db.prepare(`SELECT * FROM clients ${where} ORDER BY name ASC`).all() as ClientRow[]
+  const rows = db
+    .prepare(
+      `SELECT id, name, color, active, vat_id, contact_person,
+        ${dueRateSql('clients', 'client_id')} AS rate_cent
+      FROM clients ${where} ORDER BY name ASC`
+    )
+    .all() as ClientRow[]
   return rows
     .filter(
       (r) => matchesFilter(r.name, opts.name) && matchesFilter(r.contact_person, opts.contactPerson)
@@ -310,7 +317,9 @@ export function listProjects(
 ): McpProject[] {
   // Budget use counts like the invoice (#285): billing_lines.
   const base = `
-    SELECT p.*,
+    SELECT p.id, p.client_id, p.name, p.color, p.status, p.external_project_number,
+      p.start_date, p.end_date, p.budget_minutes,
+      ${dueRateSql('p', 'project_id')} AS rate_cent,
       COALESCE(ec.cnt, 0) AS entry_count,
       ec.last_used_at,
       COALESCE(bud.used_minutes, 0) AS used_minutes
