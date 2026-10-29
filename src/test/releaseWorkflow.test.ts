@@ -1,6 +1,5 @@
 /**
- * Guard for #221: one platform failing at release time must not discard the
- * other platform's finished artifacts.
+ * Guard for #221: a plugin failure must not discard the Windows installer.
  *
  * Until v1.19.0, `publish-release` needed all three build jobs to succeed —
  * one red job skipped the publish, and a green, smoke-tested installer was
@@ -10,7 +9,7 @@
  * missing:
  *   - an installer is missing  → prerelease. electron-updater ignores
  *     prereleases, so no client is offered a version whose update feed
- *     (`latest.yml` / `latest-mac.yml`) does not exist on the release.
+ *     (`latest.yml`) does not exist on the release.
  *   - only the Stream Deck plugin is missing → a normal release. No updater
  *     feed depends on it.
  *   - either way the release notes open with a notice naming what is missing.
@@ -100,7 +99,6 @@ interface Plan extends Run {
 
 async function runPlan(
   windows: Result,
-  macos: Result,
   streamdeck: Result,
   releaseAssets?: string[],
   extraEnv: Record<string, string> = {},
@@ -112,7 +110,6 @@ async function runPlan(
   writeFileSync(outputFile, '')
   const proc = await run(SCRIPT, {
     WINDOWS_RESULT: windows,
-    MACOS_RESULT: macos,
     STREAMDECK_RESULT: streamdeck,
     GITHUB_OUTPUT: outputFile,
     NOTICE_FILE: noticeFile,
@@ -140,14 +137,14 @@ async function runPlan(
 
 describe('release plan (#221)', () => {
   it('everything built: a normal release without a notice', async () => {
-    const plan = await runPlan('success', 'success', 'success')
+    const plan = await runPlan('success', 'success')
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice.trim()).toBe('')
   })
 
   it('only the Stream Deck plugin missing: normal release, notice names the plugin', async () => {
-    const plan = await runPlan('success', 'success', 'failure')
+    const plan = await runPlan('success', 'failure')
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice).toMatch(/Stream Deck plugin/)
@@ -158,24 +155,15 @@ describe('release plan (#221)', () => {
   // answers as a CLI, the way the workflow runs it. Its budget is twice the
   // slowest single call measured in #290 (64.6 s under heavy load).
   it('runs as a CLI process, as the workflow runs it', async () => {
-    const plan = await runPlan('success', 'failure', 'success', undefined, {}, runAsProcess)
+    const plan = await runPlan('failure', 'success', undefined, {}, runAsProcess)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
-    expect(plan.notice).toMatch(/macOS/)
+    expect(plan.notice).toMatch(/Windows/)
     expect(plan.stdout).toContain('::warning::')
   }, 120_000)
 
-  it('macOS missing: prerelease, notice names macOS and its update feed', async () => {
-    const plan = await runPlan('success', 'failure', 'success')
-    expect(plan.status, plan.stderr).toBe(0)
-    expect(plan.outputs.prerelease).toBe('true')
-    expect(plan.notice).toMatch(/macOS/)
-    expect(plan.notice).toMatch(/latest-mac\.yml/)
-    expect(plan.notice).not.toMatch(/Windows|Stream Deck/)
-  })
-
   it('Windows missing: prerelease, notice names Windows and its update feed', async () => {
-    const plan = await runPlan('failure', 'success', 'success')
+    const plan = await runPlan('failure', 'success')
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
     expect(plan.notice).toMatch(/Windows/)
@@ -183,62 +171,63 @@ describe('release plan (#221)', () => {
   })
 
   it('a skipped or cancelled job counts as missing, not as built', async () => {
-    expect((await runPlan('success', 'skipped', 'success')).outputs.prerelease).toBe('true')
-    expect((await runPlan('cancelled', 'success', 'success')).outputs.prerelease).toBe('true')
-    expect((await runPlan('success', 'success', 'skipped')).notice).toMatch(/Stream Deck plugin/)
+    expect((await runPlan('skipped', 'success')).outputs.prerelease).toBe('true')
+    expect((await runPlan('cancelled', 'success')).outputs.prerelease).toBe('true')
+    expect((await runPlan('success', 'skipped')).notice).toMatch(/Stream Deck plugin/)
   })
 
   it('refuses an unknown job result instead of guessing', async () => {
-    const plan = await runPlan('success', 'bogus' as Result, 'success')
+    const plan = await runPlan('bogus' as Result, 'success')
     expect(plan.status).not.toBe(0)
   })
 })
 
-// #234: what a complete release carries — the asset list of the real v1.20.0
-// release, verbatim and in GitHub's order (`gh release view v1.20.0 --json
-// assets`), so the suffix matchers run against real names, .blockmap files
-// included.
+// #416: Windows and plugin assets form a complete release. Keep the real
+// Windows/plugin names from v1.20.0, including its .blockmap companion.
 const COMPLETE_ASSETS = [
   'com.timetrack.streamdeck.streamDeckPlugin',
-  'latest-mac.yml',
   'latest.yml',
   'time-tracking-1.20.0-setup.exe',
-  'time-tracking-1.20.0-setup.exe.blockmap',
-  'TimeTrack-1.20.0-arm64-mac.zip',
-  'TimeTrack-1.20.0-arm64.dmg',
-  'TimeTrack-1.20.0-arm64.dmg.blockmap'
+  'time-tracking-1.20.0-setup.exe.blockmap'
 ]
 
 describe('release plan on a re-run: decided from the attached assets (#234)', () => {
+  it('Windows and plugin assets alone are a complete normal release (#416)', async () => {
+    const plan = await runPlan('success', 'success', COMPLETE_ASSETS)
+    expect(plan.status, plan.stderr).toBe(0)
+    expect(plan.outputs.prerelease).toBe('false')
+    expect(plan.notice.trim()).toBe('')
+  })
+
   it('a complete release stays complete when an installer job fails in the re-run', async () => {
     // --clobber removes nothing: the first run's installers and latest*.yml
     // are still attached, so demoting the release would only withdraw a
     // valid version from stable updates.
-    const plan = await runPlan('failure', 'success', 'success', COMPLETE_ASSETS)
+    const plan = await runPlan('failure', 'success', COMPLETE_ASSETS)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice.trim()).toBe('')
   })
 
   it('no job succeeding in the re-run does not demote a complete release either', async () => {
-    const plan = await runPlan('failure', 'cancelled', 'skipped', COMPLETE_ASSETS)
+    const plan = await runPlan('failure', 'skipped', COMPLETE_ASSETS)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice.trim()).toBe('')
   })
 
   it('a partial release whose gap is still open stays a prerelease', async () => {
-    const withoutMac = COMPLETE_ASSETS.filter((a) => !/\.dmg|\.zip|latest-mac/.test(a))
-    const plan = await runPlan('success', 'failure', 'success', withoutMac)
+    const withoutInstaller = COMPLETE_ASSETS.filter((a) => !a.endsWith('.exe'))
+    const plan = await runPlan('failure', 'success', withoutInstaller)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
-    expect(plan.notice).toMatch(/macOS/)
-    expect(plan.notice).not.toMatch(/Windows|Stream Deck/)
+    expect(plan.notice).toMatch(/Windows/)
+    expect(plan.notice).not.toMatch(/Stream Deck/)
   })
 
   it('an installer without its update feed counts as missing, whatever the job says', async () => {
     const withoutFeed = COMPLETE_ASSETS.filter((a) => a !== 'latest.yml')
-    const plan = await runPlan('success', 'success', 'success', withoutFeed)
+    const plan = await runPlan('success', 'success', withoutFeed)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
     expect(plan.notice).toMatch(/Windows/)
@@ -247,35 +236,44 @@ describe('release plan on a re-run: decided from the attached assets (#234)', ()
 
   it('only the Stream Deck plugin missing from the release: normal release with a notice', async () => {
     const withoutPlugin = COMPLETE_ASSETS.filter((a) => !a.endsWith('.streamDeckPlugin'))
-    const plan = await runPlan('success', 'success', 'failure', withoutPlugin)
+    const plan = await runPlan('success', 'failure', withoutPlugin)
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('false')
     expect(plan.notice).toMatch(/Stream Deck plugin/)
   })
 
   it('a release with no assets at all is a prerelease, not complete', async () => {
-    const plan = await runPlan('success', 'success', 'success', [])
+    const plan = await runPlan('success', 'success', [])
     expect(plan.status, plan.stderr).toBe(0)
     expect(plan.outputs.prerelease).toBe('true')
   })
 
   it('the job-result plan before a re-run is provisional: no ::warning:: annotation', async () => {
-    const provisional = await runPlan('failure', 'success', 'success', undefined, {
+    const provisional = await runPlan('failure', 'success', undefined, {
       RELEASE_EXISTS: 'true'
     })
     expect(provisional.status, provisional.stderr).toBe(0)
     expect(provisional.stdout).not.toContain('::warning::')
     expect(provisional.stdout).toMatch(/Provisional plan/)
     // A first publish still annotates, and so does the re-plan from assets.
-    expect((await runPlan('failure', 'success', 'success')).stdout).toContain('::warning::')
-    const replan = await runPlan('failure', 'success', 'success', [], { RELEASE_EXISTS: 'true' })
+    expect((await runPlan('failure', 'success')).stdout).toContain('::warning::')
+    const replan = await runPlan('failure', 'success', [], { RELEASE_EXISTS: 'true' })
     expect(replan.stdout).toContain('::warning::')
   })
 
   it('still refuses an unknown job result', async () => {
-    expect(
-      (await runPlan('success', 'bogus' as Result, 'success', COMPLETE_ASSETS)).status
-    ).not.toBe(0)
+    expect((await runPlan('bogus' as Result, 'success', COMPLETE_ASSETS)).status).not.toBe(0)
+  })
+})
+
+describe('macOS release retirement (#416)', () => {
+  it.each(['build-macos', 'MACOS_RESULT'])('release.yml contains no %s', (token) => {
+    expect(readFileSync(WORKFLOW, 'utf8')).not.toContain(token)
+  })
+
+  it('electron-builder.yml has no mac key', () => {
+    const config = readFileSync(join(REPO_ROOT, 'electron-builder.yml'), 'utf8')
+    expect(config).not.toMatch(/^\s*mac\s*:/m)
   })
 })
 
@@ -292,12 +290,10 @@ describe('release.yml wiring (#221)', () => {
     const needs = job.match(/\n {4}needs: \[([^\]]*)\]/)
     expect(needs).not.toBeNull()
     const list = needs![1].split(',').map((s) => s.trim())
-    expect(list).toEqual(
-      expect.arrayContaining(['prepare', 'build-windows', 'build-macos', 'pack-streamdeck'])
-    )
+    expect(list).toEqual(['prepare', 'build-windows', 'pack-streamdeck'])
   })
 
-  it('runs on partial success, but only after a valid tag and at least one installer', () => {
+  it('runs on partial success, but only after a valid tag and the Windows installer', () => {
     const cond = job.match(/\n {4}if: (.*)\n/)
     expect(cond, 'publish-release needs a job-level if:').not.toBeNull()
     const expr = cond![1]
@@ -306,13 +302,11 @@ describe('release.yml wiring (#221)', () => {
     expect(expr).toContain('!cancelled()')
     expect(expr).toContain("needs.prepare.result == 'success'")
     expect(expr).toContain("needs.build-windows.result == 'success'")
-    expect(expr).toContain("needs.build-macos.result == 'success'")
     expect(expr).not.toContain('always()')
   })
 
   it.each([
     ['Download installer artifact', 'build-windows'],
-    ['Download macOS artifacts', 'build-macos'],
     ['Download Stream Deck plugin artifact', 'pack-streamdeck']
   ])('"%s" only runs when %s succeeded', (step, jobName) => {
     const at = job.indexOf(`- name: ${step}\n`)
@@ -325,7 +319,6 @@ describe('release.yml wiring (#221)', () => {
   it('feeds every build result to the release plan and honours its prerelease flag', () => {
     expect(job).toContain('node scripts/release-plan.mjs')
     expect(job).toContain('WINDOWS_RESULT: ${{ needs.build-windows.result }}')
-    expect(job).toContain('MACOS_RESULT: ${{ needs.build-macos.result }}')
     expect(job).toContain('STREAMDECK_RESULT: ${{ needs.pack-streamdeck.result }}')
     // Both paths — first publish and re-run on an existing release — must set
     // the flag, so a re-run that completes the release also lifts it.
@@ -434,7 +427,7 @@ describe('release.yml package smoke (#312)', () => {
     expect(text).not.toContain('--smoke-test=')
   })
 
-  it.each(['build-windows', 'build-macos'])('%s checks the packaged fuses (#272)', (id) => {
+  it.each(['build-windows'])('%s checks the packaged fuses (#272)', (id) => {
     const job = jobs[id] ?? ''
     const scripts = runScripts(job).map((script) => script.body.trim())
     const probe = scripts.indexOf('node scripts/package-smoke.mjs fuses --exe "$APP_EXE"')
@@ -446,25 +439,21 @@ describe('release.yml package smoke (#312)', () => {
     expect(jobEnv).toMatch(/\n {4}env:\n(?: {6}.*\n)*? {6}APP_EXE: dist\//)
   })
 
-  it.each([
-    ['build-windows', 'dist/win-unpacked/TimeTrack.exe', 'dist/win-unpacked/resources'],
-    [
-      'build-macos',
-      'dist/mac-arm64/TimeTrack.app/Contents/MacOS/TimeTrack',
-      'dist/mac-arm64/TimeTrack.app/Contents/Resources'
-    ]
-  ])('%s runs both shared probes on its package', (id, exe, resources) => {
-    const job = jobs[id] ?? ''
-    const scripts = runScripts(job).map((script) => script.body.replace(/\\\s*\n\s*/g, '').trim())
-    expect(scripts).toContain('node scripts/package-smoke.mjs smoke --exe "$APP_EXE"')
-    expect(scripts).toContain(
-      'node scripts/package-smoke.mjs mcp --exe "$APP_EXE" ' +
-        '--entry "$APP_RESOURCES/app.asar/out/mcp/mcp/server.js" ' +
-        '--server-source src/mcp/server.ts'
-    )
-    expect(job).toContain(`APP_EXE: ${exe}\n`)
-    expect(job).toContain(`APP_RESOURCES: ${resources}\n`)
-  })
+  it.each([['build-windows', 'dist/win-unpacked/TimeTrack.exe', 'dist/win-unpacked/resources']])(
+    '%s runs both shared probes on its package',
+    (id, exe, resources) => {
+      const job = jobs[id] ?? ''
+      const scripts = runScripts(job).map((script) => script.body.replace(/\\\s*\n\s*/g, '').trim())
+      expect(scripts).toContain('node scripts/package-smoke.mjs smoke --exe "$APP_EXE"')
+      expect(scripts).toContain(
+        'node scripts/package-smoke.mjs mcp --exe "$APP_EXE" ' +
+          '--entry "$APP_RESOURCES/app.asar/out/mcp/mcp/server.js" ' +
+          '--server-source src/mcp/server.ts'
+      )
+      expect(job).toContain(`APP_EXE: ${exe}\n`)
+      expect(job).toContain(`APP_RESOURCES: ${resources}\n`)
+    }
+  )
 })
 
 describe('release.yml provenance', () => {
@@ -563,7 +552,7 @@ describe('release.yml provenance', () => {
     expect(publish).toContain('sha256sum')
     expect(publish).toContain('gh attestation verify')
     expect(publish).toContain('Get-FileHash')
-    expect(publish).toContain('shasum -a 256')
+    expect(publish).not.toContain('shasum -a 256')
     // Called once on the re-run path (from the attached assets) and once on
     // the first publish (from dist/).
     expect(publish.match(/\n\s+write_verify_section \S+/g) ?? []).toHaveLength(2)

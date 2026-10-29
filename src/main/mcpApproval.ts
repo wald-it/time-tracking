@@ -27,6 +27,8 @@
  *
  * Electron-free and clock-injected, so the bounds are testable.
  */
+import type { McpApprovalState } from '../shared/types'
+
 export const APPROVAL_WINDOW_MS = 30 * 60 * 1000
 export const APPROVAL_MAX_WRITES = 20
 
@@ -38,10 +40,12 @@ export class ApprovalWindow {
   private monoUntil = 0
   private writesLeft = 0
   private mode: string | null = null
+  private expiryTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(
     private readonly wall: () => number = Date.now,
-    private readonly mono: () => number = () => performance.now()
+    private readonly mono: () => number = () => performance.now(),
+    private readonly onChange: () => void = () => {}
   ) {}
 
   /** Approve start and stop for the next window, under confirm mode `mode`. */
@@ -50,17 +54,24 @@ export class ApprovalWindow {
     this.monoUntil = this.mono() + APPROVAL_WINDOW_MS
     this.writesLeft = APPROVAL_MAX_WRITES
     this.mode = mode
+    clearTimeout(this.expiryTimer)
+    this.expiryTimer = setTimeout(() => this.reset(), APPROVAL_WINDOW_MS)
+    this.expiryTimer.unref?.()
+    this.onChange()
   }
 
   private resets = 0
 
   /** Forget the approval (bridge restart, write access off, mode change). */
   reset(): void {
+    clearTimeout(this.expiryTimer)
+    this.expiryTimer = undefined
     this.wallUntil = 0
     this.monoUntil = 0
     this.writesLeft = 0
     this.mode = null
     this.resets++
+    this.onChange()
   }
 
   /** Read before a dialog opens; any reset meanwhile changes it. */
@@ -90,6 +101,18 @@ export class ApprovalWindow {
     )
   }
 
+  /** Read-only renderer state; reading never spends the approval budget. */
+  getState(writeEnabled: boolean, mode: string): McpApprovalState {
+    if (!writeEnabled) return { state: 'off' }
+    if (mode === 'silent') return { state: 'silent' }
+    if (!this.activeFor(mode)) return { state: 'off' }
+    return {
+      state: 'window',
+      until: Math.min(this.wallUntil, this.wall() + this.monoUntil - this.mono()),
+      writesLeft: this.writesLeft
+    }
+  }
+
   /**
    * True when the approval covers `op` under the current confirm `mode`
    * without a dialog; that use counts against the budget. False for an op it
@@ -99,6 +122,11 @@ export class ApprovalWindow {
   covers(op: string, mode: string): boolean {
     if (!APPROVABLE_OPS.has(op) || !this.activeFor(mode)) return false
     this.writesLeft--
+    if (this.writesLeft === 0) {
+      clearTimeout(this.expiryTimer)
+      this.expiryTimer = undefined
+    }
+    this.onChange()
     return true
   }
 }

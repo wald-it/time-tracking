@@ -6,23 +6,12 @@ on:
   pull_request:
 
 jobs:
-  # #217 — the suite runs on both platforms the release builds for.
-  #
-  # Until v1.19.0 this gate was windows-latest only, while release.yml runs the
-  # same `pnpm test` on windows AND macos. That made the release workflow the
-  # first place a platform-dependent test could fail — and it fails there after
-  # the tag is pushed, with publish-release needing every build job, so one unit
-  # test discards a finished release. It happened twice: #196 (v1.18.0) and
-  # again cutting v1.19.0, where a test read `process.env.ProgramFiles` and
-  # inverted on macOS because that variable does not exist there.
-  #
-  # fail-fast is off on purpose: when a change breaks one platform, the useful
-  # information is whether the other one survived it.
+  # #416: Windows is the only release platform from 2.1 on.
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -60,12 +49,8 @@ jobs:
       # walks only the production dependency graph and writes deterministic
       # output (no timestamps, no absolute paths, locale-stable sort), so this
       # gate is reproducible on the windows-latest runner it authors on.
-      #
-      # Windows only, and not merely by tradition (#217): the script walks the
-      # production dependency graph, which contains platform-specific optional
-      # packages (@esbuild/win32-x64 against @esbuild/darwin-arm64). On macOS
-      # the regenerated file would legitimately differ from the committed one
-      # and this gate would fail on every PR for no defect at all.
+      # The graph includes platform-specific optional dependencies, so this
+      # check uses Windows, where the committed file is generated.
       - name: Verify bundled licenses.json is in sync
         if: runner.os == 'Windows'
         shell: bash
@@ -83,10 +68,6 @@ jobs:
       # #143: ESLint als CI-Gate. --max-warnings bewusst offen gelassen, solange
       # die verbleibenden Warnungen react-hooks-Hinweise sind; Fehler lassen den
       # Job ohnehin scheitern.
-      #
-      # Windows only (#217): ESLint reads the same sources on either platform,
-      # so a second run buys nothing but runner minutes. Typecheck and test
-      # above DO run on both — those are the ones that can disagree.
       - name: Lint
         if: runner.os == 'Windows'
         run: pnpm lint
@@ -112,8 +93,7 @@ jobs:
       # All five plugin steps are Windows only (#217). release.yml packs the
       # plugin on windows-latest deliberately — "that is the environment with
       # evidence behind it" — so gating it on the same platform keeps the gate
-      # and the release in step. Running them on macOS too would prove a path
-      # no release ever takes.
+      # and the release in step.
       - name: Stream Deck plugin — install
         if: runner.os == 'Windows'
         working-directory: streamdeck-plugin
@@ -215,8 +195,7 @@ jobs:
   #
   # Windows builds the real NSIS installer, so build/installer.nsh is compiled
   # on every PR; the installer is built, not executed. The smoke runs on the
-  # win-unpacked app the same build leaves behind. macOS builds the app bundle
-  # only (--dir): DMG and ZIP add packaging time and no runtime path.
+  # win-unpacked app the same build leaves behind.
   #
   # Self-contained on purpose (no needs:, no shared steps), so other jobs in
   # this file can change without touching it.
@@ -229,10 +208,6 @@ jobs:
             builder-args: --win nsis
             exe: dist/win-unpacked/TimeTrack.exe
             resources: dist/win-unpacked/resources
-          - os: macos-latest
-            builder-args: --mac --dir
-            exe: dist/mac-arm64/TimeTrack.app/Contents/MacOS/TimeTrack
-            resources: dist/mac-arm64/TimeTrack.app/Contents/Resources
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read

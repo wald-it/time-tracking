@@ -24,16 +24,6 @@ files:
 asarUnpack:
   - resources/**
   - '**/*.node'
-mac:
-  category: public.app-category.productivity
-  hardenedRuntime: true
-  entitlementsInherit: build/entitlements.mac.plist
-  target:
-    - target: dmg
-      arch: [arm64]
-    - target: zip
-      arch: [arm64]
-
 win:
   executableName: TimeTrack
   target:

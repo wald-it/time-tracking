@@ -89,6 +89,7 @@ import {
   readWeekDaySeconds
 } from './dashboardTotals'
 import type {
+  McpApprovalState,
   Client,
   Entry,
   EntryVersion,
@@ -135,6 +136,7 @@ export interface IpcHooks {
   confirmSensitiveSetting(change: SensitiveSettingChange): Promise<boolean>
   /** #301: end any MCP start/stop approval (the confirm mode changed). */
   forgetMcpApproval(): void
+  getMcpApprovalState(): McpApprovalState
 }
 
 function ok<T>(data: T): IpcResult<T> {
@@ -174,6 +176,13 @@ export function normaliseBudgetMinutes(value: unknown): number | null {
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
   const db = getDb()
+  ipcMain.handle('mcp:approval-state', (): IpcResult<McpApprovalState> => {
+    try {
+      return ok(hooks.getMcpApprovalState())
+    } catch (e) {
+      return fail(e)
+    }
+  })
   ipcMain.handle('rates:list', (_e, target: RateTarget) => {
     try {
       // The forms take the current rate from here, so it must be the due one.

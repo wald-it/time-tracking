@@ -777,7 +777,7 @@ Beschreibung: "Workshop"
       ])
     })
 
-    it('the preview keeps the values as sent', async () => {
+    it('the preview keeps line breaks and escapes hidden characters', async () => {
       const { ctx } = recording()
       await handleRequest(ctx, create('2025-10-28T09:00:00+01:00', '2025-10-28T12:00:00+01:00'))
       const { id } = db.prepare(`SELECT id FROM entries`).get() as { id: number }
@@ -790,7 +790,7 @@ Beschreibung: "Workshop"
       })
       expect(res.ok).toBe(true)
       if (res.ok) {
-        expect(res.data).toMatchObject({ changes: { description: { after: 'a\nb\u202E' } } })
+        expect(res.data).toMatchObject({ changes: { description: { after: 'a\nb\\u{202E}' } } })
       }
     })
   })

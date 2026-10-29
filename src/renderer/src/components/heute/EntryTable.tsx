@@ -5,6 +5,7 @@ import { entryBilledMinutes } from '../../../../shared/entryMoney'
 import { deserializeTags } from '../../../../shared/tags'
 import { useT } from '../../contexts/I18nContext'
 import { BilledChip } from '../BilledChip'
+import { EntryOrigin } from '../EntryOrigin'
 
 /**
  * Heute — "Einträge heute" (HANDOFF §3.10, §4.1).
@@ -211,6 +212,7 @@ function EntryRow({
             </span>
           ))}
           {!!entry.billed && <BilledChip />}
+          <EntryOrigin source={entry.source} />
         </div>
       </td>
       <td

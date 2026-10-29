@@ -1,7 +1,7 @@
 {
   "name": "time-tracking",
   "version": "2.0.1",
-  "description": "Lean desktop time tracker for Windows and macOS — local, no cloud.",
+  "description": "Lean desktop time tracker for Windows — local, no cloud.",
   "main": "./out/main/index.js",
   "author": "wald-it",
   "license": "MIT",
@@ -33,7 +33,6 @@
     "postinstall": "node scripts/ensure-electron.mjs",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {

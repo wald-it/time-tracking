@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * Release plan for `publish-release` (#221): given the results of the three
- * build jobs, decide how a partial release is marked.
+ * Release plan for `publish-release` (#221): given the results of the Windows
+ * installer job and the plugin job, decide how a partial release is marked.
  *
- * `publish-release` runs whenever the tag is valid and at least one installer
+ * `publish-release` runs whenever the tag is valid and the Windows installer
  * was built (the job-level `if:` in release.yml). This script answers the rest:
  *
  *   - an installer is missing   → prerelease. electron-updater ignores
  *     prereleases, so no client is offered a version whose update feed
- *     (`latest.yml` / `latest-mac.yml`) does not exist on the release. Lift it
+ *     (`latest.yml`) does not exist on the release. Lift it
  *     by hand once the gap is closed (or by re-running the release).
  *   - only the Stream Deck plugin is missing → a normal release; no updater
  *     feed depends on it.
@@ -16,7 +16,7 @@
  * Whatever is missing is named in a notice that the workflow puts at the top
  * of the release notes.
  *
- * Input (env): WINDOWS_RESULT, MACOS_RESULT, STREAMDECK_RESULT — each a GitHub
+ * Input (env): WINDOWS_RESULT, STREAMDECK_RESULT — each a GitHub
  * `needs.<job>.result` (success | failure | cancelled | skipped).
  *
  * Optional RELEASE_ASSETS (#234): the newline-separated asset names attached
@@ -50,18 +50,6 @@ const PARTS = [
     assets: [(name) => name.endsWith('.exe'), (name) => name === 'latest.yml'],
     missing:
       '**Windows installer** — no `.exe` and no `latest.yml`, so Windows clients are not offered this version.'
-  },
-  {
-    env: 'MACOS_RESULT',
-    job: 'build-macos',
-    installer: true,
-    assets: [
-      (name) => name.endsWith('.dmg'),
-      (name) => name.endsWith('.zip'),
-      (name) => name === 'latest-mac.yml'
-    ],
-    missing:
-      '**macOS build** — no `.dmg`/`.zip` and no `latest-mac.yml`, so macOS clients are not offered this version.'
   },
   {
     env: 'STREAMDECK_RESULT',

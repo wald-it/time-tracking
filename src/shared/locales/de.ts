@@ -289,6 +289,8 @@ export const de = {
   'today.quickstart.switchTo': 'Zu {name} wechseln',
   'today.quickstart.alreadyRunning': '{name} läuft bereits',
   'header.navAria': 'Hauptnavigation',
+  'header.approval.window': 'MCP-Freigabe: noch {minutes} Min. und {writes} Schreibzugriffe.',
+  'header.approval.silent': 'MCP-Schreibzugriffe werden ohne Nachfrage zugelassen.',
   'today.table.editAria': 'Eintrag {time} bearbeiten',
   'today.table.deleteAria': 'Eintrag {time} löschen',
   'today.dayscale.running': 'läuft',

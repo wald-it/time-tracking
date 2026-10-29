@@ -7,6 +7,7 @@ import type {
   ProfileEditorData
 } from '../shared/rateEditor'
 import type {
+  McpApprovalState,
   Client,
   Entry,
   EntryVersion,
@@ -38,6 +39,10 @@ import type { FilterOptions, MappedEvents } from '../shared/graphCalendar'
 declare global {
   interface Window {
     api: {
+      mcpApproval: {
+        get(): Promise<IpcResult<McpApprovalState>>
+        onChanged(callback: (state: McpApprovalState) => void): () => void
+      }
       rates: {
         list(target: RateTarget): Promise<IpcResult<RateEditorData>>
         save(target: RateTarget, input: SaveRateInput): Promise<IpcResult<RateEditorData>>
