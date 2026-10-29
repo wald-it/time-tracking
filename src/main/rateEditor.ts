@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { dueRateSql } from '../shared/dueRate'
 import {
   PROFILE_INTERVAL_ERROR,
   PROFILE_MINIMUM_ERROR,
@@ -69,18 +70,12 @@ export function readRates(db: Db, target: RateTarget): RateEditorData {
   return { rows: listRates(db, target), current_rate_cent: current.rate_cent }
 }
 
-// The project column retains NULL when inheriting. Resolving the client's
-// numeric rate here would turn inheritance into an override.
-function dueRateSql(table: string, column: string): string {
-  return `(SELECT rate_cent FROM rate WHERE ${column} = ${table}.id
-    AND valid_from <= date('now', 'localtime') ORDER BY valid_from DESC LIMIT 1)`
-}
-
 function syncCurrent(db: Db, target: RateTarget): RateEditorData {
   const { table, column } = owner(db, target)
-  db.prepare(`UPDATE ${table} SET rate_cent = ${dueRateSql(table, column)} WHERE id = ?`).run(
-    target.id
-  )
+  // Deleting the final project row clears the override instead of retaining
+  // its old column (the fallback used by readers and the periodic sync).
+  const due = listRates(db, target).length === 0 ? 'NULL' : dueRateSql(table, column)
+  db.prepare(`UPDATE ${table} SET rate_cent = ${due} WHERE id = ?`).run(target.id)
   return readRates(db, target)
 }
 
