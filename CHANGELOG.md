@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-10-29
+
 ### Added
 
 - Clients and projects now have dated rate rows and inheritable billing intervals and minimum times, while billed runs retain their frozen values.
