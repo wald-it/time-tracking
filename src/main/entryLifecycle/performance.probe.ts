@@ -12,6 +12,8 @@
  * the baseline tree stays untouched. It imports only 1.x production code.
  * PERF_DB is the closed seed file; PERF_BASELINE_JSON is its measured report.
  * Baselines are machine-specific; never commit them or generated databases.
+ * A baseline seeded before the absolute bounds below no longer matches the
+ * contract (it still carries `limit`); seed it again.
  *
  * Bounds (owner decision 2026-10-29, "Regel absolut, Ursache als Issue"): the
  * median of Auswertung (buildAnalyticsSummary) under 200 ms and of the month
@@ -147,7 +149,7 @@ it('gates month view (< 50 ms) and Auswertung (< 200 ms) absolutely, with the v1
   expect(current.schema).toBe(migrations.at(-1)!.version)
   expect(
     current.contract,
-    'Baseline must use the same input, machine, runtime and sampling'
+    'Baseline must use the same input, machine, runtime and sampling; a baseline seeded before the absolute bounds (its contract has `limit`) must be seeded again'
   ).toEqual(baseline.contract)
   process.stdout.write(
     `\nP7: ${PERF.entries} entries; ${current.contract.year}-${current.contract.month}; now=${PERF.now}; warmup=${PERF.warmup}; N=${PERF.runs}; bounds: monthEntries < ${BOUNDS_MS.monthEntries} ms, buildAnalyticsSummary < ${BOUNDS_MS.buildAnalyticsSummary} ms\n`
