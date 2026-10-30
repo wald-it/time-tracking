@@ -26,6 +26,7 @@ describe('MCP tool descriptions identify external text as data (Q16)', () => {
     'get_running_timer',
     'get_dashboard',
     'get_analytics',
+    'get_report',
     'create_manual_entry',
     'update_entry_fields',
     'start_timer',
