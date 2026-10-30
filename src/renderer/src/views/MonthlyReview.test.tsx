@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../contexts/I18nContext'
+import { useEntriesStore } from '../store/entriesStore'
 import { useSettingsStore } from '../store/settingsStore'
 import ExportView from './ExportView'
 
@@ -159,6 +160,7 @@ describe('monthly review', () => {
       )
     )
     await ui.findByText('Keine Befunde')
+    await waitFor(() => expect(ui.queryByLabelText(/^Beschreibung/)).toBeNull())
     expect(period).toHaveBeenCalledTimes(2)
     expect(getForReview).toHaveBeenCalledTimes(2)
     expect(ui.getByText('Corrected')).toBeVisible()
@@ -244,5 +246,48 @@ describe('monthly review', () => {
     await waitFor(() =>
       expect(period).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 3 }))
     )
+  })
+  it('reloads when entries are written elsewhere in the app', async () => {
+    await selectClient()
+    expect(period).toHaveBeenCalledTimes(1)
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    await waitFor(() => expect(period).toHaveBeenCalledTimes(2))
+    expect(getForReview).toHaveBeenCalledTimes(2)
+  })
+  it('reloads when a billing run is released, so its entries no longer show as billed', async () => {
+    const run = {
+      id: 7,
+      number: 'SN-2026-09-ABC-01',
+      client_id: 1,
+      client_name: 'First',
+      project_id: 3,
+      period_from: '2026-09-01',
+      period_to: '2026-09-30',
+      created_at: '2026-10-01T09:00:00.000Z',
+      status: 'active',
+      released_at: null,
+      release_reason: null,
+      replaces_run_id: null,
+      invoice_ref: '',
+      rule_snapshot: '',
+      html_sha256: 'html',
+      pdf_sha256: 'pdf',
+      billed_minutes: 60,
+      fee_cent: 6000
+    }
+    const release = vi.fn(async () => ({ ok: true, data: undefined }))
+    window.api.billingRuns = {
+      list: async () => ({ ok: true, data: [run] }),
+      release
+    } as unknown as Window['api']['billingRuns']
+    await selectClient()
+    expect(period).toHaveBeenCalledTimes(1)
+    fireEvent.click(await screen.findByRole('button', { name: 'Lösen' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Lösen' }))
+    fireEvent.change(dialog.getByLabelText(/^Grund/), { target: { value: 'Wrong period' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Lösen' }))
+    await waitFor(() => expect(release).toHaveBeenCalledWith(7, 'Wrong period'))
+    await waitFor(() => expect(period).toHaveBeenCalledTimes(2))
+    expect(getForReview).toHaveBeenCalledTimes(2)
   })
 })

@@ -6,6 +6,7 @@ import { getQuickRange, localDateKey, type QuickRangeKind } from '../../../share
 import { formatSecondsHm } from '../../../shared/currency'
 import { useLocale, useT } from '../contexts/I18nContext'
 import { useWeekStart } from '../hooks/useWeekStart'
+import { useEntriesStore } from '../store/entriesStore'
 import { BilledChip } from './BilledChip'
 import { EntryEditForm } from './EntryEditForm'
 import { FIELD_LABEL, FOCUS, INPUT, KEY_INV, LEGEND, READOUT, SECTION } from './instrumentClasses'
@@ -215,7 +216,6 @@ function ReviewResults({
 }): React.JSX.Element {
   const t = useT()
   const { locale } = useLocale()
-  const [revision, setRevision] = useState(0)
   const [result, setResult] = useState<{
     entries: PeriodReviewEntry[]
     findings: RuleCheckFinding[]
@@ -224,6 +224,8 @@ function ReviewResults({
   const [editingId, setEditingId] = useState<number | null>(null)
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
   const rows = useRef(new Map<number, HTMLLIElement>())
+  // Entry writes elsewhere (timer stop, quick note, calendar) reload the review too.
+  const entriesVersion = useEntriesStore((s) => s.version)
   const { clientId, projectId, fromIso, toIso } = selection
   useEffect(() => {
     let cancelled = false
@@ -245,7 +247,7 @@ function ReviewResults({
     return () => {
       cancelled = true
     }
-  }, [clientId, projectId, fromIso, toIso, revision, refreshKey])
+  }, [clientId, projectId, fromIso, toIso, refreshKey, entriesVersion])
   const intlLocale = locale === 'en' ? 'en-GB' : 'de-DE'
   const dateTime = (iso: string): string =>
     new Date(iso).toLocaleString(intlLocale, {
@@ -369,10 +371,8 @@ function ReviewResults({
                       entry={entry}
                       clients={clients}
                       onCancel={() => setEditingId(null)}
-                      onSaved={() => {
-                        setEditingId(null)
-                        setRevision((n) => n + 1)
-                      }}
+                      // The form bumps the entries version on save; that reloads the review.
+                      onSaved={() => setEditingId(null)}
                     />
                   </div>
                 )}

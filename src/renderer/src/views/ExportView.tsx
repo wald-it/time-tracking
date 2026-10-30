@@ -103,6 +103,7 @@ export default function ExportView(): React.JSX.Element {
 
         <BillingRunList
           refreshKey={runsRevision}
+          onReleased={() => setRunsRevision((n) => n + 1)}
           onRebill={(run) => {
             setReviewSelection(undefined)
             setReplacementRun(run)
