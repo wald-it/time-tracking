@@ -18,7 +18,6 @@ export type GroupBy = 'none' | 'tag' | 'project' | 'reference'
 export interface ExportPrefs {
   tab: ExportTab
   includeSignatures: boolean
-  groupBy: GroupBy
   hideFeeColumn: boolean
   csvFormat: CsvFormat
   csvGroupByTag: boolean
@@ -33,7 +32,6 @@ export interface ExportPrefs {
 export const DEFAULT_PREFS: ExportPrefs = {
   tab: 'pdf',
   includeSignatures: false,
-  groupBy: 'none',
   hideFeeColumn: false,
   csvFormat: 'de',
   csvGroupByTag: false,
@@ -52,10 +50,6 @@ export function parsePrefs(raw: string | null | undefined): ExportPrefs {
     return {
       tab: parsed.tab === 'csv' || parsed.tab === 'ical' ? parsed.tab : 'pdf',
       includeSignatures: parsed.includeSignatures === true,
-      groupBy:
-        parsed.groupBy === 'tag' || parsed.groupBy === 'project' || parsed.groupBy === 'reference'
-          ? parsed.groupBy
-          : 'none',
       hideFeeColumn: parsed.hideFeeColumn === true,
       csvFormat: parsed.csvFormat === 'us' ? 'us' : 'de',
       csvGroupByTag: parsed.csvGroupByTag === true,

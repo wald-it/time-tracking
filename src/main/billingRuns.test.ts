@@ -70,6 +70,37 @@ const patch = (
     { source: 'app', reason, now: '2026-12-01T00:00:00.000Z' }
   )
 
+it('#433 preserves old run grouping and leaves absent options.groupBy ungrouped', async () => {
+  for (const groupBy of ['tag', undefined] as const) {
+    const db = setup()
+    db.exec("INSERT INTO billing_profile (client_id, group_by) VALUES (1, 'reference')")
+    seedEntry(db, {
+      client_id: 1,
+      started_at: '2026-10-27T08:00:00.000Z',
+      stopped_at: '2026-10-27T09:00:00.000Z',
+      tags: ',old-tag,',
+      reference: 'old-reference'
+    })
+    // Main keeps its pre-#433 contract: only the request sets grouping.
+    const created = await createRun(db, { ...req, groupBy }, renderer)
+    const snapshot = JSON.parse(created.rule_snapshot)
+    expect(snapshot.clientProfile.group_by).toBe('reference')
+    if (groupBy === undefined) expect(snapshot.options).not.toHaveProperty('groupBy')
+    else expect(snapshot.options.groupBy).toBe(groupBy)
+    const oldHtml = buildPdfHtml({
+      ...buildPdfPayload(db, { ...req, groupBy }, '', created.created_at),
+      runNumber: created.number
+    })
+    expect(oldHtml.includes('<tr class="group-header">')).toBe(groupBy === 'tag')
+    expect(created.html_sha256).toBe(hash(oldHtml))
+    const archived = openRunPdf(db, created.id)
+    db.exec("UPDATE billing_profile SET group_by = 'project' WHERE client_id = 1")
+    expect(renderRunHtml(db, created.id)).toBe(oldHtml)
+    expect(verifyRunHtml(db, created.id)).toBe(true)
+    expect(openRunPdf(db, created.id)).toEqual(archived)
+  }
+})
+
 describe('P6b billing run list', () => {
   it('#424 freezes the trimmed invoice reference in the column and snapshot and escapes the title', async () => {
     const db = setup()

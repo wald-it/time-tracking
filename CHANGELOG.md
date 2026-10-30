@@ -17,6 +17,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Changed
 
+- **The export dialog takes its grouping default from the client or project profile.** A different grouping chosen in the dialog applies to that export only and is no longer remembered ([#433](https://github.com/wald-it/time-tracking/issues/433)).
 - **Clients, Export and Settings use the window width like Today, Analytics and Calendar.** Settings rows run label left, control right; Export cards sit side by side; the client list is wider ([#420](https://github.com/wald-it/time-tracking/issues/420)).
 
 ## [2.1.0] — 2026-10-29

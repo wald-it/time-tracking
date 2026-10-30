@@ -33,7 +33,6 @@ describe('parsePrefs', () => {
     const prefs: ExportPrefs = {
       tab: 'csv',
       includeSignatures: true,
-      groupBy: 'reference',
       hideFeeColumn: true,
       csvFormat: 'us',
       csvGroupByTag: true,
@@ -43,10 +42,11 @@ describe('parsePrefs', () => {
   })
 
   it.each(['none', 'tag', 'project', 'reference'] as const)(
-    'roundtrips groupBy value %s',
+    'ignores legacy groupBy value %s because grouping comes from the profile',
     (groupBy) => {
       const parsed = parsePrefs(JSON.stringify({ ...DEFAULT_PREFS, groupBy }))
-      expect(parsed.groupBy).toBe(groupBy)
+      expect(parsed).not.toHaveProperty('groupBy')
+      expect(parsed).toEqual(DEFAULT_PREFS)
     }
   )
 
