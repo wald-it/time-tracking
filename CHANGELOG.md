@@ -9,6 +9,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Added
 
+- **The rule check is available to agents as the read-only MCP tool `check_period`.** It returns the same findings as the app for a client and period ([#429](https://github.com/wald-it/time-tracking/issues/429)).
 - **A rule check reports findings for a client's entries in a period.** It checks missing descriptions or projects, billable entries without a rate, long entries and days, work outside working hours or on weekends, format rules, overlong texts and non-billable entries. Thresholds are in Settings; the check only reports and never blocks an export. It is not shown outside Settings yet ([#426](https://github.com/wald-it/time-tracking/issues/426)).
 - **PDF timesheets and CSV column headers follow the language of the client or project profile.** The profile’s fee column setting decides whether the PDF fee column is shown ([#423](https://github.com/wald-it/time-tracking/issues/423)).
 - **PDF timesheets can leave out start and end times.** The column set comes from the client or project profile and can be changed in the export dialog for one export ([#422](https://github.com/wald-it/time-tracking/issues/422)).

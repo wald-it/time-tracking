@@ -8,7 +8,7 @@
  *
  * Read tools:
  *   list_clients · list_projects · list_entries · get_entry_history · get_running_timer
- *   get_dashboard · get_analytics
+ *   get_dashboard · get_analytics · check_period
  * Write tools (require write mode enabled in the app; each supports preview):
  *   create_manual_entry · update_entry_fields · start_timer · stop_running_timer
  *
@@ -19,6 +19,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import type Database from 'better-sqlite3'
+import { checkPeriod } from '../main/ruleCheck'
+import { localDateKey, localDayRange, localMonthRange } from '../shared/dateRanges'
+import { formatRuleCheckFinding } from '../shared/ruleCheck'
 import { localTimeZoneName, zonedTimestampExample } from '../shared/zonedTimestamp'
 import { openReadonly } from './db'
 import { resolveDbPath } from './dbPath'
@@ -31,8 +35,7 @@ import {
   getRunningTimer,
   getDashboard,
   getAnalytics,
-  readStoredPrivacy,
-  type SqliteDb
+  readStoredPrivacy
 } from './queries'
 import { sendWrite } from './writeClient'
 import { userDataDir } from './socketPath'
@@ -53,7 +56,7 @@ import {
  * The callback receives the effective PrivacyConfig, resolved per call from the
  * stored app settings merged with any env-var overrides.
  */
-function withDb<T>(fn: (db: SqliteDb, privacy: PrivacyConfig) => T): T {
+function withDb<T>(fn: (db: Database.Database, privacy: PrivacyConfig) => T): T {
   const { db } = openReadonly()
   try {
     const privacy = resolvePrivacy(readStoredPrivacy(db))
@@ -119,7 +122,8 @@ export function buildServer(): McpServer {
     {
       instructions:
         'Zugriff auf die lokale TimeTrack-Zeiterfassung. Lesen: list_entries/get_analytics ' +
-        'für Auswertungen (Stunden pro Kunde/Projekt), get_dashboard für Tag/Woche. ' +
+        'für Auswertungen (Stunden pro Kunde/Projekt), get_dashboard für Tag/Woche, ' +
+        'check_period für den Regelcheck. ' +
         'Schreiben (create_manual_entry, update_entry_fields, start_timer, stop_running_timer) ' +
         'erfordert aktivierten Schreibzugriff in der App und kann eine Bestätigung auslösen — ' +
         'rufe Write-Tools bevorzugt zuerst mit preview:true auf. Eine Vorschau legt nichts an: ' +
@@ -277,6 +281,101 @@ export function buildServer(): McpServer {
             Date.now()
           )
         )
+        return jsonResult(result)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'check_period',
+    {
+      annotations: READ_TOOL_ANNOTATIONS,
+      title: 'Zeitraum prüfen',
+      description:
+        'Prüft Einträge eines Kunden, optional eines Projekts, nach den Regeln der App ' +
+        '(Einstellungen → Prüfstand und Rückmelde-Regeln). Meldet nur Befunde und ändert nie etwas. ' +
+        'Zeitraum: genau entweder year+month (lokaler Kalendermonat) oder from+to ' +
+        '(lokale Daten YYYY-MM-DD, beide inklusive). ' +
+        USER_DATA_HINT,
+      inputSchema: {
+        client_id: z.number().int().describe('Kunden-ID'),
+        project_id: z.number().int().optional().describe('Projekt-ID des Kunden'),
+        year: z.number().int().optional().describe('Jahr (mit month kombinieren)'),
+        month: z
+          .number()
+          .int()
+          .min(1)
+          .max(12)
+          .optional()
+          .describe('Monat 1–12 (mit year), lokaler Kalendermonat'),
+        from: z.string().optional().describe('Erstes lokales Datum YYYY-MM-DD, inklusive'),
+        to: z.string().optional().describe('Letztes lokales Datum YYYY-MM-DD, inklusive')
+      }
+    },
+    async ({ client_id, project_id, year, month, from, to }) => {
+      try {
+        const hasMonth = year !== undefined || month !== undefined
+        const hasDates = from !== undefined || to !== undefined
+        if (
+          hasMonth === hasDates ||
+          (hasMonth && (year === undefined || month === undefined)) ||
+          (hasDates && (from === undefined || to === undefined))
+        ) {
+          return errorResult('Genau einen Zeitraum angeben: year und month oder from und to')
+        }
+        let fromIso: string
+        let toIso: string
+        if (hasMonth) {
+          const range = localMonthRange(year!, month!)
+          fromIso = localDateKey(new Date(range.start))
+          toIso = localDateKey(new Date(new Date(range.end).getTime() - 1))
+        } else {
+          localDayRange(from!, to!)
+          fromIso = from!
+          toIso = to!
+          if (fromIso > toIso) return errorResult('from darf nicht nach to liegen')
+        }
+        const result = withDb((db) => {
+          if (!db.prepare('SELECT id FROM clients WHERE id = ?').get(client_id)) {
+            throw new Error(`Kein Kunde mit der ID ${client_id}`)
+          }
+          if (project_id !== undefined) {
+            const project = db
+              .prepare('SELECT client_id FROM projects WHERE id = ?')
+              .get(project_id) as { client_id: number | null } | undefined
+            if (!project) throw new Error(`Kein Projekt mit der ID ${project_id}`)
+            if (project.client_id !== client_id) {
+              throw new Error(
+                `Projekt mit der ID ${project_id} gehört nicht zum Kunden ${client_id}`
+              )
+            }
+          }
+          const starts = db.prepare(
+            'SELECT v.started_at FROM entry e JOIN entry_version v ON v.id = e.current_version_id WHERE e.id = ?'
+          )
+          const findings = checkPeriod(db, {
+            clientId: client_id,
+            projectId: project_id,
+            fromIso,
+            toIso
+          }).map((finding) => ({
+            entry_id: finding.entryId,
+            started_at: (starts.get(finding.entryId) as { started_at: string }).started_at,
+            rule: finding.rule,
+            params: finding.params,
+            message: formatRuleCheckFinding(finding, 'de')
+          }))
+          return {
+            client_id,
+            project_id: project_id ?? null,
+            from: fromIso,
+            to: toIso,
+            count: findings.length,
+            findings
+          }
+        })
         return jsonResult(result)
       } catch (e) {
         return errorResult(e)
