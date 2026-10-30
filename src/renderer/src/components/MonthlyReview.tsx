@@ -233,6 +233,10 @@ function ReviewResults({
   // does a timer that starts or stops outside it (hotkey, tray, MCP), as in Heute.
   const entriesVersion = useEntriesStore((s) => s.version)
   const runningId = useTimerStore((s) => s.runningEntry?.id)
+  // External writes (MCP, Stream Deck) raise no entries version; the review
+  // listens for them itself, so it never shows less than the export reads.
+  const [dataRevision, setDataRevision] = useState(0)
+  useEffect(() => window.api.onDataChanged(() => setDataRevision((n) => n + 1)), [])
   const { clientId, projectId, fromIso, toIso } = selection
   useEffect(() => {
     let cancelled = false
@@ -246,6 +250,12 @@ function ReviewResults({
         if (!check.ok) throw new Error(check.error)
         if (!list.ok) throw new Error(list.error)
         setResult({ findings: check.data, entries: list.data })
+        // Same version, same content: take the reloaded row, so a billing run
+        // created meanwhile reaches the form (its reason prompt reads billed).
+        setEditing((open) => {
+          const fresh = open && list.data.find((e) => e.id === open.id)
+          return fresh && fresh.version_no === open.version_no ? fresh : open
+        })
         setError(null)
       })
       .catch((e: unknown) => {
@@ -254,7 +264,7 @@ function ReviewResults({
     return () => {
       cancelled = true
     }
-  }, [clientId, projectId, fromIso, toIso, refreshKey, entriesVersion, runningId])
+  }, [clientId, projectId, fromIso, toIso, refreshKey, entriesVersion, runningId, dataRevision])
   const intlLocale = locale === 'en' ? 'en-GB' : 'de-DE'
   const dateTime = (iso: string): string =>
     new Date(iso).toLocaleString(intlLocale, {

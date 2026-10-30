@@ -11,6 +11,7 @@ const getForReview = vi.fn()
 const update = vi.fn()
 const pdf = vi.fn()
 const scroll = vi.fn()
+let dataChanged: () => void = () => {}
 const entries = [1, 2].map((id) => ({
   id,
   client_id: 1,
@@ -75,7 +76,11 @@ beforeEach(() => {
     billingProfile: {
       get: async () => ({ ok: true, data: { inherited: { columns: 'times', group_by: 'none' } } })
     },
-    pdf: { export: pdf }
+    pdf: { export: pdf },
+    onDataChanged: (callback: () => void) => {
+      dataChanged = callback
+      return () => {}
+    }
   } as unknown as Window['api']
 })
 afterEach(cleanup)
@@ -314,6 +319,28 @@ describe('monthly review', () => {
         expect.objectContaining({ id: 1, description: 'Mine', expected_version: 1 })
       )
     )
+  })
+  it('takes a billed status from a reload of the same version into the open editor', async () => {
+    const ui = await selectClient()
+    fireEvent.click(
+      within(ui.getByRole('listitem', { name: 'Eintrag 1' })).getByRole('button', {
+        name: 'Bearbeiten'
+      })
+    )
+    getForReview.mockResolvedValue({ ok: true, data: [{ ...entries[0], billed: 1 }, entries[1]] })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    await waitFor(() => expect(ui.getAllByText('abgerechnet')).toHaveLength(2))
+    fireEvent.change(ui.getByLabelText(/^Beschreibung/), { target: { value: 'After the run' } })
+    fireEvent.click(ui.getByRole('button', { name: 'Speichern' }))
+    expect(await screen.findByRole('alertdialog')).toBeVisible()
+    expect(update).not.toHaveBeenCalled()
+  })
+  it('reloads on external writes (data:changed) that leave the timer alone', async () => {
+    await selectClient()
+    expect(period).toHaveBeenCalledTimes(1)
+    await act(async () => dataChanged())
+    await waitFor(() => expect(period).toHaveBeenCalledTimes(2))
+    expect(getForReview).toHaveBeenCalledTimes(2)
   })
   it('reloads when a timer starts or stops outside the review (hotkey, tray, MCP)', async () => {
     useTimerStore.setState({ runningEntry: null })
