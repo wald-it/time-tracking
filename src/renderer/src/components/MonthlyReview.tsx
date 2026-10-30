@@ -209,6 +209,29 @@ export function MonthlyReview({
   )
 }
 
+interface LoadedReview {
+  entries: PeriodReviewEntry[]
+  findings: RuleCheckFinding[]
+  changes: ChangedSinceRunResult | null
+}
+
+/**
+ * Applies the "changed since last invoice" filter. Without an active run it
+ * keeps nothing. The entry open in the editor always stays listed until it is
+ * saved or cancelled, even when a reload drops it from the filter (a run
+ * released meanwhile): its unsaved values live in that form.
+ */
+function narrow(loaded: LoadedReview, openId: number | null): LoadedReview {
+  if (!loaded.changes) return loaded
+  const ids = new Set(loaded.changes.lastRun ? loaded.changes.entries.map((e) => e.entryId) : [])
+  if (openId !== null) ids.add(openId)
+  return {
+    ...loaded,
+    entries: loaded.entries.filter((e) => ids.has(e.id)),
+    findings: loaded.findings.filter((f) => ids.has(f.entryId))
+  }
+}
+
 function ReviewResults({
   selection,
   clients,
@@ -226,19 +249,16 @@ function ReviewResults({
   const { locale } = useLocale()
   const [changedOnly, setChangedOnly] = useState(false)
   const filterLabelId = useId()
-  const [loaded, setResult] = useState<{
-    entries: PeriodReviewEntry[]
-    findings: RuleCheckFinding[]
-    changes: ChangedSinceRunResult | null
-  } | null>(null)
-  // Never display an unfiltered snapshot while the filter loads or fails.
-  const result = loaded && Boolean(loaded.changes) === changedOnly ? loaded : null
+  const [loaded, setResult] = useState<LoadedReview | null>(null)
   const [error, setError] = useState<string | null>(null)
   // The entry as it was when the editor opened. A reload while it is open must
   // not hand the form a newer version_no under its old field values, or saving
   // would overwrite the newer write without a conflict.
   const [editing, setEditing] = useState<PeriodReviewEntry | null>(null)
   const editingId = editing?.id ?? null
+  // Never display an unfiltered snapshot while the filter loads or fails.
+  const result =
+    loaded && Boolean(loaded.changes) === changedOnly ? narrow(loaded, editingId) : null
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
   const rows = useRef(new Map<number, HTMLLIElement>())
   // Entry writes elsewhere (quick note, calendar) reload the review too, and so
@@ -263,18 +283,15 @@ function ReviewResults({
         if (!check.ok) throw new Error(check.error)
         if (!list.ok) throw new Error(list.error)
         if (changes && !changes.ok) throw new Error(changes.error)
-        const changed = changes?.data ?? null
-        const changedIds = new Set(changed?.lastRun ? changed.entries.map((e) => e.entryId) : [])
-        setResult({
-          findings: changed ? check.data.filter((f) => changedIds.has(f.entryId)) : check.data,
-          entries: changed ? list.data.filter((e) => changedIds.has(e.id)) : list.data,
-          changes: changed
-        })
+        setResult({ findings: check.data, entries: list.data, changes: changes?.data ?? null })
         // Same version, same content: take the reloaded row, so a billing run
         // created meanwhile reaches the form (its reason prompt reads billed).
+        // An entry that left the selection (deleted elsewhere) closes its editor.
         setEditing((open) => {
-          const fresh = open && list.data.find((e) => e.id === open.id)
-          return fresh && fresh.version_no === open.version_no ? fresh : open
+          if (!open) return open
+          const fresh = list.data.find((e) => e.id === open.id)
+          if (!fresh) return null
+          return fresh.version_no === open.version_no ? fresh : open
         })
         setError(null)
       })

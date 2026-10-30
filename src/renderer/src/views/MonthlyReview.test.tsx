@@ -184,6 +184,40 @@ describe('monthly review changed since last invoice filter', () => {
     expect(ui.queryByText(noRun)).toBeNull()
   })
 
+  it('keeps the open editor and its draft when a reload drops its entry from the filter', async () => {
+    changedSinceRun.mockResolvedValue({
+      ok: true,
+      data: { lastRun: run, entries: [{ entryId: 1, change: 'changed', changedAt }] }
+    })
+    const ui = await selectClient()
+    const filter = ui.getByRole('switch', { name: label })
+    fireEvent.click(filter)
+    const row = await ui.findByRole('listitem', { name: 'Eintrag 1' })
+    fireEvent.click(within(row).getByRole('button', { name: 'Bearbeiten' }))
+    fireEvent.change(ui.getByLabelText(/^Beschreibung/), { target: { value: 'Draft' } })
+    // The run is released elsewhere: the filter now has no active run.
+    changedSinceRun.mockResolvedValue({ ok: true, data: { lastRun: null, entries: [] } })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    expect(await ui.findByText(noRun)).toBeVisible()
+    expect(ui.getByLabelText(/^Beschreibung/)).toHaveValue('Draft')
+    fireEvent.click(ui.getByRole('button', { name: 'Abbrechen' }))
+    expect(ui.queryByRole('listitem', { name: 'Eintrag 1' })).toBeNull()
+    expect(filter).toBeEnabled()
+  })
+  it('closes the editor when its entry leaves the selection, so the switch does not stay locked', async () => {
+    const ui = await selectClient()
+    fireEvent.click(
+      within(ui.getByRole('listitem', { name: 'Eintrag 1' })).getByRole('button', {
+        name: 'Bearbeiten'
+      })
+    )
+    const filter = ui.getByRole('switch', { name: label })
+    expect(filter).toBeDisabled()
+    getForReview.mockResolvedValue({ ok: true, data: [entries[1]] })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    await waitFor(() => expect(ui.queryByRole('listitem', { name: 'Eintrag 1' })).toBeNull())
+    expect(filter).toBeEnabled()
+  })
   it('reloads all three results together when the entries version changes under the filter', async () => {
     const ui = await selectClient()
     fireEvent.click(ui.getByRole('switch', { name: label }))
