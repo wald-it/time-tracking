@@ -45,7 +45,7 @@ import {
   heartbeat,
   listEntryVersions
 } from './entryMutations'
-import { deleteClientGuarded, deleteProjectGuarded } from './masterDataDelete'
+import { deleteClientGuarded, deleteProjectGuarded, hasEntryVersionsSql } from './masterDataDelete'
 import { emitWebhooks } from './webhooks'
 import { logWebhookDelivery } from './webhookLog'
 import { buildJsonExportPayload } from './jsonExport'
@@ -302,7 +302,12 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       // An app left open past a rate's valid-from day still shows the due rate.
       syncDueRates(db)
-      const rows = db.prepare(`SELECT * FROM clients ORDER BY name ASC`).all() as Client[]
+      const rows = db
+        .prepare(
+          `SELECT c.*, ${hasEntryVersionsSql('client_id', 'c.id')} AS has_entry_versions
+             FROM clients c ORDER BY c.name ASC`
+        )
+        .all() as Client[]
       return ok(rows)
     } catch (e) {
       return fail(e)
@@ -623,7 +628,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,
-            COALESCE(bud.used_minutes, 0) AS used_minutes
+            COALESCE(bud.used_minutes, 0) AS used_minutes,
+            ${hasEntryVersionsSql('project_id', 'p.id')} AS has_entry_versions
           FROM projects p
           LEFT JOIN (
             SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at

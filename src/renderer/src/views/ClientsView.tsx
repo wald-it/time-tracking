@@ -38,6 +38,11 @@ import { CLIENT_COLORS } from '../components/clientColors'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { BillingEditors } from '../components/BillingEditors'
 import { RATE_EDITOR_CONFLICT_ERROR } from '../../../shared/rateEditor'
+import {
+  CLIENT_HAS_ENTRIES_ERROR,
+  PROJECT_HAS_ENTRIES_ERROR
+} from '../../../shared/masterDataDelete'
+import { useToastStore } from '../store/toastStore'
 
 /** Lightens a hex color by the given amount (0-100) to create a visually
  * related but distinct project color from the client color. */
@@ -173,8 +178,20 @@ export default function ClientsView(): React.JSX.Element {
 
   async function doDeleteClient(): Promise<void> {
     if (!pendingDeleteClient) return
-    await window.api.clients.delete(pendingDeleteClient.id)
+    const { id, name } = pendingDeleteClient
+    const res = await window.api.clients.delete(id)
     setPendingDeleteClient(null)
+    // #452: a refusal used to vanish; say why and point to archiving.
+    if (!res.ok) {
+      useToastStore
+        .getState()
+        .show(
+          res.error === CLIENT_HAS_ENTRIES_ERROR
+            ? t('clients.delete.refused', { name })
+            : t('clients.delete.failed', { name, error: res.error })
+        )
+      return
+    }
     await loadClients()
     bumpClientsVersion()
   }
@@ -278,10 +295,20 @@ export default function ClientsView(): React.JSX.Element {
 
   async function doDeleteProject(): Promise<void> {
     if (!pendingDeleteProject) return
+    const { name } = pendingDeleteProject
     const res = await window.api.projects.delete(pendingDeleteProject.id)
     const clientId = pendingDeleteProject.client_id
     setPendingDeleteProject(null)
-    if (!res.ok) return
+    if (!res.ok) {
+      useToastStore
+        .getState()
+        .show(
+          res.error === PROJECT_HAS_ENTRIES_ERROR
+            ? t('projects.delete.refused', { name })
+            : t('projects.delete.failed', { name, error: res.error })
+        )
+      return
+    }
     if (clientId !== null) await loadProjectsForClient(clientId)
     bumpProjectsVersion()
   }
@@ -615,12 +642,14 @@ function ClientItem({
         >
           <Icons.Edit />
         </button>
+        {/* #452: with entries the key stays focusable and says why it does nothing. */}
         <button
-          onClick={() => onDelete(c)}
-          className={ICON_BTN}
-          style={{ color: 'var(--danger)' }}
+          onClick={() => !c.has_entry_versions && onDelete(c)}
+          className={`${ICON_BTN}${c.has_entry_versions ? ' cursor-not-allowed' : ''}`}
+          style={{ color: c.has_entry_versions ? 'var(--ink3)' : 'var(--danger)' }}
           aria-label={`${t('common.delete')}: ${c.name}`}
-          title={t('common.delete')}
+          aria-disabled={c.has_entry_versions ? true : undefined}
+          title={c.has_entry_versions ? t('clients.delete.blocked') : t('common.delete')}
         >
           <Icons.Trash />
         </button>
@@ -825,11 +854,12 @@ function ProjectItem({
         <Icons.Edit />
       </button>
       <button
-        onClick={() => onDelete(p)}
-        className={`${ICON_BTN} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
-        style={{ color: 'var(--danger)' }}
+        onClick={() => !p.has_entry_versions && onDelete(p)}
+        className={`${ICON_BTN} opacity-0 group-hover:opacity-100 focus-visible:opacity-100${p.has_entry_versions ? ' cursor-not-allowed' : ''}`}
+        style={{ color: p.has_entry_versions ? 'var(--ink3)' : 'var(--danger)' }}
         aria-label={`${t('common.delete')}: ${p.name}`}
-        title={t('common.delete')}
+        aria-disabled={p.has_entry_versions ? true : undefined}
+        title={p.has_entry_versions ? t('projects.delete.blocked') : t('common.delete')}
       >
         <Icons.Trash />
       </button>

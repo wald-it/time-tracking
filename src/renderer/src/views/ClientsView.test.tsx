@@ -15,6 +15,11 @@ import { I18nProvider } from '../contexts/I18nContext'
 import type { Client, Project } from '../../../shared/types'
 import { useClientsStore } from '../store/clientsStore'
 import { RATE_EDITOR_CONFLICT_ERROR } from '../../../shared/rateEditor'
+import {
+  CLIENT_HAS_ENTRIES_ERROR,
+  PROJECT_HAS_ENTRIES_ERROR
+} from '../../../shared/masterDataDelete'
+import { useToastStore } from '../store/toastStore'
 
 afterEach(cleanup)
 
@@ -606,5 +611,117 @@ describe('ClientsView — archived rows and symbol keys', () => {
     expect(name.style.color).toBe('var(--ink3)')
     expect(name.closest('.opacity-60')).toBeNull()
     expect(screen.getByRole('button', { name: 'Reaktivieren: Altlast' })).toBeTruthy()
+  })
+})
+
+describe('ClientsView — refused delete (#452)', () => {
+  beforeEach(() => useToastStore.setState({ toasts: [] }))
+
+  async function confirmDelete(label: string): Promise<void> {
+    fireEvent.click(screen.getByRole('button', { name: label }))
+    await act(async () => {
+      fireEvent.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Löschen' })
+      )
+    })
+  }
+
+  it('shows why a client with entries stays and points to archiving', async () => {
+    const del = vi.fn().mockResolvedValue({ ok: false, error: CLIENT_HAS_ENTRIES_ERROR })
+    Object.assign(window.api.clients, { delete: del })
+    await renderView()
+    await confirmDelete('Löschen: Acme')
+    expect(del).toHaveBeenCalledWith(1)
+    expect(useToastStore.getState().toasts.map((x) => x.message)).toEqual([
+      'Kunde „Acme“ hat Einträge (auch gelöschte) und lässt sich nicht löschen. Stattdessen archivieren.'
+    ])
+    expect(screen.getByText('Acme')).toBeTruthy()
+  })
+
+  it('shows any other client delete failure with its error', async () => {
+    Object.assign(window.api.clients, {
+      delete: vi.fn().mockResolvedValue({ ok: false, error: 'disk full' })
+    })
+    await renderView()
+    await confirmDelete('Löschen: Acme')
+    expect(useToastStore.getState().toasts.map((x) => x.message)).toEqual([
+      'Kunde „Acme“ ließ sich nicht löschen: disk full'
+    ])
+  })
+
+  it('shows why a project with entries stays and points to archiving', async () => {
+    const del = vi.fn().mockResolvedValue({ ok: false, error: PROJECT_HAS_ENTRIES_ERROR })
+    Object.assign(window.api.projects, { delete: del })
+    await renderView()
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /Projekte anzeigen/ })[0])
+    })
+    await confirmDelete('Löschen: Rollout')
+    expect(del).toHaveBeenCalledWith(10)
+    expect(useToastStore.getState().toasts.map((x) => x.message)).toEqual([
+      'Projekt „Rollout“ hat Einträge (auch gelöschte) und lässt sich nicht löschen. Stattdessen archivieren.'
+    ])
+  })
+
+  it('a client with entries: the key says why and opens no dialog', async () => {
+    const del = vi.fn()
+    Object.assign(window.api.clients, {
+      getAll: async () => ({
+        ok: true as const,
+        data: CLIENTS.map((c) => ({ ...c, has_entry_versions: c.id === 1 ? 1 : 0 }))
+      }),
+      delete: del
+    })
+    await renderView()
+    const key = screen.getByRole('button', { name: 'Löschen: Acme' })
+    expect(key).toHaveAttribute('aria-disabled', 'true')
+    expect(key).toHaveAttribute(
+      'title',
+      'Hat Einträge (auch gelöschte). Archivieren statt löschen.'
+    )
+    fireEvent.click(key)
+    await act(async () => {})
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('a project with entries: the key says why and opens no dialog', async () => {
+    const del = vi.fn()
+    Object.assign(window.api.projects, {
+      getAll: async ({ clientId }: { clientId: number }) => ({
+        ok: true as const,
+        data: PROJECTS.filter((p) => p.client_id === clientId).map((p) => ({
+          ...p,
+          has_entry_versions: p.id === 10 ? 1 : 0
+        }))
+      }),
+      delete: del
+    })
+    await renderView()
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /Projekte anzeigen/ })[0])
+    })
+    const key = screen.getByRole('button', { name: 'Löschen: Rollout' })
+    expect(key).toHaveAttribute('aria-disabled', 'true')
+    expect(key).toHaveAttribute(
+      'title',
+      'Hat Einträge (auch gelöschte). Archivieren statt löschen.'
+    )
+    fireEvent.click(key)
+    await act(async () => {})
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(del).not.toHaveBeenCalled()
+    // A record without entries keeps the normal key.
+    expect(screen.getByRole('button', { name: 'Löschen: Acme' })).not.toHaveAttribute(
+      'aria-disabled'
+    )
+  })
+
+  it('no longer promises that deleting a client removes its entries', async () => {
+    await renderView()
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen: Acme' }))
+    const text = within(screen.getByRole('alertdialog')).getByText(/wirklich löschen/).textContent
+    expect(text).not.toMatch(/mitgelöscht/)
+    expect(text).toMatch(/nur archivieren/)
   })
 })

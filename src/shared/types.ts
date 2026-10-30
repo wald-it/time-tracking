@@ -22,6 +22,11 @@ export interface Client {
   vat_id?: string | null
   contact_person?: string | null
   contact_email?: string | null
+  /**
+   * Only in `clients:getAll`: 1 while any entry version, deleted ones
+   * included, points at the client, so deleting it is refused (#452).
+   */
+  has_entry_versions?: number
 }
 
 export interface Entry {
@@ -146,6 +151,11 @@ export interface Project {
    * Only present in `projects:getAll` responses. Counts non-deleted entries.
    */
   entry_count?: number
+  /**
+   * Only in `projects:getAll`: 1 while any entry version, deleted ones
+   * included, points at the project, so deleting it is refused (#452).
+   */
+  has_entry_versions?: number
   /**
    * Only present in `projects:getAll` responses. ISO timestamp of the most
    * recent entry's started_at, or null when no entries exist.

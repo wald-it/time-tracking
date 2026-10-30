@@ -14,14 +14,22 @@
  */
 import type Database from 'better-sqlite3'
 import type { IpcResult } from '../shared/types'
+import { CLIENT_HAS_ENTRIES_ERROR, PROJECT_HAS_ENTRIES_ERROR } from '../shared/masterDataDelete'
 
-export const CLIENT_HAS_ENTRIES_ERROR =
-  'Kunde hat Einträge (auch gelöschte oder frühere Versionen) und kann nicht gelöscht werden'
-export const PROJECT_HAS_ENTRIES_ERROR =
-  'Projekt hat Einträge (auch gelöschte oder frühere Versionen) und kann nicht gelöscht werden'
+export { CLIENT_HAS_ENTRIES_ERROR, PROJECT_HAS_ENTRIES_ERROR }
 
 function fail(error: string): IpcResult<never> {
   return { ok: false, error }
+}
+
+/**
+ * SQL that is 1 while the guard below would refuse the delete (#452): the
+ * lists carry it so the Kunden view can disable the key instead of failing.
+ * Uncorrelated on purpose: entry_version has no index on these columns, and
+ * SQLite runs an uncorrelated IN once per query instead of once per row.
+ */
+export function hasEntryVersionsSql(column: 'client_id' | 'project_id', idExpr: string): string {
+  return `(${idExpr} IN (SELECT ${column} FROM entry_version WHERE ${column} IS NOT NULL))`
 }
 
 function versionCount(
