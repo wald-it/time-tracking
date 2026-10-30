@@ -6,7 +6,7 @@
  * here the Heute view has to show it.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import TodayView from './TodayView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useToastStore } from '../store/toastStore'
@@ -139,4 +139,176 @@ describe('TodayView — a refused quick-start key', () => {
       'Start fehlgeschlagen: Kunde existiert nicht'
     )
   })
+})
+
+// Q8, 2.2: real hook and listener, with a fresh registry for each view.
+async function setupResume(running: boolean): Promise<{
+  start: ReturnType<typeof vi.fn>
+  switchFn: ReturnType<typeof vi.fn>
+  play: HTMLElement
+  timerStore: typeof useTimerStore
+  toastStore: typeof useToastStore
+  resumed: Entry
+  finished: Entry
+  summary: ReturnType<typeof vi.fn>
+  changed: () => void
+  setMain: (entry: Entry | null) => void
+  finish: () => { entry: Entry; stopped: Entry | null }
+}> {
+  vi.resetModules()
+  const timerStore = (await import('../store/timerStore')).useTimerStore
+  const toastStore = (await import('../store/toastStore')).useToastStore
+  const View = (await import('./TodayView')).default
+  const Provider = (await import('../contexts/I18nContext')).I18nProvider
+  const finished: Entry = {
+    ...RUNNING,
+    id: 7,
+    client_id: 2,
+    description: 'Review',
+    stopped_at: new Date().toISOString()
+  }
+  const resumed: Entry = { ...finished, id: 8, stopped_at: null }
+  let current: Entry | null = running ? RUNNING : null
+  let rows = running ? [RUNNING, finished] : [finished]
+  let changed!: () => void
+  const start = vi.fn()
+  const switchFn = vi.fn()
+  const trayUpdate = vi.fn()
+  const summary = vi.fn(async () => ({
+    ok: true as const,
+    data: { ...SUMMARY, todayEntries: rows, topClients30d: [] }
+  }))
+  window.api = {
+    clients: { getAll: async () => ({ ok: true, data: CLIENTS }) },
+    projects: { getAll: async () => ({ ok: true, data: [] }) },
+    entries: { start, switch: switchFn, getRunning: async () => ({ ok: true, data: current }) },
+    dashboard: { summary, todayTotal: async () => ({ ok: true, data: 0 }) },
+    tray: { update: trayUpdate },
+    idle: { dismiss: vi.fn() },
+    onHotkeyToggle: () => {},
+    onTrayQuickStart: () => {},
+    onTrayStop: () => {},
+    onIdleDetected: () => {},
+    onDataChanged: (callback: () => void) => {
+      changed = callback
+    }
+  } as unknown as Window['api']
+  render(
+    <Provider>
+      <View />
+    </Provider>
+  )
+  await waitFor(() => expect(trayUpdate).toHaveBeenCalled())
+  const play = await screen.findByRole('button', { name: /fortsetzen/i })
+  return {
+    start,
+    switchFn,
+    play,
+    timerStore,
+    toastStore,
+    resumed,
+    finished,
+    summary,
+    changed: () => changed(),
+    setMain: (entry: Entry | null) => {
+      current = entry
+    },
+    finish: () => {
+      const stopped = current ? { ...current, stopped_at: resumed.started_at } : null
+      current = resumed
+      rows = [resumed, ...(stopped ? [stopped] : []), finished]
+      return { entry: resumed, stopped }
+    }
+  }
+}
+
+describe('TodayView — resume (Q8, 2.2)', () => {
+  it.each([false, true])('Q8 double play sends one timer call, running=%s', async (running) => {
+    const ctx = await setupResume(running)
+    let release!: (value: unknown) => void
+    const call = running ? ctx.switchFn : ctx.start
+    call.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve
+      })
+    )
+    fireEvent.click(ctx.play)
+    fireEvent.click(ctx.play)
+    expect(call).toHaveBeenCalledTimes(1)
+    expect(running ? ctx.start : ctx.switchFn).not.toHaveBeenCalled()
+    expect(ctx.toastStore.getState().toasts).toHaveLength(0)
+    await act(async () => {
+      const result = ctx.finish()
+      release({ ok: true, data: running ? result : result.entry })
+    })
+    expect(ctx.toastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it.each([
+    [false, false],
+    [true, true],
+    [false, true],
+    [true, false]
+  ])('Q8 toast follows call-time path, rendered=%s current=%s', async (rendered, current) => {
+    const ctx = await setupResume(rendered)
+    ctx.start.mockResolvedValue({ ok: false, error: 'refused' })
+    ctx.switchFn.mockResolvedValue({ ok: false, error: 'refused' })
+    // The click is in the same batch as an external store update, before React
+    // renders it: the handler still closes over the previous runningEntry.
+    act(() => {
+      ctx.timerStore.setState({ runningEntry: current ? RUNNING : null })
+      fireEvent.click(ctx.play)
+    })
+    await waitFor(() => expect(ctx.toastStore.getState().toasts).toHaveLength(1))
+    expect(current ? ctx.switchFn : ctx.start).toHaveBeenCalledTimes(1)
+    expect(ctx.toastStore.getState().toasts[0].message).toBe(
+      current
+        ? 'Wechsel fehlgeschlagen: refused. Der laufende Timer läuft weiter.'
+        : 'Start fehlgeschlagen: refused'
+    )
+  })
+
+  it.each([false, true])(
+    'Q8 table reloads running and stopped play keys, running=%s',
+    async (running) => {
+      const ctx = await setupResume(running)
+      const call = running ? ctx.switchFn : ctx.start
+      call.mockImplementation(async () => {
+        const result = ctx.finish()
+        return { ok: true, data: running ? result : result.entry }
+      })
+      fireEvent.click(ctx.play)
+      const table = screen.getByRole('table')
+      await waitFor(() => expect(within(table).getAllByRole('row')).toHaveLength(running ? 4 : 3))
+      const rows = within(table).getAllByRole('row').slice(1)
+      expect(within(rows[0]).queryByRole('button', { name: /fortsetzen/i })).toBeNull()
+      for (const row of rows.slice(1)) {
+        expect(within(row).getByRole('button', { name: /fortsetzen/i })).toBeEnabled()
+      }
+      expect(ctx.timerStore.getState().runningEntry).toEqual(ctx.resumed)
+      expect(ctx.toastStore.getState().toasts).toHaveLength(0)
+    }
+  )
+
+  it.each([false, true])(
+    'Q8 external stop during switch settles main without toast, restarted=%s',
+    async (restarted) => {
+      const ctx = await setupResume(true)
+      let release!: (value: unknown) => void
+      ctx.switchFn.mockReturnValueOnce(
+        new Promise((resolve) => {
+          release = resolve
+        })
+      )
+      fireEvent.click(ctx.play)
+      const final = restarted ? ctx.resumed : null
+      ctx.setMain(final)
+      await act(async () => ctx.changed())
+      expect(ctx.timerStore.getState().runningEntry).toEqual(final)
+      await act(async () => release({ ok: true, data: { entry: ctx.resumed, stopped: RUNNING } }))
+      expect(ctx.timerStore.getState().runningEntry).toEqual(final)
+      expect(ctx.switchFn).toHaveBeenCalledTimes(1)
+      expect(ctx.toastStore.getState().toasts).toHaveLength(0)
+    }
+  )
 })

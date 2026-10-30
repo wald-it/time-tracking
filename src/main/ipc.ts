@@ -94,6 +94,7 @@ import {
   readTotals,
   readWeekDaySeconds
 } from './dashboardTotals'
+import { parseSuggestionArgs, readDescriptionSuggestions } from './descriptionSuggestions'
 import type {
   McpApprovalState,
   Client,
@@ -575,6 +576,18 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    * sorted by frequency descending. Used for TagInput autocomplete.
    * Only non-empty tags columns are considered.
    */
+  // Q8: the description field's suggestions — one client + project pair,
+  // read only; the argument is checked here (descriptionSuggestions.ts).
+  ipcMain.handle('entries:recentDescriptions', (_e, input: unknown): IpcResult<string[]> => {
+    try {
+      const args = parseSuggestionArgs(input)
+      if (!args) return fail('Ungültige Anfrage')
+      return ok(readDescriptionSuggestions(db, args.clientId, args.projectId))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
   ipcMain.handle('tags:recent', (): IpcResult<string[]> => {
     try {
       const cutoff = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString()

@@ -7,6 +7,7 @@ import { useToastStore } from '../store/toastStore'
 import type { StartPrefill } from '../store/startTimerModalStore'
 import * as Icons from './Icons'
 import { Dialog } from './Dialog'
+import { DescriptionInput } from './DescriptionInput'
 import { FIELD_LABEL, INPUT, KEY_INV } from './instrumentClasses'
 import type { Project } from '../../../shared/types'
 
@@ -258,14 +259,15 @@ export function StartTimerModal({
         {/* Description */}
         <div className="flex flex-col gap-1.5">
           <label className={FIELD_LABEL}>{t('timer.description.label')}</label>
-          <input
-            type="text"
+          {/* Q8: suggestions from the recent texts of the selected pair. */}
+          <DescriptionInput
             placeholder={t('timer.description.placeholder')}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void handleStart()}
-            ref={descriptionRef}
-            className={INPUT}
+            onChange={setDescription}
+            onEnter={() => void handleStart()}
+            clientId={selectedClientId}
+            projectId={selectedProjectId}
+            inputRef={descriptionRef}
           />
         </div>
 

@@ -17,6 +17,7 @@ import { SummaryColumn } from '../components/heute/SummaryColumn'
 import { DayScale } from '../components/heute/DayScale'
 import { EntryTable } from '../components/heute/EntryTable'
 import { QuickStart } from '../components/heute/QuickStart'
+import { resumeTarget } from '../components/heute/resumeTarget'
 import type { TFunction } from '../contexts/I18nContext'
 import { useT } from '../contexts/I18nContext'
 import { useNow } from '../contexts/NowContext'
@@ -36,7 +37,7 @@ import { rowsBilledSeconds, uniformRoundingRule } from '../../../shared/entryMon
  */
 export default function TodayView(): React.JSX.Element {
   const t = useT()
-  const { runningEntry, clients, startWithClient, switchTo, stop } = useTimer()
+  const { runningEntry, clients, startWithClient, switchTo, resume, stop } = useTimer()
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
@@ -255,6 +256,27 @@ export default function TodayView(): React.JSX.Element {
               onEdit={(e) => setEditEntry(e)}
               onDelete={(e) => setDeleteCandidate(e)}
               onAdd={() => setCreateOpen(true)}
+              // Q8: resume the row's client, project and description; a refused
+              // start or switch says so, as a quick-start key does.
+              onResume={(e) => {
+                const target = resumeTarget(
+                  e,
+                  clientsById.get(e.client_id),
+                  e.project_id != null ? projectsById.get(e.project_id) : undefined
+                )
+                if (!target) return
+                void resume(target.clientId, target.projectId, target.description).then(
+                  (failure) => {
+                    if (failure) {
+                      showToast(
+                        t(failure.path === 'switch' ? 'timer.switchFailed' : 'timer.startFailed', {
+                          error: failure.error
+                        })
+                      )
+                    }
+                  }
+                )
+              }}
             />
           </div>
         </>

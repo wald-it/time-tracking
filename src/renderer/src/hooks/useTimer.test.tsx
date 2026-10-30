@@ -1317,6 +1317,143 @@ describe('useTimer — handleOpenStart (#297)', () => {
   })
 })
 
+// Q8, 2.2: "Fortsetzen" starts an entry's client, project and description
+// again — the start path when nothing runs, the switch path (one instant,
+// quick note for the stopped entry) when another timer runs.
+describe('useTimer — resume (Q8)', () => {
+  const clients = [makeClient({ id: 1, name: 'Acme' }), makeClient({ id: 2, name: 'Beta' })]
+
+  it('Q8 ignores resume while start is pending after its IPC reply', async () => {
+    const { api, hook } = await setup({ clients })
+    let release!: () => void
+    window.api.dashboard.todayTotal = async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return { ok: true, data: 0 }
+    }
+    let pending!: ReturnType<UseTimerResult['start']>
+    await act(async () => {
+      pending = hook.result.current.start()
+    })
+    expect(hook.result.current.isLoading).toBe(false)
+    expect(hook.result.current.runningEntry).not.toBeNull()
+    let resumed!: ReturnType<UseTimerResult['resume']>
+    act(() => {
+      resumed = hook.result.current.resume(2, null, 'Review')
+    })
+    expect(api.start).toHaveBeenCalledTimes(1)
+    expect(api.switch).not.toHaveBeenCalled()
+    await act(async () => {
+      release()
+      await pending
+      expect(await resumed).toBeNull()
+    })
+  })
+
+  it.each(['start', 'switch-stop', 'switch-running'] as const)(
+    'Q8 resync wins over a pending resume %s reply',
+    async (scenario) => {
+      const initial = scenario === 'start' ? null : makeEntry({ id: 9 })
+      const { api, hook } = await setup({ clients, running: initial })
+      const resumed = makeEntry({ id: 100, client_id: 2, description: 'Review' })
+      const final =
+        scenario === 'switch-stop' ? null : makeEntry({ id: 200, description: 'External' })
+      let finish!: (value: unknown) => void
+      const call = scenario === 'start' ? api.start : api.switch
+      call.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve
+        })
+      )
+      let pending!: ReturnType<UseTimerResult['resume']>
+      act(() => {
+        pending = hook.result.current.resume(2, null, 'Review')
+      })
+      const getRunning = vi.fn().mockResolvedValue({ ok: true, data: final })
+      window.api.entries.getRunning = getRunning
+      await act(async () => {
+        api.listeners.dataChanged!()
+      })
+      expect(getRunning).toHaveBeenCalledTimes(1)
+      expect(hook.result.current.runningEntry).toEqual(final)
+      await act(async () => {
+        finish({
+          ok: true,
+          data: scenario === 'start' ? resumed : { entry: resumed, stopped: initial }
+        })
+        expect(await pending).toBeNull()
+      })
+      expect(hook.result.current.runningEntry).toEqual(final)
+      expect(call).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('starts client, project and description when nothing runs', async () => {
+    const { api, hook } = await setup({ clients })
+
+    let error: Awaited<ReturnType<UseTimerResult['resume']>> = null
+    await act(async () => {
+      error = await hook.result.current.resume(2, 20, 'Review')
+    })
+
+    expect(error).toBeNull()
+    expect(api.start).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 2, project_id: 20, description: 'Review' })
+    )
+    expect(hook.result.current.selectedClientId).toBe(2)
+    expect(hook.result.current.selectedProjectId).toBe(20)
+    expect(hook.result.current.description).toBe('Review')
+  })
+
+  it('switches with the description when another timer runs', async () => {
+    const { api, hook } = await setup({ clients })
+    const first = await startTimer(hook)
+
+    await act(async () => {
+      await hook.result.current.resume(2, 20, 'Review')
+    })
+
+    expect(api.switch).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 2, project_id: 20, description: 'Review' })
+    )
+    expect(api.start).toHaveBeenCalledTimes(1) // startTimer above
+    expect(hook.result.current.runningEntry?.client_id).toBe(2)
+    expect(hook.result.current.description).toBe('Review')
+    // The stopped entry had no description: its prompt opens, as for a switch.
+    expect(hook.result.current.quickNoteEntry?.id).toBe(first.id)
+  })
+
+  it('does nothing when the same thing already runs', async () => {
+    const { api, hook } = await setup({ clients })
+    act(() => {
+      hook.result.current.setSelectedClientId(2)
+      hook.result.current.setSelectedProjectId(20)
+      hook.result.current.setDescription('Review')
+    })
+    await startTimer(hook)
+
+    await act(async () => {
+      await hook.result.current.resume(2, 20, 'Review')
+    })
+
+    expect(api.switch).not.toHaveBeenCalled()
+    expect(api.start).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns the error of a refused start', async () => {
+    const { api, hook } = await setup({ clients })
+    api.start.mockResolvedValueOnce({ ok: false, error: 'refused' })
+
+    let error: Awaited<ReturnType<UseTimerResult['resume']>> = null
+    await act(async () => {
+      error = await hook.result.current.resume(2, null, 'Review')
+    })
+
+    expect(error).toEqual({ error: 'refused', path: 'start' })
+  })
+})
+
 // #313: the idle prompt used to send the whole running entry, because
 // entries:update re-inserted the row and defaulted every field it was not
 // sent. The stopAt operation sends the stop time only, and project,

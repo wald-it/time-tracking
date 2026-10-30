@@ -9,6 +9,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Added
 
+- **Description suggestions and "Fortsetzen" are available.** The description field in the start dialog and in the prompt after a stop suggests your recent texts for the same client and project: press ↓ to see them, Enter takes one, and typing filters the list. Heute's entry table has a play key on each finished entry. It starts that entry's client, project and description again, or switches to them at once if another timer runs, and the prompt for the stopped entry still asks for a description if it had none. An archived client cannot be resumed; an archived project is left out ([#447](https://github.com/wald-it/time-tracking/issues/447)).
 - **The monthly review can show only entries changed since the client's last billing run.** A switch narrows entries and findings to entries created or changed after the latest active run and marks each with its change; without an active run it says so ([#428](https://github.com/wald-it/time-tracking/issues/428)).
 - **Monthly review in the Export tab.** For a client and period it lists the rule check findings with a jump to the entry, then the entries with inline edit; the export stays possible with open findings ([#427](https://github.com/wald-it/time-tracking/issues/427)).
 - **The rule check is available to agents as the read-only MCP tool `check_period`.** It returns the same findings as the app for a client and period ([#429](https://github.com/wald-it/time-tracking/issues/429)).
