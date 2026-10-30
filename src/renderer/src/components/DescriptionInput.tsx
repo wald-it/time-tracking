@@ -145,7 +145,9 @@ export function DescriptionInput({
         }}
         onClick={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        className={className ?? INPUT}
+        // #451: the wrapper sits between the field and the host's flex column,
+        // so the field no longer stretches by itself and must fill the wrapper.
+        className={className ?? `w-full ${INPUT}`}
       />
       {showList && (
         <ul
