@@ -1,18 +1,14 @@
 import type Database from 'better-sqlite3'
+import { entriesForReview, type RuleCheckRequest } from './ruleCheck'
 
-export interface ChangedSinceRunRequest {
-  clientId: number
-  projectId?: number | null
-  fromIso: string
-  toIso: string
-}
+export type ChangedSinceRunRequest = RuleCheckRequest
 
 export interface ChangedSinceRunResult {
   lastRun: { id: number; number: string; createdAt: string } | null
   entries: { entryId: number; change: 'created' | 'changed'; changedAt: string }[]
 }
 
-/** Read the same completed, live entries as checkPeriod, once per logical entry. */
+/** Narrow the review list (entriesForReview) to entries written after the client's last run. */
 export function changedSinceLastRun(
   db: Database.Database,
   request: ChangedSinceRunRequest
@@ -28,28 +24,22 @@ export function changedSinceLastRun(
 
   // Creating/releasing a billing run only writes billing tables, never entry
   // versions. There are no billing-generated versions to exclude here.
-  const entries = db
-    .prepare(
-      `SELECT e.id AS entryId,
-         CASE WHEN first.written_at > @createdAt THEN 'created' ELSE 'changed' END AS change,
-         MAX(history.written_at) AS changedAt
-       FROM entries e
-       JOIN entry_version current ON current.id = e.version_id
-       JOIN entry_version first ON first.entry_id = e.id AND first.version_no = 1
-       JOIN entry_version history ON history.entry_id = e.id AND history.written_at > @createdAt
-       WHERE e.client_id = @clientId AND e.deleted_at IS NULL
-         AND e.stopped_at IS NOT NULL AND current.stopped_at IS NOT NULL
-         AND e.segment_date BETWEEN @fromIso AND @toIso
-         AND (@projectId IS NULL OR e.project_id = @projectId)
-       GROUP BY e.id
-       ORDER BY current.started_at, e.id`
-    )
-    .all({
-      clientId: request.clientId,
-      fromIso: request.fromIso,
-      toIso: request.toIso,
-      projectId: request.projectId ?? null,
-      createdAt: lastRun.createdAt
-    }) as ChangedSinceRunResult['entries']
+  const writesAfter = db.prepare(
+    `SELECT MIN(version_no) AS firstNo, MAX(written_at) AS changedAt FROM entry_version
+     WHERE entry_id = ? AND written_at > ?`
+  )
+  const entries: ChangedSinceRunResult['entries'] = []
+  for (const row of entriesForReview(db, request)) {
+    const w = writesAfter.get(row.id, lastRun.createdAt) as {
+      firstNo: number | null
+      changedAt: string | null
+    }
+    if (w.firstNo === null || w.changedAt === null) continue
+    entries.push({
+      entryId: row.id,
+      change: w.firstNo === 1 ? 'created' : 'changed',
+      changedAt: w.changedAt
+    })
+  }
   return { lastRun, entries }
 }
