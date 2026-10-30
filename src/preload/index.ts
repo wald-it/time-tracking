@@ -1,3 +1,4 @@
+import type { RendererSettingKey } from '../shared/settingKeys'
 import type { BillingRunSummary } from '../main/billingRuns'
 import type { ChangedSinceRunRequest, ChangedSinceRunResult } from '../main/changedSinceRun'
 import type { RuleCheckRequest } from '../main/ruleCheck'
@@ -200,7 +201,7 @@ const api = {
   },
   settings: {
     getAll: (): Promise<IpcResult<Settings>> => ipcRenderer.invoke('settings:getAll'),
-    set: (key: string, value: string): Promise<IpcResult<void>> =>
+    set: (key: RendererSettingKey, value: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('settings:set', key, value)
   },
   feedbackRules: {
