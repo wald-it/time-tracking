@@ -134,15 +134,19 @@ export function checkPeriod(db: Database.Database, request: RuleCheckRequest): R
       add('too_long', { length: row.description.length, threshold: rules.maxDescriptionLength })
     let outside = false
     let weekend = false
+    // After a time-zone change two stored segments can share a local day; report it once.
+    const reportedDays = new Set<string>()
     for (const part of parts) {
       const day = localDateKey(part.start)
       const dayHours = (totals.get(day) ?? 0) / 3_600_000
-      if (dayHours > rules.dayMaxHours)
+      if (dayHours > rules.dayMaxHours && !reportedDays.has(day)) {
+        reportedDays.add(day)
         add('day_over_threshold', {
           day,
           hours: hoursText(dayHours),
           threshold: rules.dayMaxHours
         })
+      }
       if (
         part.start < parseTimeToDate(part.start, rules.windowStart) ||
         part.stop > parseTimeToDate(part.start, rules.windowEnd)

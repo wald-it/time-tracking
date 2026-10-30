@@ -267,6 +267,26 @@ describe('checkPeriod', () => {
     expect(checkPeriod(db, request).filter((f) => f.entryId === id)).toEqual([])
   })
 
+  it('reports a day once when two stored segments fall on the same local day', () => {
+    // Stored dates differ, as after a time-zone change; both segments are on 2 June locally.
+    const id = seedEntry(db, {
+      client_id: 1,
+      project_id: 1,
+      description: 'Work',
+      segments: [
+        { started_at: local(2, 6), stopped_at: local(2, 12), segment_date: '2026-06-01' },
+        { started_at: local(2, 13), stopped_at: local(2, 19), segment_date: '2026-06-02' }
+      ]
+    })
+    expect(findings('day_over_threshold')).toEqual([
+      {
+        entryId: id,
+        rule: 'day_over_threshold',
+        params: { day: '2026-06-02', hours: '12:00', threshold: 10 }
+      }
+    ])
+  })
+
   it('uses stored segment dates for selection even after a time-zone change', () => {
     const id = seedEntry(db, {
       client_id: 1,
