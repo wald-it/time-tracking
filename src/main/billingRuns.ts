@@ -143,7 +143,14 @@ function runHtml(
   })
   return buildPdfHtml(
     buildPdfPayloadFromData(
-      { ...snapshot.context, runNumber: run.number, generatedAtIso: run.created_at },
+      {
+        ...snapshot.context,
+        // createRun freezes the column set in options.columns. A snapshot without it
+        // predates #422, whose renderer always printed the times, whatever the profile said.
+        columns: 'times',
+        runNumber: run.number,
+        generatedAtIso: run.created_at
+      },
       snapshot.options,
       source
     )
@@ -256,6 +263,11 @@ export async function createRun(
           fromIso: req.fromIso,
           toIso: req.toIso,
           projectId: req.projectId,
+          columns:
+            req.columns ??
+            (resolvedProfile(db, req.clientId, req.projectId ?? null).columns as
+              | 'times'
+              | 'no_times'),
           groupBy: req.groupBy,
           groupByTag: req.groupByTag,
           hideFeeColumn: req.hideFeeColumn,

@@ -171,6 +171,7 @@ declare global {
       }
       pdf: {
         export(req: {
+          columns?: 'times' | 'no_times'
           invoiceRef?: string
           markAsBilled?: boolean
           replacesRunId?: number

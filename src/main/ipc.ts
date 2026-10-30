@@ -1060,6 +1060,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         if (!req || typeof req.clientId !== 'number' || !req.fromIso || !req.toIso) {
           return fail('Ungültige PDF-Anfrage')
         }
+        if (req.columns !== undefined && req.columns !== 'times' && req.columns !== 'no_times') {
+          return fail('Ungültige PDF-Spaltenauswahl')
+        }
         const client = db.prepare(`SELECT id, name FROM clients WHERE id = ?`).get(req.clientId) as
           | { id: number; name: string }
           | undefined

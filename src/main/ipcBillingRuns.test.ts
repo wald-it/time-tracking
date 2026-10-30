@@ -69,6 +69,17 @@ const invoke = (channel: string, ...args: unknown[]): Promise<IpcResult<unknown>
   handlers.get(channel)!(null, ...args)
 
 describe('P6b billing run IPC', () => {
+  it.each(['invalid', '', null, 1, false, {}])(
+    'rejects invalid PDF columns %j',
+    async (columns) => {
+      expect(await invoke('pdf:export', { ...req, columns })).toEqual({
+        ok: false,
+        error: 'Ungültige PDF-Spaltenauswahl'
+      })
+      expect(db.prepare('SELECT id FROM billing_run').all()).toEqual([])
+    }
+  )
+
   it('exports the run number together with its id and exclusion count', async () => {
     expect(await invoke('pdf:export', req)).toEqual({
       ok: true,

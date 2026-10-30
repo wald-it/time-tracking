@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { Client, Project } from '../../../shared/types'
 import type { BillingRunSummary } from '../../../main/billingRuns'
+import type { PdfRequest } from '../../../main/pdf'
 import { useT } from '../contexts/I18nContext'
 import { useSettingsStore } from '../store/settingsStore'
 import { Dialog } from './Dialog'
@@ -67,6 +68,12 @@ export function ExportModal(props: Props): React.JSX.Element {
   const [markAsBilled, setMarkAsBilled] = useState(Boolean(replacementRun))
   const [invoiceRef, setInvoiceRef] = useState('')
   const [createdRun, setCreatedRun] = useState(false)
+  const [columnChoice, setColumnChoice] = useState<{
+    selection: string
+    value: NonNullable<PdfRequest['columns']>
+  } | null>(null)
+  const columnSelection = `${clientId}:${projectId}`
+  const columns = columnChoice?.selection === columnSelection ? columnChoice.value : undefined
 
   // CSV-specific
   const [csvFormat, setCsvFormat] = useState<CsvFormat>(initialPrefs.csvFormat)
@@ -172,16 +179,52 @@ export function ExportModal(props: Props): React.JSX.Element {
       setProjectId(null)
       return
     }
+    let cancelled = false
     void window.api.projects.getAll({ clientId }).then((res) => {
-      if (res.ok) {
+      if (!cancelled && res.ok) {
         const active = res.data.filter((p) => p.active === 1 || p.id === replacementRun?.project_id)
         setProjects(active)
-        if (!replacementRun) setProjectId(null)
       }
     })
+    return () => {
+      cancelled = true
+    }
   }, [clientId, replacementRun])
 
-  const canExport = clientId != null && fromIso !== '' && toIso !== '' && !busy && !createdRun
+  useEffect(() => {
+    if (clientId === null) return
+    let cancelled = false
+    const target =
+      projectId === null
+        ? { kind: 'client' as const, id: clientId }
+        : { kind: 'project' as const, id: projectId }
+    void window.api.billingProfile
+      .get(target)
+      .then((res) => {
+        if (cancelled) return
+        if (!res.ok) throw new Error(res.error)
+        setColumnChoice({
+          selection: columnSelection,
+          value: res.data.columns ?? res.data.inherited.columns
+        })
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setStatusKind('error')
+        setStatusMsg(t('export.status.error', { error: String(error) }))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [clientId, projectId, columnSelection, t])
+
+  const canExport =
+    clientId != null &&
+    fromIso !== '' &&
+    toIso !== '' &&
+    !busy &&
+    !createdRun &&
+    (tab !== 'pdf' || columns !== undefined)
 
   function validateRange(): boolean {
     if (fromIso > toIso) {
@@ -210,6 +253,7 @@ export function ExportModal(props: Props): React.JSX.Element {
         projectId: projectId ?? undefined,
         includeSignatures,
         groupBy,
+        columns,
         hideFeeColumn,
         markAsBilled,
         invoiceRef: markAsBilled ? invoiceRef.trim() || undefined : undefined,
@@ -345,9 +389,12 @@ export function ExportModal(props: Props): React.JSX.Element {
           <select
             title={t('export.client.label')}
             value={clientId ?? ''}
-            onChange={(e) =>
+            onChange={(e) => {
               setClientId(e.target.value === '' ? null : Number.parseInt(e.target.value, 10))
-            }
+              setProjectId(null)
+              setProjects([])
+              setColumnChoice(null)
+            }}
             disabled={busy || Boolean(replacementRun) || createdRun}
             className={inputClass}
           >
@@ -372,9 +419,10 @@ export function ExportModal(props: Props): React.JSX.Element {
             <select
               title={t('export.project.label')}
               value={projectId ?? ''}
-              onChange={(e) =>
+              onChange={(e) => {
                 setProjectId(e.target.value === '' ? null : Number.parseInt(e.target.value, 10))
-              }
+                setColumnChoice(null)
+              }}
               disabled={busy || Boolean(replacementRun) || createdRun}
               className={inputClass}
             >
@@ -431,6 +479,26 @@ export function ExportModal(props: Props): React.JSX.Element {
         {/* PDF-specific options */}
         {tab === 'pdf' && (
           <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm" style={{ color: 'var(--ink)' }}>
+                {t('rates.columns')}
+              </span>
+              <select
+                title={t('rates.columns')}
+                value={columns ?? 'times'}
+                onChange={(e) =>
+                  setColumnChoice({
+                    selection: columnSelection,
+                    value: e.target.value as NonNullable<PdfRequest['columns']>
+                  })
+                }
+                disabled={busy || createdRun || columns === undefined}
+                className={inputClass}
+              >
+                <option value="times">{t('rates.columns.times')}</option>
+                <option value="no_times">{t('rates.columns.no_times')}</option>
+              </select>
+            </div>
             <label className="flex min-h-11 items-center gap-3 text-sm text-[var(--ink)]">
               <input
                 type="checkbox"
