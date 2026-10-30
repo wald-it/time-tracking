@@ -158,3 +158,39 @@ describe('export columns (#422)', () => {
     )
   })
 })
+
+it.each(['on', 'off'] as const)(
+  'disables hide fee for profile %s, preserves the preference and restores auto',
+  async (fee) => {
+    await open()
+    selectClient(1)
+    await waitFor(() => expect(columnsControl()).toHaveValue('no_times'))
+    const control = screen.getByRole('switch', { name: 'Honorar-Spalte ausblenden' })
+    fireEvent.click(control)
+    expect(control).toBeChecked()
+    setSetting.mockClear()
+    getProfile.mockResolvedValueOnce(
+      ok({ columns: 'times', fee_column: fee, inherited: { columns: 'times', fee_column: 'auto' } })
+    )
+    selectClient(2)
+    await waitFor(() => expect(control).toBeDisabled())
+    expect(
+      screen.getByText('Das Kunden- oder Projektprofil bestimmt die Honorar-Spalte.')
+    ).toBeInTheDocument()
+    expect(control).toBeChecked()
+    expect(setSetting).not.toHaveBeenCalled()
+    selectClient(1)
+    await waitFor(() => expect(control).toBeEnabled())
+    expect(control).toBeChecked()
+    expect(
+      screen.queryByText('Das Kunden- oder Projektprofil bestimmt die Honorar-Spalte.')
+    ).not.toBeInTheDocument()
+    await screen.findByRole('option', { name: 'Project A' })
+    getProfile.mockResolvedValueOnce(
+      ok({ columns: 'times', fee_column: null, inherited: { columns: 'times', fee_column: fee } })
+    )
+    fireEvent.change(screen.getByRole('combobox', { name: /Projekt/ }), { target: { value: '11' } })
+    await waitFor(() => expect(control).toBeDisabled())
+    expect(setSetting).not.toHaveBeenCalled()
+  }
+)

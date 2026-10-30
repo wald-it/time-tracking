@@ -591,6 +591,7 @@ export const en: Record<TranslationKey, string> = {
   'export.pdf.groupBy.tag': 'Tag',
   'export.pdf.groupBy.project': 'Project',
   'export.pdf.groupBy.reference': 'Reference',
+  'export.pdf.profileFeeHint': 'The client or project profile determines the fee column.',
   'export.pdf.hideFeeColumn': 'Hide fee column',
   'export.pdf.hideFeeColumnHint': 'Hides the fee column and the grand total in the time sheet.',
   'export.pdf.signatures': 'Show signature fields',
