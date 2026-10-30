@@ -270,6 +270,13 @@ async function startTimer(hook: Hook): Promise<Entry> {
 const IDLE = { idleSince: '2026-08-26T09:30:00.000Z', idleSeconds: 300 }
 
 describe('useTimer — start/stop', () => {
+  it('bumps the entries version once per external data:changed event', async () => {
+    const { api } = await setup()
+    const { useEntriesStore } = await import('../store/entriesStore')
+    const before = useEntriesStore.getState().version
+    await act(async () => api.listeners.dataChanged!())
+    expect(useEntriesStore.getState().version).toBe(before + 1)
+  })
   it('adopts a running entry from the DB on launch', async () => {
     const running = makeEntry({
       id: 7,

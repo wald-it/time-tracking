@@ -5,8 +5,9 @@ import { create } from 'zustand'
  *
  * Pattern: any IPC call that mutates entry data (`entries:start`, `:stop`,
  * `:create`, `:update`, `:delete`, `:undelete`) must call `bumpVersion()`
- * after success. Views (TodayView, CalendarView, Drawer) re-fetch via
- * `useEffect([version])`. This replaces 60s polling and keeps every visible
+ * after success. The global useTimer data:changed listener also bumps for
+ * external writes (MCP, Stream Deck). Views (TodayView, CalendarView, Drawer,
+ * monthly review) re-fetch via `useEffect([version])`. This replaces 60s polling and keeps every visible
  * surface in sync without per-view subscriptions or manual refresh buttons.
  *
  * Keep this store deliberately tiny — version-only — so re-renders are cheap

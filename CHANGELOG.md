@@ -21,9 +21,15 @@ All notable changes to TimeTrack are documented here.
 
 ### Changed
 
+- **The monthly review uses plain field labels and shows the number of findings on each entry.** "Kunde", "Projekt", "Zeitraum", "von", "bis" instead of "Review-…", and each entry's findings mark says how many findings it has ([#442](https://github.com/wald-it/time-tracking/issues/442)).
+- **The MCP tool `check_period` writes the day in its findings like the app.** The message shows `DD.MM.YYYY`; the `day` parameter stays `YYYY-MM-DD` ([#442](https://github.com/wald-it/time-tracking/issues/442)).
 - **The export dialog takes its grouping default from the client or project profile.** A different grouping chosen in the dialog applies to that export only and is no longer remembered ([#433](https://github.com/wald-it/time-tracking/issues/433)).
 - **Clients, Export and Settings use the window width like Today, Analytics and Calendar.** Settings rows run label left, control right; Export cards sit side by side; the client list is wider ([#420](https://github.com/wald-it/time-tracking/issues/420)).
 - **CI runs the Windows jobs on pull requests only.** A push to `main` runs the Linux test job, and a newer push to a pull request cancels the run for the older head ([#441](https://github.com/wald-it/time-tracking/issues/441)).
+
+### Fixed
+
+- **Kalender and Heute show changes made through MCP or the Stream Deck without a manual reload.** An open editor in the calendar keeps the entry as it was when it opened, so saving after such a change is refused with an error instead of overwriting it; the form keeps the typed values ([#442](https://github.com/wald-it/time-tracking/issues/442)).
 
 ## [2.1.0] — 2026-10-29
 

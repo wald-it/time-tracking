@@ -133,6 +133,7 @@ export default function CalendarView(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false
     async function load(): Promise<void> {
+      // Keep the loaded day and its open form mounted during a reload.
       setStatus((s) => (s === 'ready' ? s : 'loading'))
       const res = await window.api.entries.getByMonth({
         year: cursor.getFullYear(),
@@ -151,11 +152,15 @@ export default function CalendarView(): React.JSX.Element {
         setStatus('ready')
         setErrorMsg(null)
       } else {
-        setStatus('error')
+        setStatus((s) => (s === 'ready' ? s : 'error'))
         setErrorMsg(res.error)
       }
     }
-    void load()
+    void load().catch((error: unknown) => {
+      if (cancelled) return
+      setStatus((s) => (s === 'ready' ? s : 'error'))
+      setErrorMsg(String(error))
+    })
     return () => {
       cancelled = true
     }
@@ -316,11 +321,11 @@ export default function CalendarView(): React.JSX.Element {
               {t('calendar.status.loading')}
             </span>
           )}
-          {(status === 'error' || projectsError !== null) && (
+          {(errorMsg !== null || projectsError !== null) && (
             <span
               className="self-center text-xs"
               style={{ color: 'var(--danger)' }}
-              title={(status === 'error' ? errorMsg : projectsError) ?? ''}
+              title={errorMsg ?? projectsError ?? ''}
             >
               {t('calendar.status.error')}
             </span>
