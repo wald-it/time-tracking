@@ -25,9 +25,11 @@ function fail(error: string): IpcResult<never> {
 /**
  * SQL that is 1 while the guard below would refuse the delete (#452): the
  * lists carry it so the Kunden view can disable the key instead of failing.
+ * Uncorrelated on purpose: entry_version has no index on these columns, and
+ * SQLite runs an uncorrelated IN once per query instead of once per row.
  */
 export function hasEntryVersionsSql(column: 'client_id' | 'project_id', idExpr: string): string {
-  return `EXISTS (SELECT 1 FROM entry_version WHERE ${column} = ${idExpr})`
+  return `(${idExpr} IN (SELECT ${column} FROM entry_version WHERE ${column} IS NOT NULL))`
 }
 
 function versionCount(
