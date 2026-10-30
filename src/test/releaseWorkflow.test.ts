@@ -636,7 +636,7 @@ describe('test.yml spends Windows minutes on pull requests only (#441)', () => {
   const text = readFileSync(TEST_WORKFLOW, 'utf8').replace(/\r\n/g, '\n')
   const jobs = jobsOf(text)
   // Comments between jobs land in the job above them; only YAML lines count.
-  const yamlOf = (job: string) =>
+  const yamlOf = (job: string): string =>
     job
       .split('\n')
       .filter((line) => !/^\s*#/.test(line))
