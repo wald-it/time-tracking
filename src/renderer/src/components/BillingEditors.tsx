@@ -3,6 +3,7 @@ import type {
   RateRow,
   RateTarget,
   ProfileEditorData,
+  ProfileFields,
   RateEditorData
 } from '../../../shared/rateEditor'
 import { RATE_VALUE_ERROR } from '../../../shared/rateEditor'
@@ -11,6 +12,29 @@ import type { IpcResult } from '../../../shared/types'
 import { useLocale, useT } from '../contexts/I18nContext'
 import { FIELD_LABEL, INPUT, KEY, LEGEND, SECTION } from './instrumentClasses'
 import { rateEditorError } from './rateEditorError'
+
+const CHOICE_LABELS = {
+  columns: { times: 'rates.columns.times', no_times: 'rates.columns.no_times' },
+  language: { de: 'rates.language.de', en: 'rates.language.en' },
+  fee_column: {
+    auto: 'rates.fee_column.auto',
+    on: 'rates.fee_column.on',
+    off: 'rates.fee_column.off'
+  },
+  group_by: {
+    none: 'rates.group_by.none',
+    tag: 'rates.group_by.tag',
+    project: 'rates.group_by.project',
+    reference: 'rates.group_by.reference'
+  }
+} as const
+type ChoiceField = keyof typeof CHOICE_LABELS
+type Choices = Required<Pick<ProfileFields, ChoiceField>>
+const EMPTY_CHOICES: Choices = { columns: null, language: null, fee_column: null, group_by: null }
+const CHOICE_ROWS: readonly (readonly ChoiceField[])[] = [
+  ['columns', 'language'],
+  ['fee_column', 'group_by']
+]
 
 /**
  * The editors save on their own, beside the surrounding form. The two save
@@ -41,6 +65,7 @@ export function BillingEditors({
   const [profile, setProfile] = useState<ProfileEditorData | null>(null)
   const [interval, setInterval] = useState('')
   const [minimum, setMinimum] = useState('')
+  const [choices, setChoices] = useState<Choices>(EMPTY_CHOICES)
   const [editing, setEditing] = useState<number | undefined>()
   const [date, setDate] = useState('')
   const [rate, setRate] = useState('')
@@ -81,6 +106,12 @@ export function BillingEditors({
         setProfile(billing.data)
         setInterval(billing.data.interval_min?.toString() ?? '')
         setMinimum(billing.data.min_unit_min?.toString() ?? '')
+        setChoices({
+          columns: billing.data.columns,
+          language: billing.data.language,
+          fee_column: billing.data.fee_column,
+          group_by: billing.data.group_by
+        })
         setLoaded(true)
       })
       .catch(() => {
@@ -140,6 +171,7 @@ export function BillingEditors({
     setError('')
     try {
       const result = await window.api.billingProfile.save(target, {
+        ...choices,
         interval_min: interval.trim() === '' ? null : Number(interval),
         min_unit_min: minimum.trim() === '' ? null : Number(minimum)
       })
@@ -341,6 +373,50 @@ export function BillingEditors({
                 />
               </label>
             </div>
+            {CHOICE_ROWS.map((fields) => (
+              <div key={fields[0]} className="mt-3 flex gap-3">
+                {fields.map((field) => {
+                  const options = Object.entries(CHOICE_LABELS[field])
+                  const inheritedLabel = options.find(
+                    ([value]) => value === profile?.inherited[field]
+                  )?.[1]
+                  return (
+                    <label
+                      key={field}
+                      htmlFor={`${id}-${field}`}
+                      className="flex min-w-0 flex-1 flex-col gap-1"
+                    >
+                      <span className={FIELD_LABEL}>{t(`rates.${field}`)}</span>
+                      <select
+                        id={`${id}-${field}`}
+                        className={`${INPUT} min-w-0`}
+                        value={choices[field] ?? ''}
+                        onChange={(event) =>
+                          setChoices((previous) => ({
+                            ...previous,
+                            [field]: event.target.value || null
+                          }))
+                        }
+                      >
+                        <option value="">
+                          {t('rates.inherited', {
+                            value: inheritedLabel ? t(inheritedLabel) : '',
+                            source: t(
+                              `rates.source.${profile?.inherited_source[field] ?? 'default'}`
+                            )
+                          })}
+                        </option>
+                        {options.map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {t(label)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )
+                })}
+              </div>
+            ))}
             <button type="button" className={`${KEY} mt-3`} onClick={() => void saveProfile()}>
               {t('rates.saveProfile')}
             </button>

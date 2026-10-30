@@ -10,6 +10,11 @@ All notable changes to TimeTrack are documented here.
 ### Added
 
 - **Settings → Export holds format rules for feedback texts.** Allowed prefixes, a separator and forbidden words can be configured; contact persons from the master data always count as forbidden. Nothing checks entries yet ([#425](https://github.com/wald-it/time-tracking/issues/425)).
+- **Client and project editors now set timesheet columns, language, the fee column and grouping.** Each field inherits like interval and minimum unit. These settings do not affect the PDF yet ([#421](https://github.com/wald-it/time-tracking/issues/421)).
+
+### Changed
+
+- **Clients, Export and Settings use the window width like Today, Analytics and Calendar.** Settings rows run label left, control right; Export cards sit side by side; the client list is wider ([#420](https://github.com/wald-it/time-tracking/issues/420)).
 
 ## [2.1.0] — 2026-10-29
 

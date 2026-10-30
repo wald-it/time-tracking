@@ -311,7 +311,7 @@ export default function SettingsView(): React.JSX.Element {
   }
 
   return (
-    <div className="flex w-full min-w-0 max-w-4xl flex-row gap-8 pb-12">
+    <div className="flex w-full min-w-0 flex-row gap-8 pb-12">
       {/* Sidebar navigation */}
       <nav className="flex w-44 shrink-0 flex-col gap-1">
         {NAV_ITEMS.map((item) => (
@@ -334,7 +334,7 @@ export default function SettingsView(): React.JSX.Element {
       </nav>
 
       {/* Content */}
-      <div className="flex min-w-0 max-w-xl flex-1 flex-col gap-10">
+      <div className="flex min-w-0 flex-1 flex-col gap-10">
         {statusMsg && (
           <div className="rounded-[var(--r-key)] border border-[var(--line)] px-3 py-2 text-sm text-[var(--ink)]">
             {statusMsg}
@@ -1070,7 +1070,7 @@ function Row({
       className={`flex ${stacked ? 'flex-col gap-2.5' : 'items-center justify-between gap-4'} border-b border-[var(--line)] py-3`}
     >
       <div
-        className="flex flex-col gap-0.5 min-w-0"
+        className="flex min-w-0 max-w-[40rem] flex-col gap-0.5 [overflow-wrap:anywhere]"
         style={{ flex: stacked ? undefined : '1 1 0%' }}
       >
         <span id={labelId} className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
@@ -1082,7 +1082,13 @@ function Row({
           </span>
         )}
       </div>
-      <div className={stacked ? 'w-full' : 'shrink-0'}>
+      <div
+        className={
+          stacked
+            ? 'w-full min-w-0 max-w-[40rem]'
+            : 'flex min-w-0 max-w-[28rem] flex-[0_1_50%] flex-col items-end [&>*]:max-w-full [&>input]:w-full'
+        }
+      >
         <ToggleLabelContext.Provider value={labelId}>
           <ToggleHintContext.Provider value={hint ? hintId : undefined}>
             {children}

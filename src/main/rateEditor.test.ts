@@ -235,6 +235,176 @@ describe('rate editor and legacy field', () => {
 })
 
 describe('billing profile editor', () => {
+  const choices = [
+    ['columns', ['times', 'no_times'], 'times'],
+    ['language', ['de', 'en'], 'de'],
+    ['fee_column', ['auto', 'on', 'off'], 'auto'],
+    ['group_by', ['none', 'tag', 'project', 'reference'], 'none']
+  ] as const
+
+  it.each(choices)(
+    'round trips and clears %s for clients and projects',
+    (key, values, fallback) => {
+      for (const target of [client, project]) {
+        for (const value of values) {
+          saveProfile(db, target, { interval_min: null, min_unit_min: null, [key]: value })
+          expect(readProfile(db, target)).toMatchObject({ [key]: value })
+          const cleared = saveProfile(db, target, {
+            interval_min: null,
+            min_unit_min: null,
+            [key]: null
+          })
+          expect(cleared).toMatchObject({
+            [key]: null,
+            inherited: { [key]: fallback },
+            inherited_source: { [key]: 'default' }
+          })
+          expect(
+            db
+              .prepare(`SELECT ${key} FROM billing_profile WHERE ${target.kind}_id = ?`)
+              .get(target.id)
+          ).toEqual({ [key]: null })
+        }
+      }
+    }
+  )
+
+  it.each(choices.flatMap(([key]) => [[key, 'invalid'] as const, [key, 42] as const]))(
+    'rejects invalid %s choice %s before writing',
+    (key, value) => {
+      const before = db.prepare('SELECT * FROM billing_profile').all()
+      expect(() =>
+        saveProfile(db, client, {
+          interval_min: 15,
+          min_unit_min: 30,
+          [key]: value
+        })
+      ).toThrow('Bitte eine gültige Auswahl für das Abrechnungsprofil treffen oder den Wert erben.')
+      expect(db.prepare('SELECT * FROM billing_profile').all()).toEqual(before)
+    }
+  )
+
+  it('preserves omitted choices and the default row after saving all choices', () => {
+    const defaults = db
+      .prepare('SELECT * FROM billing_profile WHERE client_id IS NULL AND project_id IS NULL')
+      .get()
+    const selected = {
+      columns: 'no_times',
+      language: 'en',
+      fee_column: 'off',
+      group_by: 'reference'
+    } as const
+    saveProfile(db, client, { interval_min: 15, min_unit_min: 30, ...selected })
+    saveProfile(db, client, { interval_min: null, min_unit_min: 0 })
+    expect(readProfile(db, client)).toMatchObject(selected)
+    expect(
+      db
+        .prepare('SELECT * FROM billing_profile WHERE client_id IS NULL AND project_id IS NULL')
+        .get()
+    ).toEqual(defaults)
+  })
+
+  it('resolves all six inherited values and sources per field', () => {
+    const defaults = {
+      interval_min: 5,
+      min_unit_min: 10,
+      columns: 'no_times',
+      language: 'en',
+      fee_column: 'on',
+      group_by: 'reference'
+    }
+    db.exec(
+      "UPDATE billing_profile SET interval_min = 5, min_unit_min = 10, columns = 'no_times', language = 'en', fee_column = 'on', group_by = 'reference' WHERE client_id IS NULL AND project_id IS NULL"
+    )
+    const sources = Object.fromEntries(Object.keys(defaults).map((key) => [key, 'default']))
+    expect(readProfile(db, client)).toMatchObject({
+      inherited: defaults,
+      inherited_source: sources
+    })
+    expect(readProfile(db, project)).toMatchObject({
+      inherited: defaults,
+      inherited_source: sources
+    })
+    const parent = {
+      interval_min: 0,
+      min_unit_min: 0,
+      columns: 'times',
+      language: 'de',
+      fee_column: 'off',
+      group_by: 'none'
+    } as const
+    saveProfile(db, client, parent)
+    expect(readProfile(db, project)).toMatchObject({
+      inherited: parent,
+      inherited_source: Object.fromEntries(Object.keys(parent).map((key) => [key, 'client']))
+    })
+    saveProfile(db, client, {
+      interval_min: null,
+      min_unit_min: 0,
+      columns: null,
+      language: 'de',
+      fee_column: null,
+      group_by: 'none'
+    })
+    expect(readProfile(db, project)).toMatchObject({
+      inherited: { ...parent, interval_min: 5, columns: 'no_times', fee_column: 'on' },
+      inherited_source: {
+        interval_min: 'default',
+        min_unit_min: 'client',
+        columns: 'default',
+        language: 'client',
+        fee_column: 'default',
+        group_by: 'client'
+      }
+    })
+    expect(readProfile(db, client)).toMatchObject({
+      inherited: defaults,
+      inherited_source: sources
+    })
+  })
+
+  it('falls back to literal choices when the default row has nulls', () => {
+    db.exec(
+      'UPDATE billing_profile SET columns = NULL, language = NULL, fee_column = NULL, group_by = NULL WHERE client_id IS NULL AND project_id IS NULL'
+    )
+    for (const target of [client, project]) {
+      expect(readProfile(db, target)).toMatchObject({
+        inherited: { columns: 'times', language: 'de', fee_column: 'auto', group_by: 'none' },
+        inherited_source: {
+          columns: 'default',
+          language: 'default',
+          fee_column: 'default',
+          group_by: 'default'
+        }
+      })
+    }
+  })
+
+  it('freezes the saved language in a new billing run', async () => {
+    saveProfile(db, client, { interval_min: null, min_unit_min: null, language: 'en' })
+    saveProfile(db, project, { interval_min: 5, min_unit_min: null })
+    seedEntry(db, {
+      id: 1,
+      client_id: 1,
+      project_id: 10,
+      started_at: '2026-10-10T10:00:00.000Z',
+      stopped_at: '2026-10-10T10:04:00.000Z'
+    })
+    const run = await createRun(
+      db,
+      { clientId: 1, fromIso: '2026-10-01', toIso: '2026-10-31' },
+      async (html) => Buffer.from(html)
+    )
+    saveProfile(db, client, { interval_min: null, min_unit_min: null, language: 'de' })
+    const stored = db.prepare('SELECT rule_snapshot FROM billing_run WHERE id = ?').get(run.id) as {
+      rule_snapshot: string
+    }
+    expect(JSON.parse(stored.rule_snapshot)).toMatchObject({
+      clientProfile: { language: 'en' },
+      projectProfiles: { '10': { language: 'en' } }
+    })
+  })
+
   it('inherits per field and preserves other fields and the default row', () => {
     const defaults = db
       .prepare('SELECT * FROM billing_profile WHERE client_id IS NULL AND project_id IS NULL')

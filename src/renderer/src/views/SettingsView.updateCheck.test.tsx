@@ -68,6 +68,23 @@ afterEach(() => {
   useSettingsStore.setState({ settings: null })
 })
 
+it('uses the shared width with bounded labels and right-hand controls (#420)', async () => {
+  mockApi({})
+  await openUpdates()
+  const nav = screen.getByRole('navigation')
+  const root = nav.parentElement!
+  expect(root.classList.contains('max-w-4xl')).toBe(false)
+  expect(root.classList.contains('w-full')).toBe(true)
+  const content = nav.nextElementSibling!
+  expect(content.classList.contains('max-w-xl')).toBe(false)
+  expect(content.classList.contains('flex-1')).toBe(true)
+  const control = autoCheckSwitch().parentElement!
+  expect(control.classList.contains('max-w-[28rem]')).toBe(true)
+  expect(control.classList.contains('items-end')).toBe(true)
+  expect(control.previousElementSibling!.classList.contains('max-w-[40rem]')).toBe(true)
+  expect(control.parentElement!.classList.contains('justify-between')).toBe(true)
+})
+
 describe('Settings → Updates: automatic check switch (#273)', () => {
   it('is on when the key was never stored, and switching it off writes 0', async () => {
     const { set } = mockApi({})

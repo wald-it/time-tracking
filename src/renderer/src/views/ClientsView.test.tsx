@@ -18,6 +18,17 @@ import { RATE_EDITOR_CONFLICT_ERROR } from '../../../shared/rateEditor'
 
 afterEach(cleanup)
 
+it('uses the shared width with flexible client names and spaced actions (#420)', async () => {
+  await renderView()
+  const root = screen.getByRole('heading', { level: 1 }).parentElement!.parentElement!
+  expect(root).not.toHaveClass('max-w-3xl')
+  expect(root).toHaveClass('w-full', 'min-w-0')
+  const row = screen.getByRole('button', { name: 'Bearbeiten: Acme' }).parentElement!
+  expect(row).toHaveClass('min-[960px]:gap-5')
+  expect(screen.getByText('ACME').parentElement).toHaveClass('justify-between')
+  expect(screen.getByText('Acme').parentElement!.parentElement).toHaveClass('flex-1', 'min-w-0')
+})
+
 const CLIENTS: Client[] = [
   {
     id: 1,
@@ -91,7 +102,26 @@ beforeEach(() => {
         data: {
           interval_min: 15,
           min_unit_min: 30,
-          inherited: { interval_min: 5, min_unit_min: 0 }
+          columns: null,
+          language: null,
+          fee_column: null,
+          group_by: null,
+          inherited: {
+            interval_min: 5,
+            min_unit_min: 0,
+            columns: 'times',
+            language: 'de',
+            fee_column: 'auto',
+            group_by: 'none'
+          },
+          inherited_source: {
+            interval_min: 'default',
+            min_unit_min: 'default',
+            columns: 'default',
+            language: 'default',
+            fee_column: 'default',
+            group_by: 'default'
+          }
         }
       }),
       save: vi.fn().mockResolvedValue({
@@ -99,7 +129,26 @@ beforeEach(() => {
         data: {
           interval_min: null,
           min_unit_min: null,
-          inherited: { interval_min: 5, min_unit_min: 0 }
+          columns: null,
+          language: null,
+          fee_column: null,
+          group_by: null,
+          inherited: {
+            interval_min: 5,
+            min_unit_min: 0,
+            columns: 'times',
+            language: 'de',
+            fee_column: 'auto',
+            group_by: 'none'
+          },
+          inherited_source: {
+            interval_min: 'default',
+            min_unit_min: 'default',
+            columns: 'default',
+            language: 'default',
+            fee_column: 'default',
+            group_by: 'default'
+          }
         }
       })
     },
@@ -324,7 +373,14 @@ describe('ClientsView billing editors', () => {
       })
       expect(window.api.billingProfile.save).toHaveBeenCalledWith(
         { kind: project ? 'project' : 'client', id: project ? 10 : 1 },
-        { interval_min: null, min_unit_min: null }
+        {
+          interval_min: null,
+          min_unit_min: null,
+          columns: null,
+          language: null,
+          fee_column: null,
+          group_by: null
+        }
       )
     }
   )
