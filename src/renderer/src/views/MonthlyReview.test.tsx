@@ -503,6 +503,22 @@ describe('monthly review', () => {
     const english = within(screen.getByRole('list', { name: 'Findings (1)' })).getByRole('button')
     expect(english).toHaveTextContent('03/09/2026: 11:45 h in total, above 10 h.')
   })
+  it('locks the filter switch while the inline editor is open, so no draft is lost', async () => {
+    const ui = await selectClient()
+    const filter = ui.getByRole('switch', { name: 'Nur seit letzter Abrechnung geändert' })
+    expect(filter).toBeEnabled()
+    fireEvent.click(
+      within(ui.getByRole('listitem', { name: 'Eintrag 1' })).getByRole('button', {
+        name: 'Bearbeiten'
+      })
+    )
+    fireEvent.change(ui.getByLabelText(/^Beschreibung/), { target: { value: 'Draft' } })
+    expect(filter).toBeDisabled()
+    fireEvent.click(filter)
+    expect(ui.getByLabelText(/^Beschreibung/)).toHaveValue('Draft')
+    fireEvent.click(ui.getByRole('button', { name: 'Abbrechen' }))
+    expect(filter).toBeEnabled()
+  })
   it('keeps the inline editor out of a nested scroll box, so its sticky buttons cover nothing', async () => {
     const ui = await selectClient()
     fireEvent.click(

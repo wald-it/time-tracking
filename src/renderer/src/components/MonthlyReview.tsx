@@ -350,7 +350,14 @@ function ReviewResults({
           <span id={filterLabelId} className={FIELD_LABEL}>
             {t('review.changedOnly')}
           </span>
-          <Toggle checked={changedOnly} onChange={setChangedOnly} labelledBy={filterLabelId} />
+          {/* Locked while the editor is open: switching reloads the lists and
+              would unmount the form with its unsaved values. */}
+          <Toggle
+            checked={changedOnly}
+            onChange={setChangedOnly}
+            disabled={editing !== null}
+            labelledBy={filterLabelId}
+          />
         </div>
         {result?.changes &&
           (result.changes.lastRun ? (
