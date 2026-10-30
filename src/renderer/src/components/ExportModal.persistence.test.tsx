@@ -103,24 +103,24 @@ describe('ExportModal pref persistence (DB-backed, v1.13.2)', () => {
     useSettingsStore.setState({ settings: null })
   })
 
-  it('opens with the prefs stored in the settings DB', async () => {
+  it('ignores grouping stored in the settings DB', async () => {
     const { container, rerender } = setup({
       export_prefs: JSON.stringify({ tab: 'pdf', groupBy: 'reference' })
     })
     await openModal(rerender)
     await waitFor(() => {
-      expect(findGroupBySelect(container).value).toBe('reference')
+      expect(findGroupBySelect(container).value).toBe('none')
     })
   })
 
   it('does not write prefs on mount, even under StrictMode double-effects', async () => {
     const { api, container, rerender } = setup({
-      export_prefs: JSON.stringify({ tab: 'pdf', groupBy: 'tag' })
+      export_prefs: JSON.stringify({ tab: 'pdf', hideFeeColumn: true })
     })
     await openModal(rerender)
     // Positive signal first: the stored pref is visible, so mount effects ran.
     await waitFor(() => {
-      expect(findGroupBySelect(container).value).toBe('tag')
+      expect(container.querySelector('[role="switch"]')).toHaveAttribute('aria-checked', 'true')
     })
     expect(api.set).not.toHaveBeenCalled()
   })
@@ -130,13 +130,14 @@ describe('ExportModal pref persistence (DB-backed, v1.13.2)', () => {
       export_prefs: JSON.stringify({ tab: 'pdf' })
     })
     await openModal(rerender)
-    fireEvent.change(findGroupBySelect(container), { target: { value: 'tag' } })
+    fireEvent.click(container.querySelector('[role="switch"]')!)
     await waitFor(() => {
       expect(api.set).toHaveBeenCalledWith(
         'export_prefs',
-        expect.stringContaining('"groupBy":"tag"')
+        expect.stringContaining('"hideFeeColumn":true')
       )
     })
+    expect(JSON.parse(api.store.export_prefs)).not.toHaveProperty('groupBy')
   })
 
   it('migrates legacy localStorage prefs into the DB once and removes the key', async () => {

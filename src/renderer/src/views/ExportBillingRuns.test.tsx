@@ -151,9 +151,7 @@ describe('P6b export and billing run list', () => {
         ui.getByRole<HTMLInputElement>('textbox', { name: 'Zu Rechnung Nr. (optional)' }).disabled
       ).toBe(true)
     )
-    fireEvent.change(ui.getByRole('combobox', { name: 'Gruppieren nach' }), {
-      target: { value: 'tag' }
-    })
+    fireEvent.click(ui.getByRole('switch', { name: 'Honorar-Spalte ausblenden' }))
     expect(JSON.parse(setSetting.mock.calls.at(-1)![1])).not.toHaveProperty('invoiceRef')
     fireEvent.click(ui.getByText('Schließen'))
     const reopened = within(await openExport())
@@ -339,9 +337,7 @@ describe('P6b export and billing run list', () => {
     fireEvent.click(checkbox)
     expect(checkbox.checked).toBe(true)
     // Persisting another option must not smuggle the billing flag into preferences.
-    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Gruppieren nach' }), {
-      target: { value: 'tag' }
-    })
+    fireEvent.click(within(dialog).getByRole('switch', { name: 'Honorar-Spalte ausblenden' }))
     expect(JSON.parse(setSetting.mock.calls[0][1])).not.toHaveProperty('markAsBilled')
     fireEvent.click(within(dialog).getByText('Schließen'))
     const reopened = await openExport()

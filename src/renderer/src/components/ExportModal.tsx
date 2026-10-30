@@ -62,7 +62,6 @@ export function ExportModal(props: Props): React.JSX.Element {
 
   // PDF-specific
   const [includeSignatures, setIncludeSignatures] = useState(initialPrefs.includeSignatures)
-  const [groupBy, setGroupBy] = useState<GroupBy>(initialPrefs.groupBy)
   const [hideFeeColumn, setHideFeeColumn] = useState(initialPrefs.hideFeeColumn)
   // Deliberately outside ExportPrefs: each ordinary export starts unchecked.
   const [markAsBilled, setMarkAsBilled] = useState(Boolean(replacementRun))
@@ -76,8 +75,13 @@ export function ExportModal(props: Props): React.JSX.Element {
     selection: string
     value: 'auto' | 'on' | 'off'
   } | null>(null)
+  const [groupChoice, setGroupChoice] = useState<{
+    selection: string
+    value: GroupBy
+  } | null>(null)
   const columnSelection = `${clientId}:${projectId}`
   const columns = columnChoice?.selection === columnSelection ? columnChoice.value : undefined
+  const groupBy = groupChoice?.selection === columnSelection ? groupChoice.value : undefined
 
   const profileDecidesFee = feeChoice?.selection === columnSelection && feeChoice.value !== 'auto'
 
@@ -104,7 +108,6 @@ export function ExportModal(props: Props): React.JSX.Element {
     const prefs: ExportPrefs = {
       tab,
       includeSignatures,
-      groupBy,
       hideFeeColumn,
       csvFormat,
       csvGroupByTag,
@@ -173,9 +176,11 @@ export function ExportModal(props: Props): React.JSX.Element {
 
   // v1.13 #118: grouping by project is meaningless with a single project filter.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — Ableitung würde Dropdown-Anzeige und tatsächlichen Export auseinanderlaufen lassen
-    if (projectId != null && groupBy === 'project') setGroupBy('none')
-  }, [projectId, groupBy])
+    if (projectId != null && groupBy === 'project') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep the displayed choice and export request in sync.
+      setGroupChoice({ selection: columnSelection, value: 'none' })
+    }
+  }, [projectId, groupBy, columnSelection])
 
   // Load active projects when a client is selected; reset project filter on change.
   useEffect(() => {
@@ -209,6 +214,10 @@ export function ExportModal(props: Props): React.JSX.Element {
       .then((res) => {
         if (cancelled) return
         if (!res.ok) throw new Error(res.error)
+        setGroupChoice({
+          selection: columnSelection,
+          value: res.data.group_by ?? res.data.inherited.group_by ?? 'none'
+        })
         setFeeChoice({
           selection: columnSelection,
           value: res.data.fee_column ?? res.data.inherited.fee_column ?? 'auto'
@@ -234,7 +243,7 @@ export function ExportModal(props: Props): React.JSX.Element {
     toIso !== '' &&
     !busy &&
     !createdRun &&
-    (tab !== 'pdf' || columns !== undefined)
+    (tab !== 'pdf' || (columns !== undefined && groupBy !== undefined))
 
   function validateRange(): boolean {
     if (fromIso > toIso) {
@@ -404,6 +413,7 @@ export function ExportModal(props: Props): React.JSX.Element {
               setProjectId(null)
               setProjects([])
               setColumnChoice(null)
+              setGroupChoice(null)
             }}
             disabled={busy || Boolean(replacementRun) || createdRun}
             className={inputClass}
@@ -432,6 +442,7 @@ export function ExportModal(props: Props): React.JSX.Element {
               onChange={(e) => {
                 setProjectId(e.target.value === '' ? null : Number.parseInt(e.target.value, 10))
                 setColumnChoice(null)
+                setGroupChoice(null)
               }}
               disabled={busy || Boolean(replacementRun) || createdRun}
               className={inputClass}
@@ -526,13 +537,11 @@ export function ExportModal(props: Props): React.JSX.Element {
                 </span>
                 <select
                   title={t('export.pdf.groupBy')}
-                  value={groupBy}
-                  onChange={(e) => {
-                    const next = e.target.value as GroupBy
-                    setGroupBy(next)
-                    persistPrefs({ groupBy: next })
-                  }}
-                  disabled={busy}
+                  value={groupBy ?? 'none'}
+                  onChange={(e) =>
+                    setGroupChoice({ selection: columnSelection, value: e.target.value as GroupBy })
+                  }
+                  disabled={busy || createdRun || groupBy === undefined}
                   className={inputClass}
                 >
                   <option value="none">{t('export.pdf.groupBy.none')}</option>

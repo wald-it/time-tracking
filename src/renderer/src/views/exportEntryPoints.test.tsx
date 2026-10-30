@@ -3,9 +3,8 @@
  *
  * Written against the PRE-move implementation, where the export toolbar lives
  * inside `CalendarView`, and kept green through the move into its own
- * `ExportView`. Only the import and the rendered component change; every
- * assertion below stays byte-identical, which is what makes this a proof that
- * the move was lossless rather than a restatement of the new code.
+ * `ExportView`. The move preserved every assertion. Since #433, case 6 uses
+ * the fee preference because grouping is no longer remembered.
  *
  * Case 6 is the one that matters, and it took two attempts to get right. The
  * host renders the modal with `key={pdfRange ? ... : 'closed'}` so it REMOUNTS
@@ -27,12 +26,12 @@
  * not a mirror.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { act, cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, render, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import ExportView from './ExportView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useSettingsStore } from '../store/settingsStore'
-import { DEFAULT_PREFS, type GroupBy } from '../components/exportPrefs'
+import { DEFAULT_PREFS } from '../components/exportPrefs'
 import { getQuickRange, type QuickRangeKind } from '../../../shared/dateRanges'
 
 // `globals` is off in vitest.config.ts, so Testing Library's auto-cleanup
@@ -112,19 +111,15 @@ function mockApi(initial: Store = {}): Store {
   return store
 }
 
-function prefsWith(groupBy: GroupBy): string {
-  return JSON.stringify({ ...DEFAULT_PREFS, groupBy })
+function prefsWith(hideFeeColumn: boolean): string {
+  return JSON.stringify({ ...DEFAULT_PREFS, hideFeeColumn })
 }
 
-/** The `groupBy` select inside the open export dialog (PDF tab). */
-function groupBySelect(): HTMLSelectElement {
-  const dialog = document.querySelector('[role="dialog"]')
+/** The remembered fee switch inside the open export dialog (PDF tab). */
+function hideFeeSwitch(): HTMLElement {
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
   if (!dialog) throw new Error('no dialog open')
-  const select = Array.from(dialog.querySelectorAll('select')).find((s) =>
-    s.querySelector('option[value="tag"]')
-  )
-  if (!select) throw new Error('groupBy select not found')
-  return select
+  return within(dialog).getByRole('switch', { name: 'Honorar-Spalte ausblenden' })
 }
 
 async function loadSettings(): Promise<void> {
@@ -240,14 +235,14 @@ describe('export entry points (#153 characterization)', () => {
 
   it('6. reopening re-reads stored prefs — the remount contract', async () => {
     // Prefs stored BEFORE the first render, so open #1 proves the modal reads
-    // the store at all (groupBy 'tag' is not the 'none' default).
-    const store = mockApi({ export_prefs: prefsWith('tag') })
+    // the store at all (hideFeeColumn true is not the false default).
+    const store = mockApi({ export_prefs: prefsWith(true) })
     await loadSettings()
     const { container } = await renderHost()
 
     clickButton(container, LABEL.lastMonth)
     await waitFor(() => expect(dialogTitle()).toBe(EXPORT_DIALOG_TITLE))
-    expect(groupBySelect().value).toBe('tag')
+    expect(hideFeeSwitch()).toHaveAttribute('aria-checked', 'true')
 
     closeDialog()
     await waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
@@ -255,14 +250,14 @@ describe('export entry points (#153 characterization)', () => {
     // A second writer changes the stored prefs while the modal is closed —
     // stands in for the real case, where the settings load simply finishes
     // after the modal's first mount.
-    store.export_prefs = prefsWith('project')
+    store.export_prefs = prefsWith(false)
     await loadSettings()
 
     clickButton(container, LABEL.thisWeek)
     await waitFor(() => expect(dialogTitle()).toBe(EXPORT_DIALOG_TITLE))
 
     // Fails without the remount `key`: the lazy initialPrefs from open #1
-    // would still be in state and the select would read 'tag'.
-    expect(groupBySelect().value).toBe('project')
+    // would still be in state and the switch would remain checked.
+    expect(hideFeeSwitch()).toHaveAttribute('aria-checked', 'false')
   })
 })

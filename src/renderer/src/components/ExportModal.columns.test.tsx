@@ -6,11 +6,13 @@ import { I18nProvider } from '../contexts/I18nContext'
 import { useSettingsStore } from '../store/settingsStore'
 import type { BillingRunSummary } from '../../../main/billingRuns'
 import type { RateTarget } from '../../../shared/rateEditor'
+import type { GroupBy } from './exportPrefs'
 
 const ok = <T,>(data: T): { ok: true; data: T } => ({ ok: true, data })
 const getProfile = vi.fn()
 const exportPdf = vi.fn()
 const setSetting = vi.fn()
+const getSettings = vi.fn()
 beforeEach(() => {
   localStorage.clear()
   useSettingsStore.setState({ settings: null })
@@ -22,10 +24,11 @@ beforeEach(() => {
   )
   exportPdf.mockReset().mockResolvedValue({ ok: false, code: 'cancelled' })
   setSetting.mockReset().mockResolvedValue(ok(undefined))
+  getSettings.mockReset().mockResolvedValue(ok({ export_prefs: '{"tab":"pdf"}' }))
   Object.defineProperty(window, 'api', {
     configurable: true,
     value: {
-      settings: { getAll: async () => ok({ export_prefs: '{"tab":"pdf"}' }), set: setSetting },
+      settings: { getAll: getSettings, set: setSetting },
       clients: {
         getAll: async () =>
           ok([
@@ -75,6 +78,172 @@ const selectClient = (id: number): void => {
     target: { value: String(id) }
   })
 }
+
+const groupingControl = (): HTMLSelectElement =>
+  screen.getByRole('combobox', { name: 'Gruppieren nach' })
+const selectProject = (id: number | null): void => {
+  fireEvent.change(screen.getByRole('combobox', { name: /Projekt/ }), {
+    target: { value: id === null ? '' : String(id) }
+  })
+}
+const profile = (own: GroupBy | null, inherited: GroupBy = 'none'): ReturnType<typeof ok> =>
+  ok({ columns: 'times', group_by: own, inherited: { columns: 'times', group_by: inherited } })
+
+describe('export grouping (#433)', () => {
+  it.each([
+    ['tag', 'reference'],
+    [null, 'reference'],
+    ['none', 'reference'],
+    ['project', 'tag']
+  ] as const)(
+    'uses client grouping %s inherited from %s, ignoring old prefs',
+    async (own, inherited) => {
+      getSettings.mockResolvedValue(
+        ok({
+          export_prefs: JSON.stringify({
+            tab: 'pdf',
+            groupBy: (own ?? inherited) === 'reference' ? 'tag' : 'reference'
+          })
+        })
+      )
+      getProfile.mockResolvedValue(profile(own, inherited))
+      await open()
+      selectClient(1)
+      await waitFor(() => expect(columnsControl()).toBeEnabled())
+      expect(groupingControl()).toHaveValue(own ?? inherited)
+      expect(getProfile).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('resets an override when changing clients and when returning to the first client', async () => {
+    getProfile.mockImplementation(async (target: RateTarget) =>
+      profile(target.id === 1 ? 'tag' : 'reference')
+    )
+    await open()
+    selectClient(1)
+    await waitFor(() => expect(columnsControl()).toBeEnabled())
+    fireEvent.change(groupingControl(), { target: { value: 'project' } })
+    selectClient(2)
+    await waitFor(() => expect(columnsControl()).toBeEnabled())
+    expect(groupingControl()).toHaveValue('reference')
+    selectClient(1)
+    await waitFor(() => expect(columnsControl()).toBeEnabled())
+    expect(groupingControl()).toHaveValue('tag')
+  })
+
+  it('resets to inherited and own project grouping and back to the client profile', async () => {
+    getProfile.mockImplementation(async (target: RateTarget) =>
+      target.kind === 'client'
+        ? profile('project')
+        : target.id === 11
+          ? profile(null, 'reference')
+          : profile('tag', 'reference')
+    )
+    await open()
+    selectClient(1)
+    await screen.findByRole('option', { name: 'Project A' })
+    selectProject(11)
+    await waitFor(() => expect(columnsControl()).toBeEnabled())
+    expect(groupingControl()).toHaveValue('reference')
+    fireEvent.change(groupingControl(), { target: { value: 'none' } })
+    selectProject(12)
+    await waitFor(() => expect(columnsControl()).toBeEnabled())
+    expect(groupingControl()).toHaveValue('tag')
+    selectProject(null)
+    await waitFor(() => expect(columnsControl()).toBeEnabled())
+    expect(groupingControl()).toHaveValue('project')
+  })
+
+  it('keeps project grouping for a client but resets it to none for a selected project', async () => {
+    getProfile.mockResolvedValue(profile(null, 'project'))
+    await open()
+    selectClient(1)
+    await waitFor(() => expect(groupingControl()).toHaveValue('project'))
+    await screen.findByRole('option', { name: 'Project A' })
+    selectProject(11)
+    await waitFor(() => expect(columnsControl()).toBeEnabled())
+    await waitFor(() => expect(groupingControl()).toHaveValue('none'))
+    fireEvent.click(screen.getByRole('button', { name: 'PDF speichern' }))
+    await waitFor(() =>
+      expect(exportPdf).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: 11, groupBy: 'none' })
+      )
+    )
+  })
+
+  it('waits for the shared profile request and ignores a late grouping response', async () => {
+    await open()
+    let resolveFirst!: (value: unknown) => void
+    getProfile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve
+        })
+    )
+    selectClient(1)
+    expect(groupingControl()).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'PDF speichern' })).toBeDisabled()
+    getProfile.mockResolvedValueOnce(profile('reference'))
+    selectClient(2)
+    await waitFor(() => expect(groupingControl()).toBeEnabled())
+    expect(groupingControl()).toHaveValue('reference')
+    await act(async () => {
+      resolveFirst(profile('tag'))
+    })
+    expect(groupingControl()).toHaveValue('reference')
+    expect(getProfile.mock.calls).toEqual([
+      [{ kind: 'client', id: 1 }],
+      [{ kind: 'client', id: 2 }]
+    ])
+  })
+
+  it('sends a one-export override and excludes grouping from the next preference write', async () => {
+    getProfile.mockResolvedValue(profile('reference'))
+    await open()
+    selectClient(1)
+    await waitFor(() => expect(columnsControl()).toBeEnabled())
+    fireEvent.change(groupingControl(), { target: { value: 'tag' } })
+    expect(setSetting).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('switch', { name: 'Honorar-Spalte ausblenden' }))
+    await waitFor(() => expect(setSetting).toHaveBeenCalledTimes(1))
+    expect(setSetting.mock.calls[0][0]).toBe('export_prefs')
+    expect(JSON.parse(setSetting.mock.calls[0][1])).not.toHaveProperty('groupBy')
+    fireEvent.click(screen.getByRole('button', { name: 'PDF speichern' }))
+    await waitFor(() =>
+      expect(exportPdf).toHaveBeenCalledWith(
+        expect.objectContaining({ clientId: 1, groupBy: 'tag' })
+      )
+    )
+  })
+
+  it.each([null, 11])(
+    'defaults a replacement export from its current profile (project %s)',
+    async (projectId) => {
+      getProfile.mockResolvedValue(profile(null, 'reference'))
+      await open({
+        id: 7,
+        number: 'SN-old',
+        client_id: 1,
+        project_id: projectId,
+        period_from: '2026-10-01',
+        period_to: '2026-10-31'
+      } as BillingRunSummary)
+      await waitFor(() => expect(columnsControl()).toBeEnabled())
+      expect(groupingControl()).toHaveValue('reference')
+      fireEvent.click(screen.getByRole('button', { name: 'PDF speichern' }))
+      await waitFor(() =>
+        expect(exportPdf).toHaveBeenCalledWith(
+          expect.objectContaining({
+            groupBy: 'reference',
+            projectId: projectId ?? undefined,
+            replacesRunId: 7,
+            markAsBilled: true
+          })
+        )
+      )
+    }
+  )
+})
 
 describe('export columns (#422)', () => {
   it('waits for the selected profile and ignores a late response for the previous client', async () => {
