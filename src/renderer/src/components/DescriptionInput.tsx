@@ -43,11 +43,11 @@ export function DescriptionInput({
 
   useEffect(() => {
     let cancelled = false
-    if (clientId === null) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — Ergebnis eines asynchronen Abrufs je Paar
-      setKnown([])
-      return
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- #142: dauerhaft — Vorschläge vor dem Abruf des neuen Paars leeren
+    setKnown([])
+    setOpen(false)
+    setHighlighted(-1)
+    if (clientId === null) return
     async function load(): Promise<void> {
       if (clientId === null) return
       try {
@@ -90,7 +90,7 @@ export function DescriptionInput({
     if (e.key === 'Enter') {
       // A highlighted suggestion wins (as in TagInput, #158); otherwise Enter
       // is the host's — the start dialog starts, the quick note saves.
-      if (open && highlighted >= 0 && suggestions[highlighted]) {
+      if (showList && highlighted >= 0 && suggestions[highlighted]) {
         e.preventDefault()
         take(suggestions[highlighted])
         return
@@ -99,8 +99,8 @@ export function DescriptionInput({
       return
     }
     if (e.key === 'Escape') {
-      // Only an open list is ours; closed, Escape belongs to the dialog.
-      if (!open) return
+      // Only a visible list is ours; otherwise Escape belongs to the dialog.
+      if (!showList) return
       e.stopPropagation()
       setOpen(false)
       setHighlighted(-1)

@@ -53,6 +53,84 @@ function setup(opts: { clientId?: number | null; projectId?: number | null } = {
 }
 
 describe('DescriptionInput (Q8)', () => {
+  it.each(['clientId', 'projectId'] as const)(
+    'clears suggestions on a %s change and ignores late results',
+    async (changedId) => {
+      type Result = { ok: true; data: string[] }
+      const pending = Promise.withResolvers<Result>()
+      const latest = Promise.withResolvers<Result>()
+      const recent = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, data: ['Old pair text'] })
+        .mockReturnValueOnce(pending.promise)
+        .mockReturnValueOnce(latest.promise)
+      window.api = { entries: { recentDescriptions: recent } } as unknown as Window['api']
+      const onChange = vi.fn()
+      const onEnter = vi.fn()
+      const props = { value: '', onChange, onEnter, clientId: 1, projectId: 10 }
+      const { rerender } = render(<DescriptionInput {...props} />)
+      const input = screen.getByRole('textbox')
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      await screen.findByRole('option', { name: 'Old pair text' })
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+      rerender(<DescriptionInput {...props} {...{ [changedId]: 20 }} />)
+      expect(recent).toHaveBeenLastCalledWith({
+        clientId: 1,
+        projectId: 10,
+        [changedId]: 20
+      })
+      expect.soft(screen.queryByRole('listbox')).toBeNull()
+      expect.soft(screen.queryByRole('option', { name: 'Old pair text' })).toBeNull()
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect.soft(onChange).not.toHaveBeenCalledWith('Old pair text')
+      expect.soft(onEnter).toHaveBeenCalledTimes(1)
+
+      // Change again while the preceding lookup is still pending.
+      rerender(<DescriptionInput {...props} {...{ [changedId]: 30 }} />)
+      await act(async () => {
+        latest.resolve({ ok: true, data: ['Latest pair text'] })
+      })
+      expect.soft(screen.queryByRole('listbox')).toBeNull()
+      fireEvent.click(input)
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'Latest pair text'
+      ])
+      expect(screen.getByRole('option')).toHaveAttribute('aria-selected', 'false')
+
+      await act(async () => {
+        pending.resolve({ ok: true, data: ['Late old pair text'] })
+      })
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'Latest pair text'
+      ])
+    }
+  )
+
+  it('lets Escape reach the parent after typing with no visible suggestions', async () => {
+    const recent = vi.fn(async () => ({ ok: true as const, data: [] }))
+    window.api = { entries: { recentDescriptions: recent } } as unknown as Window['api']
+    const outer = vi.fn()
+    function Harness(): React.JSX.Element {
+      const [value, setValue] = useState('')
+      return (
+        <div onKeyDown={outer}>
+          <DescriptionInput value={value} onChange={setValue} clientId={1} projectId={10} />
+        </div>
+      )
+    }
+    await act(async () => {
+      render(<Harness />)
+    })
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: 'New text' } })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(outer).toHaveBeenCalledTimes(1)
+    expect(outer.mock.calls[0][0].key).toBe('Escape')
+  })
+
   it.each(['absent', 'refused', 'rejected'] as const)(
     'Q8 keeps typing usable when the lookup is %s',
     async (mode) => {
