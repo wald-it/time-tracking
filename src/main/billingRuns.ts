@@ -120,10 +120,6 @@ function runHtml(
 ): string {
   const snapshot = JSON.parse(run.rule_snapshot) as Snapshot
   if (snapshot.snapshot_version !== 1) throw new Error('Unbekannte Abrechnungssnapshot-Version')
-  const documentProfile =
-    (snapshot.options.projectId == null
-      ? undefined
-      : snapshot.projectProfiles[snapshot.options.projectId]) ?? snapshot.clientProfile
   const source: PdfSourceRow[] = rows.map((row) => {
     const profile =
       (row.project_id === null ? undefined : snapshot.projectProfiles[row.project_id]) ??
@@ -149,7 +145,9 @@ function runHtml(
     buildPdfPayloadFromData(
       {
         ...snapshot.context,
-        columns: documentProfile.columns as 'times' | 'no_times',
+        // createRun freezes the column set in options.columns. A snapshot without it
+        // predates #422, whose renderer always printed the times, whatever the profile said.
+        columns: 'times',
         runNumber: run.number,
         generatedAtIso: run.created_at
       },
@@ -265,7 +263,11 @@ export async function createRun(
           fromIso: req.fromIso,
           toIso: req.toIso,
           projectId: req.projectId,
-          columns: req.columns,
+          columns:
+            req.columns ??
+            (resolvedProfile(db, req.clientId, req.projectId ?? null).columns as
+              | 'times'
+              | 'no_times'),
           groupBy: req.groupBy,
           groupByTag: req.groupByTag,
           hideFeeColumn: req.hideFeeColumn,

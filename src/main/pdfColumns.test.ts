@@ -161,7 +161,9 @@ describe('PDF column sets (#422)', () => {
         const created = await runs.createRun(db, request, render)
         const html = runs.renderRunHtml(db, created.id)
         hasTimes(html, c.expected)
-        expect(JSON.parse(created.rule_snapshot).options.columns).toBe(request.columns)
+        expect(JSON.parse(created.rule_snapshot).options.columns).toBe(
+          c.expected ? 'times' : 'no_times'
+        )
         expect(JSON.parse(created.rule_snapshot).snapshot_version).toBe(1)
         db.exec(`UPDATE billing_profile SET columns = 'times'`)
         expect(runs.renderRunHtml(db, created.id)).toBe(html)
@@ -178,25 +180,31 @@ describe('PDF column sets (#422)', () => {
     })
   }
 
-  it('verifies the original HTML hash of a version 1 run without options.columns', async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-10-30T12:00:00.000Z'))
-    profile('times', null)
-    const created = await runs.createRun(db, { ...req, groupBy: 'reference' }, render)
-    const snapshot = JSON.parse(created.rule_snapshot)
-    expect(snapshot.options).not.toHaveProperty('columns')
-    expect(snapshot.clientProfile.columns).toBe('times')
-    // Captured from the pre-#422 renderer, with UTC pinned before module loading.
-    const originalHash = '1bb5a5fc5f1ce328cb13bf0d0cc470e888a2ae6c897576712c151d602d9d75d5'
-    expect(created.html_sha256).toBe(originalHash)
-    db.exec('DROP TRIGGER trg_billing_run_update')
-    delete snapshot.context.columns
-    db.prepare('UPDATE billing_run SET rule_snapshot = ?, html_sha256 = ? WHERE id = ?').run(
-      JSON.stringify(snapshot),
-      originalHash,
-      created.id
-    )
-    db.exec(`UPDATE billing_profile SET columns = 'no_times'`)
-    expect(runs.verifyRunHtml(db, created.id)).toBe(true)
-  })
+  it.each(['times', 'no_times'] as const)(
+    'verifies the original HTML hash of a version 1 run without options.columns (profile %s)',
+    async (legacyColumns) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-10-30T12:00:00.000Z'))
+      profile('times', null)
+      const created = await runs.createRun(db, { ...req, groupBy: 'reference' }, render)
+      const snapshot = JSON.parse(created.rule_snapshot)
+      expect(snapshot.options.columns).toBe('times')
+      // Captured from the pre-#422 renderer, with UTC pinned before module loading.
+      const originalHash = '1bb5a5fc5f1ce328cb13bf0d0cc470e888a2ae6c897576712c151d602d9d75d5'
+      expect(created.html_sha256).toBe(originalHash)
+      // A snapshot written before #422: no columns in options or context. Its profile may
+      // already say no_times (settable since #421), which the old renderer ignored.
+      db.exec('DROP TRIGGER trg_billing_run_update')
+      delete snapshot.options.columns
+      delete snapshot.context.columns
+      snapshot.clientProfile.columns = legacyColumns
+      db.prepare('UPDATE billing_run SET rule_snapshot = ?, html_sha256 = ? WHERE id = ?').run(
+        JSON.stringify(snapshot),
+        originalHash,
+        created.id
+      )
+      db.exec(`UPDATE billing_profile SET columns = 'no_times'`)
+      expect(runs.verifyRunHtml(db, created.id)).toBe(true)
+    }
+  )
 })
