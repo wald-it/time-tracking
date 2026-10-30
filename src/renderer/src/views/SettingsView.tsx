@@ -1,3 +1,4 @@
+import type { RendererSettingKey } from '../../../shared/settingKeys'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Settings, BackupInfo } from '../../../shared/types'
 import { useUpdateStore } from '../store/updateStore'
@@ -164,10 +165,10 @@ export default function SettingsView(): React.JSX.Element {
     }
   }, [capturingHotkey])
 
-  async function update<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {
+  async function update<K extends RendererSettingKey>(key: K, value: Settings[K]): Promise<void> {
     if (!settings) return
     setSettings({ ...settings, [key]: value })
-    const res = await window.api.settings.set(String(key), String(value))
+    const res = await window.api.settings.set(key, String(value))
     if (!res.ok) {
       // A declined native confirmation (#272) needs no message of its own.
       if (res.code !== 'cancelled') setStatusMsg(t('common.error', { error: res.error }))

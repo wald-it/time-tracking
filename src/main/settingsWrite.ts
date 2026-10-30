@@ -4,60 +4,10 @@ import type { HotkeyChange } from './hotkeySlot'
 import type { IpcResult } from '../shared/types'
 import { parseWebhookTargets } from '../shared/webhooks'
 import { DEFAULT_CLIENT_ID } from '../shared/graphAuth'
+import { RENDERER_SETTING_KEYS } from '../shared/settingKeys'
 
-/**
- * #272 — the settings keys the renderer may write through `settings:set`.
- *
- * A positive list: a key the UI does not write is refused, so a compromised
- * renderer cannot plant values the main process trusts elsewhere. Kept out on
- * purpose, because only the main process writes them:
- * - `backup_path` — only through the folder dialog (`backup:set-path`);
- * - `pdf_logo_path` — only through the file dialog (`logo:set`);
- * - `window_bounds` — written by main/windowBounds.ts;
- * - `ical_feed_token` — only through `icalFeed:regenerate`.
- *
- * `settingsWrite.test.ts` checks every key the renderer source passes against
- * this list, so a new UI setting that is missing here fails a test instead of
- * silently not being saved.
- */
-export const RENDERER_WRITABLE_SETTINGS: ReadonlySet<string> = new Set([
-  'company_name',
-  'idle_threshold_minutes',
-  'language',
-  'auto_start',
-  'hotkey_toggle',
-  'pdf_sender_address',
-  'pdf_tax_id',
-  'pdf_accent_color',
-  'pdf_footer_text',
-  'pdf_round_minutes',
-  'mini_enabled',
-  'mini_hotkey',
-  'mini_x',
-  'mini_y',
-  'onboarding_completed',
-  'theme_mode',
-  'week_start',
-  'show_project_number',
-  'export_prefs',
-  'feedback_rules',
-  'rule_check',
-  'mcp_expose_rates',
-  'mcp_expose_private_notes',
-  // Turning these on asks a native confirmation first (sensitiveSettingChange).
-  'mcp_write_enabled',
-  'mcp_write_confirm_mode',
-  'controller_enabled',
-  'webhook_targets',
-  'graph_client_id',
-  'presence_enabled',
-  'presence_show_client',
-  'ical_feed_enabled',
-  'ical_feed_port',
-  // #273 — automatic update check switch (read by updater.ts at start; the
-  // key is UPDATE_CHECK_SETTING_KEY in shared/updateCheck.ts).
-  'update_check_enabled'
-])
+/** Runtime allow-list for settings:set; preload and renderer use the same keys. */
+export const RENDERER_WRITABLE_SETTINGS: ReadonlySet<string> = new Set(RENDERER_SETTING_KEYS)
 
 /** The only key the preload reads synchronously (theme before first paint). */
 export const SYNC_READABLE_SETTINGS: ReadonlySet<string> = new Set(['theme_mode'])

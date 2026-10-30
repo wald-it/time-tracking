@@ -202,17 +202,16 @@ describe('settings:set allow-list', () => {
     expect(stored('theme_mode')).toBe('dark')
   })
 
-  // The inverse failure: a key the UI writes that the list forgets would be
-  // refused, and the setting would silently not save. Every string literal the
-  // renderer passes as a settings key must be on the list.
-  it('covers every settings key the renderer source writes', () => {
+  // RendererSettingKey rejects writes to keys outside the list at compile time.
+  // Keep the reverse check: every allowed key must still have a renderer writer.
+  it('every allowed key is still written somewhere in the renderer', () => {
     const root = join(__dirname, '..', 'renderer', 'src')
     const files: string[] = []
     const walk = (dir: string): void => {
       for (const name of readdirSync(dir)) {
         const p = join(dir, name)
         if (statSync(p).isDirectory()) walk(p)
-        else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) files.push(p)
+        else if (/\.tsx?$/.test(name) && !/\.(test|typecheck)\.tsx?$/.test(name)) files.push(p)
       }
     }
     walk(root)
@@ -229,10 +228,7 @@ describe('settings:set allow-list', () => {
     // The scan must find something, or a changed call shape would pass vacuously.
     expect(written.size).toBeGreaterThan(20)
     expect(written.has('mini_hotkey')).toBe(true)
-    const missing = [...written].filter((k) => !RENDERER_WRITABLE_SETTINGS.has(k))
-    expect(missing).toEqual([])
-    // And the other way round: a key nothing writes any more leaves the list,
-    // so the list cannot grow into "anything goes".
+    // A key nothing writes any more leaves the list.
     const unused = [...RENDERER_WRITABLE_SETTINGS].filter((k) => !written.has(k))
     expect(unused).toEqual([])
   })
