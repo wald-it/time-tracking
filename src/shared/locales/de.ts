@@ -569,6 +569,7 @@ export const de = {
   'export.pdf.groupBy.tag': 'Tag',
   'export.pdf.groupBy.project': 'Projekt',
   'export.pdf.groupBy.reference': 'Referenz',
+  'export.pdf.profileFeeHint': 'Das Kunden- oder Projektprofil bestimmt die Honorar-Spalte.',
   'export.pdf.hideFeeColumn': 'Honorar-Spalte ausblenden',
   'export.pdf.hideFeeColumnHint':
     'Versteckt die Honorar-Spalte und den Gesamtbetrag im Stundennachweis.',

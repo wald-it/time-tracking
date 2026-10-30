@@ -72,8 +72,14 @@ export function ExportModal(props: Props): React.JSX.Element {
     selection: string
     value: NonNullable<PdfRequest['columns']>
   } | null>(null)
+  const [feeChoice, setFeeChoice] = useState<{
+    selection: string
+    value: 'auto' | 'on' | 'off'
+  } | null>(null)
   const columnSelection = `${clientId}:${projectId}`
   const columns = columnChoice?.selection === columnSelection ? columnChoice.value : undefined
+
+  const profileDecidesFee = feeChoice?.selection === columnSelection && feeChoice.value !== 'auto'
 
   // CSV-specific
   const [csvFormat, setCsvFormat] = useState<CsvFormat>(initialPrefs.csvFormat)
@@ -203,6 +209,10 @@ export function ExportModal(props: Props): React.JSX.Element {
       .then((res) => {
         if (cancelled) return
         if (!res.ok) throw new Error(res.error)
+        setFeeChoice({
+          selection: columnSelection,
+          value: res.data.fee_column ?? res.data.inherited.fee_column ?? 'auto'
+        })
         setColumnChoice({
           selection: columnSelection,
           value: res.data.columns ?? res.data.inherited.columns
@@ -549,11 +559,13 @@ export function ExportModal(props: Props): React.JSX.Element {
                     setHideFeeColumn(v)
                     persistPrefs({ hideFeeColumn: v })
                   }}
-                  disabled={busy}
+                  disabled={busy || profileDecidesFee}
                 />
               </div>
               <span className="text-xs" style={{ color: 'var(--ink3)' }}>
-                {t('export.pdf.hideFeeColumnHint')}
+                {t(
+                  profileDecidesFee ? 'export.pdf.profileFeeHint' : 'export.pdf.hideFeeColumnHint'
+                )}
               </span>
             </div>
             <div className="flex flex-col gap-1">

@@ -28,6 +28,8 @@ import { deserializeTags } from './tags'
 import type { Entry, Client } from './types'
 
 export interface CsvOptions {
+  /** Document labels; independent of the data format and app language. */
+  language?: 'de' | 'en'
   /** Field separator. Default: ';' (DACH). */
   fieldSeparator?: ';' | ','
   /** Decimal separator for monetary amounts. Default: ',' (DACH). */
@@ -49,7 +51,7 @@ function entryBilling(entry: Entry): { rateCent: number; feeCent: number } | nul
   return { rateCent, feeCent: entry.fee_cent }
 }
 
-const HEADER = [
+const HEADER_DE = [
   'Datum',
   'Start',
   'Ende',
@@ -61,6 +63,26 @@ const HEADER = [
   'Stundensatz',
   'Betrag'
 ]
+
+const CSV_LABELS = {
+  de: { header: HEADER_DE, noTag: 'Ohne Tag', total: 'Σ Gesamt' },
+  en: {
+    header: [
+      'Date',
+      'Start',
+      'End',
+      'Duration',
+      'Client',
+      'Description',
+      'Tags',
+      'Reference',
+      'Hourly rate',
+      'Amount'
+    ],
+    noTag: 'No tag',
+    total: 'Σ Total'
+  }
+}
 
 /** Wrap a field value in quotes if it contains the separator, quote char, or newline. */
 export function escapeField(value: string, sep: string): string {
@@ -108,6 +130,7 @@ export function formatCsv(
 ): string {
   const sep = opts.fieldSeparator ?? ';'
   const dec = opts.decimalSeparator ?? ','
+  const labels = CSV_LABELS[opts.language ?? 'de']
 
   // Pre-filter: skip running entries and non-billable entries.
   const validEntries = entries.filter((e) => {
@@ -116,11 +139,11 @@ export function formatCsv(
     return true
   })
 
-  const headerRow = HEADER.map((h) => escapeField(h, sep)).join(sep)
+  const headerRow = labels.header.map((h) => escapeField(h, sep)).join(sep)
   const rows: string[] = [headerRow]
 
   if (opts.groupByTag && validEntries.some((e) => deserializeTags(e.tags).length > 0)) {
-    appendGroupedRows(rows, validEntries, clientMap, sep, dec)
+    appendGroupedRows(rows, validEntries, clientMap, sep, dec, labels)
   } else {
     for (const entry of validEntries) {
       rows.push(buildEntryRow(entry, clientMap, sep, dec))
@@ -193,7 +216,8 @@ function appendGroupedRows(
   entries: Entry[],
   clientMap: Map<number, Client>,
   sep: string,
-  dec: string
+  dec: string,
+  labels: (typeof CSV_LABELS)['de']
 ): void {
   // Build groups keyed by first tag ('' = no tag).
   const groupMap = new Map<string, Entry[]>()
@@ -218,10 +242,10 @@ function appendGroupedRows(
 
   for (const key of sortedKeys) {
     const groupEntries = groupMap.get(key)!
-    const tagLabel = key === '' ? 'Ohne Tag' : key
+    const tagLabel = key === '' ? labels.noTag : key
 
     // Group header row: tag name in Beschreibung column, all others empty.
-    const headerFields = Array<string>(HEADER.length).fill('')
+    const headerFields = Array<string>(labels.header.length).fill('')
     headerFields[5] = `[${tagLabel}]` // Beschreibung column
     rows.push(headerFields.map((f, i) => escapeCell(f, i, sep)).join(sep))
 
@@ -251,7 +275,7 @@ function appendGroupedRows(
     }
 
     // Subtotal row: Beschreibung = label, Dauer = duration, Betrag = amount.
-    const subtotalFields = Array<string>(HEADER.length).fill('')
+    const subtotalFields = Array<string>(labels.header.length).fill('')
     subtotalFields[3] = formatDuration(groupDurSec) // Dauer
     subtotalFields[5] = `${tagLabel} Σ` // Beschreibung
     if (groupHasRate) subtotalFields[9] = formatDecimal(groupAmountCent / 100, dec) // Betrag
@@ -259,9 +283,9 @@ function appendGroupedRows(
   }
 
   // Grand total row.
-  const totalFields = Array<string>(HEADER.length).fill('')
+  const totalFields = Array<string>(labels.header.length).fill('')
   totalFields[3] = formatDuration(grandDurSec)
-  totalFields[5] = 'Σ Gesamt'
+  totalFields[5] = labels.total
   if (grandHasRate) totalFields[9] = formatDecimal(grandAmountCent / 100, dec)
   rows.push(totalFields.map((f, i) => escapeCell(f, i, sep)).join(sep))
 }

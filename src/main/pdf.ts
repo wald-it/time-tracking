@@ -101,6 +101,8 @@ export interface PdfGroup {
 }
 
 export interface PdfPayload {
+  language?: 'de' | 'en'
+  fee_column?: 'auto' | 'on' | 'off'
   columns?: 'times' | 'no_times'
   runNumber?: string
   invoiceRef?: string
@@ -166,6 +168,97 @@ export interface PdfPayload {
   effectiveContactPerson?: string | null
 }
 
+type PdfLanguage = 'de' | 'en'
+const PDF_LABELS: Record<
+  PdfLanguage,
+  Record<
+    | 'title'
+    | 'number'
+    | 'invoice'
+    | 'date'
+    | 'from'
+    | 'to'
+    | 'activity'
+    | 'duration'
+    | 'fee'
+    | 'project'
+    | 'noTag'
+    | 'noProject'
+    | 'other'
+    | 'subtotal'
+    | 'grandTotal'
+    | 'total'
+    | 'empty'
+    | 'tax'
+    | 'attention'
+    | 'contractorSignature'
+    | 'clientSignature'
+    | 'created'
+    | 'withApp'
+    | 'client'
+    | 'period'
+    | 'vat',
+    string
+  >
+> = {
+  de: {
+    title: 'Stundennachweis',
+    number: 'Nr.',
+    invoice: 'zu Rechnung Nr.',
+    date: 'Datum',
+    from: 'Von',
+    to: 'Bis',
+    activity: 'Tätigkeit',
+    duration: 'Dauer',
+    fee: 'Honorar',
+    project: 'Projekt:',
+    noTag: 'Ohne Tag',
+    noProject: 'Ohne Projekt',
+    other: 'Sonstiges',
+    subtotal: 'Zwischensumme',
+    grandTotal: 'Gesamtsumme',
+    total: 'Summe',
+    empty: 'Keine Einträge im gewählten Zeitraum.',
+    tax: 'Steuernr.:',
+    attention: 'z.Hd.',
+    contractorSignature: 'Datum, Auftragnehmer',
+    clientSignature: 'Datum, Auftraggeber',
+    created: 'Erstellt am',
+    withApp: 'mit TimeTrack.',
+    client: 'Kunde',
+    period: 'Zeitraum',
+    vat: 'USt-IdNr.'
+  },
+  en: {
+    title: 'Timesheet',
+    number: 'No.',
+    invoice: 'for invoice no.',
+    date: 'Date',
+    from: 'From',
+    to: 'To',
+    activity: 'Activity',
+    duration: 'Duration',
+    fee: 'Fee',
+    project: 'Project:',
+    noTag: 'No tag',
+    noProject: 'No project',
+    other: 'Other',
+    subtotal: 'Subtotal',
+    grandTotal: 'Grand total',
+    total: 'Total',
+    empty: 'No entries in the selected period.',
+    tax: 'Tax no.:',
+    attention: 'Attn.',
+    contractorSignature: 'Date, Contractor',
+    clientSignature: 'Date, Client',
+    created: 'Created on',
+    withApp: 'with TimeTrack.',
+    client: 'Client',
+    period: 'Period',
+    vat: 'VAT ID'
+  }
+}
+
 const DATE_FMT = new Intl.DateTimeFormat('de-DE', {
   day: '2-digit',
   month: '2-digit',
@@ -177,12 +270,24 @@ const TIME_FMT = new Intl.DateTimeFormat('de-DE', {
   minute: '2-digit'
 })
 
-function formatDate(iso: string): string {
-  return DATE_FMT.format(new Date(iso))
+const EN_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric'
+})
+const EN_TIME_FMT = new Intl.DateTimeFormat('en-GB', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false
+})
+const EN_EUR_FMT = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR' })
+
+function formatDate(iso: string, language: PdfLanguage = 'de'): string {
+  return (language === 'en' ? EN_DATE_FMT : DATE_FMT).format(new Date(iso))
 }
 
-function formatTime(iso: string): string {
-  return TIME_FMT.format(new Date(iso))
+function formatTime(iso: string, language: PdfLanguage): string {
+  return formatTimeDate(new Date(iso), language)
 }
 
 /**
@@ -209,8 +314,8 @@ function snapToStepLocal(d: Date, step: number): Date {
   return result
 }
 
-function formatTimeDate(d: Date): string {
-  return TIME_FMT.format(d)
+function formatTimeDate(d: Date, language: PdfLanguage): string {
+  return (language === 'en' ? EN_TIME_FMT : TIME_FMT).format(d)
 }
 
 /**
@@ -321,16 +426,21 @@ export function readPdfSourceContext(
 
   const profile = db
     .prepare(
-      `SELECT COALESCE(p.columns, c.columns, d.columns) AS columns
+      `SELECT COALESCE(p.columns, c.columns, d.columns) AS columns,
+         COALESCE(p.language, c.language, d.language) AS language,
+         COALESCE(p.fee_column, c.fee_column, d.fee_column) AS fee_column
        FROM billing_profile d
        LEFT JOIN billing_profile c ON c.client_id = ?
        LEFT JOIN billing_profile p ON p.project_id = ?
        WHERE d.client_id IS NULL AND d.project_id IS NULL`
     )
-    .get(req.clientId, req.projectId ?? null) as { columns: 'times' | 'no_times' }
+    .get(req.clientId, req.projectId ?? null) as Pick<
+    PdfSourceContext,
+    'columns' | 'language' | 'fee_column'
+  >
 
   return {
-    columns: profile.columns,
+    ...profile,
     client,
     sender: {
       name: settings.company_name ?? '',
@@ -371,6 +481,8 @@ export function buildPdfPayloadFromData(
   entries: PdfSourceRow[]
 ): PdfPayload {
   const { client } = context
+  const language = context.language ?? 'de'
+  const labels = PDF_LABELS[language]
   // v1.13 #118: backward-compat — the legacy `groupByTag` boolean coerces
   // to the new enum when the caller hasn't migrated yet.
   const groupBy: 'none' | 'tag' | 'project' | 'reference' =
@@ -399,17 +511,20 @@ export function buildPdfPayloadFromData(
     if (e.alignment === 'grid' && e.interval_min > 0) {
       const displayedStart = snapToStepLocal(start, e.interval_min)
       const displayedStop = new Date(displayedStart.getTime() + minutes * 60_000)
-      startTime = formatTimeDate(displayedStart)
-      stopTime = formatTimeDate(displayedStop)
+      startTime = formatTimeDate(displayedStart, language)
+      stopTime = formatTimeDate(displayedStop, language)
     } else {
-      startTime = formatTime(e.started_at)
-      stopTime = formatTime(e.stopped_at as string)
+      startTime = formatTime(e.started_at, language)
+      stopTime = formatTime(e.stopped_at as string, language)
     }
     return {
       // The day stored with the segment, as the range filter used it.
       date: e.segment_date
-        ? e.segment_date.split('-').reverse().join('.')
-        : formatDate(e.started_at),
+        ? e.segment_date
+            .split('-')
+            .reverse()
+            .join(language === 'en' ? '/' : '.')
+        : formatDate(e.started_at, language),
       startTime,
       stopTime,
       description: e.description ?? '',
@@ -459,7 +574,7 @@ export function buildPdfPayloadFromData(
       const gMinutes = groupRows.reduce((s, r) => s + r.minutes, 0)
       const gFee = showFee ? groupRows.reduce((s, r) => s + (r.feeCent ?? 0), 0) : null
       return {
-        label: tag ? `#${tag}` : 'Ohne Tag',
+        label: tag ? `#${tag}` : labels.noTag,
         rows: groupRows,
         totalMinutes: gMinutes,
         totalFeeCent: gFee
@@ -484,7 +599,7 @@ export function buildPdfPayloadFromData(
       const gMinutes = groupRows.reduce((s, r) => s + r.minutes, 0)
       const gFee = showFee ? groupRows.reduce((s, r) => s + (r.feeCent ?? 0), 0) : null
       return {
-        label: name ? `Projekt: ${name}` : 'Ohne Projekt',
+        label: name ? `${labels.project} ${name}` : labels.noProject,
         rows: groupRows,
         totalMinutes: gMinutes,
         totalFeeCent: gFee
@@ -509,7 +624,7 @@ export function buildPdfPayloadFromData(
       const gMinutes = groupRows.reduce((s, r) => s + r.minutes, 0)
       const gFee = showFee ? groupRows.reduce((s, r) => s + (r.feeCent ?? 0), 0) : null
       return {
-        label: ref || 'Sonstiges',
+        label: ref || labels.other,
         rows: groupRows,
         totalMinutes: gMinutes,
         totalFeeCent: gFee
@@ -555,14 +670,20 @@ function safeColor(color: string): string {
  * (we don't repeat margins in CSS to avoid double-margins).
  */
 export function buildPdfHtml(p: PdfPayload): string {
+  const language = p.language ?? 'de'
+  const labels = PDF_LABELS[language]
+  const money =
+    language === 'en' ? (cent: number): string => EN_EUR_FMT.format(cent / 100) : formatEur
   const accent = safeColor(p.accentColor)
-  // v1.13 #118: explicit hide overrides the rate-based default.
-  const showFee = p.hideFeeColumn ? false : p.totals.feeCent !== null
+  // The profile can force visibility; auto preserves the original checkbox/rate rule.
+  const showFee =
+    p.fee_column === 'on' ||
+    (p.fee_column !== 'off' && !p.hideFeeColumn && p.totals.feeCent !== null)
   const showTimes = p.columns !== 'no_times'
   const labelSpan = showTimes ? 4 : 2
   const columnCount = labelSpan + (showFee ? 2 : 1)
-  const dateRange = `${formatDate(p.fromIso)} – ${formatDate(p.toIso)}`
-  const generated = formatDate(p.generatedAtIso)
+  const dateRange = `${formatDate(p.fromIso, language)} – ${formatDate(p.toIso, language)}`
+  const generated = formatDate(p.generatedAtIso, language)
 
   const senderLines = p.sender.address
     .split('\n')
@@ -570,7 +691,7 @@ export function buildPdfHtml(p: PdfPayload): string {
     .filter(Boolean)
     .join('<br />')
 
-  const taxLine = p.sender.taxId ? `<div>Steuernr.: ${esc(p.sender.taxId)}</div>` : ''
+  const taxLine = p.sender.taxId ? `<div>${labels.tax} ${esc(p.sender.taxId)}</div>` : ''
 
   const logoBlock = p.logoDataUrl
     ? `<img src="${esc(p.logoDataUrl)}" alt="" class="logo" />`
@@ -587,9 +708,9 @@ export function buildPdfHtml(p: PdfPayload): string {
         <td class="col-time">${esc(r.stopTime)}</td>`
             : ''
         }
-        <td class="col-desc">${esc(r.description)}${r.reference ? `<div class="entry-ref">${esc(r.reference)}</div>` : ''}${r.projectName ? `<div class="entry-project">Projekt: ${esc(r.projectName)}</div>` : ''}</td>
+        <td class="col-desc">${esc(r.description)}${r.reference ? `<div class="entry-ref">${esc(r.reference)}</div>` : ''}${r.projectName ? `<div class="entry-project">${labels.project} ${esc(r.projectName)}</div>` : ''}</td>
         <td class="col-dur">${esc(formatHoursMinutes(r.minutes))}</td>
-        ${showFee ? `<td class="col-fee">${esc(formatEur(r.feeCent ?? 0))}</td>` : ''}
+        ${showFee ? `<td class="col-fee">${esc(money(r.feeCent ?? 0))}</td>` : ''}
       </tr>`
       )
       .join('\n')
@@ -602,14 +723,14 @@ export function buildPdfHtml(p: PdfPayload): string {
       .map((g) => {
         const label = esc(g.label)
         const subtotalFee = showFee
-          ? `<td class="col-fee">${esc(formatEur(g.totalFeeCent ?? 0))}</td>`
+          ? `<td class="col-fee">${esc(money(g.totalFeeCent ?? 0))}</td>`
           : ''
         return `<tr class="group-header">
           <td colspan="${columnCount}" class="col-group">${label}</td>
         </tr>
         ${renderRows(g.rows)}
         <tr class="subtotal">
-          <td colspan="${labelSpan}">Zwischensumme ${label}</td>
+          <td colspan="${labelSpan}">${labels.subtotal} ${label}</td>
           <td class="col-dur">${esc(formatHoursMinutes(g.totalMinutes))}</td>
           ${subtotalFee}
         </tr>`
@@ -617,9 +738,9 @@ export function buildPdfHtml(p: PdfPayload): string {
       .join('\n')
 
     const totalsRowGrouped = `<tr class="total">
-        <td colspan="${labelSpan}">Gesamtsumme</td>
+        <td colspan="${labelSpan}">${labels.grandTotal}</td>
         <td class="col-dur">${esc(formatHoursMinutes(p.totals.minutes))}</td>
-        ${showFee ? `<td class="col-fee">${esc(formatEur(p.totals.feeCent ?? 0))}</td>` : ''}
+        ${showFee ? `<td class="col-fee">${esc(money(p.totals.feeCent ?? 0))}</td>` : ''}
       </tr>`
 
     tableBody = groupSections + '\n' + totalsRowGrouped
@@ -627,12 +748,12 @@ export function buildPdfHtml(p: PdfPayload): string {
     const tableRows = renderRows(p.rows)
     const emptyState =
       p.rows.length === 0
-        ? `<tr class="empty"><td colspan="${columnCount}">Keine Einträge im gewählten Zeitraum.</td></tr>`
+        ? `<tr class="empty"><td colspan="${columnCount}">${labels.empty}</td></tr>`
         : ''
     const totalsRow = `<tr class="total">
-        <td colspan="${labelSpan}">Summe</td>
+        <td colspan="${labelSpan}">${labels.total}</td>
         <td class="col-dur">${esc(formatHoursMinutes(p.totals.minutes))}</td>
-        ${showFee ? `<td class="col-fee">${esc(formatEur(p.totals.feeCent ?? 0))}</td>` : ''}
+        ${showFee ? `<td class="col-fee">${esc(money(p.totals.feeCent ?? 0))}</td>` : ''}
       </tr>`
     tableBody = tableRows + '\n' + emptyState + '\n' + totalsRow
   }
@@ -649,17 +770,17 @@ export function buildPdfHtml(p: PdfPayload): string {
   // looks like a forgotten template.
   const signatureBlock = p.includeSignatures
     ? `<div class="signature-row">
-      <div class="sig">Datum, Auftragnehmer</div>
-      <div class="sig">Datum, Auftraggeber</div>
+      <div class="sig">${labels.contractorSignature}</div>
+      <div class="sig">${labels.clientSignature}</div>
     </div>`
     : ''
 
   return `<!doctype html>
-<html lang="de">
+<html lang="${language}">
 <head>
 <meta charset="utf-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'" />
-<title>Stundennachweis</title>
+<title>${labels.title}</title>
 <style>
   * { box-sizing: border-box; }
   html, body {
@@ -797,11 +918,11 @@ export function buildPdfHtml(p: PdfPayload): string {
       </div>
     </header>
 
-    <h1 class="doc-title">Stundennachweis${p.runNumber ? ` Nr. ${esc(p.runNumber)}${p.invoiceRef?.trim() ? ` · zu Rechnung Nr. ${esc(p.invoiceRef.trim())}` : ''}` : ''}</h1>
+    <h1 class="doc-title">${labels.title}${p.runNumber ? ` ${labels.number} ${esc(p.runNumber)}${p.invoiceRef?.trim() ? ` · ${labels.invoice} ${esc(p.invoiceRef.trim())}` : ''}` : ''}</h1>
 
     <div class="meta-row">
       <div class="recipient">
-        <div class="label">Kunde</div>
+        <div class="label">${labels.client}</div>
         <div class="name">${esc(p.client.name)}</div>
         ${[
           p.client.billing_address_line1,
@@ -812,12 +933,12 @@ export function buildPdfHtml(p: PdfPayload): string {
           .filter(Boolean)
           .map((l) => `<div>${esc(l as string)}</div>`)
           .join('\n        ')}
-        ${p.client.vat_id ? `<div style="margin-top:2px;font-size:9pt;color:#475569;">USt-IdNr. ${esc(p.client.vat_id)}</div>` : ''}
-        ${p.effectiveContactPerson ? `<div style="margin-top:2px;font-size:9pt;color:#475569;">z.Hd. ${esc(p.effectiveContactPerson)}</div>` : ''}
-        ${p.projectName ? `<div class="project-label">Projekt: ${esc(p.projectName)}</div>` : ''}
+        ${p.client.vat_id ? `<div style="margin-top:2px;font-size:9pt;color:#475569;">${labels.vat} ${esc(p.client.vat_id)}</div>` : ''}
+        ${p.effectiveContactPerson ? `<div style="margin-top:2px;font-size:9pt;color:#475569;">${labels.attention} ${esc(p.effectiveContactPerson)}</div>` : ''}
+        ${p.projectName ? `<div class="project-label">${labels.project} ${esc(p.projectName)}</div>` : ''}
       </div>
       <div class="range">
-        <div class="label">Zeitraum</div>
+        <div class="label">${labels.period}</div>
         <div class="value">${esc(dateRange)}</div>
       </div>
     </div>
@@ -825,16 +946,16 @@ export function buildPdfHtml(p: PdfPayload): string {
     <table class="entries">
       <thead>
         <tr>
-          <th class="col-date">Datum</th>
+          <th class="col-date">${labels.date}</th>
           ${
             showTimes
-              ? `<th class="col-time">Von</th>
-          <th class="col-time">Bis</th>`
+              ? `<th class="col-time">${labels.from}</th>
+          <th class="col-time">${labels.to}</th>`
               : ''
           }
-          <th class="col-desc">Tätigkeit</th>
-          <th class="col-dur">Dauer</th>
-          ${showFee ? '<th class="col-fee">Honorar</th>' : ''}
+          <th class="col-desc">${labels.activity}</th>
+          <th class="col-dur">${labels.duration}</th>
+          ${showFee ? `<th class="col-fee">${labels.fee}</th>` : ''}
         </tr>
       </thead>
       <tbody>
@@ -846,7 +967,7 @@ export function buildPdfHtml(p: PdfPayload): string {
 
     <footer class="doc-foot">
       ${footer}
-      <div>Erstellt am ${esc(generated)} mit TimeTrack.</div>
+      <div>${labels.created} ${esc(generated)} ${labels.withApp}</div>
     </footer>
   </div>
 </body>

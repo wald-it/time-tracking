@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'" />
+<title>Stundennachweis</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: #0f172a;
+    font-size: 10pt;
+    line-height: 1.45;
+  }
+  .page { padding: 0; }
+  header.doc-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 28px;
+  }
+  .logo { max-height: 60px; max-width: 180px; object-fit: contain; }
+  .logo-placeholder { width: 1px; height: 60px; }
+  .sender {
+    text-align: right;
+    font-size: 9pt;
+    color: #334155;
+  }
+  .sender .name { font-weight: 600; color: #0f172a; }
+  h1.doc-title {
+    font-size: 18pt;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+    color: #0f172a;
+  }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 18px;
+    border-bottom: 2px solid #4f46e5;
+    padding-bottom: 8px;
+  }
+  .recipient { font-size: 11pt; }
+  .recipient .label { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 2px; }
+  .recipient .name { font-weight: 600; }
+  .recipient .project-label { font-size: 9pt; color: #475569; margin-top: 2px; }
+  .range { font-size: 10pt; color: #334155; }
+  .range .label { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
+  .range .value { font-weight: 600; color: #0f172a; }
+  table.entries {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+  }
+  table.entries th {
+    background: #4f46e5;
+    color: #ffffff;
+    font-weight: 600;
+    text-align: left;
+    padding: 7px 8px;
+    font-size: 9pt;
+  }
+  table.entries td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+    font-size: 10pt;
+  }
+  table.entries .col-date { white-space: nowrap; width: 76px; }
+  table.entries .col-time { white-space: nowrap; width: 52px; text-align: right; }
+  table.entries .col-desc { word-break: break-word; }
+  table.entries .entry-ref { font-size: 8pt; color: #64748b; margin-top: 1px; }
+  table.entries .entry-project { font-size: 8pt; color: #64748b; margin-top: 1px; font-style: italic; }
+  table.entries .col-dur { white-space: nowrap; text-align: right; width: 60px; font-variant-numeric: tabular-nums; }
+  table.entries .col-fee { white-space: nowrap; text-align: right; width: 84px; font-variant-numeric: tabular-nums; }
+  table.entries tr.total td {
+    border-top: 2px solid #4f46e5;
+    border-bottom: none;
+    font-weight: 700;
+    font-size: 11pt;
+    padding-top: 10px;
+  }
+  table.entries tr.empty td {
+    text-align: center;
+    color: #64748b;
+    padding: 24px 8px;
+    font-style: italic;
+  }
+  table.entries tr.group-header td.col-group {
+    background: #f1f5f9;
+    color: #334155;
+    font-weight: 700;
+    font-size: 9.5pt;
+    border-top: 2px solid #4f46e5;
+    border-bottom: none;
+    padding: 6px 8px;
+  }
+  table.entries tr.subtotal td {
+    border-top: 1px solid #cbd5e1;
+    border-bottom: 2px solid #4f46e5;
+    font-weight: 600;
+    font-size: 10pt;
+    color: #334155;
+    padding: 5px 8px;
+  }
+  footer.doc-foot {
+    margin-top: 36px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 8.5pt;
+    color: #64748b;
+  }
+  footer.doc-foot .footer-text { white-space: pre-wrap; margin-bottom: 6px; color: #475569; }
+  .signature-row {
+    margin-top: 48px;
+    display: flex;
+    justify-content: space-between;
+    gap: 48px;
+  }
+  .signature-row .sig {
+    flex: 1;
+    border-top: 1px solid #94a3b8;
+    padding-top: 4px;
+    font-size: 9pt;
+    color: #475569;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="doc-head">
+      <div class="logo-placeholder"></div>
+      <div class="sender">
+        <div class="name"></div>
+        
+        
+      </div>
+    </header>
+
+    <h1 class="doc-title">Stundennachweis</h1>
+
+    <div class="meta-row">
+      <div class="recipient">
+        <div class="label">Kunde</div>
+        <div class="name">Client</div>
+        
+        
+        
+        
+      </div>
+      <div class="range">
+        <div class="label">Zeitraum</div>
+        <div class="value">01.10.2026 – 31.10.2026</div>
+      </div>
+    </div>
+
+    <table class="entries">
+      <thead>
+        <tr>
+          <th class="col-date">Datum</th>
+          <th class="col-time">Von</th>
+          <th class="col-time">Bis</th>
+          <th class="col-desc">Tätigkeit</th>
+          <th class="col-dur">Dauer</th>
+          <th class="col-fee">Honorar</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="group-header">
+          <td colspan="6" class="col-group">REF</td>
+        </tr>
+        <tr>
+        <td class="col-date">20.10.2026</td>
+        <td class="col-time">09:00</td>
+        <td class="col-time">10:00</td>
+        <td class="col-desc">Work<div class="entry-ref">REF</div><div class="entry-project">Projekt: Project</div></td>
+        <td class="col-dur">1:00</td>
+        <td class="col-fee">60,00 €</td>
+      </tr>
+        <tr class="subtotal">
+          <td colspan="4">Zwischensumme REF</td>
+          <td class="col-dur">1:00</td>
+          <td class="col-fee">60,00 €</td>
+        </tr>
+<tr class="total">
+        <td colspan="4">Gesamtsumme</td>
+        <td class="col-dur">1:00</td>
+        <td class="col-fee">60,00 €</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <div class="signature-row">
+      <div class="sig">Datum, Auftragnehmer</div>
+      <div class="sig">Datum, Auftraggeber</div>
+    </div>
+
+    <footer class="doc-foot">
+      
+      <div>Erstellt am 30.10.2026 mit TimeTrack.</div>
+    </footer>
+  </div>
+</body>
+</html>
