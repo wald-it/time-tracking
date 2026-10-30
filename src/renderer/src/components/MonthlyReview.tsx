@@ -259,6 +259,20 @@ function ReviewResults({
     })
   const time = (iso: string): string =>
     new Date(iso).toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' })
+  // The day finding carries a local YYYY-MM-DD key; show it like the other dates.
+  const findingText = (finding: RuleCheckFinding): string => {
+    const day = finding.params.day
+    if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      return formatRuleCheckFinding(finding, locale)
+    }
+    const [y, m, d] = day.split('-').map(Number)
+    const shown = new Date(y, m - 1, d).toLocaleDateString(intlLocale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
+    return formatRuleCheckFinding({ ...finding, params: { ...finding.params, day: shown } }, locale)
+  }
   function openEditor(id: number, jump = false): void {
     setEditingId(id)
     if (jump) {
@@ -295,7 +309,7 @@ function ReviewResults({
                     className={`w-full py-1 text-left hover:bg-[var(--key)] ${FOCUS}`}
                   >
                     {entry && <span>{dateTime(entry.entry_start)} · </span>}
-                    {formatRuleCheckFinding(finding, locale)}
+                    {findingText(finding)}
                   </button>
                 </li>
               )
@@ -317,10 +331,9 @@ function ReviewResults({
           <h3 className={`${LEGEND} mb-2`}>
             {t('review.entries', { count: result.entries.length })}
           </h3>
-          <ul
-            aria-label={t('review.entries', { count: result.entries.length })}
-            className="max-h-[36rem] overflow-auto"
-          >
+          {/* No scroll box of its own: the editor's sticky button bar would stick to
+              its lower edge and cover the form. The list scrolls with the page. */}
+          <ul aria-label={t('review.entries', { count: result.entries.length })}>
             {result.entries.length === 0 && <li className={READOUT}>{t('review.noEntries')}</li>}
             {result.entries.map((entry) => (
               <li

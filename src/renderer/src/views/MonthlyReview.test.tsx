@@ -247,6 +247,37 @@ describe('monthly review', () => {
       expect(period).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 3 }))
     )
   })
+  it('shows the day of a day finding as a display date, not as the ISO key', async () => {
+    period.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          entryId: 1,
+          rule: 'day_over_threshold',
+          params: { day: '2026-09-03', hours: '11:45', threshold: 10 }
+        }
+      ]
+    })
+    const ui = await selectClient()
+    const line = within(ui.getByRole('list', { name: 'Befunde (1)' })).getByRole('button')
+    expect(line).toHaveTextContent('03.09.2026: insgesamt 11:45 h, über 10 h.')
+    expect(line).not.toHaveTextContent('2026-09-03')
+    await act(async () => useSettingsStore.setState({ settings: { language: 'en' } as never }))
+    const english = within(screen.getByRole('list', { name: 'Findings (1)' })).getByRole('button')
+    expect(english).toHaveTextContent('03/09/2026: 11:45 h in total, above 10 h.')
+  })
+  it('keeps the inline editor out of a nested scroll box, so its sticky buttons cover nothing', async () => {
+    const ui = await selectClient()
+    fireEvent.click(
+      within(ui.getByRole('listitem', { name: 'Eintrag 1' })).getByRole('button', {
+        name: 'Bearbeiten'
+      })
+    )
+    const field = ui.getByLabelText(/^Beschreibung/)
+    for (let el = field.parentElement; el; el = el.parentElement) {
+      expect(el.className).not.toMatch(/overflow-(auto|scroll|y-auto|y-scroll)|max-h-/)
+    }
+  })
   it('reloads when entries are written elsewhere in the app', async () => {
     await selectClient()
     expect(period).toHaveBeenCalledTimes(1)
