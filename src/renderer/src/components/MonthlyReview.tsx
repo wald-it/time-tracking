@@ -7,6 +7,7 @@ import { formatSecondsHm } from '../../../shared/currency'
 import { useLocale, useT } from '../contexts/I18nContext'
 import { useWeekStart } from '../hooks/useWeekStart'
 import { useEntriesStore } from '../store/entriesStore'
+import { useTimerStore } from '../store/timerStore'
 import { BilledChip } from './BilledChip'
 import { EntryEditForm } from './EntryEditForm'
 import { FIELD_LABEL, FOCUS, INPUT, KEY_INV, LEGEND, READOUT, SECTION } from './instrumentClasses'
@@ -221,11 +222,17 @@ function ReviewResults({
     findings: RuleCheckFinding[]
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
+  // The entry as it was when the editor opened. A reload while it is open must
+  // not hand the form a newer version_no under its old field values, or saving
+  // would overwrite the newer write without a conflict.
+  const [editing, setEditing] = useState<PeriodReviewEntry | null>(null)
+  const editingId = editing?.id ?? null
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
   const rows = useRef(new Map<number, HTMLLIElement>())
-  // Entry writes elsewhere (timer stop, quick note, calendar) reload the review too.
+  // Entry writes elsewhere (quick note, calendar) reload the review too, and so
+  // does a timer that starts or stops outside it (hotkey, tray, MCP), as in Heute.
   const entriesVersion = useEntriesStore((s) => s.version)
+  const runningId = useTimerStore((s) => s.runningEntry?.id)
   const { clientId, projectId, fromIso, toIso } = selection
   useEffect(() => {
     let cancelled = false
@@ -247,7 +254,7 @@ function ReviewResults({
     return () => {
       cancelled = true
     }
-  }, [clientId, projectId, fromIso, toIso, refreshKey, entriesVersion])
+  }, [clientId, projectId, fromIso, toIso, refreshKey, entriesVersion, runningId])
   const intlLocale = locale === 'en' ? 'en-GB' : 'de-DE'
   const dateTime = (iso: string): string =>
     new Date(iso).toLocaleString(intlLocale, {
@@ -274,7 +281,7 @@ function ReviewResults({
     return formatRuleCheckFinding({ ...finding, params: { ...finding.params, day: shown } }, locale)
   }
   function openEditor(id: number, jump = false): void {
-    setEditingId(id)
+    setEditing(result?.entries.find((e) => e.id === id) ?? null)
     if (jump) {
       setHighlightedId(id)
       const row = rows.current.get(id)
@@ -378,14 +385,14 @@ function ReviewResults({
                     <span className={FIELD_LABEL}>{t('review.hasFindings')}</span>
                   )}
                 </button>
-                {editingId === entry.id && (
+                {editing?.id === entry.id && (
                   <div className="mt-3 max-w-2xl">
                     <EntryEditForm
-                      entry={entry}
+                      entry={editing}
                       clients={clients}
-                      onCancel={() => setEditingId(null)}
+                      onCancel={() => setEditing(null)}
                       // The form bumps the entries version on save; that reloads the review.
-                      onSaved={() => setEditingId(null)}
+                      onSaved={() => setEditing(null)}
                     />
                   </div>
                 )}

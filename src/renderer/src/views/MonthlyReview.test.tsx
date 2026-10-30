@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { I18nProvider } from '../contexts/I18nContext'
 import { useEntriesStore } from '../store/entriesStore'
 import { useSettingsStore } from '../store/settingsStore'
+import { useTimerStore } from '../store/timerStore'
 import ExportView from './ExportView'
 
 const period = vi.fn()
@@ -284,6 +285,37 @@ describe('monthly review', () => {
     await act(async () => useEntriesStore.getState().bumpVersion())
     await waitFor(() => expect(period).toHaveBeenCalledTimes(2))
     expect(getForReview).toHaveBeenCalledTimes(2)
+  })
+  it('keeps the version the editor opened with when the review reloads meanwhile', async () => {
+    const ui = await selectClient()
+    fireEvent.click(
+      within(ui.getByRole('listitem', { name: 'Eintrag 1' })).getByRole('button', {
+        name: 'Bearbeiten'
+      })
+    )
+    getForReview.mockResolvedValue({
+      ok: true,
+      data: [{ ...entries[0], description: 'Changed elsewhere', version_no: 2 }, entries[1]]
+    })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    await ui.findByText('Changed elsewhere')
+    fireEvent.change(ui.getByLabelText(/^Beschreibung/), { target: { value: 'Mine' } })
+    fireEvent.click(ui.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1, description: 'Mine', expected_version: 1 })
+      )
+    )
+  })
+  it('reloads when a timer starts or stops outside the review (hotkey, tray, MCP)', async () => {
+    useTimerStore.setState({ runningEntry: null })
+    await selectClient()
+    expect(period).toHaveBeenCalledTimes(1)
+    await act(async () => useTimerStore.setState({ runningEntry: { id: 5 } as never }))
+    await waitFor(() => expect(period).toHaveBeenCalledTimes(2))
+    await act(async () => useTimerStore.setState({ runningEntry: null }))
+    await waitFor(() => expect(period).toHaveBeenCalledTimes(3))
+    expect(getForReview).toHaveBeenCalledTimes(3)
   })
   it('reloads when a billing run is released, so its entries no longer show as billed', async () => {
     const run = {
