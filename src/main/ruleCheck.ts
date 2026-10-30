@@ -20,6 +20,7 @@ interface CheckedRow {
   project_id: number | null
   billable: number
   rate_cent: number | null
+  version_id: number
   entry_start: string
   entry_stop: string
 }
@@ -54,7 +55,7 @@ export function checkPeriod(db: Database.Database, request: RuleCheckRequest): R
   const rows = db
     .prepare(
       `
-    SELECT e.id, e.description, e.project_id, e.billable, e.rate_cent,
+    SELECT e.id, e.version_id, e.description, e.project_id, e.billable, e.rate_cent,
            v.started_at AS entry_start, v.stopped_at AS entry_stop
     FROM entries e JOIN entry_version v ON v.id = e.version_id
     WHERE e.client_id = ? AND e.deleted_at IS NULL
@@ -75,11 +76,22 @@ export function checkPeriod(db: Database.Database, request: RuleCheckRequest): R
 
   const entries = new Map<number, CheckedRow[]>()
   for (const row of rows) entries.set(row.id, [...(entries.get(row.id) ?? []), row])
-  const days = new Set<string>()
+  // Migrated 1.x link groups keep gaps between their segments, so the version's
+  // start and stop are not working time; check every stored segment instead.
+  const segmentsOf = db.prepare(
+    'SELECT started_at, stopped_at FROM entry_segment WHERE version_id = ? ORDER BY seq'
+  )
+  const partsById = new Map<number, Segment[]>()
   for (const [row] of entries.values()) {
-    for (const part of dayParts(new Date(row.entry_start), new Date(row.entry_stop)))
-      days.add(localDateKey(part.start))
+    const stored = segmentsOf.all(row.version_id) as { started_at: string; stopped_at: string }[]
+    partsById.set(
+      row.id,
+      stored.flatMap((s) => dayParts(new Date(s.started_at), new Date(s.stopped_at)))
+    )
   }
+  const days = new Set<string>()
+  for (const parts of partsById.values())
+    for (const part of parts) days.add(localDateKey(part.start))
   const sortedDays = [...days].sort()
   const first = new Date(`${sortedDays[0]}T00:00:00`)
   const last = new Date(`${sortedDays[sortedDays.length - 1]}T00:00:00`)
@@ -113,16 +125,16 @@ export function checkPeriod(db: Database.Database, request: RuleCheckRequest): R
     if (row.project_id === null) add('missing_project')
     if (row.billable && segments.some((segment) => !segment.rate_cent)) add('billable_without_rate')
     if (!row.billable) add('not_billable')
-    const start = new Date(row.entry_start)
-    const stop = new Date(row.entry_stop)
-    const hours = (stop.getTime() - start.getTime()) / 3_600_000
+    const parts = partsById.get(row.id)!
+    const hours =
+      parts.reduce((sum, part) => sum + part.stop.getTime() - part.start.getTime(), 0) / 3_600_000
     if (hours > rules.entryMaxHours)
       add('entry_over_threshold', { hours: hoursText(hours), threshold: rules.entryMaxHours })
     if (row.description.length > rules.maxDescriptionLength)
       add('too_long', { length: row.description.length, threshold: rules.maxDescriptionLength })
     let outside = false
     let weekend = false
-    for (const part of dayParts(start, stop)) {
+    for (const part of parts) {
       const day = localDateKey(part.start)
       const dayHours = (totals.get(day) ?? 0) / 3_600_000
       if (dayHours > rules.dayMaxHours)

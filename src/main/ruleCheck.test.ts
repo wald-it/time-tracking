@@ -253,6 +253,20 @@ describe('checkPeriod', () => {
     expect(findings('missing_description').map((f) => f.entryId)).toHaveLength(2)
   })
 
+  it('measures a migrated link group by its segments, not across the gap between them', () => {
+    // 2026-06-05 is a Friday, 2026-06-08 the Monday after.
+    const id = seedEntry(db, {
+      client_id: 1,
+      project_id: 1,
+      description: 'Work',
+      segments: [
+        { started_at: local(5, 17), stopped_at: local(5, 18) },
+        { started_at: local(8, 8), stopped_at: local(8, 9) }
+      ]
+    })
+    expect(checkPeriod(db, request).filter((f) => f.entryId === id)).toEqual([])
+  })
+
   it('uses stored segment dates for selection even after a time-zone change', () => {
     const id = seedEntry(db, {
       client_id: 1,
