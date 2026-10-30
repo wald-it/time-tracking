@@ -28,6 +28,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
   get_running_timer: READ,
   get_dashboard: READ,
   get_analytics: READ,
+  get_report: READ,
   // Only adds a new entry.
   create_manual_entry: write(false),
   // Seals the current version and writes a new one under the same id.

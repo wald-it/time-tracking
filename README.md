@@ -108,13 +108,24 @@ hours for client X in June by project" or "log the meeting I forgot".
 project number), `list_entries` (month or date range, filter by client/project/tag,
 summary-only mode), `get_running_timer`, `get_dashboard`, `get_analytics` (monthly
 worked time to the second, plus `rounded_seconds` / `billable_rounded_seconds`
-rounded per entry like the invoice; revenue optional), `check_period` (the app's
+rounded per entry like the invoice; revenue optional), `get_report` (custom periods,
+grouping and filters; see below), `check_period` (the app's
 rule check for a required `client_id` and optional `project_id`; either `year` +
 `month` for a local calendar month or local dates `from` + `to`, both inclusive,
 in `YYYY-MM-DD` form). `check_period` only reports findings and never changes
 entries. It returns entry IDs, stored start times, rule IDs, parameters and German
 messages, without entry descriptions, rates or internal notes. Day findings show
 `DD.MM.YYYY` in the message; `params.day` keeps its machine-readable `YYYY-MM-DD` form.
+
+`get_report` reports worked time, billed time and optional revenue over 1–366 local
+days (`from`/`to` as `YYYY-MM-DD`, both inclusive). Group by any ordered subset of
+`client`, `project`, `day`, or request totals only; filter by `client_id`, `project_id`
+and `billable_only`. Days follow stored segment dates; distinct entry counts include
+a midnight-spanning entry on each day but once in totals. Project rows stay separate
+per entry client, including entries without a project. Rates remain hidden by default.
+
+Three MCP prompts cover logging forgotten time, the monthly close and plausibility
+checks. See [MCP recipes](docs/mcp-recipes.md) for their arguments and full texts.
 
 **Write tools** (opt-in, see below): `create_manual_entry`, `update_entry_fields`,
 `start_timer`, `stop_running_timer` — each with `preview: true` for a preview without a commit.

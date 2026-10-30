@@ -15,7 +15,7 @@
  */
 import { budgetUsedMinutesSql } from '../shared/currency'
 import { readDefaultIntervalMin } from '../shared/billingProfile'
-import { localMonthRange } from '../shared/dateRanges'
+import { localDayRange, localMonthRange } from '../shared/dateRanges'
 import { dueRateSql } from '../shared/dueRate'
 import { deserializeTags } from '../shared/tags'
 import { parseWeekStart, weekStartModifiers, WEEK_START_SETTING_KEY } from '../shared/weekStart'
@@ -795,11 +795,15 @@ export interface McpAnalytics {
   revenue_cent?: number
 }
 
+// Both reports read the view's segment figures; the view owns all money rules.
+const ENTRY_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
+const BILLED_SEC = `(e.billed_minutes * 60)`
+const REVENUE = 'e.fee_cent'
+
 /**
  * Monthly analytics mirroring analyticsHandlers.buildAnalyticsSummary:
- * completed entries only, rounding step from `pdf_round_minutes`, revenue via
- * `rate = project.rate ?? client.rate`. Revenue fields are omitted entirely
- * unless rates are exposed.
+ * completed segments only, with billed time and revenue from billing_lines.
+ * Revenue fields are omitted entirely unless rates are exposed.
  */
 export function getAnalytics(
   db: SqliteDb,
@@ -810,10 +814,6 @@ export function getAnalytics(
   // Seconds are worked time, raw — the same rule as the app's Auswertung
   // (owner decision 2026-10-22). `rounded_seconds` is the month rounded per
   // entry like the invoice. Revenue follows the invoice rule (REVENUE).
-  const ENTRY_SEC = `(CAST(strftime('%s', e.stopped_at) AS INTEGER) - CAST(strftime('%s', e.started_at) AS INTEGER))`
-  const BILLED_SEC = `(e.billed_minutes * 60)`
-  // Revenue per entry exactly as the invoice bills it (shared/currency.ts).
-  const REVENUE = 'e.fee_cent'
   const monthKey = `${year}-${String(month).padStart(2, '0')}`
 
   const totals = db
@@ -913,4 +913,155 @@ export function getAnalytics(
   }
   if (privacy.exposeRates) result.revenue_cent = Math.round(totals.revenue_cent ?? 0)
   return result
+}
+
+export type ReportGroup = 'client' | 'project' | 'day'
+
+export interface ReportQuery {
+  /** Inclusive local dates, YYYY-MM-DD. */
+  from: string
+  to: string
+  /** Outermost first; empty for totals only. */
+  groupBy: ReportGroup[]
+  clientId?: number
+  projectId?: number
+  billableOnly?: boolean
+}
+
+export interface ReportFigures {
+  /** Distinct entries in this group, not segments or versions. */
+  entry_count: number
+  /** Worked time, whole timestamp seconds as in get_analytics. */
+  seconds: number
+  billable_seconds: number
+  /** Billed time from the view, including non-billable segments. */
+  rounded_seconds: number
+  billable_rounded_seconds: number
+  revenue_cent?: number
+}
+
+export interface McpReportRow extends ReportFigures {
+  client_id?: number
+  client_name?: string
+  project_id?: number | null
+  project_name?: string
+  /** Stored segment_date, including the second day of a midnight split. */
+  day?: string
+}
+
+export interface McpReport {
+  from: string
+  to: string
+  group_by: ReportGroup[]
+  totals: ReportFigures
+  rows: McpReportRow[]
+}
+
+export const REPORT_MAX_DAYS = 366
+
+/** Completed, live segments only. Descriptions and notes are never selected. */
+export function getReport(db: SqliteDb, privacy: PrivacyConfig, q: ReportQuery): McpReport {
+  // Reuse check_period's calendar validation and its exact date errors.
+  localDayRange(q.from, q.to)
+  if (q.from > q.to) throw new Error(`from (${q.from}) is after to (${q.to})`)
+  // Validated calendar dates at UTC midnight count days independently of DST.
+  const days =
+    (Date.parse(`${q.to}T00:00:00Z`) - Date.parse(`${q.from}T00:00:00Z`)) / 86_400_000 + 1
+  if (days > REPORT_MAX_DAYS) {
+    throw new Error(`A report covers at most ${REPORT_MAX_DAYS} days, requested: ${days}`)
+  }
+  if (new Set(q.groupBy).size !== q.groupBy.length) {
+    throw new Error(`group_by names a group twice: ${q.groupBy.join(', ')}`)
+  }
+
+  const where = ['e.stopped_at IS NOT NULL', 'e.segment_date BETWEEN @from AND @to']
+  const params: Record<string, unknown> = { from: q.from, to: q.to }
+  if (q.clientId !== undefined) {
+    where.push('e.client_id = @clientId')
+    params.clientId = q.clientId
+  }
+  if (q.projectId !== undefined) {
+    where.push('e.project_id = @projectId')
+    params.projectId = q.projectId
+  }
+  if (q.billableOnly) where.push('e.billable = 1')
+
+  const keys: Record<ReportGroup, { select: string[]; group: string[]; order: string[] }> = {
+    client: {
+      select: ['e.client_id AS client_id', 'c.name AS client_name'],
+      group: ['e.client_id'],
+      order: ['c.name ASC', 'e.client_id ASC']
+    },
+    project: {
+      select: [
+        'e.client_id AS client_id',
+        'e.project_id AS project_id',
+        "COALESCE(p.name, '(kein Projekt)') AS project_name"
+      ],
+      group: ['e.client_id', 'e.project_id'],
+      order: ['project_name ASC', 'e.project_id ASC', 'e.client_id ASC']
+    },
+    day: {
+      select: ['e.segment_date AS day'],
+      group: ['e.segment_date'],
+      order: ['e.segment_date ASC']
+    }
+  }
+  const groups = q.groupBy.map((g) => {
+    if (!Object.hasOwn(keys, g)) throw new Error(`Unknown group_by key: ${g}`)
+    return keys[g]
+  })
+  const figuresSql = `COUNT(DISTINCT e.entry_id) AS entry_count,
+    COALESCE(SUM(${ENTRY_SEC}), 0) AS seconds,
+    COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${ENTRY_SEC} ELSE 0 END), 0) AS billable_seconds,
+    COALESCE(SUM(${BILLED_SEC}), 0) AS rounded_seconds,
+    COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${BILLED_SEC} ELSE 0 END), 0) AS billable_rounded_seconds,
+    COALESCE(SUM(CASE WHEN e.billable = 1 THEN ${REVENUE} ELSE 0 END), 0) AS revenue_cent`
+  const fromSql = `FROM billing_lines e
+    JOIN clients c ON c.id = e.client_id
+    LEFT JOIN projects p ON p.id = e.project_id
+    WHERE ${where.join(' AND ')}`
+  const figures = (r: ReportFigures): ReportFigures => ({
+    entry_count: r.entry_count,
+    seconds: Math.max(0, Math.floor(r.seconds ?? 0)),
+    billable_seconds: Math.max(0, Math.floor(r.billable_seconds ?? 0)),
+    rounded_seconds: Math.max(0, Math.round(r.rounded_seconds ?? 0)),
+    billable_rounded_seconds: Math.max(0, Math.round(r.billable_rounded_seconds ?? 0)),
+    ...(privacy.exposeRates ? { revenue_cent: Math.round(r.revenue_cent ?? 0) } : {})
+  })
+  // Query totals separately: summing day counts would double-count split entries.
+  const totals = db.prepare(`SELECT ${figuresSql} ${fromSql}`).get(params) as ReportFigures
+  const raw = groups.length
+    ? (db
+        .prepare(
+          `SELECT ${[...new Set(groups.flatMap((g) => g.select)), figuresSql].join(', ')}
+        ${fromSql}
+        GROUP BY ${[...new Set(groups.flatMap((g) => g.group))].join(', ')}
+        HAVING seconds > 0 OR billable_rounded_seconds > 0
+        ORDER BY ${groups.flatMap((g) => g.order).join(', ')}`
+        )
+        .all(params) as McpReportRow[])
+    : []
+  return {
+    from: q.from,
+    to: q.to,
+    group_by: q.groupBy,
+    totals: figures(totals),
+    rows: raw.map((r) => {
+      // Preserve the requested key order, including the entry's client for project rows.
+      const dimensions: Partial<McpReportRow> = {}
+      for (const key of q.groupBy) {
+        if (key === 'client')
+          Object.assign(dimensions, { client_id: r.client_id, client_name: r.client_name })
+        if (key === 'project')
+          Object.assign(dimensions, {
+            client_id: r.client_id,
+            project_id: r.project_id ?? null,
+            project_name: r.project_name
+          })
+        if (key === 'day') dimensions.day = r.day
+      }
+      return { ...dimensions, ...figures(r) }
+    })
+  }
 }
