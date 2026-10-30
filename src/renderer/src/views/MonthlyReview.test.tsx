@@ -300,6 +300,14 @@ describe('monthly review', () => {
     await act(async () => useEntriesStore.getState().bumpVersion())
     await ui.findByText('Changed elsewhere')
     fireEvent.change(ui.getByLabelText(/^Beschreibung/), { target: { value: 'Mine' } })
+    // Opening the same entry again, from its row and from its finding, keeps the snapshot.
+    fireEvent.click(
+      within(ui.getByRole('listitem', { name: 'Eintrag 1' })).getByRole('button', {
+        name: 'Bearbeiten'
+      })
+    )
+    fireEvent.click(within(ui.getByRole('list', { name: 'Befunde (2)' })).getAllByRole('button')[0])
+    expect(ui.getByLabelText(/^Beschreibung/)).toHaveValue('Mine')
     fireEvent.click(ui.getByRole('button', { name: 'Speichern' }))
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(

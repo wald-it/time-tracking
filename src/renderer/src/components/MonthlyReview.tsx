@@ -281,7 +281,11 @@ function ReviewResults({
     return formatRuleCheckFinding({ ...finding, params: { ...finding.params, day: shown } }, locale)
   }
   function openEditor(id: number, jump = false): void {
-    setEditing(result?.entries.find((e) => e.id === id) ?? null)
+    // A second click on the open entry keeps its snapshot: the mounted form
+    // keeps its field values, so it must keep their version too.
+    setEditing((open) =>
+      open?.id === id ? open : (result?.entries.find((e) => e.id === id) ?? null)
+    )
     if (jump) {
       setHighlightedId(id)
       const row = rows.current.get(id)
