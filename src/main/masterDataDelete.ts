@@ -22,6 +22,14 @@ function fail(error: string): IpcResult<never> {
   return { ok: false, error }
 }
 
+/**
+ * SQL that is 1 while the guard below would refuse the delete (#452): the
+ * lists carry it so the Kunden view can disable the key instead of failing.
+ */
+export function hasEntryVersionsSql(column: 'client_id' | 'project_id', idExpr: string): string {
+  return `EXISTS (SELECT 1 FROM entry_version WHERE ${column} = ${idExpr})`
+}
+
 function versionCount(
   db: Database.Database,
   column: 'client_id' | 'project_id',

@@ -12,7 +12,8 @@ import {
   CLIENT_HAS_ENTRIES_ERROR,
   PROJECT_HAS_ENTRIES_ERROR,
   deleteClientGuarded,
-  deleteProjectGuarded
+  deleteProjectGuarded,
+  hasEntryVersionsSql
 } from './masterDataDelete'
 
 let DatabaseImpl: DatabaseCtor
@@ -111,5 +112,40 @@ describe('deleteProjectGuarded', () => {
     ).toBe(true)
     expect(count(`SELECT COUNT(*) AS n FROM entries WHERE project_id = 10`)).toBe(0)
     expect(deleteProjectGuarded(db, 10)).toEqual({ ok: false, error: PROJECT_HAS_ENTRIES_ERROR })
+  })
+})
+
+describe('hasEntryVersionsSql (#452): the lists flag exactly what the guard refuses', () => {
+  it('agrees with both guards for deleted entries, earlier versions and untouched records', () => {
+    const gone = entry(1, 10, 9)
+    writeEntry(db, { op: 'delete', id: gone }, { source: 'app' })
+    const moved = entry(1, 30, 11)
+    writeEntry(db, { op: 'patch', id: moved, patch: { project_id: null } }, { source: 'app' })
+
+    const flags = (table: 'clients' | 'projects'): Record<number, number> => {
+      const column = table === 'clients' ? 'client_id' : 'project_id'
+      const rows = db
+        .prepare(`SELECT t.id, ${hasEntryVersionsSql(column, 't.id')} AS f FROM ${table} t`)
+        .all() as Array<{ id: number; f: number }>
+      return Object.fromEntries(rows.map((r) => [r.id, r.f]))
+    }
+    // The guard deletes on success; run it in a savepoint and roll back.
+    const refused = (guard: () => { ok: boolean }): number => {
+      db.exec('SAVEPOINT probe')
+      try {
+        return guard().ok ? 0 : 1
+      } finally {
+        db.exec('ROLLBACK TO probe; RELEASE probe')
+      }
+    }
+
+    expect(flags('clients')).toEqual({ 1: 1, 2: 0 })
+    expect(flags('projects')).toEqual({ 10: 1, 20: 0, 30: 1 })
+    for (const id of [1, 2]) {
+      expect(refused(() => deleteClientGuarded(db, id))).toBe(flags('clients')[id])
+    }
+    for (const id of [10, 20, 30]) {
+      expect(refused(() => deleteProjectGuarded(db, id))).toBe(flags('projects')[id])
+    }
   })
 })

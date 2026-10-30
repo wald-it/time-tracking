@@ -642,12 +642,14 @@ function ClientItem({
         >
           <Icons.Edit />
         </button>
+        {/* #452: with entries the key stays focusable and says why it does nothing. */}
         <button
-          onClick={() => onDelete(c)}
-          className={ICON_BTN}
-          style={{ color: 'var(--danger)' }}
+          onClick={() => !c.has_entry_versions && onDelete(c)}
+          className={`${ICON_BTN}${c.has_entry_versions ? ' cursor-not-allowed' : ''}`}
+          style={{ color: c.has_entry_versions ? 'var(--ink3)' : 'var(--danger)' }}
           aria-label={`${t('common.delete')}: ${c.name}`}
-          title={t('common.delete')}
+          aria-disabled={c.has_entry_versions ? true : undefined}
+          title={c.has_entry_versions ? t('clients.delete.blocked') : t('common.delete')}
         >
           <Icons.Trash />
         </button>
@@ -852,11 +854,12 @@ function ProjectItem({
         <Icons.Edit />
       </button>
       <button
-        onClick={() => onDelete(p)}
-        className={`${ICON_BTN} opacity-0 group-hover:opacity-100 focus-visible:opacity-100`}
-        style={{ color: 'var(--danger)' }}
+        onClick={() => !p.has_entry_versions && onDelete(p)}
+        className={`${ICON_BTN} opacity-0 group-hover:opacity-100 focus-visible:opacity-100${p.has_entry_versions ? ' cursor-not-allowed' : ''}`}
+        style={{ color: p.has_entry_versions ? 'var(--ink3)' : 'var(--danger)' }}
         aria-label={`${t('common.delete')}: ${p.name}`}
-        title={t('common.delete')}
+        aria-disabled={p.has_entry_versions ? true : undefined}
+        title={p.has_entry_versions ? t('projects.delete.blocked') : t('common.delete')}
       >
         <Icons.Trash />
       </button>

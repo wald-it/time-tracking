@@ -661,6 +661,54 @@ describe('ClientsView — refused delete (#452)', () => {
     ])
   })
 
+  it('a client with entries: the key says why and opens no dialog', async () => {
+    const del = vi.fn()
+    Object.assign(window.api.clients, {
+      getAll: async () => ({
+        ok: true as const,
+        data: CLIENTS.map((c) => ({ ...c, has_entry_versions: c.id === 1 ? 1 : 0 }))
+      }),
+      delete: del
+    })
+    await renderView()
+    const key = screen.getByRole('button', { name: 'Löschen: Acme' })
+    expect(key).toHaveAttribute('aria-disabled', 'true')
+    expect(key).toHaveAttribute('title', 'Hat Einträge (auch gelöschte). Archivieren statt löschen.')
+    fireEvent.click(key)
+    await act(async () => {})
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('a project with entries: the key says why and opens no dialog', async () => {
+    const del = vi.fn()
+    Object.assign(window.api.projects, {
+      getAll: async ({ clientId }: { clientId: number }) => ({
+        ok: true as const,
+        data: PROJECTS.filter((p) => p.client_id === clientId).map((p) => ({
+          ...p,
+          has_entry_versions: p.id === 10 ? 1 : 0
+        }))
+      }),
+      delete: del
+    })
+    await renderView()
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /Projekte anzeigen/ })[0])
+    })
+    const key = screen.getByRole('button', { name: 'Löschen: Rollout' })
+    expect(key).toHaveAttribute('aria-disabled', 'true')
+    expect(key).toHaveAttribute('title', 'Hat Einträge (auch gelöschte). Archivieren statt löschen.')
+    fireEvent.click(key)
+    await act(async () => {})
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(del).not.toHaveBeenCalled()
+    // A record without entries keeps the normal key.
+    expect(screen.getByRole('button', { name: 'Löschen: Acme' })).not.toHaveAttribute(
+      'aria-disabled'
+    )
+  })
+
   it('no longer promises that deleting a client removes its entries', async () => {
     await renderView()
     fireEvent.click(screen.getByRole('button', { name: 'Löschen: Acme' }))

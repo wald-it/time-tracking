@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import type { Client, CreateClientInput, IpcResult, UpdateClientInput } from '../shared/types'
 import { registerIpcHandlers, type IpcHooks } from './ipc'
+import { writeEntry } from './entryMutations'
 
 const { handlers, dbRef } = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, input: unknown) => IpcResult<Client>>(),
@@ -108,5 +109,50 @@ describe('client short codes through the registered IPC handlers', () => {
   it('allows creating clients without a code', () => {
     const input: CreateClientInput = { name: 'Without code', color: '#123456' }
     expect(saved(handlers.get('clients:create')!(null, input)).short_code).toBeNull()
+  })
+})
+
+describe('client and project lists flag a refused delete (#452)', () => {
+  it('marks the records an entry version points at, a deleted entry included', () => {
+    const used = saved(create('USED'))
+    const free = saved(create('FREE'))
+    const project = (client_id: number, name: string): number =>
+      Number(
+        db
+          .prepare(`INSERT INTO projects (client_id, name, status, active) VALUES (?, ?, 'active', 1)`)
+          .run(client_id, name).lastInsertRowid
+      )
+    const usedProject = project(used.id, 'Used')
+    const freeProject = project(used.id, 'Free')
+    const r = writeEntry(
+      db,
+      {
+        op: 'create',
+        fields: {
+          client_id: used.id,
+          project_id: usedProject,
+          description: 'x',
+          started_at: '2026-06-10T08:00:00.000Z',
+          stopped_at: '2026-06-10T09:00:00.000Z'
+        }
+      },
+      { source: 'app' }
+    )
+    if (!r.ok) throw new Error(r.error)
+    writeEntry(db, { op: 'delete', id: r.data.id }, { source: 'app' })
+
+    const list = <T extends { id: number; has_entry_versions?: number }>(
+      channel: string,
+      arg?: unknown
+    ): Record<number, number | undefined> => {
+      const res = handlers.get(channel)!(null, arg) as unknown as IpcResult<T[]>
+      if (!res.ok) throw new Error(res.error)
+      return Object.fromEntries(res.data.map((x) => [x.id, x.has_entry_versions]))
+    }
+    expect(list('clients:getAll')).toEqual({ [used.id]: 1, [free.id]: 0 })
+    expect(list('projects:getAll', { clientId: used.id })).toEqual({
+      [usedProject]: 1,
+      [freeProject]: 0
+    })
   })
 })
