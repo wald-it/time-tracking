@@ -630,3 +630,48 @@ describe('release-latest: may a completed prerelease take the latest marker? (#2
     expect(r.stderr).toMatch(/by hand/)
   })
 })
+
+describe('test.yml spends Windows minutes on pull requests only (#441)', () => {
+  const TEST_WORKFLOW = join(WORKFLOW_DIR, 'test.yml')
+  const text = readFileSync(TEST_WORKFLOW, 'utf8').replace(/\r\n/g, '\n')
+  const jobs = jobsOf(text)
+  // Comments between jobs land in the job above them; only YAML lines count.
+  const yamlOf = (job: string): string =>
+    job
+      .split('\n')
+      .filter((line) => !/^\s*#/.test(line))
+      .join('\n')
+  const costly = Object.keys(jobs).filter((id) => /\b(windows|macos)-/.test(yamlOf(jobs[id])))
+
+  it('still runs on a push to main and on every pull request', () => {
+    const on = text.slice(text.indexOf('\non:\n'), text.indexOf('\njobs:\n'))
+    expect(on).toMatch(/\n {2}push:\n {4}branches: \[main\]\n/)
+    expect(on).toMatch(/\n {2}pull_request:\n/)
+  })
+
+  it('finds the Windows jobs it guards', () => {
+    expect(costly).toEqual(expect.arrayContaining(['test', 'package-smoke']))
+  })
+
+  it.each(costly)('%s runs on pull requests only', (id) => {
+    expect(jobs[id]).toMatch(/^ {4}if: github\.event_name == 'pull_request'\n/m)
+  })
+
+  it('berlin-zone runs on Linux, on push and pull request alike', () => {
+    const job = yamlOf(jobs['berlin-zone'] ?? '')
+    expect(job).toMatch(/^ {4}runs-on: ubuntu-latest$/m)
+    expect(job).not.toMatch(/^ {4}if:/m)
+  })
+
+  it('cancels a superseded PR run, never a run on main', () => {
+    expect(text).toContain(
+      '\nconcurrency:\n' +
+        "  group: test-${{ github.event_name == 'pull_request' && github.ref || github.sha }}\n" +
+        "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n"
+    )
+  })
+
+  it('release.yml has no concurrency group that could cancel a release', () => {
+    expect(readFileSync(WORKFLOW, 'utf8')).not.toContain('concurrency')
+  })
+})
