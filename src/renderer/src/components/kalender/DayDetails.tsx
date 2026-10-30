@@ -67,7 +67,20 @@ export function DayDetails({
   const sectionRef = useRef<HTMLElement>(null)
   const headingId = useId()
   const [tagFilter, setTagFilter] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
+  // Keep the version that belongs to the form's field values across reloads.
+  const [editing, setEditing] = useState<Entry | null>(null)
+  const editingId = editing?.id ?? null
+  const [previousEntries, setPreviousEntries] = useState(entries)
+  if (entries !== previousEntries) {
+    setPreviousEntries(entries)
+    if (editing) {
+      const fresh = entries.find((e) => e.id === editing.id)
+      // Only completed loads replace entries. Same version: refresh derived
+      // fields such as billed; a newer version must still conflict on save.
+      if (!fresh) setEditing(null)
+      else if (fresh.version_no === editing.version_no) setEditing(fresh)
+    }
+  }
   // The edit form replaces the row, so history expansion must survive outside that row.
   const [openHistories, setOpenHistories] = useState<Record<number, boolean>>({})
   const [creating, setCreating] = useState(false)
@@ -126,7 +139,7 @@ export function DayDetails({
         ...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')
       ].some((d) => !section || !d.contains(section))
       if (foreignDialog && !s.deleteCandidate) return
-      if (s.editingId !== null) setEditingId(null)
+      if (s.editingId !== null) setEditing(null)
       else if (s.creating) setCreating(false)
       else if (s.deleteCandidate) setDeleteCandidate(null)
       else s.onEscape?.()
@@ -153,8 +166,11 @@ export function DayDetails({
   }, [entries])
 
   const filteredEntries = useMemo(
-    () => (tagFilter ? entries.filter((e) => entryHasTag(e.tags, tagFilter)) : entries),
-    [entries, tagFilter]
+    () =>
+      tagFilter
+        ? entries.filter((e) => e.id === editingId || entryHasTag(e.tags, tagFilter))
+        : entries,
+    [entries, tagFilter, editingId]
   )
 
   const intlLocale = locale === 'en' ? 'en-GB' : 'de-DE'
@@ -275,17 +291,17 @@ export function DayDetails({
             const running = e.stopped_at === null
             const secs = durationSeconds(e, nowMs)
             const entryTags = deserializeTags(e.tags)
-            if (editingId === e.id) {
+            if (editing?.id === e.id) {
               return (
-                <li key={entryRowKey(e)} className="border-t border-[var(--line)] py-[10px]">
+                <li key={entryRowKey(editing)} className="border-t border-[var(--line)] py-[10px]">
                   <EntryEditForm
-                    entry={e}
+                    entry={editing}
                     clients={clients}
                     onSaved={() => {
-                      setEditingId(null)
+                      setEditing(null)
                       showToast(t('common.entrySaved'))
                     }}
-                    onCancel={() => setEditingId(null)}
+                    onCancel={() => setEditing(null)}
                   />
                 </li>
               )
@@ -359,7 +375,7 @@ export function DayDetails({
                 <div className="flex flex-none items-start">
                   <button
                     type="button"
-                    onClick={() => setEditingId(e.id)}
+                    onClick={() => setEditing((open) => (open?.id === e.id ? open : e))}
                     data-edit-for={e.id}
                     className={ICON_BUTTON}
                     aria-label={t('common.edit')}

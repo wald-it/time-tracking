@@ -10,6 +10,30 @@ import { de } from './locales/de'
 import { en } from './locales/en'
 
 describe('rule check settings and messages', () => {
+  it.each([
+    ['de', '05.10.2026: insgesamt 11:00 h, über 10 h.'],
+    ['en', '05/10/2026: 11:00 h in total, above 10 h.']
+  ] as const)('formats local day keys for %s without changing params', (locale, expected) => {
+    const finding = {
+      entryId: 1,
+      rule: 'day_over_threshold' as const,
+      params: { day: '2026-10-05', hours: '11:00', threshold: 10 }
+    }
+    expect(formatRuleCheckFinding(finding, locale)).toBe(expected)
+    expect(finding.params.day).toBe('2026-10-05')
+  })
+  it('passes non-ISO day values through unchanged', () => {
+    for (const day of ['Monday', '2026-1-05', '2026-10-05T00:00:00Z']) {
+      for (const locale of ['de', 'en'] as const) {
+        expect(
+          formatRuleCheckFinding(
+            { entryId: 1, rule: 'day_over_threshold', params: { day, hours: 11, threshold: 10 } },
+            locale
+          )
+        ).toMatch(new RegExp(`^${day}:`))
+      }
+    }
+  })
   it('defaults absent, malformed and non-object settings', () => {
     for (const raw of [undefined, '', '{bad', 'null', '[]', '7', 'true'])
       expect(parseRuleCheck(raw)).toEqual(DEFAULT_RULE_CHECK)

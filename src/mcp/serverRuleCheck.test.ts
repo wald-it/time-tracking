@@ -120,6 +120,23 @@ async function error(args: Record<string, unknown>, message: string): Promise<vo
 }
 
 describe('MCP check_period', () => {
+  it('formats the day message while keeping params.day machine-readable', async () => {
+    db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(
+      JSON.stringify({ dayMaxHours: 10 }),
+      'rule_check'
+    )
+    expect(await check(month)).toEqual(
+      expect.objectContaining({
+        findings: expect.arrayContaining([
+          expect.objectContaining({
+            rule: 'day_over_threshold',
+            params: { day: '2026-06-06', hours: '11:00', threshold: 10 },
+            message: '06.06.2026: insgesamt 11:00 h, über 10 h.'
+          })
+        ])
+      })
+    )
+  })
   it('returns ordered findings with German messages and only the public fields', async () => {
     expect(await check(month)).toEqual(expected)
   })

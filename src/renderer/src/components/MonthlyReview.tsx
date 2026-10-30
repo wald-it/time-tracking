@@ -96,7 +96,11 @@ export function MonthlyReview({
         </h2>
         <p className="max-w-[65ch] text-xs text-[var(--ink3)]">{t('review.hint')}</p>
       </div>
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div
+        role="group"
+        aria-labelledby={titleId}
+        className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5"
+      >
         <label className="flex min-w-0 flex-col gap-1">
           <span className={FIELD_LABEL}>{t('review.client')}</span>
           <select
@@ -261,14 +265,11 @@ function ReviewResults({
     loaded && Boolean(loaded.changes) === changedOnly ? narrow(loaded, editingId) : null
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
   const rows = useRef(new Map<number, HTMLLIElement>())
-  // Entry writes elsewhere (quick note, calendar) reload the review too, and so
-  // does a timer that starts or stops outside it (hotkey, tray, MCP), as in Heute.
+  // Entry writes elsewhere (quick note, calendar, and MCP or Stream Deck through
+  // the global data:changed listener) reload the review too, and so does a
+  // timer that starts or stops outside it (hotkey, tray, MCP), as in Heute.
   const entriesVersion = useEntriesStore((s) => s.version)
   const runningId = useTimerStore((s) => s.runningEntry?.id)
-  // External writes (MCP, Stream Deck) raise no entries version; the review
-  // listens for them itself, so it never shows less than the export reads.
-  const [dataRevision, setDataRevision] = useState(0)
-  useEffect(() => window.api.onDataChanged(() => setDataRevision((n) => n + 1)), [])
   const { clientId, projectId, fromIso, toIso } = selection
   useEffect(() => {
     let cancelled = false
@@ -301,17 +302,7 @@ function ReviewResults({
     return () => {
       cancelled = true
     }
-  }, [
-    clientId,
-    projectId,
-    fromIso,
-    toIso,
-    refreshKey,
-    entriesVersion,
-    runningId,
-    dataRevision,
-    changedOnly
-  ])
+  }, [clientId, projectId, fromIso, toIso, refreshKey, entriesVersion, runningId, changedOnly])
   const intlLocale = locale === 'en' ? 'en-GB' : 'de-DE'
   const dateTime = (iso: string): string =>
     new Date(iso).toLocaleString(intlLocale, {
@@ -323,20 +314,6 @@ function ReviewResults({
     })
   const time = (iso: string): string =>
     new Date(iso).toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' })
-  // The day finding carries a local YYYY-MM-DD key; show it like the other dates.
-  const findingText = (finding: RuleCheckFinding): string => {
-    const day = finding.params.day
-    if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-      return formatRuleCheckFinding(finding, locale)
-    }
-    const [y, m, d] = day.split('-').map(Number)
-    const shown = new Date(y, m - 1, d).toLocaleDateString(intlLocale, {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    })
-    return formatRuleCheckFinding({ ...finding, params: { ...finding.params, day: shown } }, locale)
-  }
   function openEditor(id: number, jump = false): void {
     // A second click on the open entry keeps its snapshot: the mounted form
     // keeps its field values, so it must keep their version too.
@@ -411,7 +388,7 @@ function ReviewResults({
                     className={`w-full py-1 text-left hover:bg-[var(--key)] ${FOCUS}`}
                   >
                     {entry && <span>{dateTime(entry.entry_start)} · </span>}
-                    {findingText(finding)}
+                    {formatRuleCheckFinding(finding, locale)}
                   </button>
                 </li>
               )
@@ -439,6 +416,7 @@ function ReviewResults({
           <ul aria-label={t('review.entries', { count: result.entries.length })}>
             {result.entries.length === 0 && <li className={READOUT}>{t('review.noEntries')}</li>}
             {result.entries.map((entry) => {
+              const findingCount = result.findings.filter((f) => f.entryId === entry.id).length
               const change = result.changes?.entries.find((e) => e.entryId === entry.id)
               return (
                 <li
@@ -487,8 +465,10 @@ function ReviewResults({
                         })}
                       </span>
                     )}
-                    {result.findings.some((f) => f.entryId === entry.id) && (
-                      <span className={FIELD_LABEL}>{t('review.hasFindings')}</span>
+                    {findingCount > 0 && (
+                      <span className={FIELD_LABEL}>
+                        {t('review.hasFindings', { count: findingCount })}
+                      </span>
                     )}
                   </button>
                   {editing?.id === entry.id && (

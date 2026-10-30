@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import type { Client, Entry, IpcResult } from '../../../shared/types'
 import { useTimerStore } from '../store/timerStore'
 import { useClientsStore } from '../store/clientsStore'
+import { useEntriesStore } from '../store/entriesStore'
 import { readLastStartPair, useStartTimerModalStore } from '../store/startTimerModalStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
 
@@ -133,6 +134,8 @@ function installGlobalListenersOnce(
   window.api.onTrayStop(() => globalStopRef.current())
   window.api.onDataChanged(() => {
     externalEpoch++
+    // All entry views reload for external writes, even when the timer is unchanged.
+    useEntriesStore.getState().bumpVersion()
     globalResyncRef.current()
   })
   window.api.onIdleDetected((data) => {
@@ -526,8 +529,9 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
 
   // External writes (#133): the MCP bridge / hardware keys mutate the DB in
   // the main process and broadcast 'data:changed' — the renderer, which owns
-  // the timer state machine, resyncs its running entry from the DB and pushes
-  // the result to tray + mini-widget over the existing 'tray:update' path.
+  // the timer state machine, bumps the entries version in the global listener,
+  // resyncs its running entry from the DB and pushes the result to tray +
+  // mini-widget over the existing 'tray:update' path.
   const resyncFromExternal = useCallback(async () => {
     const res = await window.api.entries.getRunning()
     if (!res.ok) return

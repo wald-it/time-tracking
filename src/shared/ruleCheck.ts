@@ -93,7 +93,17 @@ export interface RuleCheckFinding {
   params: Record<string, string | number>
 }
 
-/** One renderer for the export tab and MCP, with single-pass interpolation. */
+/**
+ * Shared app/MCP messages with single-pass interpolation. Local YYYY-MM-DD
+ * day keys use the display format (de: DD.MM.YYYY, en: DD/MM/YYYY) without
+ * time-zone conversion; other values and the original params stay unchanged.
+ */
 export function formatRuleCheckFinding(finding: RuleCheckFinding, locale: Locale): string {
-  return translate(locale === 'en' ? en : de, `ruleCheck.${finding.rule}`, finding.params)
+  let params = finding.params
+  const day = params.day
+  if (typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    const [year, month, date] = day.split('-')
+    params = { ...params, day: [date, month, year].join(locale === 'en' ? '/' : '.') }
+  }
+  return translate(locale === 'en' ? en : de, `ruleCheck.${finding.rule}`, params)
 }

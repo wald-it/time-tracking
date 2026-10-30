@@ -12,7 +12,6 @@ const changedSinceRun = vi.fn()
 const update = vi.fn()
 const pdf = vi.fn()
 const scroll = vi.fn()
-let dataChanged: () => void = () => {}
 const entries = [1, 2].map((id) => ({
   id,
   client_id: 1,
@@ -86,10 +85,7 @@ beforeEach(() => {
       get: async () => ({ ok: true, data: { inherited: { columns: 'times', group_by: 'none' } } })
     },
     pdf: { export: pdf },
-    onDataChanged: (callback: () => void) => {
-      dataChanged = callback
-      return () => {}
-    }
+    onDataChanged: vi.fn(() => () => {})
   } as unknown as Window['api']
 })
 afterEach(cleanup)
@@ -106,7 +102,10 @@ async function mount(): Promise<ReturnType<typeof within>> {
 }
 async function selectClient(): Promise<ReturnType<typeof within>> {
   const ui = await mount()
-  fireEvent.change(ui.getByLabelText('Review-Kunde'), { target: { value: '1' } })
+  fireEvent.change(
+    within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('Kunde'),
+    { target: { value: '1' } }
+  )
   await ui.findByText('Work 2')
   return ui
 }
@@ -268,9 +267,18 @@ describe('monthly review changed since last invoice filter', () => {
   it('exports the whole client, project and date selection to PDF while filtered', async () => {
     const ui = await selectClient()
     await ui.findByRole('option', { name: 'Project' })
-    fireEvent.change(ui.getByLabelText('Review-Projekt'), { target: { value: '3' } })
-    fireEvent.change(ui.getByLabelText('Review von'), { target: { value: '2026-09-01' } })
-    fireEvent.change(ui.getByLabelText('Review bis'), { target: { value: '2026-09-30' } })
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('Projekt'),
+      { target: { value: '3' } }
+    )
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('von'),
+      { target: { value: '2026-09-01' } }
+    )
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('bis'),
+      { target: { value: '2026-09-30' } }
+    )
     fireEvent.click(ui.getByRole('switch', { name: label }))
     await ui.findByRole('list', { name: 'Einträge (1)' })
     expect(changedSinceRun).toHaveBeenLastCalledWith({
@@ -334,16 +342,19 @@ describe('monthly review changed since last invoice filter', () => {
     const ui = await selectClient()
     await ui.findByRole('option', { name: 'Project' })
     for (const [field, value] of [
-      ['Review-Projekt', '3'],
-      ['Review-Zeitraum', 'thisWeek'],
-      ['Review von', '2026-01-01'],
-      ['Review bis', '2026-12-31'],
-      ['Review-Kunde', '2']
+      ['Projekt', '3'],
+      ['Zeitraum', 'thisWeek'],
+      ['von', '2026-01-01'],
+      ['bis', '2026-12-31'],
+      ['Kunde', '2']
     ]) {
       fireEvent.click(ui.getByRole('switch', { name: label }))
       await ui.findByRole('list', { name: 'Einträge (1)' })
       const calls = changedSinceRun.mock.calls.length
-      fireEvent.change(ui.getByLabelText(field), { target: { value } })
+      fireEvent.change(
+        within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText(field),
+        { target: { value } }
+      )
       expect(ui.getByRole('switch', { name: label })).not.toBeChecked()
       await ui.findByRole('list', { name: 'Einträge (2)' })
       expect(changedSinceRun).toHaveBeenCalledTimes(calls)
@@ -465,9 +476,18 @@ describe('monthly review', () => {
   it('opens PDF with the review client, project and dates despite findings and remembered CSV', async () => {
     const ui = await selectClient()
     await ui.findByRole('option', { name: 'Project' })
-    fireEvent.change(ui.getByLabelText('Review-Projekt'), { target: { value: '3' } })
-    fireEvent.change(ui.getByLabelText('Review von'), { target: { value: '2026-09-01' } })
-    fireEvent.change(ui.getByLabelText('Review bis'), { target: { value: '2026-09-30' } })
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('Projekt'),
+      { target: { value: '3' } }
+    )
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('von'),
+      { target: { value: '2026-09-01' } }
+    )
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('bis'),
+      { target: { value: '2026-09-30' } }
+    )
     const button = ui.getByRole('button', { name: 'PDF vorbereiten' })
     expect(button).toBeEnabled()
     fireEvent.click(button)
@@ -497,23 +517,35 @@ describe('monthly review', () => {
     const key = (d: Date): string =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     expect(period).toHaveBeenLastCalledWith({ clientId: 1, fromIso: key(first), toIso: key(last) })
-    fireEvent.change(ui.getByLabelText('Review-Kunde'), { target: { value: '2' } })
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('Kunde'),
+      { target: { value: '2' } }
+    )
     await waitFor(() =>
       expect(period).toHaveBeenLastCalledWith(expect.objectContaining({ clientId: 2 }))
     )
-    fireEvent.change(ui.getByLabelText('Review-Zeitraum'), { target: { value: 'thisWeek' } })
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('Zeitraum'),
+      { target: { value: 'thisWeek' } }
+    )
     const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay())
     await waitFor(() =>
       expect(period).toHaveBeenLastCalledWith(expect.objectContaining({ fromIso: key(sunday) }))
     )
-    fireEvent.change(ui.getByLabelText('Review von'), { target: { value: '2026-01-01' } })
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('von'),
+      { target: { value: '2026-01-01' } }
+    )
     await waitFor(() =>
       expect(getForReview).toHaveBeenLastCalledWith(
         expect.objectContaining({ fromIso: '2026-01-01' })
       )
     )
     await ui.findByRole('option', { name: 'Project' })
-    fireEvent.change(ui.getByLabelText('Review-Projekt'), { target: { value: '3' } })
+    fireEvent.change(
+      within(ui.getByRole('group', { name: 'Monats-Review' })).getByLabelText('Projekt'),
+      { target: { value: '3' } }
+    )
     await waitFor(() =>
       expect(period).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 3 }))
     )
@@ -616,10 +648,11 @@ describe('monthly review', () => {
     expect(await screen.findByRole('alertdialog')).toBeVisible()
     expect(update).not.toHaveBeenCalled()
   })
-  it('reloads on external writes (data:changed) that leave the timer alone', async () => {
+  it('reloads on the central entries version signal while the timer stays unchanged', async () => {
     await selectClient()
     expect(period).toHaveBeenCalledTimes(1)
-    await act(async () => dataChanged())
+    // The real data:changed listener is covered in useTimer.test.tsx.
+    await act(async () => useEntriesStore.getState().bumpVersion())
     await waitFor(() => expect(period).toHaveBeenCalledTimes(2))
     expect(getForReview).toHaveBeenCalledTimes(2)
   })
@@ -668,5 +701,46 @@ describe('monthly review', () => {
     await waitFor(() => expect(release).toHaveBeenCalledWith(7, 'Wrong period'))
     await waitFor(() => expect(period).toHaveBeenCalledTimes(2))
     expect(getForReview).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('monthly review follow-ups', () => {
+  it.each([
+    ['de', 'Monats-Review', ['Kunde', 'Projekt', 'Zeitraum', 'von', 'bis']],
+    ['en', 'Monthly review', ['Client', 'Project', 'Period', 'From', 'To']]
+  ] as const)(
+    'uses plain field labels in its named group in %s',
+    async (language, name, labels) => {
+      await mount()
+      await act(async () => useSettingsStore.setState({ settings: { language } as never }))
+      const fields = within(screen.getByRole('group', { name }))
+      for (const label of labels) expect(fields.getByLabelText(label)).toBeVisible()
+    }
+  )
+
+  it('counts findings per entry and follows the changed-since list', async () => {
+    period.mockResolvedValue({
+      ok: true,
+      data: [...findings, { entryId: 1, rule: 'missing_project', params: {} }]
+    })
+    const ui = await selectClient()
+    expect(
+      within(ui.getByRole('listitem', { name: 'Eintrag 1' })).getByText('Befunde (2)')
+    ).toBeVisible()
+    expect(
+      within(ui.getByRole('listitem', { name: 'Eintrag 2' })).getByText('Befunde (1)')
+    ).toBeVisible()
+    fireEvent.click(ui.getByRole('switch', { name: 'Nur seit letzter Abrechnung geändert' }))
+    await ui.findByRole('heading', { name: 'Befunde (1)' })
+    expect(ui.queryByRole('listitem', { name: 'Eintrag 1' })).toBeNull()
+    expect(
+      within(ui.getByRole('listitem', { name: 'Eintrag 2' })).getByText('Befunde (1)')
+    ).toBeVisible()
+    period.mockResolvedValue({ ok: true, data: [] })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    await ui.findByRole('heading', { name: 'Befunde (0)' })
+    expect(
+      within(ui.getByRole('listitem', { name: 'Eintrag 2' })).queryByText(/Befunde/)
+    ).toBeNull()
   })
 })

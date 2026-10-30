@@ -113,7 +113,8 @@ rule check for a required `client_id` and optional `project_id`; either `year` +
 `month` for a local calendar month or local dates `from` + `to`, both inclusive,
 in `YYYY-MM-DD` form). `check_period` only reports findings and never changes
 entries. It returns entry IDs, stored start times, rule IDs, parameters and German
-messages, without entry descriptions, rates or internal notes.
+messages, without entry descriptions, rates or internal notes. Day findings show
+`DD.MM.YYYY` in the message; `params.day` keeps its machine-readable `YYYY-MM-DD` form.
 
 **Write tools** (opt-in, see below): `create_manual_entry`, `update_entry_fields`,
 `start_timer`, `stop_running_timer` — each with `preview: true` for a preview without a commit.
