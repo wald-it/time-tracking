@@ -5,9 +5,20 @@ on:
     branches: [main]
   pull_request:
 
+# #441: A newer push to a PR cancels the run for the superseded head. A push
+# to main gets a group of its own, keyed by commit: a shared group keeps only
+# one pending run and would drop a queued main commit untested.
+concurrency:
+  group: test-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # #416: Windows is the only release platform from 2.1 on.
+  # #441: Windows minutes count double, so the Windows jobs run on pull
+  # requests only. The squash merge to main is code a PR run has already
+  # checked; main gets the Linux job, and release.yml builds on Windows again.
   test:
+    if: github.event_name == 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -199,7 +210,10 @@ jobs:
   #
   # Self-contained on purpose (no needs:, no shared steps), so other jobs in
   # this file can change without touching it.
+  #
+  # Pull requests only, like the test job (#441).
   package-smoke:
+    if: github.event_name == 'pull_request'
     strategy:
       fail-fast: false
       matrix:

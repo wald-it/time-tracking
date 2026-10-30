@@ -23,6 +23,7 @@ All notable changes to TimeTrack are documented here.
 
 - **The export dialog takes its grouping default from the client or project profile.** A different grouping chosen in the dialog applies to that export only and is no longer remembered ([#433](https://github.com/wald-it/time-tracking/issues/433)).
 - **Clients, Export and Settings use the window width like Today, Analytics and Calendar.** Settings rows run label left, control right; Export cards sit side by side; the client list is wider ([#420](https://github.com/wald-it/time-tracking/issues/420)).
+- **CI runs the Windows jobs on pull requests only.** A push to `main` runs the Linux test job, and a newer push to a pull request cancels the run for the older head ([#441](https://github.com/wald-it/time-tracking/issues/441)).
 
 ## [2.1.0] — 2026-10-29
 
