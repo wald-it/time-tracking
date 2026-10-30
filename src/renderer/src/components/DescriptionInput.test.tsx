@@ -174,6 +174,11 @@ describe('DescriptionInput (Q8)', () => {
     await waitFor(() => expect(recent).toHaveBeenCalledWith({ clientId: 2, projectId: null }))
   })
 
+  it('fills its wrapper without a host class, as the start dialog uses it (#451)', () => {
+    const { input } = setup()
+    expect(input().classList.contains('w-full')).toBe(true)
+  })
+
   it('reads nothing without a client', async () => {
     const { recent } = setup({ clientId: null })
     await new Promise((r) => setTimeout(r, 20))
