@@ -62,6 +62,10 @@ describe('resumeTarget', () => {
     })
   })
 
+  it('is null for an unknown project', () => {
+    expect(resumeTarget(entry(), client(1), undefined)).toBeNull()
+  })
+
   it('keeps "no project"', () => {
     expect(resumeTarget(entry({ project_id: null }), client(1), undefined)).toEqual({
       clientId: 2,

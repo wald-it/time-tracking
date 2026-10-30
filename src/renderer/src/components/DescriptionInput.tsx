@@ -40,6 +40,7 @@ export function DescriptionInput({
   const [open, setOpen] = useState(false)
   const [highlighted, setHighlighted] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
+  const highlightedRef = useRef<HTMLLIElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -120,6 +121,12 @@ export function DescriptionInput({
 
   const showList = open && suggestions.length > 0
 
+  useEffect(() => {
+    if (showList && highlighted >= 0) {
+      highlightedRef.current?.scrollIntoView?.({ block: 'nearest' })
+    }
+  }, [highlighted, showList])
+
   return (
     <div ref={containerRef} className="relative">
       <input
@@ -148,6 +155,7 @@ export function DescriptionInput({
           {suggestions.map((s, i) => (
             <li
               key={s}
+              ref={i === highlighted ? highlightedRef : null}
               role="option"
               aria-selected={i === highlighted}
               onPointerDown={(e) => {

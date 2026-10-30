@@ -206,6 +206,31 @@ describe('DescriptionInput (Q8)', () => {
     ])
   })
 
+  it('scrolls the keyboard-highlighted option into view', async () => {
+    const original = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView')
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView
+    })
+    try {
+      const { input, recent } = setup()
+      await waitFor(() => expect(recent).toHaveBeenCalled())
+
+      fireEvent.keyDown(input(), { key: 'ArrowDown' })
+      fireEvent.keyDown(input(), { key: 'ArrowDown' })
+      fireEvent.keyDown(input(), { key: 'ArrowDown' })
+
+      const third = screen.getAllByRole('option')[2]
+      expect(third).toHaveAttribute('aria-selected', 'true')
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' })
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(third)
+    } finally {
+      if (original) Object.defineProperty(Element.prototype, 'scrollIntoView', original)
+      else Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+    }
+  })
+
   it('Enter without a highlighted suggestion is the host’s Enter (the dialog starts)', async () => {
     const { input, onEnter, recent } = setup()
     await waitFor(() => expect(recent).toHaveBeenCalled())

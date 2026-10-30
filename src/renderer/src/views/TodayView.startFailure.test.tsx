@@ -11,7 +11,7 @@ import TodayView from './TodayView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useToastStore } from '../store/toastStore'
 import { useTimerStore } from '../store/timerStore'
-import type { Client, DashboardSummary, Entry } from '../../../shared/types'
+import type { Client, DashboardSummary, Entry, Project } from '../../../shared/types'
 
 // useTimer adopts the running entry only on its first mount in this module
 // registry, so each test sets the store itself (see setup).
@@ -142,7 +142,13 @@ describe('TodayView — a refused quick-start key', () => {
 })
 
 // Q8, 2.2: real hook and listener, with a fresh registry for each view.
-async function setupResume(running: boolean): Promise<{
+async function setupResume(
+  running: boolean,
+  opts: {
+    projectId?: number
+    getProjects?: Window['api']['projects']['getAll']
+  } = {}
+): Promise<{
   start: ReturnType<typeof vi.fn>
   switchFn: ReturnType<typeof vi.fn>
   play: HTMLElement
@@ -164,6 +170,7 @@ async function setupResume(running: boolean): Promise<{
     ...RUNNING,
     id: 7,
     client_id: 2,
+    project_id: opts.projectId ?? null,
     description: 'Review',
     stopped_at: new Date().toISOString()
   }
@@ -180,7 +187,7 @@ async function setupResume(running: boolean): Promise<{
   }))
   window.api = {
     clients: { getAll: async () => ({ ok: true, data: CLIENTS }) },
-    projects: { getAll: async () => ({ ok: true, data: [] }) },
+    projects: { getAll: opts.getProjects ?? (async () => ({ ok: true, data: [] })) },
     entries: { start, switch: switchFn, getRunning: async () => ({ ok: true, data: current }) },
     dashboard: { summary, todayTotal: async () => ({ ok: true, data: 0 }) },
     tray: { update: trayUpdate },
@@ -223,6 +230,46 @@ async function setupResume(running: boolean): Promise<{
 }
 
 describe('TodayView — resume (Q8, 2.2)', () => {
+  it('disables resume until the project is known, then starts with that project', async () => {
+    const pending = Promise.withResolvers<{ ok: true; data: Project[] }>()
+    const getProjects = vi.fn(() => pending.promise)
+    const ctx = await setupResume(false, { projectId: 20, getProjects })
+    ctx.start.mockImplementation(async () => ({ ok: true, data: ctx.finish().entry }))
+
+    expect(getProjects).toHaveBeenCalledWith({})
+    expect.soft(ctx.play).toBeDisabled()
+    fireEvent.click(ctx.play)
+    expect.soft(ctx.start).not.toHaveBeenCalled()
+    expect.soft(ctx.switchFn).not.toHaveBeenCalled()
+
+    await act(async () => {
+      pending.resolve({
+        ok: true,
+        data: [
+          {
+            id: 20,
+            client_id: 2,
+            name: 'Audit',
+            color: '',
+            rate_cent: 15000,
+            active: 1,
+            created_at: ''
+          }
+        ]
+      })
+    })
+    expect(ctx.play).toBeEnabled()
+    fireEvent.click(ctx.play)
+    await waitFor(() => expect(ctx.timerStore.getState().runningEntry).toEqual(ctx.resumed))
+    expect(ctx.start).toHaveBeenCalledTimes(1)
+    expect(ctx.start).toHaveBeenCalledWith({
+      client_id: 2,
+      project_id: 20,
+      description: 'Review',
+      started_at: expect.any(String)
+    })
+  })
+
   it.each([false, true])('Q8 double play sends one timer call, running=%s', async (running) => {
     const ctx = await setupResume(running)
     let release!: (value: unknown) => void
