@@ -66,6 +66,7 @@ export function ExportModal(props: Props): React.JSX.Element {
   const [hideFeeColumn, setHideFeeColumn] = useState(initialPrefs.hideFeeColumn)
   // Deliberately outside ExportPrefs: each ordinary export starts unchecked.
   const [markAsBilled, setMarkAsBilled] = useState(Boolean(replacementRun))
+  const [invoiceRef, setInvoiceRef] = useState('')
   const [createdRun, setCreatedRun] = useState(false)
   const [columnChoice, setColumnChoice] = useState<{
     selection: string
@@ -255,6 +256,7 @@ export function ExportModal(props: Props): React.JSX.Element {
         columns,
         hideFeeColumn,
         markAsBilled,
+        invoiceRef: markAsBilled ? invoiceRef.trim() || undefined : undefined,
         replacesRunId: replacementRun?.id
       })
       if (res.ok) {
@@ -300,6 +302,7 @@ export function ExportModal(props: Props): React.JSX.Element {
       toIso,
       projectId: projectId ?? undefined,
       format: csvFormat,
+      invoiceRef: invoiceRef.trim() || undefined,
       groupByTag: csvGroupByTag
     })
     setBusy(false)
@@ -459,6 +462,19 @@ export function ExportModal(props: Props): React.JSX.Element {
             />
           </label>
         </div>
+
+        {(tab === 'csv' || (tab === 'pdf' && markAsBilled)) && (
+          <label className="flex flex-col gap-1 text-sm text-[var(--ink)]">
+            {t('export.invoiceRef')}
+            <input
+              className={inputClass}
+              value={invoiceRef}
+              maxLength={64}
+              onChange={(e) => setInvoiceRef(e.target.value)}
+              disabled={busy || (tab === 'pdf' && createdRun)}
+            />
+          </label>
+        )}
 
         {/* PDF-specific options */}
         {tab === 'pdf' && (

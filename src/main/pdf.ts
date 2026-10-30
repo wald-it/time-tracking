@@ -19,6 +19,7 @@ import type { Client, Entry, Settings } from '../shared/types'
 export interface PdfRequest {
   /** Per-export override; otherwise inherited from the selected billing profile. */
   columns?: 'times' | 'no_times'
+  invoiceRef?: string
   markAsBilled?: boolean
   replacesRunId?: number
 
@@ -102,6 +103,7 @@ export interface PdfGroup {
 export interface PdfPayload {
   columns?: 'times' | 'no_times'
   runNumber?: string
+  invoiceRef?: string
 
   client: Pick<
     Client,
@@ -518,6 +520,7 @@ export function buildPdfPayloadFromData(
   return {
     ...context,
     columns: req.columns ?? context.columns ?? 'times',
+    invoiceRef: context.runNumber ? req.invoiceRef : undefined,
     rows,
     groups,
     totals: { minutes: totalMinutes, feeCent: totalFee },
@@ -794,7 +797,7 @@ export function buildPdfHtml(p: PdfPayload): string {
       </div>
     </header>
 
-    <h1 class="doc-title">Stundennachweis${p.runNumber ? ` Nr. ${esc(p.runNumber)}` : ''}</h1>
+    <h1 class="doc-title">Stundennachweis${p.runNumber ? ` Nr. ${esc(p.runNumber)}${p.invoiceRef?.trim() ? ` · zu Rechnung Nr. ${esc(p.invoiceRef.trim())}` : ''}` : ''}</h1>
 
     <div class="meta-row">
       <div class="recipient">

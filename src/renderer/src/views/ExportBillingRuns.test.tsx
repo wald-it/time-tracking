@@ -119,6 +119,132 @@ function row(number: string): HTMLElement {
 }
 
 describe('P6b export and billing run list', () => {
+  it('#424 offers the PDF reference only for billing, trims the request and locks it after creation', async () => {
+    await renderView()
+    const dialog = await openExport()
+    const ui = within(dialog)
+    expect(ui.queryByRole('textbox', { name: 'Zu Rechnung Nr. (optional)' })).toBeNull()
+    const billed = ui.getByRole('checkbox', { name: 'Als abgerechnet markieren' })
+    fireEvent.click(billed)
+    const input = ui.getByRole<HTMLInputElement>('textbox', { name: 'Zu Rechnung Nr. (optional)' })
+    expect(input.maxLength).toBe(64)
+    fireEvent.change(input, { target: { value: '  RE-123  ' } })
+    fireEvent.click(billed)
+    expect(ui.queryByRole('textbox', { name: 'Zu Rechnung Nr. (optional)' })).toBeNull()
+    fireEvent.click(ui.getByRole('button', { name: 'PDF speichern' }))
+    await waitFor(() => expect(exportPdf).toHaveBeenCalledTimes(1))
+    expect(exportPdf.mock.calls[0][0].invoiceRef).toBeUndefined()
+    await ui.findByText('PDF gespeichert: timesheet.pdf')
+    fireEvent.click(billed)
+    exportPdf.mockResolvedValueOnce({
+      ok: true,
+      data: { path: 'run.pdf', runId: 9, runNumber: 'SN-new' }
+    })
+    fireEvent.click(ui.getByRole('button', { name: 'PDF speichern' }))
+    await waitFor(() =>
+      expect(exportPdf).toHaveBeenLastCalledWith(
+        expect.objectContaining({ markAsBilled: true, invoiceRef: 'RE-123' })
+      )
+    )
+    await waitFor(() =>
+      expect(
+        ui.getByRole<HTMLInputElement>('textbox', { name: 'Zu Rechnung Nr. (optional)' }).disabled
+      ).toBe(true)
+    )
+    fireEvent.change(ui.getByRole('combobox', { name: 'Gruppieren nach' }), {
+      target: { value: 'tag' }
+    })
+    expect(JSON.parse(setSetting.mock.calls.at(-1)![1])).not.toHaveProperty('invoiceRef')
+    fireEvent.click(ui.getByText('Schließen'))
+    const reopened = within(await openExport())
+    fireEvent.click(reopened.getByRole('checkbox', { name: 'Als abgerechnet markieren' }))
+    expect(
+      reopened.getByRole<HTMLInputElement>('textbox', { name: 'Zu Rechnung Nr. (optional)' }).value
+    ).toBe('')
+  })
+
+  it('#424 always offers the CSV reference and sends trimmed or absent values', async () => {
+    const exportCsv = vi.fn().mockResolvedValue({ ok: true, data: { path: 'entries.csv' } })
+    window.api.csv = { export: exportCsv }
+    await renderView()
+    const ui = within(await openExport())
+    fireEvent.click(ui.getByRole('button', { name: 'CSV — Tabelle' }))
+    const input = ui.getByRole<HTMLInputElement>('textbox', { name: 'Zu Rechnung Nr. (optional)' })
+    expect(input.maxLength).toBe(64)
+    for (const [value, expected] of [
+      ['  RE-123  ', 'RE-123'],
+      ['   ', undefined]
+    ]) {
+      fireEvent.change(input, { target: { value } })
+      fireEvent.click(ui.getByRole('button', { name: 'CSV speichern' }))
+      await waitFor(() =>
+        expect(exportCsv).toHaveBeenLastCalledWith(
+          expect.objectContaining({ invoiceRef: expected })
+        )
+      )
+      await ui.findByText('CSV gespeichert: entries.csv')
+    }
+  })
+
+  it.each(['active', 'released'] as const)(
+    '#424 shows, edits and clears the reference of a %s run',
+    async (status) => {
+      const target = status === 'active' ? active : released
+      rows = rows.map((r) => (r.id === target.id ? { ...r, invoice_ref: 'RE-old' } : r))
+      const setInvoiceRef = vi.fn().mockImplementation(async (id: number, invoiceRef: string) => {
+        rows = rows.map((r) => (r.id === id ? { ...r, invoice_ref: invoiceRef } : r))
+        return { ok: true, data: undefined }
+      })
+      window.api.billingRuns.setInvoiceRef = setInvoiceRef
+      await renderView()
+      expect(within(row(target.number)).getByText(/RE-old/)).toBeTruthy()
+      for (const [value, expected] of [
+        ['  RE-new  ', 'RE-new'],
+        ['   ', '']
+      ]) {
+        fireEvent.click(
+          within(row(target.number)).getByRole('button', { name: 'Rechnungsnummer bearbeiten' })
+        )
+        const ui = within(screen.getByRole('dialog', { name: 'Rechnungsnummer bearbeiten' }))
+        expect(ui.getByText('Das archivierte PDF bleibt unverändert.')).toBeTruthy()
+        const input = ui.getByRole<HTMLInputElement>('textbox', {
+          name: 'Zu Rechnung Nr. (optional)'
+        })
+        expect(input.maxLength).toBe(64)
+        fireEvent.change(input, { target: { value } })
+        fireEvent.click(ui.getByRole('button', { name: 'Speichern' }))
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+        expect(setInvoiceRef).toHaveBeenLastCalledWith(target.id, expected)
+        await waitFor(() => expect(within(row(target.number)).queryByText(/RE-old/)).toBeNull())
+        if (expected) await within(row(target.number)).findByText(/RE-new/)
+        else
+          await waitFor(() => expect(within(row(target.number)).queryByText(/RE-new/)).toBeNull())
+      }
+      expect(open).not.toHaveBeenCalled()
+      expect(exportPdf).not.toHaveBeenCalled()
+    }
+  )
+
+  it('#424 keeps failed edits open and explains the archive invariant in English', async () => {
+    useSettingsStore.setState({
+      settings: { language: 'en', export_prefs: JSON.stringify({ tab: 'pdf' }) } as never
+    })
+    const setInvoiceRef = vi.fn().mockResolvedValue({ ok: false, error: 'Write failed' })
+    window.api.billingRuns.setInvoiceRef = setInvoiceRef
+    await renderView()
+    fireEvent.click(within(row(active.number)).getByRole('button', { name: 'Edit invoice number' }))
+    const ui = within(screen.getByRole('dialog', { name: 'Edit invoice number' }))
+    expect(ui.getByText('The archived PDF stays unchanged.')).toBeTruthy()
+    const input = ui.getByRole<HTMLInputElement>('textbox', { name: 'For invoice no. (optional)' })
+    fireEvent.change(input, { target: { value: 'RE-123' } })
+    fireEvent.click(ui.getByRole('button', { name: 'Save' }))
+    expect(await ui.findByRole('alert')).toHaveProperty('textContent', 'Write failed')
+    expect(input.value).toBe('RE-123')
+    fireEvent.click(ui.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(setInvoiceRef).toHaveBeenCalledTimes(1)
+  })
+
   it('shows numbers, client, period, frozen minutes and fee, and released date and reason', async () => {
     await renderView()
     const item = within(row(active.number))

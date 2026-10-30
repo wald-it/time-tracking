@@ -19,6 +19,9 @@ export function BillingRunList({ refreshKey, onRebill }: Props): React.JSX.Eleme
   const [releaseTarget, setReleaseTarget] = useState<BillingRunSummary | null>(null)
   const [reason, setReason] = useState('')
   const [releaseError, setReleaseError] = useState<string | null>(null)
+  const [invoiceTarget, setInvoiceTarget] = useState<BillingRunSummary | null>(null)
+  const [invoiceRef, setInvoiceRef] = useState('')
+  const [invoiceError, setInvoiceError] = useState<string | null>(null)
 
   useEffect(() => {
     let current = true
@@ -77,6 +80,25 @@ export function BillingRunList({ refreshKey, onRebill }: Props): React.JSX.Eleme
     }
   }
 
+  async function saveInvoiceRef(): Promise<void> {
+    if (!invoiceTarget || busy) return
+    setBusy(true)
+    setInvoiceError(null)
+    try {
+      const res = await window.api.billingRuns.setInvoiceRef(invoiceTarget.id, invoiceRef.trim())
+      if (!res.ok) {
+        setInvoiceError(res.error)
+        return
+      }
+      setInvoiceTarget(null)
+      setReload((n) => n + 1)
+    } catch (e) {
+      setInvoiceError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // A released run is re-billed once; its replacement names it in replaces_run_id.
   const replacedBy = new Map(
     (runs ?? []).filter((r) => r.replaces_run_id !== null).map((r) => [r.replaces_run_id, r])
@@ -130,6 +152,23 @@ export function BillingRunList({ refreshKey, onRebill }: Props): React.JSX.Eleme
                   })}
             </p>
             <div className="flex flex-wrap gap-2">
+              <span className="break-words text-sm text-[var(--ink2)]">
+                {t('billingRuns.invoiceRef', { ref: run.invoice_ref || '—' })}
+              </span>
+              <button
+                type="button"
+                className={KEY}
+                disabled={busy}
+                onClick={() => {
+                  setInvoiceTarget(run)
+                  setInvoiceRef(run.invoice_ref)
+                  setInvoiceError(null)
+                }}
+              >
+                {t('billingRuns.editInvoiceRef')}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 className={KEY}
@@ -164,6 +203,52 @@ export function BillingRunList({ refreshKey, onRebill }: Props): React.JSX.Eleme
           </li>
         ))}
       </ul>
+      <Dialog
+        open={invoiceTarget !== null}
+        onClose={() => {
+          if (!busy) setInvoiceTarget(null)
+        }}
+        title={t('billingRuns.editInvoiceRef')}
+      >
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void saveInvoiceRef()
+          }}
+        >
+          <p className="font-num text-sm text-[var(--ink2)]">{invoiceTarget?.number}</p>
+          <label className="flex flex-col gap-1 text-sm text-[var(--ink)]">
+            {t('export.invoiceRef')}
+            <input
+              className={INPUT}
+              value={invoiceRef}
+              maxLength={64}
+              onChange={(e) => setInvoiceRef(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <p className="text-sm text-[var(--ink2)]">{t('billingRuns.invoiceRefHint')}</p>
+          {invoiceError && (
+            <p role="alert" className="text-sm text-[var(--danger)]">
+              {invoiceError}
+            </p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className={KEY}
+              disabled={busy}
+              onClick={() => setInvoiceTarget(null)}
+            >
+              {t('common.cancel')}
+            </button>
+            <button type="submit" className={KEY_INV} disabled={busy}>
+              {t('common.save')}
+            </button>
+          </div>
+        </form>
+      </Dialog>
       <Dialog
         open={releaseTarget !== null}
         onClose={() => {

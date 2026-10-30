@@ -275,15 +275,20 @@ function safeFilePart(name: string): string {
 export function exportFileName(
   locale: Locale,
   kind: 'pdf' | 'csv' | 'ical',
-  e: { client: string; project?: string | null; month: string }
+  e: { client: string; project?: string | null; month: string; invoiceRef?: string }
 ): string {
   const t = dialogT(locale)
-  return t(kind === 'pdf' ? 'mainFile.pdf' : kind === 'csv' ? 'mainFile.csv' : 'mainFile.ical', {
-    client: safeFilePart(e.client) || t('mainFile.fallbackClient'),
-    // As the app always did: a given project adds `-<name>`.
-    project: e.project != null ? `-${safeFilePart(e.project)}` : '',
-    month: e.month
-  })
+  const name = t(
+    kind === 'pdf' ? 'mainFile.pdf' : kind === 'csv' ? 'mainFile.csv' : 'mainFile.ical',
+    {
+      client: safeFilePart(e.client) || t('mainFile.fallbackClient'),
+      // As the app always did: a given project adds `-<name>`.
+      project: e.project != null ? `-${safeFilePart(e.project)}` : '',
+      month: e.month
+    }
+  )
+  const invoiceRef = safeFilePart(e.invoiceRef ?? '')
+  return kind === 'csv' && invoiceRef ? `${name.slice(0, -4)}-${invoiceRef}.csv` : name
 }
 
 /** The merged PDF written next to the invoice; `stamp` when that name is taken. */

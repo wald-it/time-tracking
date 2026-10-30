@@ -71,6 +71,85 @@ const patch = (
   )
 
 describe('P6b billing run list', () => {
+  it('#424 freezes the trimmed invoice reference in the column and snapshot and escapes the title', async () => {
+    const db = setup()
+    entry(db)
+    const created = await createRun(db, { ...req, invoiceRef: '  RE-<123>&"\'  ' }, renderer)
+    expect(created.invoice_ref).toBe('RE-<123>&"\'')
+    expect(listRuns(db)[0].invoice_ref).toBe(created.invoice_ref)
+    expect(JSON.parse(created.rule_snapshot)).toMatchObject({
+      snapshot_version: 1,
+      options: { invoiceRef: 'RE-<123>&"\'' }
+    })
+    expect(renderRunHtml(db, created.id)).toContain(
+      `Stundennachweis Nr. ${created.number} · zu Rechnung Nr. RE-&lt;123&gt;&amp;&quot;&#39;`
+    )
+    expect(renderRunHtml(db, created.id)).not.toContain('RE-<123>')
+  })
+
+  it.each(['active', 'released'] as const)(
+    '#424 editing and clearing a %s run preserves its frozen HTML and PDF bytes',
+    async (status) => {
+      const db = setup()
+      entry(db)
+      const created = await createRun(db, { ...req, invoiceRef: 'RE-original' }, renderer)
+      const archived = openRunPdf(db, created.id)
+      if (status === 'released') releaseRun(db, created.id, 'Correction')
+      for (const [input, expected] of [
+        ['  RE-new  ', 'RE-new'],
+        ['   ', '']
+      ]) {
+        setInvoiceRef(db, created.id, input)
+        expect(listRuns(db)[0].invoice_ref).toBe(expected)
+        expect(verifyRunHtml(db, created.id)).toBe(true)
+        expect(openRunPdf(db, created.id)).toEqual(archived)
+        expect(renderRunHtml(db, created.id)).toContain('zu Rechnung Nr. RE-original')
+      }
+    }
+  )
+
+  it('#424 keeps absent and empty references byte-identical to the old HTML while new runs print them', async () => {
+    const db = setup()
+    entry(db)
+    const created = await createRun(db, req, renderer)
+    const oldPayload = buildPdfPayload(db, req, '', created.created_at)
+    const oldHtml = buildPdfHtml({ ...oldPayload, runNumber: created.number })
+    expect(renderRunHtml(db, created.id)).toBe(oldHtml)
+    expect(verifyRunHtml(db, created.id)).toBe(true)
+    expect(JSON.parse(created.rule_snapshot).options).not.toHaveProperty('invoiceRef')
+    expect(buildPdfHtml({ ...oldPayload, runNumber: created.number, invoiceRef: '   ' })).toBe(
+      oldHtml
+    )
+    expect(buildPdfHtml({ ...oldPayload, invoiceRef: 'RE-123' })).toBe(buildPdfHtml(oldPayload))
+    expect(
+      buildPdfHtml({ ...oldPayload, runNumber: created.number, invoiceRef: 'RE-123' })
+    ).toContain('zu Rechnung Nr. RE-123')
+  })
+
+  it('#424 rejects more than 64 characters at creation before rendering and accepts the trimmed boundary', async () => {
+    const db = setup()
+    entry(db)
+    const render = vi.fn(renderer)
+    await expect(createRun(db, { ...req, invoiceRef: 'x'.repeat(65) }, render)).rejects.toThrow(
+      'Die Rechnungsnummer darf höchstens 64 Zeichen lang sein.'
+    )
+    expect(render).not.toHaveBeenCalled()
+    expect(listRuns(db)).toEqual([])
+    const created = await createRun(db, { ...req, invoiceRef: `  ${'x'.repeat(64)}  ` }, render)
+    expect(created.invoice_ref).toBe('x'.repeat(64))
+  })
+
+  it('#424 rejects overlong edits without changing the run', async () => {
+    const db = setup()
+    entry(db)
+    const created = await createRun(db, req, renderer)
+    expect(() => setInvoiceRef(db, created.id, 'x'.repeat(65))).toThrow(
+      'Die Rechnungsnummer darf höchstens 64 Zeichen lang sein.'
+    )
+    expect(listRuns(db)[0].invoice_ref).toBe('')
+    expect(verifyRunHtml(db, created.id)).toBe(true)
+  })
+
   it('reads client names and frozen item totals for active and released runs, newest first', async () => {
     const db = setup()
     expect(listRuns(db)).toEqual([])
