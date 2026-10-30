@@ -430,7 +430,7 @@ export const en: Record<TranslationKey, string> = {
   'clients.delete.refused':
     'Client "{name}" has entries (including deleted ones) and cannot be deleted. Archive it instead.',
   'clients.delete.blocked': 'Has entries (including deleted ones). Archive instead of deleting.',
-  'clients.delete.failed':'Client "{name}" could not be deleted: {error}',
+  'clients.delete.failed': 'Client "{name}" could not be deleted: {error}',
   'clients.confirm.deleteTitle': 'Delete client?',
   'clients.form.createTitle': 'New client',
   'clients.form.editTitle': 'Edit client',
@@ -490,7 +490,7 @@ export const en: Record<TranslationKey, string> = {
   'projects.delete.refused':
     'Project "{name}" has entries (including deleted ones) and cannot be deleted. Archive it instead.',
   'projects.delete.blocked': 'Has entries (including deleted ones). Archive instead of deleting.',
-  'projects.delete.failed':'Project "{name}" could not be deleted: {error}',
+  'projects.delete.failed': 'Project "{name}" could not be deleted: {error}',
   'projects.form.createTitle': 'New project',
   'projects.form.editTitle': 'Edit project',
   'projects.form.nameLabel': 'Name',

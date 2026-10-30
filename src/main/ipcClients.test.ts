@@ -119,7 +119,9 @@ describe('client and project lists flag a refused delete (#452)', () => {
     const project = (client_id: number, name: string): number =>
       Number(
         db
-          .prepare(`INSERT INTO projects (client_id, name, status, active) VALUES (?, ?, 'active', 1)`)
+          .prepare(
+            `INSERT INTO projects (client_id, name, status, active) VALUES (?, ?, 'active', 1)`
+          )
           .run(client_id, name).lastInsertRowid
       )
     const usedProject = project(used.id, 'Used')

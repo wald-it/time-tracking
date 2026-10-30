@@ -620,7 +620,9 @@ describe('ClientsView — refused delete (#452)', () => {
   async function confirmDelete(label: string): Promise<void> {
     fireEvent.click(screen.getByRole('button', { name: label }))
     await act(async () => {
-      fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Löschen' }))
+      fireEvent.click(
+        within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Löschen' })
+      )
     })
   }
 
@@ -673,7 +675,10 @@ describe('ClientsView — refused delete (#452)', () => {
     await renderView()
     const key = screen.getByRole('button', { name: 'Löschen: Acme' })
     expect(key).toHaveAttribute('aria-disabled', 'true')
-    expect(key).toHaveAttribute('title', 'Hat Einträge (auch gelöschte). Archivieren statt löschen.')
+    expect(key).toHaveAttribute(
+      'title',
+      'Hat Einträge (auch gelöschte). Archivieren statt löschen.'
+    )
     fireEvent.click(key)
     await act(async () => {})
     expect(screen.queryByRole('alertdialog')).toBeNull()
@@ -698,7 +703,10 @@ describe('ClientsView — refused delete (#452)', () => {
     })
     const key = screen.getByRole('button', { name: 'Löschen: Rollout' })
     expect(key).toHaveAttribute('aria-disabled', 'true')
-    expect(key).toHaveAttribute('title', 'Hat Einträge (auch gelöschte). Archivieren statt löschen.')
+    expect(key).toHaveAttribute(
+      'title',
+      'Hat Einträge (auch gelöschte). Archivieren statt löschen.'
+    )
     fireEvent.click(key)
     await act(async () => {})
     expect(screen.queryByRole('alertdialog')).toBeNull()

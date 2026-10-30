@@ -433,7 +433,7 @@ export const de = {
   'clients.delete.refused':
     'Kunde „{name}“ hat Einträge (auch gelöschte) und lässt sich nicht löschen. Stattdessen archivieren.',
   'clients.delete.blocked': 'Hat Einträge (auch gelöschte). Archivieren statt löschen.',
-  'clients.delete.failed':'Kunde „{name}“ ließ sich nicht löschen: {error}',
+  'clients.delete.failed': 'Kunde „{name}“ ließ sich nicht löschen: {error}',
   'clients.confirm.deleteTitle': 'Kunde löschen?',
   'clients.form.createTitle': 'Neuer Kunde',
   'clients.form.editTitle': 'Kunde bearbeiten',
@@ -493,7 +493,7 @@ export const de = {
   'projects.delete.refused':
     'Projekt „{name}“ hat Einträge (auch gelöschte) und lässt sich nicht löschen. Stattdessen archivieren.',
   'projects.delete.blocked': 'Hat Einträge (auch gelöschte). Archivieren statt löschen.',
-  'projects.delete.failed':'Projekt „{name}“ ließ sich nicht löschen: {error}',
+  'projects.delete.failed': 'Projekt „{name}“ ließ sich nicht löschen: {error}',
   'projects.form.createTitle': 'Neues Projekt',
   'projects.form.editTitle': 'Projekt bearbeiten',
   'projects.form.nameLabel': 'Name',
