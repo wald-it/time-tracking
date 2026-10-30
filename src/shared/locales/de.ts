@@ -34,6 +34,12 @@ export const de = {
   'review.billable': 'Abrechenbar',
   'review.notBillable': 'Nicht abrechenbar',
   'review.hasFindings': 'Befunde',
+  'review.changedOnly': 'Nur seit letzter Abrechnung geändert',
+  'review.createdOn': 'neu am {date}',
+  'review.changedOn': 'geändert am {date}',
+  'review.sinceRun': 'Seit Lauf {number} vom {date}',
+  'review.noActiveRun':
+    'Für diesen Kunden gibt es noch keinen aktiven Abrechnungslauf. Der Filter zeigt deshalb nichts.',
   'settings.feedback.title': 'Rückmeldetexte',
   'ruleCheck.missing_description': 'Beschreibung fehlt.',
   'ruleCheck.missing_project': 'Projekt fehlt.',

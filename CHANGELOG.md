@@ -9,6 +9,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Added
 
+- **The monthly review can show only entries changed since the client's last billing run.** A switch narrows entries and findings to entries created or changed after the latest active run and marks each with its change; without an active run it says so ([#428](https://github.com/wald-it/time-tracking/issues/428)).
 - **Monthly review in the Export tab.** For a client and period it lists the rule check findings with a jump to the entry, then the entries with inline edit; the export stays possible with open findings ([#427](https://github.com/wald-it/time-tracking/issues/427)).
 - **The rule check is available to agents as the read-only MCP tool `check_period`.** It returns the same findings as the app for a client and period ([#429](https://github.com/wald-it/time-tracking/issues/429)).
 - **A rule check reports findings for a client's entries in a period.** It checks missing descriptions or projects, billable entries without a rate, long entries and days, work outside working hours or on weekends, format rules, overlong texts and non-billable entries. Thresholds are in Settings; the check only reports and never blocks an export. It is not shown outside Settings yet ([#426](https://github.com/wald-it/time-tracking/issues/426)).

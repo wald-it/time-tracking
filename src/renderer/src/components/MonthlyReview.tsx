@@ -10,7 +10,14 @@ import { useEntriesStore } from '../store/entriesStore'
 import { useTimerStore } from '../store/timerStore'
 import { BilledChip } from './BilledChip'
 import { EntryEditForm } from './EntryEditForm'
+import { Toggle } from './Toggle'
 import { FIELD_LABEL, FOCUS, INPUT, KEY_INV, LEGEND, READOUT, SECTION } from './instrumentClasses'
+
+// The renderer takes its types from shared/ or the preload API, never from main/.
+type ChangedSinceRunResult = Extract<
+  Awaited<ReturnType<Window['api']['review']['changedSinceRun']>>,
+  { ok: true }
+>['data']
 
 export interface ReviewSelection {
   clientId: number
@@ -217,10 +224,15 @@ function ReviewResults({
 }): React.JSX.Element {
   const t = useT()
   const { locale } = useLocale()
-  const [result, setResult] = useState<{
+  const [changedOnly, setChangedOnly] = useState(false)
+  const filterLabelId = useId()
+  const [loaded, setResult] = useState<{
     entries: PeriodReviewEntry[]
     findings: RuleCheckFinding[]
+    changes: ChangedSinceRunResult | null
   } | null>(null)
+  // Never display an unfiltered snapshot while the filter loads or fails.
+  const result = loaded && Boolean(loaded.changes) === changedOnly ? loaded : null
   const [error, setError] = useState<string | null>(null)
   // The entry as it was when the editor opened. A reload while it is open must
   // not hand the form a newer version_no under its old field values, or saving
@@ -243,13 +255,21 @@ function ReviewResults({
     const request = { clientId, ...(projectId === undefined ? {} : { projectId }), fromIso, toIso }
     void Promise.all([
       window.api.ruleCheck.period(request),
-      window.api.entries.getForReview(request)
+      window.api.entries.getForReview(request),
+      changedOnly ? window.api.review.changedSinceRun(request) : null
     ])
-      .then(([check, list]) => {
+      .then(([check, list, changes]) => {
         if (cancelled) return
         if (!check.ok) throw new Error(check.error)
         if (!list.ok) throw new Error(list.error)
-        setResult({ findings: check.data, entries: list.data })
+        if (changes && !changes.ok) throw new Error(changes.error)
+        const changed = changes?.data ?? null
+        const changedIds = new Set(changed?.lastRun ? changed.entries.map((e) => e.entryId) : [])
+        setResult({
+          findings: changed ? check.data.filter((f) => changedIds.has(f.entryId)) : check.data,
+          entries: changed ? list.data.filter((e) => changedIds.has(e.id)) : list.data,
+          changes: changed
+        })
         // Same version, same content: take the reloaded row, so a billing run
         // created meanwhile reaches the form (its reason prompt reads billed).
         setEditing((open) => {
@@ -264,7 +284,17 @@ function ReviewResults({
     return () => {
       cancelled = true
     }
-  }, [clientId, projectId, fromIso, toIso, refreshKey, entriesVersion, runningId, dataRevision])
+  }, [
+    clientId,
+    projectId,
+    fromIso,
+    toIso,
+    refreshKey,
+    entriesVersion,
+    runningId,
+    dataRevision,
+    changedOnly
+  ])
   const intlLocale = locale === 'en' ? 'en-GB' : 'de-DE'
   const dateTime = (iso: string): string =>
     new Date(iso).toLocaleString(intlLocale, {
@@ -310,11 +340,38 @@ function ReviewResults({
           {error}
         </p>
       )}
-      {result ? (
-        <div>
+      <div className="flex flex-col gap-2">
+        {result && (
           <h3 className={`${LEGEND} mb-2`}>
             {t('review.findings', { count: result.findings.length })}
           </h3>
+        )}
+        <div className="flex items-center justify-between gap-3">
+          <span id={filterLabelId} className={FIELD_LABEL}>
+            {t('review.changedOnly')}
+          </span>
+          <Toggle checked={changedOnly} onChange={setChangedOnly} labelledBy={filterLabelId} />
+        </div>
+        {result?.changes &&
+          (result.changes.lastRun ? (
+            <p className="text-xs text-[var(--ink3)]">
+              {t('review.sinceRun', {
+                number: result.changes.lastRun.number,
+                date: new Date(result.changes.lastRun.createdAt).toLocaleDateString(intlLocale, {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric'
+                })
+              })}
+            </p>
+          ) : (
+            <p role="status" className={READOUT}>
+              {t('review.noActiveRun')}
+            </p>
+          ))}
+      </div>
+      {result ? (
+        <div>
           <ul
             aria-label={t('review.findings', { count: result.findings.length })}
             className={`${READOUT} max-h-60 overflow-auto`}
@@ -344,6 +401,7 @@ function ReviewResults({
           </p>
         )
       )}
+      {/* The filter aids review; PDF always exports the whole selection. */}
       <button type="button" className={`${KEY_INV} self-start`} onClick={() => onPdf(selection)}>
         {t('review.pdf')}
       </button>
@@ -356,62 +414,73 @@ function ReviewResults({
               its lower edge and cover the form. The list scrolls with the page. */}
           <ul aria-label={t('review.entries', { count: result.entries.length })}>
             {result.entries.length === 0 && <li className={READOUT}>{t('review.noEntries')}</li>}
-            {result.entries.map((entry) => (
-              <li
-                key={entry.id}
-                aria-label={t('review.entry', { id: entry.id })}
-                tabIndex={-1}
-                ref={(node) => {
-                  if (node) rows.current.set(entry.id, node)
-                  else rows.current.delete(entry.id)
-                }}
-                data-highlighted={highlightedId === entry.id}
-                className={`border-b border-[var(--line)] p-3 ${FOCUS} ${highlightedId === entry.id ? 'bg-[var(--key)] ring-1 ring-inset ring-[var(--ink3)]' : ''}`}
-              >
-                <button
-                  type="button"
-                  aria-label={t('common.edit')}
-                  aria-expanded={editingId === entry.id}
-                  className={`flex w-full flex-wrap items-baseline gap-x-4 gap-y-1 text-left text-sm ${FOCUS}`}
-                  onClick={() => openEditor(entry.id)}
+            {result.entries.map((entry) => {
+              const change = result.changes?.entries.find((e) => e.entryId === entry.id)
+              return (
+                <li
+                  key={entry.id}
+                  aria-label={t('review.entry', { id: entry.id })}
+                  tabIndex={-1}
+                  ref={(node) => {
+                    if (node) rows.current.set(entry.id, node)
+                    else rows.current.delete(entry.id)
+                  }}
+                  data-highlighted={highlightedId === entry.id}
+                  className={`border-b border-[var(--line)] p-3 ${FOCUS} ${highlightedId === entry.id ? 'bg-[var(--key)] ring-1 ring-inset ring-[var(--ink3)]' : ''}`}
                 >
-                  <span className="font-num text-xs">
-                    {dateTime(entry.entry_start)}–
-                    {localDateKey(new Date(entry.entry_start)) ===
-                    localDateKey(new Date(entry.entry_stop))
-                      ? time(entry.entry_stop)
-                      : dateTime(entry.entry_stop)}
-                  </span>
-                  <span className="font-num text-xs">
-                    {formatSecondsHm(entry.duration_seconds)}
-                  </span>
-                  <span className="text-xs text-[var(--ink3)]">
-                    {projects.find((p) => p.id === entry.project_id)?.name ?? t('review.noProject')}
-                  </span>
-                  <span className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]">
-                    {entry.description || t('review.noDescription')}
-                  </span>
-                  <span className="text-xs text-[var(--ink3)]">
-                    {t(entry.billable ? 'review.billable' : 'review.notBillable')}
-                  </span>
-                  {!!entry.billed && <BilledChip />}
-                  {result.findings.some((f) => f.entryId === entry.id) && (
-                    <span className={FIELD_LABEL}>{t('review.hasFindings')}</span>
+                  <button
+                    type="button"
+                    aria-label={t('common.edit')}
+                    aria-expanded={editingId === entry.id}
+                    className={`flex w-full flex-wrap items-baseline gap-x-4 gap-y-1 text-left text-sm ${FOCUS}`}
+                    onClick={() => openEditor(entry.id)}
+                  >
+                    <span className="font-num text-xs">
+                      {dateTime(entry.entry_start)}–
+                      {localDateKey(new Date(entry.entry_start)) ===
+                      localDateKey(new Date(entry.entry_stop))
+                        ? time(entry.entry_stop)
+                        : dateTime(entry.entry_stop)}
+                    </span>
+                    <span className="font-num text-xs">
+                      {formatSecondsHm(entry.duration_seconds)}
+                    </span>
+                    <span className="text-xs text-[var(--ink3)]">
+                      {projects.find((p) => p.id === entry.project_id)?.name ??
+                        t('review.noProject')}
+                    </span>
+                    <span className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]">
+                      {entry.description || t('review.noDescription')}
+                    </span>
+                    <span className="text-xs text-[var(--ink3)]">
+                      {t(entry.billable ? 'review.billable' : 'review.notBillable')}
+                    </span>
+                    {!!entry.billed && <BilledChip />}
+                    {change && (
+                      <span className="font-num text-xs text-[var(--ink3)]">
+                        {t(change.change === 'created' ? 'review.createdOn' : 'review.changedOn', {
+                          date: dateTime(change.changedAt)
+                        })}
+                      </span>
+                    )}
+                    {result.findings.some((f) => f.entryId === entry.id) && (
+                      <span className={FIELD_LABEL}>{t('review.hasFindings')}</span>
+                    )}
+                  </button>
+                  {editing?.id === entry.id && (
+                    <div className="mt-3 max-w-2xl">
+                      <EntryEditForm
+                        entry={editing}
+                        clients={clients}
+                        onCancel={() => setEditing(null)}
+                        // The form bumps the entries version on save; that reloads the review.
+                        onSaved={() => setEditing(null)}
+                      />
+                    </div>
                   )}
-                </button>
-                {editing?.id === entry.id && (
-                  <div className="mt-3 max-w-2xl">
-                    <EntryEditForm
-                      entry={editing}
-                      clients={clients}
-                      onCancel={() => setEditing(null)}
-                      // The form bumps the entries version on save; that reloads the review.
-                      onSaved={() => setEditing(null)}
-                    />
-                  </div>
-                )}
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}

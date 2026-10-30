@@ -8,6 +8,7 @@ import ExportView from './ExportView'
 
 const period = vi.fn()
 const getForReview = vi.fn()
+const changedSinceRun = vi.fn()
 const update = vi.fn()
 const pdf = vi.fn()
 const scroll = vi.fn()
@@ -45,6 +46,13 @@ beforeEach(() => {
   })
   period.mockResolvedValue({ ok: true, data: findings })
   getForReview.mockResolvedValue({ ok: true, data: entries })
+  changedSinceRun.mockResolvedValue({
+    ok: true,
+    data: {
+      lastRun: { id: 7, number: 'SN-2026-09-ABC-01', createdAt: '2026-10-01T09:00:00.000Z' },
+      entries: [{ entryId: 2, change: 'changed', changedAt: '2026-10-02T10:30:00.000Z' }]
+    }
+  })
   update.mockImplementation(async (input) => ({ ok: true, data: { ...entries[1], ...input } }))
   pdf.mockResolvedValue({ ok: true, data: { path: 'review.pdf' } })
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
@@ -69,6 +77,7 @@ beforeEach(() => {
       })
     },
     ruleCheck: { period },
+    review: { changedSinceRun },
     entries: { getForReview, update },
     tags: { getAllWithCount: async () => ({ ok: true, data: [] }) },
     settings: { set: async () => ({ ok: true, data: undefined }) },
@@ -101,6 +110,228 @@ async function selectClient(): Promise<ReturnType<typeof within>> {
   await ui.findByText('Work 2')
   return ui
 }
+describe('monthly review changed since last invoice filter', () => {
+  const label = 'Nur seit letzter Abrechnung geändert'
+  const noRun =
+    'Für diesen Kunden gibt es noch keinen aktiven Abrechnungslauf. Der Filter zeigt deshalb nichts.'
+  const run = { id: 7, number: 'SN-2026-09-ABC-01', createdAt: '2026-10-01T09:00:00.000Z' }
+  const changedAt = '2026-10-02T10:30:00.000Z'
+  const shownChange = (locale: string): string =>
+    new Date(changedAt).toLocaleString(locale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+
+  it('starts off with full lists and makes no change-history request', async () => {
+    const ui = await selectClient()
+    expect(ui.getByRole('switch', { name: label })).not.toBeChecked()
+    expect(changedSinceRun).not.toHaveBeenCalled()
+    expect(ui.getByRole('heading', { name: 'Befunde (2)' })).toBeVisible()
+    expect(ui.getByRole('heading', { name: 'Einträge (2)' })).toBeVisible()
+    expect(ui.getByText('Work 1')).toBeVisible()
+    expect(ui.getByText('Work 2')).toBeVisible()
+  })
+
+  it.each([
+    { entryId: 1, change: 'created', mark: 'neu am', finding: 'nicht abrechenbar' },
+    { entryId: 2, change: 'changed', mark: 'geändert am', finding: 'Beschreibung fehlt.' }
+  ])('narrows both lists and marks $change entries with the run reference', async (change) => {
+    changedSinceRun.mockResolvedValue({
+      ok: true,
+      data: { lastRun: run, entries: [{ ...change, changedAt }] }
+    })
+    const ui = await selectClient()
+    fireEvent.click(ui.getByRole('switch', { name: label }))
+    const row = await ui.findByRole('listitem', { name: `Eintrag ${change.entryId}` })
+    expect(within(row).getByText(`${change.mark} ${shownChange('de-DE')}`)).toBeVisible()
+    expect(ui.queryByRole('listitem', { name: `Eintrag ${3 - change.entryId}` })).toBeNull()
+    expect(ui.getByRole('heading', { name: 'Befunde (1)' })).toBeVisible()
+    expect(ui.getByRole('heading', { name: 'Einträge (1)' })).toBeVisible()
+    const lines = within(ui.getByRole('list', { name: 'Befunde (1)' })).getAllByRole('button')
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toHaveTextContent(change.finding)
+    expect(ui.getByText(`Seit Lauf ${run.number} vom 01.10.2026`)).toBeVisible()
+    expect(changedSinceRun).toHaveBeenLastCalledWith(getForReview.mock.lastCall![0])
+    expect(changedSinceRun).toHaveBeenLastCalledWith(period.mock.lastCall![0])
+  })
+
+  it('shows empty lists and explains that there is no active billing run', async () => {
+    changedSinceRun.mockResolvedValue({ ok: true, data: { lastRun: null, entries: [] } })
+    const ui = await selectClient()
+    fireEvent.click(ui.getByRole('switch', { name: label }))
+    expect(await ui.findByText(noRun)).toHaveAttribute('role', 'status')
+    expect(ui.getByRole('list', { name: 'Befunde (0)' })).toHaveTextContent('Keine Befunde')
+    expect(ui.getByRole('list', { name: 'Einträge (0)' })).toHaveTextContent(
+      'Keine Einträge in diesem Zeitraum.'
+    )
+    expect(ui.queryByText('Work 1')).toBeNull()
+    expect(ui.queryByText('Work 2')).toBeNull()
+    expect(ui.queryByText(/^Seit Lauf/)).toBeNull()
+  })
+
+  it('keeps the run reference with the normal empty states when nothing changed', async () => {
+    changedSinceRun.mockResolvedValue({ ok: true, data: { lastRun: run, entries: [] } })
+    const ui = await selectClient()
+    fireEvent.click(ui.getByRole('switch', { name: label }))
+    expect(await ui.findByText(`Seit Lauf ${run.number} vom 01.10.2026`)).toBeVisible()
+    expect(ui.getByRole('list', { name: 'Befunde (0)' })).toHaveTextContent('Keine Befunde')
+    expect(ui.getByRole('list', { name: 'Einträge (0)' })).toHaveTextContent(
+      'Keine Einträge in diesem Zeitraum.'
+    )
+    expect(ui.queryByText(noRun)).toBeNull()
+  })
+
+  it('reloads all three results together when the entries version changes under the filter', async () => {
+    const ui = await selectClient()
+    fireEvent.click(ui.getByRole('switch', { name: label }))
+    await ui.findByRole('list', { name: 'Einträge (1)' })
+    expect(period).toHaveBeenCalledTimes(2)
+    expect(getForReview).toHaveBeenCalledTimes(2)
+    expect(changedSinceRun).toHaveBeenCalledTimes(1)
+    changedSinceRun.mockResolvedValue({
+      ok: true,
+      data: { lastRun: run, entries: [{ entryId: 1, change: 'created', changedAt }] }
+    })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    expect(await ui.findByRole('listitem', { name: 'Eintrag 1' })).toBeVisible()
+    expect(ui.queryByRole('listitem', { name: 'Eintrag 2' })).toBeNull()
+    expect(period).toHaveBeenCalledTimes(3)
+    expect(getForReview).toHaveBeenCalledTimes(3)
+    expect(changedSinceRun).toHaveBeenCalledTimes(2)
+    expect(changedSinceRun).toHaveBeenLastCalledWith(period.mock.lastCall![0])
+    expect(getForReview).toHaveBeenLastCalledWith(period.mock.lastCall![0])
+  })
+
+  it('shows all filter texts in English', async () => {
+    changedSinceRun.mockResolvedValue({
+      ok: true,
+      data: {
+        lastRun: run,
+        entries: [
+          { entryId: 1, change: 'created', changedAt },
+          { entryId: 2, change: 'changed', changedAt }
+        ]
+      }
+    })
+    const ui = await selectClient()
+    await act(async () => useSettingsStore.setState({ settings: { language: 'en' } as never }))
+    fireEvent.click(ui.getByRole('switch', { name: 'Only changed since last invoice' }))
+    expect(await ui.findByText(`new on ${shownChange('en-GB')}`)).toBeVisible()
+    expect(ui.getByText(`changed on ${shownChange('en-GB')}`)).toBeVisible()
+    expect(ui.getByText(`Since run ${run.number} of 01/10/2026`)).toBeVisible()
+    changedSinceRun.mockResolvedValue({ ok: true, data: { lastRun: null, entries: [] } })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    expect(
+      await ui.findByText('This client has no active billing run yet, so the filter shows nothing.')
+    ).toHaveAttribute('role', 'status')
+    expect(ui.getByRole('heading', { name: 'Findings (0)' })).toBeVisible()
+    expect(ui.getByRole('heading', { name: 'Entries (0)' })).toBeVisible()
+  })
+
+  it('exports the whole client, project and date selection to PDF while filtered', async () => {
+    const ui = await selectClient()
+    await ui.findByRole('option', { name: 'Project' })
+    fireEvent.change(ui.getByLabelText('Review-Projekt'), { target: { value: '3' } })
+    fireEvent.change(ui.getByLabelText('Review von'), { target: { value: '2026-09-01' } })
+    fireEvent.change(ui.getByLabelText('Review bis'), { target: { value: '2026-09-30' } })
+    fireEvent.click(ui.getByRole('switch', { name: label }))
+    await ui.findByRole('list', { name: 'Einträge (1)' })
+    expect(changedSinceRun).toHaveBeenLastCalledWith({
+      clientId: 1,
+      projectId: 3,
+      fromIso: '2026-09-01',
+      toIso: '2026-09-30'
+    })
+    fireEvent.click(ui.getByRole('button', { name: 'PDF vorbereiten' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Exportieren' }))
+    await waitFor(() => expect(dialog.getByRole('combobox', { name: 'Kunde' })).toHaveValue('1'))
+    await waitFor(() => expect(dialog.getByRole('combobox', { name: 'Projekt' })).toHaveValue('3'))
+    expect(dialog.getByText('Von').parentElement!.querySelector('input')).toHaveValue('2026-09-01')
+    expect(dialog.getByText('Bis').parentElement!.querySelector('input')).toHaveValue('2026-09-30')
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'PDF speichern' })).toBeEnabled())
+    fireEvent.click(dialog.getByRole('button', { name: 'PDF speichern' }))
+    await waitFor(() =>
+      expect(pdf).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientId: 1,
+          projectId: 3,
+          fromIso: '2026-09-01',
+          toIso: '2026-09-30'
+        })
+      )
+    )
+  })
+
+  it.each(['IPC error', 'rejection'])('never falls back to full lists on a %s', async (failure) => {
+    const fail = (): void => {
+      if (failure === 'IPC error')
+        changedSinceRun.mockResolvedValue({ ok: false, error: 'History failed' })
+      else changedSinceRun.mockRejectedValue(new Error('History failed'))
+    }
+    fail()
+    const ui = await selectClient()
+    fireEvent.click(ui.getByRole('switch', { name: label }))
+    expect(await ui.findByRole('alert')).toHaveTextContent('History failed')
+    expect(ui.queryByText('Work 1')).toBeNull()
+    expect(ui.queryByText('Work 2')).toBeNull()
+    changedSinceRun.mockResolvedValue({
+      ok: true,
+      data: { lastRun: run, entries: [{ entryId: 2, change: 'changed', changedAt }] }
+    })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    await ui.findByRole('listitem', { name: 'Eintrag 2' })
+    expect(ui.queryByRole('alert')).toBeNull()
+    fail()
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    expect(await ui.findByRole('alert')).toHaveTextContent('History failed')
+    expect(ui.getByRole('listitem', { name: 'Eintrag 2' })).toBeVisible()
+    expect(ui.queryByText('Work 1')).toBeNull()
+    fireEvent.click(ui.getByRole('switch', { name: label }))
+    expect(await ui.findByText('Work 1')).toBeVisible()
+    expect(ui.getByText('Work 2')).toBeVisible()
+    expect(ui.queryByRole('alert')).toBeNull()
+    expect(changedSinceRun).toHaveBeenCalledTimes(3)
+  })
+
+  it('resets the switch on changes to client, project, quick range and either date', async () => {
+    const ui = await selectClient()
+    await ui.findByRole('option', { name: 'Project' })
+    for (const [field, value] of [
+      ['Review-Projekt', '3'],
+      ['Review-Zeitraum', 'thisWeek'],
+      ['Review von', '2026-01-01'],
+      ['Review bis', '2026-12-31'],
+      ['Review-Kunde', '2']
+    ]) {
+      fireEvent.click(ui.getByRole('switch', { name: label }))
+      await ui.findByRole('list', { name: 'Einträge (1)' })
+      const calls = changedSinceRun.mock.calls.length
+      fireEvent.change(ui.getByLabelText(field), { target: { value } })
+      expect(ui.getByRole('switch', { name: label })).not.toBeChecked()
+      await ui.findByRole('list', { name: 'Einträge (2)' })
+      expect(changedSinceRun).toHaveBeenCalledTimes(calls)
+    }
+  })
+
+  it('hides unfiltered rows while loading and ignores a superseded change-history response', async () => {
+    let resolve!: (value: unknown) => void
+    changedSinceRun.mockReturnValueOnce(new Promise((done) => (resolve = done)))
+    const ui = await selectClient()
+    fireEvent.click(ui.getByRole('switch', { name: label }))
+    expect(ui.queryByText('Work 1')).toBeNull()
+    expect(ui.queryByText('Work 2')).toBeNull()
+    expect(ui.getByRole('status')).toHaveTextContent('Prüfung wird geladen')
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    await ui.findByRole('listitem', { name: 'Eintrag 2' })
+    await act(async () => resolve({ ok: true, data: { lastRun: null, entries: [] } }))
+    expect(ui.getByRole('listitem', { name: 'Eintrag 2' })).toBeVisible()
+    expect(ui.queryByText(noRun)).toBeNull()
+  })
+})
+
 describe('monthly review', () => {
   it('renders ordered finding lines and count, entry metadata and active client choices above the cards', async () => {
     const ui = await selectClient()
