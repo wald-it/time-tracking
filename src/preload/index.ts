@@ -189,6 +189,9 @@ const api = {
     set: (key: string, value: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('settings:set', key, value)
   },
+  feedbackRules: {
+    names: (): Promise<IpcResult<string[]>> => ipcRenderer.invoke('feedbackRules:names')
+  },
   backups: {
     list: (): Promise<IpcResult<BackupInfo[]>> => ipcRenderer.invoke('backup:list'),
     create: (): Promise<IpcResult<string>> => ipcRenderer.invoke('backup:create'),

@@ -261,6 +261,8 @@ export interface Settings {
   // Lives in the DB instead of localStorage so it survives hard exits,
   // second instances, and is included in backups. Absent until first change.
   export_prefs?: string
+  /** Optional JSON format rules; absent until first edited in Settings. */
+  feedback_rules?: string
   // v1.14 #128 — MCP integration flags (seeded by migration 018). Stored as
   // '0'/'1' strings. The read-only MCP server reads the two expose_* flags
   // (env vars override); mcp_write_enabled gates the future write path (#127).

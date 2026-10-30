@@ -7,6 +7,7 @@ import {
   setInvoiceRef
 } from './billingRuns'
 import { isExternalUrlAllowed } from './externalLinks'
+import { readMasterNames } from './feedbackRules'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
 import { dialog } from 'electron'
@@ -768,6 +769,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   })
 
   // ── Settings ──────────────────────────────────────────────────
+  ipcMain.handle('feedbackRules:names', (): IpcResult<string[]> => {
+    try {
+      return ok(readMasterNames(db))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
   ipcMain.handle('settings:getAll', (): IpcResult<Settings> => {
     try {
       const rows = db.prepare(`SELECT key, value FROM settings`).all() as {

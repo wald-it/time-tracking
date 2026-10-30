@@ -40,6 +40,7 @@ export const RENDERER_WRITABLE_SETTINGS: ReadonlySet<string> = new Set([
   'week_start',
   'show_project_number',
   'export_prefs',
+  'feedback_rules',
   'mcp_expose_rates',
   'mcp_expose_private_notes',
   // Turning these on asks a native confirmation first (sensitiveSettingChange).

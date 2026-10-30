@@ -10,6 +10,16 @@
  * Update + Language sections). Other views stay hardcoded until v1.6.
  */
 export const de = {
+  'settings.feedback.title': 'Rückmeldetexte',
+  'settings.feedback.prefixes': 'Erlaubte Präfixe',
+  'settings.feedback.prefixesHint': 'Kommagetrennt; leer = keine Prüfung.',
+  'settings.feedback.separator': 'Trennzeichen',
+  'settings.feedback.separatorHint': 'Zwischen Tätigkeiten; leer = keine Prüfung.',
+  'settings.feedback.forbidden': 'Verbotene Wörter',
+  'settings.feedback.forbiddenHint': 'Kommagetrennt.',
+  'settings.feedback.names': 'Kontaktpersonen',
+  'settings.feedback.namesHint':
+    'Kontaktpersonen aus den Stammdaten gelten immer als verboten. Einträge werden noch nicht geprüft.',
   'rates.title': 'Sätze',
   'rates.billing': 'Abrechnung',
   'rates.validFrom': 'Gültig ab',

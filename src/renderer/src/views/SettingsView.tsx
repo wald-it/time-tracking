@@ -36,6 +36,7 @@ import {
   type WebhookTarget
 } from '../../../shared/webhooks'
 import { isUpdateCheckEnabled } from '../../../shared/updateCheck'
+import { useFeedbackRules } from './settings/useFeedbackRules'
 
 const DEFAULT_HOTKEY = 'Alt+Shift+S'
 const DEFAULT_MINI_HOTKEY = 'Alt+Shift+M'
@@ -620,6 +621,13 @@ export default function SettingsView(): React.JSX.Element {
           </Section>
         )}
 
+        {tab === 'export' && (
+          <FeedbackRulesSection
+            raw={settings.feedback_rules}
+            onChange={(raw) => void update('feedback_rules', raw)}
+          />
+        )}
+
         {/* Daten */}
         {tab === 'data' && (
           <>
@@ -973,6 +981,60 @@ export default function SettingsView(): React.JSX.Element {
 const inputClass = `${INPUT} w-full`
 
 const btnSecondaryClass = KEY
+
+function FeedbackRulesSection({
+  raw,
+  onChange
+}: {
+  raw: string | undefined
+  onChange: (raw: string) => void
+}): React.JSX.Element {
+  const t = useT()
+  const { fields, change, names, namesError } = useFeedbackRules(raw, onChange)
+  return (
+    <Section title={t('settings.feedback.title')}>
+      <Row label={t('settings.feedback.prefixes')} hint={t('settings.feedback.prefixesHint')}>
+        <input
+          type="text"
+          aria-label={t('settings.feedback.prefixes')}
+          value={fields.prefixes}
+          onChange={(e) => change('prefixes', e.target.value)}
+          className={inputClass}
+        />
+      </Row>
+      <Row label={t('settings.feedback.separator')} hint={t('settings.feedback.separatorHint')}>
+        <input
+          type="text"
+          aria-label={t('settings.feedback.separator')}
+          value={fields.separator}
+          onChange={(e) => change('separator', e.target.value)}
+          className={`${INPUT} w-20`}
+        />
+      </Row>
+      <Row label={t('settings.feedback.forbidden')} hint={t('settings.feedback.forbiddenHint')}>
+        <input
+          type="text"
+          aria-label={t('settings.feedback.forbidden')}
+          value={fields.forbidden}
+          onChange={(e) => change('forbidden', e.target.value)}
+          className={inputClass}
+        />
+      </Row>
+      <div className="py-3 text-sm text-[var(--ink2)]">
+        <p>{t('settings.feedback.namesHint')}</p>
+        {namesError ? (
+          <p role="alert">{t('common.error', { error: namesError })}</p>
+        ) : (
+          <ul aria-label={t('settings.feedback.names')} className="mt-2 space-y-1">
+            {names.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Section>
+  )
+}
 
 function Section({
   title,

@@ -10,6 +10,16 @@ import type { TranslationKey } from './de'
  * sections). Remaining DE-only UI strings get an EN translation in v1.6.
  */
 export const en: Record<TranslationKey, string> = {
+  'settings.feedback.title': 'Feedback texts',
+  'settings.feedback.prefixes': 'Allowed prefixes',
+  'settings.feedback.prefixesHint': 'Comma-separated; empty = no check.',
+  'settings.feedback.separator': 'Separator',
+  'settings.feedback.separatorHint': 'Between activities; empty = no check.',
+  'settings.feedback.forbidden': 'Forbidden words',
+  'settings.feedback.forbiddenHint': 'Comma-separated.',
+  'settings.feedback.names': 'Contact persons',
+  'settings.feedback.namesHint':
+    'Contact persons from the master data always count as forbidden. Entries are not checked yet.',
   'rates.title': 'Rates',
   'rates.billing': 'Billing',
   'rates.validFrom': 'Valid from',
