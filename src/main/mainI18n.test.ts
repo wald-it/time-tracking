@@ -276,6 +276,25 @@ describe('#296 — default file names follow the app language', () => {
   })
 })
 
+it('#424 appends a sanitised invoice reference only to CSV names and preserves empty names', () => {
+  const data = { client: 'Acme', project: 'Rollout', month: '2026-04' }
+  for (const locale of ['de', 'en'] as const) {
+    const base = exportFileName(locale, 'csv', data)
+    expect(exportFileName(locale, 'csv', { ...data, invoiceRef: ' RE/12:3*?"<>|\\ ' })).toBe(
+      base.replace('.csv', '-RE_12_3_______.csv')
+    )
+    expect(exportFileName(locale, 'csv', { ...data, invoiceRef: 'RE-123' })).toBe(
+      base.replace('.csv', '-RE-123.csv')
+    )
+    for (const invoiceRef of ['', '   ']) {
+      expect(exportFileName(locale, 'csv', { ...data, invoiceRef })).toBe(base)
+    }
+    expect(exportFileName(locale, 'pdf', { ...data, invoiceRef: 'RE-123' })).toBe(
+      exportFileName(locale, 'pdf', data)
+    )
+  }
+})
+
 describe('#296 — tray', () => {
   it('German labels and tooltip as before', () => {
     expect(trayLabels('de')).toEqual({

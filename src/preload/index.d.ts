@@ -171,6 +171,7 @@ declare global {
       }
       pdf: {
         export(req: {
+          invoiceRef?: string
           markAsBilled?: boolean
           replacesRunId?: number
           clientId: number
@@ -213,6 +214,7 @@ declare global {
       }
       csv: {
         export(req: {
+          invoiceRef?: string
           clientId: number
           fromIso: string
           toIso: string

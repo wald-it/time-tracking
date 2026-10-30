@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
+import { normalizeInvoiceRef } from './invoiceRef'
 import {
   buildPdfHtml,
   buildPdfPayloadFromData,
@@ -201,7 +202,7 @@ export async function createRun(
   renderPdf: (html: string) => Promise<Buffer>,
   options: { logoDataUrl?: string; appVersion?: string } = {}
 ): Promise<BillingRun & { excludedCount: number }> {
-  req = { ...req }
+  req = { ...req, invoiceRef: normalizeInvoiceRef(req.invoiceRef) || undefined }
   if (!validDay(req.fromIso) || !validDay(req.toIso) || req.fromIso > req.toIso) {
     throw new Error('Ungültiger Abrechnungszeitraum')
   }
@@ -258,7 +259,8 @@ export async function createRun(
           groupBy: req.groupBy,
           groupByTag: req.groupByTag,
           hideFeeColumn: req.hideFeeColumn,
-          includeSignatures: req.includeSignatures
+          includeSignatures: req.includeSignatures,
+          invoiceRef: req.invoiceRef
         },
         clientProfile: resolvedProfile(db, req.clientId, null),
         projectProfiles: {},
@@ -297,7 +299,7 @@ export async function createRun(
         released_at: null,
         release_reason: null,
         replaces_run_id: req.replacesRunId ?? null,
-        invoice_ref: '',
+        invoice_ref: req.invoiceRef ?? '',
         rule_snapshot: JSON.stringify(snapshot)
       }
       return { rows, run, prefix, excludedCount: candidates.length - rows.length }
@@ -334,8 +336,8 @@ export async function createRun(
         db
           .prepare(
             `INSERT INTO billing_run
-      (number, client_id, project_id, period_from, period_to, created_at, status, replaces_run_id, rule_snapshot, html_sha256, pdf_sha256)
-      VALUES (@number, @client_id, @project_id, @period_from, @period_to, @created_at, @status, @replaces_run_id, @rule_snapshot, @html_sha256, @pdf_sha256)`
+      (number, client_id, project_id, period_from, period_to, created_at, status, replaces_run_id, invoice_ref, rule_snapshot, html_sha256, pdf_sha256)
+      VALUES (@number, @client_id, @project_id, @period_from, @period_to, @created_at, @status, @replaces_run_id, @invoice_ref, @rule_snapshot, @html_sha256, @pdf_sha256)`
           )
           .run({ ...prepared.run, html_sha256: htmlHash, pdf_sha256: pdfHash }).lastInsertRowid
       )
@@ -366,8 +368,9 @@ export function releaseRun(db: Db, runId: number, reason: string): void {
 }
 
 export function setInvoiceRef(db: Db, runId: number, ref: string): void {
+  const invoiceRef = normalizeInvoiceRef(ref)
   getRun(db, runId)
-  db.prepare('UPDATE billing_run SET invoice_ref = ? WHERE id = ?').run(ref, runId)
+  db.prepare('UPDATE billing_run SET invoice_ref = ? WHERE id = ?').run(invoiceRef, runId)
 }
 
 /** Reopening always returns the archive, including for released runs. */
