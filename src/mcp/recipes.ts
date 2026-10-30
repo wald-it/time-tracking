@@ -48,13 +48,15 @@ export const RECIPES: Recipe[] = [
       {
         name: 'was',
         description:
-          'Was nachgetragen werden soll, z. B. "gestern 14 bis 16 Uhr Workshop bei Acme"',
-        required: true
+          'Was nachgetragen werden soll, als ganzer Satz. In Claude Code ohne Argument aufrufen, dann fragt das Rezept im Chat danach; nach dem Befehl kommt nur das erste Wort an.',
+        required: false
       }
     ],
     text: (a) =>
       [
-        `Trag diese Zeit in TimeTrack nach: ${ask(a.was, '(bitte frag mich, was nachgetragen werden soll)')}`,
+        a.was?.trim()
+          ? `Trag diese Zeit in TimeTrack nach: „${a.was.trim()}“. Bevor du etwas anderes tust, lass dir von mir bestätigen, dass das der ganze Satz ist; der Client könnte ihn abgeschnitten haben.`
+          : `Trag diese Zeit in TimeTrack nach: ${ask(a.was, '(bitte frag mich im Chat nach dem ganzen Satz, der nachgetragen werden soll)')}`,
         '',
         '1. Finde Kunde und Projekt mit list_clients und list_projects. Passt mehr als eines oder keines, frag mich.',
         '2. Bestimme Beginn und Ende als Zeitstempel mit Zeitzone. Fehlt eine Uhrzeit, frag nach, statt sie zu raten.',
@@ -83,11 +85,11 @@ export const RECIPES: Recipe[] = [
         '',
         '1. Hol die Summen mit get_report über den ganzen Monat, gruppiert nach client und project.',
         '2. Hol die Einträge des Monats mit list_entries und die Projekte der Kunden mit list_projects.',
-        '3. Liste auf, was ich mir ansehen sollte: Einträge ohne Beschreibung, Einträge über zehn Stunden, nicht abrechenbare Einträge, Einträge ohne Projekt bei Kunden mit Projekten und Überschneidungen.',
+        '3. Liste auf, was ich mir ansehen sollte: Einträge ohne Beschreibung, Einträge über zehn Stunden, nicht abrechenbare Einträge, Einträge ohne Projekt bei Kunden mit Projekten und Überschneidungen. Kennzeichne Befunde zu Einträgen mit billed als abgerechnet und nenne die Laufnummern.',
         format
-          ? `4. Schlag für Einträge mit fehlender oder unklarer Beschreibung einen Text vor, in diesem Format: ${format}`
-          : '4. Schlag für Einträge mit fehlender oder unklarer Beschreibung einen Text vor, im Stil der übrigen Beschreibungen des Monats.',
-        `5. Änderungen nur einzeln mit update_entry_fields und nur nach meiner Zustimmung. Gib die version aus list_entries als expected_version mit. ${WRITE_RULE} update_entry_fields behält die id und liefert den Eintrag mit der neuen version (auch version_no) zurück; nimm für jede weitere Änderung diese version als expected_version.`,
+          ? `4. Schlag nur für Einträge mit billed null und fehlender oder unklarer Beschreibung einen Text vor, in diesem Format: ${format}`
+          : '4. Schlag nur für Einträge mit billed null und fehlender oder unklarer Beschreibung einen Text vor, im Stil der übrigen Beschreibungen des Monats.',
+        `5. Ändere nur Einträge mit billed null, einzeln mit update_entry_fields und nur nach meiner Zustimmung. Gib die version aus list_entries als expected_version mit. ${WRITE_RULE} update_entry_fields behält die id und liefert den Eintrag mit der neuen version (auch version_no) zurück; nimm für jede weitere Änderung diese version als expected_version.`,
         '6. Hol die Summen danach erneut mit get_report, weil Änderungen sie verschieben, und schließ damit: Stunden je Kunde, davon abrechenbar, gerundet wie die Rechnung.'
       ].join('\n')
     }
@@ -109,8 +111,8 @@ export const RECIPES: Recipe[] = [
         '2. Hol die Tagessummen mit get_report, gruppiert nach day, und suche Lücken zwischen Arbeitstagen.',
         '3. Prüf mit get_running_timer, ob ein Timer seit mehr als zwölf Stunden läuft.',
         '4. Prüf mit list_projects, welche Projekte ihr Budget fast oder ganz verbraucht haben.',
-        '5. Ein Tag fehlt in get_report auch dann, wenn dort nur ein laufender Timer oder Einträge ohne Dauer stehen. Prüf einen scheinbar leeren Werktag deshalb mit list_entries, bevor du danach fragst.',
-        '6. Stell mir Fragen statt Schlüsse zu ziehen: zu den Befunden von check_period, Werktagen ohne Eintrag, einem lange laufenden Timer und knappen Budgets.',
+        '5. Ein Tag fehlt in get_report auch dann, wenn dort nur ein laufender Timer oder Einträge ohne Dauer stehen. Hol einmal list_entries mit from/to über den ganzen Zeitraum (lokale Mitternacht am ersten Tag bis zur lokalen Mitternacht nach dem letzten Tag, jeweils mit Zeitzone) und limit:10000. Ist count größer als entries.length, wiederhole die Abfrage für kleinere Abschnitte, bis alle Einträge vorliegen. Vergleiche die belegten Tage mit den Tagen aus get_report; beachte bei Einträgen über Mitternacht auch segments.',
+        '6. Lass gesetzliche Feiertage aus, bevor du nach Werktagen ohne Eintrag fragst; kennst du mein Bundesland oder meine Region nicht, frag mich einmal danach. TimeTrack hat keine Feiertagsdaten. Stell mir Fragen statt Schlüsse zu ziehen: zu den Befunden von check_period, den übrigen Werktagen ohne Eintrag, einem lange laufenden Timer und knappen Budgets.',
         '7. Ändere in diesem Durchgang nichts.'
       ].join('\n')
   }

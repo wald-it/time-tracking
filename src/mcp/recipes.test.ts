@@ -63,6 +63,87 @@ describe('MCP recipes (Q17)', () => {
     }
   })
 
+  it('nachtrag lists was as optional (#455)', async () => {
+    const { prompts } = await client.listPrompts()
+    expect(prompts.find((p) => p.name === 'nachtrag')?.arguments).toEqual([
+      expect.objectContaining({ name: 'was', required: false })
+    ])
+  })
+
+  it.each([undefined, '', ' \t\n '])(
+    'nachtrag asks for the sentence in chat when was is %j (#455)',
+    async (was) => {
+      const res = await client.getPrompt({
+        name: 'nachtrag',
+        ...(was === undefined ? {} : { arguments: { was } })
+      })
+      expect(res.messages[0].content).toEqual({
+        type: 'text',
+        text: expect.stringContaining('frag mich im Chat nach dem ganzen Satz')
+      })
+    }
+  )
+
+  it('nachtrag quotes the received text and confirms completeness before any other step (#455)', () => {
+    const text = RECIPES.find((r) => r.name === 'nachtrag')!.text({ was: '  gestern 14 Uhr  ' })
+    const opening = text.split('\n')[0]
+    expect.soft(opening).toContain('„gestern 14 Uhr“')
+    expect
+      .soft(opening)
+      .toContain(
+        'Bevor du etwas anderes tust, lass dir von mir bestätigen, dass das der ganze Satz ist'
+      )
+    expect.soft(opening).toContain('der Client könnte ihn abgeschnitten haben')
+  })
+
+  it.each([undefined, 'Projekt: Tätigkeit'])(
+    'the monthly close marks billed findings and excludes them from proposals and writes (format %j, #456)',
+    (format) => {
+      const text = RECIPES.find((r) => r.name === 'monatsabschluss')!.text({
+        monat: '2026-10',
+        format
+      })
+      const step = (n: number): string | undefined =>
+        text.split('\n').find((line) => line.startsWith(`${n}.`))
+      expect
+        .soft(step(3))
+        .toContain('Einträgen mit billed als abgerechnet und nenne die Laufnummern')
+      expect.soft(step(4)).toContain('nur für Einträge mit billed null')
+      expect.soft(step(5)).toContain('Ändere nur Einträge mit billed null')
+    }
+  )
+
+  it('plausibility checks empty days with one period query and handles truncation (#457)', () => {
+    const text = RECIPES.find((r) => r.name === 'plausibilitaet')!.text({
+      von: '2026-10-01',
+      bis: '2026-10-31'
+    })
+    const step = text.split('\n').find((line) => line.startsWith('5.'))!
+    expect.soft(step).toContain('Hol einmal list_entries mit from/to über den ganzen Zeitraum')
+    expect
+      .soft(step)
+      .toContain('bis zur lokalen Mitternacht nach dem letzten Tag, jeweils mit Zeitzone')
+    expect.soft(step).toContain('limit:10000')
+    expect.soft(step).toContain('count größer als entries.length')
+    expect.soft(step).toContain('kleinere Abschnitte, bis alle Einträge vorliegen')
+    expect.soft(step).toContain('Vergleiche die belegten Tage mit den Tagen aus get_report')
+  })
+
+  it('plausibility excludes public holidays before asking about empty working days (#457)', () => {
+    const text = RECIPES.find((r) => r.name === 'plausibilitaet')!.text({
+      von: '2026-10-01',
+      bis: '2026-10-31'
+    })
+    const step = text.split('\n').find((line) => line.startsWith('6.'))!
+    expect
+      .soft(step)
+      .toContain('Lass gesetzliche Feiertage aus, bevor du nach Werktagen ohne Eintrag fragst')
+    expect
+      .soft(step)
+      .toContain('kennst du mein Bundesland oder meine Region nicht, frag mich einmal danach')
+    expect.soft(step).toContain('TimeTrack hat keine Feiertagsdaten')
+  })
+
   it.each(RECIPES.map((r) => [r.name, r] as const))(
     '%s names only tools the server has',
     (_name, r) => {
