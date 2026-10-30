@@ -1,6 +1,14 @@
 import { translate, type Locale } from './i18n'
 import { de } from './locales/de'
 import { en } from './locales/en'
+import type { Entry } from './types'
+
+/** An editable segment plus the full logical entry's readout. */
+export interface PeriodReviewEntry extends Entry {
+  entry_start: string
+  entry_stop: string
+  duration_seconds: number
+}
 
 export interface RuleCheckSettings {
   entryMaxHours: number

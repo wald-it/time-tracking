@@ -1,4 +1,6 @@
 import type { BillingRunSummary } from '../main/billingRuns'
+import type { RuleCheckRequest } from '../main/ruleCheck'
+import type { RuleCheckFinding, PeriodReviewEntry } from '../shared/ruleCheck'
 import type {
   RateTarget,
   RateEditorData,
@@ -39,6 +41,9 @@ import type { FilterOptions, MappedEvents } from '../shared/graphCalendar'
 declare global {
   interface Window {
     api: {
+      ruleCheck: {
+        period(request: RuleCheckRequest): Promise<IpcResult<RuleCheckFinding[]>>
+      }
       mcpApproval: {
         get(): Promise<IpcResult<McpApprovalState>>
         onChanged(callback: (state: McpApprovalState) => void): () => void
@@ -89,6 +94,7 @@ declare global {
         delete(id: number): Promise<IpcResult<void>>
       }
       entries: {
+        getForReview(request: RuleCheckRequest): Promise<IpcResult<PeriodReviewEntry[]>>
         versions(id: number): Promise<IpcResult<EntryVersion[]>>
         start(input: CreateEntryInput): Promise<IpcResult<Entry>>
         switch(input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>>

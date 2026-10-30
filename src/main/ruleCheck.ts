@@ -6,6 +6,9 @@ import { splitAtMidnight, type Segment } from '../shared/midnightSplit'
 import { parseFeedbackRules } from '../shared/feedbackRules'
 import { parseRuleCheck, type RuleCheckFinding, type RuleCheckId } from '../shared/ruleCheck'
 import { checkFeedbackText, readMasterNames } from './feedbackRules'
+import type { PeriodReviewEntry } from '../shared/ruleCheck'
+import { entryBilledSql } from './entryBillingState'
+import { entrySourceSql } from './entryOrigin'
 
 export interface RuleCheckRequest {
   clientId: number
@@ -23,6 +26,65 @@ interface CheckedRow {
   version_id: number
   entry_start: string
   entry_stop: string
+}
+
+/** Shared selection for the advisory check and the editable review list. */
+function periodSegments(db: Database.Database, request: RuleCheckRequest): PeriodReviewEntry[] {
+  return db
+    .prepare(
+      `
+    SELECT entries.*, ${entryBilledSql(db)} AS billed, ${entrySourceSql(db)} AS source,
+           v.started_at AS entry_start, v.stopped_at AS entry_stop,
+           (SELECT SUM((julianday(s.stopped_at) - julianday(s.started_at)) * 86400)
+            FROM entry_segment s WHERE s.version_id = v.id) AS duration_seconds
+    FROM entries JOIN entry_version v ON v.id = entries.version_id
+    WHERE entries.client_id = ? AND entries.deleted_at IS NULL
+      AND entries.stopped_at IS NOT NULL AND v.stopped_at IS NOT NULL
+      AND entries.segment_date BETWEEN ? AND ?
+      AND (? IS NULL OR entries.project_id = ?)
+    ORDER BY v.started_at, entries.id, entries.segment_seq
+  `
+    )
+    .all(
+      request.clientId,
+      request.fromIso,
+      request.toIso,
+      request.projectId ?? null,
+      request.projectId ?? null
+    ) as PeriodReviewEntry[]
+}
+
+/** Keep the first selected segment for EntryEditForm, once per logical entry. */
+export function entriesForReview(
+  db: Database.Database,
+  request: RuleCheckRequest
+): PeriodReviewEntry[] {
+  const rows = new Map<number, PeriodReviewEntry>()
+  for (const row of periodSegments(db, request)) {
+    if (!rows.has(row.id))
+      rows.set(row.id, { ...row, duration_seconds: Math.round(row.duration_seconds) })
+  }
+  return [...rows.values()]
+}
+
+/** Validate the renderer boundary before either read query runs. */
+export function validateRuleCheckRequest(value: RuleCheckRequest): void {
+  const id = (n: unknown): boolean => typeof n === 'number' && Number.isSafeInteger(n) && n > 0
+  const date = (s: unknown): boolean => {
+    if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+    const parsed = new Date(`${s}T00:00:00Z`)
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === s
+  }
+  if (
+    !value ||
+    !id(value.clientId) ||
+    (value.projectId != null && !id(value.projectId)) ||
+    !date(value.fromIso) ||
+    !date(value.toIso) ||
+    value.fromIso > value.toIso
+  ) {
+    throw new Error('Invalid client, project or period')
+  }
 }
 
 // Messages show durations as h:mm like the timesheet, never as a raw fraction.
@@ -52,26 +114,7 @@ export function checkPeriod(db: Database.Database, request: RuleCheckRequest): R
   const rules = parseRuleCheck(settings.rule_check)
   const feedback = parseFeedbackRules(settings.feedback_rules)
   const names = readMasterNames(db)
-  const rows = db
-    .prepare(
-      `
-    SELECT e.id, e.version_id, e.description, e.project_id, e.billable, e.rate_cent,
-           v.started_at AS entry_start, v.stopped_at AS entry_stop
-    FROM entries e JOIN entry_version v ON v.id = e.version_id
-    WHERE e.client_id = ? AND e.deleted_at IS NULL
-      AND e.stopped_at IS NOT NULL AND v.stopped_at IS NOT NULL
-      AND e.segment_date BETWEEN ? AND ?
-      AND (? IS NULL OR e.project_id = ?)
-    ORDER BY v.started_at, e.id, e.segment_seq
-  `
-    )
-    .all(
-      request.clientId,
-      request.fromIso,
-      request.toIso,
-      request.projectId ?? null,
-      request.projectId ?? null
-    ) as CheckedRow[]
+  const rows = periodSegments(db, request) as CheckedRow[]
   if (!rows.length) return []
 
   const entries = new Map<number, CheckedRow[]>()

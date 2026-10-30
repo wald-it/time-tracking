@@ -111,6 +111,13 @@ import type {
   LicenseEntry
 } from '../shared/types'
 import { monthEntries } from './entryRanges'
+import {
+  checkPeriod,
+  entriesForReview,
+  validateRuleCheckRequest,
+  type RuleCheckRequest
+} from './ruleCheck'
+import type { RuleCheckFinding, PeriodReviewEntry } from '../shared/ruleCheck'
 import type { HotkeyChange } from './hotkeySlot'
 
 export interface IpcHooks {
@@ -481,6 +488,30 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       return fail(e)
     }
   })
+
+  ipcMain.handle(
+    'ruleCheck:period',
+    (_e, request: RuleCheckRequest): IpcResult<RuleCheckFinding[]> => {
+      try {
+        validateRuleCheckRequest(request)
+        return ok(checkPeriod(db, request))
+      } catch (e) {
+        return fail(e)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'entries:getForReview',
+    (_e, request: RuleCheckRequest): IpcResult<PeriodReviewEntry[]> => {
+      try {
+        validateRuleCheckRequest(request)
+        return ok(entriesForReview(db, request))
+      } catch (e) {
+        return fail(e)
+      }
+    }
+  )
 
   /**
    * Manual-entry creation (Today "+ Eintrag nachtragen", Calendar Drawer
