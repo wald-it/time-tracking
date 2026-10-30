@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { formatHoursMinutes } from '../shared/currency'
 import { parseTimeToDate } from '../shared/date'
 import { localDateKey } from '../shared/dateRanges'
 import { splitAtMidnight, type Segment } from '../shared/midnightSplit'
@@ -21,6 +22,11 @@ interface CheckedRow {
   rate_cent: number | null
   entry_start: string
   entry_stop: string
+}
+
+// Messages show durations as h:mm like the timesheet, never as a raw fraction.
+function hoursText(hours: number): string {
+  return formatHoursMinutes(Math.round(hours * 60))
 }
 
 function dayParts(start: Date, stop: Date): Segment[] {
@@ -111,7 +117,7 @@ export function checkPeriod(db: Database.Database, request: RuleCheckRequest): R
     const stop = new Date(row.entry_stop)
     const hours = (stop.getTime() - start.getTime()) / 3_600_000
     if (hours > rules.entryMaxHours)
-      add('entry_over_threshold', { hours, threshold: rules.entryMaxHours })
+      add('entry_over_threshold', { hours: hoursText(hours), threshold: rules.entryMaxHours })
     if (row.description.length > rules.maxDescriptionLength)
       add('too_long', { length: row.description.length, threshold: rules.maxDescriptionLength })
     let outside = false
@@ -120,7 +126,11 @@ export function checkPeriod(db: Database.Database, request: RuleCheckRequest): R
       const day = localDateKey(part.start)
       const dayHours = (totals.get(day) ?? 0) / 3_600_000
       if (dayHours > rules.dayMaxHours)
-        add('day_over_threshold', { day, hours: dayHours, threshold: rules.dayMaxHours })
+        add('day_over_threshold', {
+          day,
+          hours: hoursText(dayHours),
+          threshold: rules.dayMaxHours
+        })
       if (
         part.start < parseTimeToDate(part.start, rules.windowStart) ||
         part.stop > parseTimeToDate(part.start, rules.windowEnd)

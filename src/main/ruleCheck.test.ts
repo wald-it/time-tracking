@@ -97,7 +97,7 @@ describe('checkPeriod', () => {
           entryId: over,
           rule,
           params: {
-            hours: 10 + 1 / 60,
+            hours: '10:01',
             threshold: 10,
             ...(rule === 'day_over_threshold' ? { day: '2026-06-02' } : {})
           }
@@ -118,7 +118,7 @@ describe('checkPeriod', () => {
       [a, b].map((entryId) => ({
         entryId,
         rule: 'day_over_threshold',
-        params: { day: '2026-06-01', hours: 11, threshold: 10 }
+        params: { day: '2026-06-01', hours: '11:00', threshold: 10 }
       }))
     )
   })
@@ -153,16 +153,16 @@ describe('checkPeriod', () => {
       {
         entryId: id,
         rule: 'day_over_threshold',
-        params: { day: '2026-06-01', hours: 11, threshold: 10 }
+        params: { day: '2026-06-01', hours: '11:00', threshold: 10 }
       },
       {
         entryId: id,
         rule: 'day_over_threshold',
-        params: { day: '2026-06-02', hours: 20, threshold: 10 }
+        params: { day: '2026-06-02', hours: '20:00', threshold: 10 }
       }
     ])
     expect(findings('entry_over_threshold')).toEqual([
-      { entryId: id, rule: 'entry_over_threshold', params: { hours: 13, threshold: 10 } }
+      { entryId: id, rule: 'entry_over_threshold', params: { hours: '13:00', threshold: 10 } }
     ])
     expect(findings('outside_window')).toHaveLength(1)
     expect(findings('missing_description')).toHaveLength(1)
@@ -206,9 +206,9 @@ describe('checkPeriod', () => {
       {
         entryId: id,
         rule: 'day_over_threshold',
-        params: { day: '2026-06-01', hours: 2, threshold: 1 }
+        params: { day: '2026-06-01', hours: '2:00', threshold: 1 }
       },
-      { entryId: id, rule: 'entry_over_threshold', params: { hours: 2, threshold: 1 } },
+      { entryId: id, rule: 'entry_over_threshold', params: { hours: '2:00', threshold: 1 } },
       { entryId: id, rule: 'outside_window', params: { start: '09:00', end: '09:30' } },
       { entryId: id, rule: 'too_long', params: { length: 4, threshold: 3 } }
     ])
