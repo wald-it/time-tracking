@@ -119,6 +119,10 @@ function runHtml(
 ): string {
   const snapshot = JSON.parse(run.rule_snapshot) as Snapshot
   if (snapshot.snapshot_version !== 1) throw new Error('Unbekannte Abrechnungssnapshot-Version')
+  const documentProfile =
+    (snapshot.options.projectId == null
+      ? undefined
+      : snapshot.projectProfiles[snapshot.options.projectId]) ?? snapshot.clientProfile
   const source: PdfSourceRow[] = rows.map((row) => {
     const profile =
       (row.project_id === null ? undefined : snapshot.projectProfiles[row.project_id]) ??
@@ -142,7 +146,12 @@ function runHtml(
   })
   return buildPdfHtml(
     buildPdfPayloadFromData(
-      { ...snapshot.context, runNumber: run.number, generatedAtIso: run.created_at },
+      {
+        ...snapshot.context,
+        columns: documentProfile.columns as 'times' | 'no_times',
+        runNumber: run.number,
+        generatedAtIso: run.created_at
+      },
       snapshot.options,
       source
     )
@@ -255,6 +264,7 @@ export async function createRun(
           fromIso: req.fromIso,
           toIso: req.toIso,
           projectId: req.projectId,
+          columns: req.columns,
           groupBy: req.groupBy,
           groupByTag: req.groupByTag,
           hideFeeColumn: req.hideFeeColumn,

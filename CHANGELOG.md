@@ -9,8 +9,9 @@ All notable changes to TimeTrack are documented here.
 
 ### Added
 
+- **PDF timesheets can leave out start and end times.** The column set comes from the client or project profile and can be changed in the export dialog for one export ([#422](https://github.com/wald-it/time-tracking/issues/422)).
 - **Settings → Export holds format rules for feedback texts.** Allowed prefixes, a separator and forbidden words can be configured; contact persons from the master data always count as forbidden. Nothing checks entries yet ([#425](https://github.com/wald-it/time-tracking/issues/425)).
-- **Client and project editors now set timesheet columns, language, the fee column and grouping.** Each field inherits like interval and minimum unit. These settings do not affect the PDF yet ([#421](https://github.com/wald-it/time-tracking/issues/421)).
+- **Client and project editors now set timesheet columns, language, the fee column and grouping.** Each field inherits like interval and minimum unit. Language and fee column do not affect the PDF yet ([#421](https://github.com/wald-it/time-tracking/issues/421)).
 
 ### Changed
 

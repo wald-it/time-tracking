@@ -84,6 +84,9 @@ beforeEach(() => {
       })
     },
     billingRuns: { list, open, release },
+    billingProfile: {
+      get: async () => ({ ok: true, data: { columns: null, inherited: { columns: 'times' } } })
+    },
     pdf: { export: exportPdf }
   }
   window.api = api as unknown as Window['api']
@@ -105,6 +108,9 @@ async function openExport(): Promise<HTMLElement> {
     expect(within(dialog).getByRole<HTMLSelectElement>('combobox', { name: 'Kunde' }).value).toBe(
       '1'
     )
+  )
+  await waitFor(() =>
+    expect(within(dialog).getByRole('combobox', { name: 'Spalten' })).toBeEnabled()
   )
   return dialog
 }

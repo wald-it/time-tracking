@@ -17,6 +17,8 @@ import { deserializeTags } from '../shared/tags'
 import type { Client, Entry, Settings } from '../shared/types'
 
 export interface PdfRequest {
+  /** Per-export override; otherwise inherited from the selected billing profile. */
+  columns?: 'times' | 'no_times'
   markAsBilled?: boolean
   replacesRunId?: number
 
@@ -98,6 +100,7 @@ export interface PdfGroup {
 }
 
 export interface PdfPayload {
+  columns?: 'times' | 'no_times'
   runNumber?: string
 
   client: Pick<
@@ -314,7 +317,18 @@ export function readPdfSourceContext(
   const effectiveContactPerson =
     req.projectId != null ? (projectContactPerson ?? client.contact_person) : client.contact_person
 
+  const profile = db
+    .prepare(
+      `SELECT COALESCE(p.columns, c.columns, d.columns) AS columns
+       FROM billing_profile d
+       LEFT JOIN billing_profile c ON c.client_id = ?
+       LEFT JOIN billing_profile p ON p.project_id = ?
+       WHERE d.client_id IS NULL AND d.project_id IS NULL`
+    )
+    .get(req.clientId, req.projectId ?? null) as { columns: 'times' | 'no_times' }
+
   return {
+    columns: profile.columns,
     client,
     sender: {
       name: settings.company_name ?? '',
@@ -503,6 +517,7 @@ export function buildPdfPayloadFromData(
 
   return {
     ...context,
+    columns: req.columns ?? context.columns ?? 'times',
     rows,
     groups,
     totals: { minutes: totalMinutes, feeCent: totalFee },
@@ -540,6 +555,9 @@ export function buildPdfHtml(p: PdfPayload): string {
   const accent = safeColor(p.accentColor)
   // v1.13 #118: explicit hide overrides the rate-based default.
   const showFee = p.hideFeeColumn ? false : p.totals.feeCent !== null
+  const showTimes = p.columns !== 'no_times'
+  const labelSpan = showTimes ? 4 : 2
+  const columnCount = labelSpan + (showFee ? 2 : 1)
   const dateRange = `${formatDate(p.fromIso)} – ${formatDate(p.toIso)}`
   const generated = formatDate(p.generatedAtIso)
 
@@ -560,8 +578,12 @@ export function buildPdfHtml(p: PdfPayload): string {
       .map(
         (r) => `<tr>
         <td class="col-date">${esc(r.date)}</td>
-        <td class="col-time">${esc(r.startTime)}</td>
-        <td class="col-time">${esc(r.stopTime)}</td>
+        ${
+          showTimes
+            ? `<td class="col-time">${esc(r.startTime)}</td>
+        <td class="col-time">${esc(r.stopTime)}</td>`
+            : ''
+        }
         <td class="col-desc">${esc(r.description)}${r.reference ? `<div class="entry-ref">${esc(r.reference)}</div>` : ''}${r.projectName ? `<div class="entry-project">Projekt: ${esc(r.projectName)}</div>` : ''}</td>
         <td class="col-dur">${esc(formatHoursMinutes(r.minutes))}</td>
         ${showFee ? `<td class="col-fee">${esc(formatEur(r.feeCent ?? 0))}</td>` : ''}
@@ -580,11 +602,11 @@ export function buildPdfHtml(p: PdfPayload): string {
           ? `<td class="col-fee">${esc(formatEur(g.totalFeeCent ?? 0))}</td>`
           : ''
         return `<tr class="group-header">
-          <td colspan="${showFee ? 6 : 5}" class="col-group">${label}</td>
+          <td colspan="${columnCount}" class="col-group">${label}</td>
         </tr>
         ${renderRows(g.rows)}
         <tr class="subtotal">
-          <td colspan="${showFee ? 4 : 4}">Zwischensumme ${label}</td>
+          <td colspan="${labelSpan}">Zwischensumme ${label}</td>
           <td class="col-dur">${esc(formatHoursMinutes(g.totalMinutes))}</td>
           ${subtotalFee}
         </tr>`
@@ -592,7 +614,7 @@ export function buildPdfHtml(p: PdfPayload): string {
       .join('\n')
 
     const totalsRowGrouped = `<tr class="total">
-        <td colspan="${showFee ? 4 : 4}">Gesamtsumme</td>
+        <td colspan="${labelSpan}">Gesamtsumme</td>
         <td class="col-dur">${esc(formatHoursMinutes(p.totals.minutes))}</td>
         ${showFee ? `<td class="col-fee">${esc(formatEur(p.totals.feeCent ?? 0))}</td>` : ''}
       </tr>`
@@ -602,10 +624,10 @@ export function buildPdfHtml(p: PdfPayload): string {
     const tableRows = renderRows(p.rows)
     const emptyState =
       p.rows.length === 0
-        ? `<tr class="empty"><td colspan="${showFee ? 6 : 5}">Keine Einträge im gewählten Zeitraum.</td></tr>`
+        ? `<tr class="empty"><td colspan="${columnCount}">Keine Einträge im gewählten Zeitraum.</td></tr>`
         : ''
     const totalsRow = `<tr class="total">
-        <td colspan="${showFee ? 4 : 4}">Summe</td>
+        <td colspan="${labelSpan}">Summe</td>
         <td class="col-dur">${esc(formatHoursMinutes(p.totals.minutes))}</td>
         ${showFee ? `<td class="col-fee">${esc(formatEur(p.totals.feeCent ?? 0))}</td>` : ''}
       </tr>`
@@ -801,8 +823,12 @@ export function buildPdfHtml(p: PdfPayload): string {
       <thead>
         <tr>
           <th class="col-date">Datum</th>
-          <th class="col-time">Von</th>
-          <th class="col-time">Bis</th>
+          ${
+            showTimes
+              ? `<th class="col-time">Von</th>
+          <th class="col-time">Bis</th>`
+              : ''
+          }
           <th class="col-desc">Tätigkeit</th>
           <th class="col-dur">Dauer</th>
           ${showFee ? '<th class="col-fee">Honorar</th>' : ''}
