@@ -37,6 +37,7 @@ import {
 } from '../../../shared/webhooks'
 import { isUpdateCheckEnabled } from '../../../shared/updateCheck'
 import { useFeedbackRules } from './settings/useFeedbackRules'
+import { isValidRuleCheck, parseRuleCheck } from '../../../shared/ruleCheck'
 
 const DEFAULT_HOTKEY = 'Alt+Shift+S'
 const DEFAULT_MINI_HOTKEY = 'Alt+Shift+M'
@@ -628,6 +629,13 @@ export default function SettingsView(): React.JSX.Element {
           />
         )}
 
+        {tab === 'export' && (
+          <RuleCheckSection
+            raw={settings.rule_check}
+            onChange={(raw) => void update('rule_check', raw)}
+          />
+        )}
+
         {/* Daten */}
         {tab === 'data' && (
           <>
@@ -1032,6 +1040,84 @@ function FeedbackRulesSection({
           </ul>
         )}
       </div>
+    </Section>
+  )
+}
+
+function RuleCheckSection({
+  raw,
+  onChange
+}: {
+  raw: string | undefined
+  onChange: (raw: string) => void
+}): React.JSX.Element {
+  const t = useT()
+  const fromRaw = (value: string | undefined): Record<string, string | boolean> => {
+    const rules = parseRuleCheck(value)
+    return Object.fromEntries(
+      Object.entries(rules).map(([key, field]) => [
+        key,
+        typeof field === 'number' ? String(field) : field
+      ])
+    )
+  }
+  const [draft, setDraft] = useState(() => ({ raw, fields: fromRaw(raw) }))
+  const fields = draft.raw === raw ? draft.fields : fromRaw(raw)
+  const parsed = (next: typeof fields): ReturnType<typeof parseRuleCheck> => ({
+    entryMaxHours: Number(next.entryMaxHours),
+    dayMaxHours: Number(next.dayMaxHours),
+    windowStart: String(next.windowStart),
+    windowEnd: String(next.windowEnd),
+    weekend: next.weekend === true,
+    maxDescriptionLength: Number(next.maxDescriptionLength)
+  })
+  const valid = isValidRuleCheck(parsed(fields))
+  function change(key: string, value: string | boolean): void {
+    const next = { ...fields, [key]: value }
+    const rules = parsed(next)
+    if (!isValidRuleCheck(rules)) {
+      setDraft({ raw, fields: next })
+      return
+    }
+    const serialized = JSON.stringify(rules)
+    setDraft({ raw: serialized, fields: next })
+    onChange(serialized)
+  }
+  return (
+    <Section title={t('settings.ruleCheck.title')}>
+      <p className="py-3 text-sm text-[var(--ink2)]">{t('settings.ruleCheck.hint')}</p>
+      {(
+        [
+          'entryMaxHours',
+          'dayMaxHours',
+          'windowStart',
+          'windowEnd',
+          'maxDescriptionLength'
+        ] as const
+      ).map((key) => (
+        <Row
+          key={key}
+          label={t(`settings.ruleCheck.${key}`)}
+          hint={key === 'dayMaxHours' ? t('settings.ruleCheck.dayHint') : undefined}
+        >
+          <input
+            type={key.startsWith('window') ? 'time' : 'number'}
+            step={key === 'maxDescriptionLength' ? '1' : key.startsWith('window') ? '60' : 'any'}
+            aria-label={t(`settings.ruleCheck.${key}`)}
+            value={String(fields[key])}
+            onChange={(e) => change(key, e.target.value)}
+            className={inputClass}
+          />
+        </Row>
+      ))}
+      <Row label={t('settings.ruleCheck.weekend')}>
+        <Toggle checked={fields.weekend === true} onChange={(value) => change('weekend', value)} />
+      </Row>
+      {!valid && (
+        <p role="alert" className="py-3 text-sm">
+          {t('settings.ruleCheck.invalid')}
+        </p>
+      )}
     </Section>
   )
 }
