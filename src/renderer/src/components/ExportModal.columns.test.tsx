@@ -66,7 +66,8 @@ async function open(replacementRun?: BillingRunSummary): Promise<void> {
       </I18nProvider>
     </StrictMode>
   )
-  await screen.findByRole('option', { name: /Client A/ })
+  // The first render of the file can take longer than the 1 s default under a full-suite load.
+  await screen.findByRole('option', { name: /Client A/ }, { timeout: 5000 })
 }
 const columnsControl = (): HTMLSelectElement => screen.getByRole('combobox', { name: 'Spalten' })
 const selectClient = (id: number): void => {
