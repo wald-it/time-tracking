@@ -72,7 +72,7 @@ interface Snapshot {
   snapshot_version: 1
   appVersion: string
   context: PdfSourceContext
-  options: PdfRequest
+  options: PdfRequest & Pick<PdfSourceContext, 'language' | 'fee_column'>
   clientProfile: Profile
   projectProfiles: Record<string, Profile>
   projectNames: Record<string, string>
@@ -148,6 +148,9 @@ function runHtml(
         // createRun freezes the column set in options.columns. A snapshot without it
         // predates #422, whose renderer always printed the times, whatever the profile said.
         columns: 'times',
+        // Only options prove that the original renderer used these profile fields.
+        language: snapshot.options.language ?? 'de',
+        fee_column: snapshot.options.fee_column ?? 'auto',
         runNumber: run.number,
         generatedAtIso: run.created_at
       },
@@ -254,6 +257,7 @@ export async function createRun(
         )
       }
       const createdAt = new Date().toISOString()
+      const documentProfile = resolvedProfile(db, req.clientId, req.projectId ?? null)
       const snapshot: Snapshot = {
         snapshot_version: 1,
         appVersion: options.appVersion ?? '',
@@ -263,11 +267,9 @@ export async function createRun(
           fromIso: req.fromIso,
           toIso: req.toIso,
           projectId: req.projectId,
-          columns:
-            req.columns ??
-            (resolvedProfile(db, req.clientId, req.projectId ?? null).columns as
-              | 'times'
-              | 'no_times'),
+          columns: req.columns ?? (documentProfile.columns as 'times' | 'no_times'),
+          language: documentProfile.language as 'de' | 'en',
+          fee_column: documentProfile.fee_column as 'auto' | 'on' | 'off',
           groupBy: req.groupBy,
           groupByTag: req.groupByTag,
           hideFeeColumn: req.hideFeeColumn,

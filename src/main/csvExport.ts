@@ -96,6 +96,17 @@ export async function handleCsvExport(
         ? { fieldSeparator: ',', decimalSeparator: '.', groupByTag: req.groupByTag }
         : { fieldSeparator: ';', decimalSeparator: ',', groupByTag: req.groupByTag }
 
+    const profile = db
+      .prepare(
+        `SELECT COALESCE(p.language, c.language, d.language) AS language
+      FROM billing_profile d
+      LEFT JOIN billing_profile c ON c.client_id = ?
+      LEFT JOIN billing_profile p ON p.project_id = ?
+      WHERE d.client_id IS NULL AND d.project_id IS NULL`
+      )
+      .get(req.clientId, req.projectId ?? null) as { language: 'de' | 'en' }
+    opts.language = profile.language
+
     const clientMap = new Map([[client.id, client]])
     const csv = formatCsv(entries, clientMap, opts)
 
