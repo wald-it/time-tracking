@@ -11,6 +11,32 @@
  */
 export const de = {
   'settings.feedback.title': 'Rückmeldetexte',
+  'ruleCheck.missing_description': 'Beschreibung fehlt.',
+  'ruleCheck.missing_project': 'Projekt fehlt.',
+  'ruleCheck.billable_without_rate': 'Abrechenbarer Eintrag ohne Stundensatz.',
+  'ruleCheck.entry_over_threshold': 'Eintrag: {hours} h, über {threshold} h.',
+  'ruleCheck.day_over_threshold': '{day}: insgesamt {hours} h, über {threshold} h.',
+  'ruleCheck.outside_window': 'Arbeitszeit außerhalb von {start}–{end}.',
+  'ruleCheck.weekend': 'Arbeitszeit am Wochenende.',
+  'ruleCheck.format_prefix': 'Erlaubtes Präfix fehlt: {field}.',
+  'ruleCheck.format_separator': 'Leere Aktivität an Position {field}.',
+  'ruleCheck.format_forbidden': 'Verbotener Ausdruck: {field}.',
+  'ruleCheck.format_name': 'Kontaktperson im Text: {name}.',
+  'ruleCheck.too_long': 'Beschreibung: {length} Zeichen, über {threshold}.',
+  'ruleCheck.not_billable': 'Hinweis: Eintrag ist nicht abrechenbar.',
+  'settings.ruleCheck.title': 'Prüfstand',
+  'settings.ruleCheck.entryMaxHours': 'Maximale Stunden pro Eintrag',
+  'settings.ruleCheck.dayMaxHours': 'Maximale Stunden pro Tag',
+  'settings.ruleCheck.dayHint':
+    '10 h sind die tägliche Höchstgrenze nach dem deutschen Arbeitszeitgesetz.',
+  'settings.ruleCheck.windowStart': 'Arbeitszeit ab',
+  'settings.ruleCheck.windowEnd': 'Arbeitszeit bis',
+  'settings.ruleCheck.weekend': 'Wochenende prüfen',
+  'settings.ruleCheck.maxDescriptionLength': 'Maximale Beschreibungslänge',
+  'settings.ruleCheck.invalid':
+    'Bitte positive Zahlen, eine ganze Zeichenanzahl und einen Beginn vor dem Ende eingeben.',
+  'settings.ruleCheck.hint':
+    'Der Prüfstand meldet nur Hinweise und blockiert nie einen Export. Die Ergebnisanzeige folgt später.',
   'settings.feedback.prefixes': 'Erlaubte Präfixe',
   'settings.feedback.prefixesHint': 'Kommagetrennt; leer = keine Prüfung.',
   'settings.feedback.separator': 'Trennzeichen',
