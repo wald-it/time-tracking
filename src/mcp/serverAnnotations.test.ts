@@ -23,6 +23,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
   list_clients: READ,
   list_projects: READ,
   list_entries: READ,
+  check_period: READ,
   get_entry_history: READ,
   get_running_timer: READ,
   get_dashboard: READ,
