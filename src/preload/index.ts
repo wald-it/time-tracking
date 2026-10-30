@@ -171,6 +171,11 @@ const api = {
     // B1: stop the running entry and start this one at ONE instant.
     switch: (input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>> =>
       ipcRenderer.invoke('entries:switch', input),
+    // Q8: the description field's suggestions for one client + project.
+    recentDescriptions: (pair: {
+      clientId: number
+      projectId: number | null
+    }): Promise<IpcResult<string[]>> => ipcRenderer.invoke('entries:recentDescriptions', pair),
     stop: (id: number): Promise<IpcResult<Entry>> => ipcRenderer.invoke('entries:stop', id),
     stopAt: (id: number, stoppedAt: string): Promise<IpcResult<Entry>> =>
       ipcRenderer.invoke('entries:stopAt', id, stoppedAt),

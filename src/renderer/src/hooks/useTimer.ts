@@ -6,6 +6,11 @@ import { useEntriesStore } from '../store/entriesStore'
 import { readLastStartPair, useStartTimerModalStore } from '../store/startTimerModalStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
 
+export interface ResumeFailure {
+  error: string
+  path: 'start' | 'switch'
+}
+
 /**
  * Shape returned by {@link useTimer}. Named explicitly (rather than inferred)
  * so the public hook contract is stated in one place and satisfies
@@ -29,9 +34,23 @@ export interface UseTimerResult {
   start: () => Promise<string | null>
   stop: () => Promise<void>
   /** Resolves to the error of a refused or failed start, else null. */
-  startWithClient: (clientId: number, projectId?: number | null) => Promise<string | null>
+  startWithClient: (
+    clientId: number,
+    projectId?: number | null,
+    description?: string
+  ) => Promise<string | null>
   /** Resolves to the error of a refused or failed switch, else null. */
-  switchTo: (clientId: number, projectId: number | null) => Promise<string | null>
+  switchTo: (
+    clientId: number,
+    projectId: number | null,
+    description?: string
+  ) => Promise<string | null>
+  /** Q8: start an entry's client, project and description again. */
+  resume: (
+    clientId: number,
+    projectId: number | null,
+    description: string
+  ) => Promise<ResumeFailure | null>
   idleKeep: () => void
   idleStopAtIdle: () => Promise<void>
   idleMarkPause: () => Promise<void>
@@ -415,7 +434,11 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   }, [runningEntry])
 
   const startWithClient = useCallback(
-    async (clientId: number, projectId?: number | null): Promise<string | null> => {
+    async (
+      clientId: number,
+      projectId?: number | null,
+      newDescription = ''
+    ): Promise<string | null> => {
       if (useTimerStore.getState().runningEntry) return null
       // Client and project together: a stale project of the previous client
       // would otherwise travel into the next start() (global hotkey).
@@ -425,13 +448,13 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
         window.api.entries.start({
           client_id: clientId,
           project_id: projectId ?? null,
-          description: '',
+          description: newDescription,
           started_at: new Date().toISOString()
         })
       )
       if (!res.ok) return res.error
       setRunningEntry(res.data)
-      setDescription('')
+      setDescription(newDescription)
       // Dismiss quicknote modal if user starts a new timer before answering
       if (useTimerStore.getState().quickNoteEntry) setQuickNoteEntry(null)
       const clientName = clients.find((c) => c.id === clientId)?.name ?? ''
@@ -448,12 +471,12 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
    * description.
    */
   const switchTo = useCallback(
-    (clientId: number, projectId: number | null) =>
-      switchToEntry(clientId, projectId, '', () => {
+    (clientId: number, projectId: number | null, newDescription = '') =>
+      switchToEntry(clientId, projectId, newDescription, () => {
         // Client and project together, as in startWithClient (global hotkey).
         setSelectedClientId(clientId)
         useTimerStore.getState().setSelectedProjectId(projectId)
-        setDescription('')
+        setDescription(newDescription)
       }),
     [switchToEntry, setSelectedClientId, setDescription]
   )
@@ -559,6 +582,39 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- store setters are stable (zustand)
   }, [])
 
+  /**
+   * Q8, 2.2: resume the clicked row, choosing the path from the current store.
+   * Null means success or an ignored call; failures carry the path for the toast.
+   */
+  const resume = useCallback(
+    async (
+      clientId: number,
+      projectId: number | null,
+      newDescription: string
+    ): Promise<ResumeFailure | null> => {
+      const { runningEntry: running, isLoading } = useTimerStore.getState()
+      if (isLoading || startPending) return null
+      if (
+        running &&
+        running.client_id === clientId &&
+        (running.project_id ?? null) === projectId &&
+        running.description === newDescription
+      ) {
+        return null
+      }
+      const path = running ? 'switch' : 'start'
+      const external = externalEpoch
+      const error = await (running
+        ? switchTo(clientId, projectId, newDescription)
+        : startWithClient(clientId, projectId, newDescription))
+      // An external resync can finish before the timer reply and be overwritten
+      // by it. Read main again after that reply to settle on its latest state.
+      if (externalEpoch !== external) await resyncFromExternal()
+      return error ? { error, path } : null
+    },
+    [startWithClient, switchTo, resyncFromExternal]
+  )
+
   // Keep refs current so listeners always call the latest fn
   // eslint-disable-next-line react-hooks/immutability -- #157: dauerhaft — modulweite Singletons, damit die IPC-Listener nur einmal registriert werden und trotzdem die neueste Closure treffen; der Compiler ist bewusst nicht aktiviert (Messung im Issue)
   globalToggleRef.current = runningEntry ? stop : start
@@ -589,6 +645,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     stop,
     startWithClient,
     switchTo,
+    resume,
     idleKeep,
     idleStopAtIdle,
     idleMarkPause

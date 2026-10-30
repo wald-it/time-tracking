@@ -6,6 +6,7 @@ import { deserializeTags } from '../../../../shared/tags'
 import { useT } from '../../contexts/I18nContext'
 import { BilledChip } from '../BilledChip'
 import { EntryOrigin } from '../EntryOrigin'
+import { resumeTarget } from './resumeTarget'
 
 /**
  * Heute — "Einträge heute" (HANDOFF §3.10, §4.1).
@@ -24,7 +25,8 @@ export function EntryTable({
   showProjectNumber,
   onEdit,
   onDelete,
-  onAdd
+  onAdd,
+  onResume
 }: {
   entries: Entry[]
   clientsById: Map<number, Client>
@@ -34,6 +36,8 @@ export function EntryTable({
   onEdit: (e: Entry) => void
   onDelete: (e: Entry) => void
   onAdd: () => void
+  /** Q8: "Fortsetzen" — start this entry's client, project and description. */
+  onResume?: (e: Entry) => void
 }): React.JSX.Element {
   const t = useT()
   const headingId = useId()
@@ -106,6 +110,7 @@ export function EntryTable({
                   showProjectNumber={showProjectNumber}
                   onEdit={onEdit}
                   onDelete={onDelete}
+                  onResume={onResume}
                 />
               ))}
             </tbody>
@@ -123,7 +128,8 @@ function EntryRow({
   nowMs,
   showProjectNumber,
   onEdit,
-  onDelete
+  onDelete,
+  onResume
 }: {
   entry: Entry
   client: Client | undefined
@@ -132,6 +138,7 @@ function EntryRow({
   showProjectNumber: boolean
   onEdit: (e: Entry) => void
   onDelete: (e: Entry) => void
+  onResume?: (e: Entry) => void
 }): React.JSX.Element {
   const t = useT()
   const running = entry.stopped_at === null
@@ -222,8 +229,28 @@ function EntryRow({
       >
         {durationText}
       </td>
-      <td className="w-[96px] p-0">
+      <td className="w-[144px] p-0">
         <div className="flex justify-end gap-1">
+          {/* Q8: not on the running row (it already runs); an archived client
+              cannot be resumed (same rule as the last pair). */}
+          {running || !onResume ? (
+            <span aria-hidden="true" className="h-[44px] w-[44px]" />
+          ) : (
+            <button
+              type="button"
+              onClick={() => onResume(entry)}
+              disabled={resumeTarget(entry, client, project) === null}
+              className={`${ICON_BUTTON} disabled:cursor-not-allowed disabled:opacity-40`}
+              aria-label={t('today.table.resumeAria', { time: start })}
+              title={
+                resumeTarget(entry, client, project) === null
+                  ? t('today.table.resumeArchived')
+                  : t('today.table.resume')
+              }
+            >
+              <PlayGlyph />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onEdit(entry)}
@@ -275,6 +302,14 @@ function PlusGlyph(): React.JSX.Element {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
       <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  )
+}
+
+function PlayGlyph(): React.JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4.5 2.5v11l9-5.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
   )
 }

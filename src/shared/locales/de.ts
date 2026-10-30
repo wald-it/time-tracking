@@ -378,6 +378,9 @@ export const de = {
   'header.approval.silent': 'MCP-Schreibzugriffe werden ohne Nachfrage zugelassen.',
   'today.table.editAria': 'Eintrag {time} bearbeiten',
   'today.table.deleteAria': 'Eintrag {time} löschen',
+  'today.table.resumeAria': 'Eintrag {time} fortsetzen',
+  'today.table.resume': 'Fortsetzen',
+  'today.table.resumeArchived': 'Der Kunde ist archiviert.',
   'today.dayscale.running': 'läuft',
 
   // ── CalendarView ─────────────────────────────────────────────────────────

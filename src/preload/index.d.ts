@@ -99,6 +99,10 @@ declare global {
         versions(id: number): Promise<IpcResult<EntryVersion[]>>
         start(input: CreateEntryInput): Promise<IpcResult<Entry>>
         switch(input: CreateEntryInput): Promise<IpcResult<SwitchTimerResult>>
+        recentDescriptions(pair: {
+          clientId: number
+          projectId: number | null
+        }): Promise<IpcResult<string[]>>
         stop(id: number): Promise<IpcResult<Entry>>
         stopAt(id: number, stoppedAt: string): Promise<IpcResult<Entry>>
         heartbeat(id: number): Promise<IpcResult<void>>

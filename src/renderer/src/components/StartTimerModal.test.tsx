@@ -47,7 +47,11 @@ const PROJECTS: Project[] = [
 
 function setup(): void {
   const api = {
-    entries: { getRunning: async () => ({ ok: true as const, data: null }) },
+    entries: {
+      getRunning: async () => ({ ok: true as const, data: null }),
+      // Q8: the description field's suggestions; none unless a test sets them.
+      recentDescriptions: vi.fn(async () => ({ ok: true as const, data: [] as string[] }))
+    },
     clients: { getAll: async () => ({ ok: true as const, data: CLIENTS }) },
     projects: {
       getAll: vi.fn(async ({ clientId }: { clientId?: number }) => ({
@@ -194,6 +198,26 @@ describe('StartTimerModal — prefill (B6)', () => {
  * PR 5: the start modal sits on the shared Dialog shell — until then it had
  * no role, no Escape, no focus trap and no focus return.
  */
+// Q8, 2.2: the description field suggests the recent texts of the pair the
+// dialog has selected, and follows a change of client or project.
+describe('StartTimerModal — description suggestions (Q8)', () => {
+  it('reads the suggestions of the selected client and project', async () => {
+    setup()
+    const api = (
+      window as unknown as { api: { entries: { recentDescriptions: ReturnType<typeof vi.fn> } } }
+    ).api
+    render(
+      <I18nProvider>
+        <StartTimerModal open onClose={() => {}} prefill={{ clientId: 2, projectId: 8 }} />
+      </I18nProvider>
+    )
+
+    await waitFor(() =>
+      expect(api.entries.recentDescriptions).toHaveBeenCalledWith({ clientId: 2, projectId: 8 })
+    )
+  })
+})
+
 describe('StartTimerModal — dialog shell (PR 5)', () => {
   function Host(): React.JSX.Element {
     const [open, setOpen] = useState(false)
@@ -382,7 +406,11 @@ describe('StartTimerModal — prefill when the last project is archived (#297)',
       { id: 41, client_id: 4, name: 'Neu', color: '', rate_cent: null, active: 1, created_at: '' }
     ]
     const api = {
-      entries: { getRunning: async () => ({ ok: true as const, data: null }) },
+      entries: {
+        getRunning: async () => ({ ok: true as const, data: null }),
+        // Q8: the description field asks for suggestions; none here.
+        recentDescriptions: async () => ({ ok: true as const, data: [] as string[] })
+      },
       clients: { getAll: async () => ({ ok: true as const, data: clients }) },
       projects: {
         getAll: async ({ clientId }: { clientId?: number }) => ({

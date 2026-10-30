@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Entry } from '../../../shared/types'
 import { Dialog } from './Dialog'
+import { DescriptionInput } from './DescriptionInput'
 import { INPUT, KEY, KEY_INV } from './instrumentClasses'
 import { useEntriesStore } from '../store/entriesStore'
 import { useT } from '../contexts/I18nContext'
@@ -42,10 +43,6 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element | nu
     onDone()
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === 'Enter') void save()
-  }
-
   // Bar grows left→right as time elapses (0% = just opened, 100% = time up)
   const progressPct = ((TIMEOUT_S - remaining) / TIMEOUT_S) * 100
 
@@ -61,19 +58,23 @@ export function QuickNoteModal({ entry, onDone }: Props): React.JSX.Element | nu
     >
       <p className="mb-4 text-sm text-[var(--ink2)]">{t('quicknote.body')}</p>
 
-      <input
-        ref={inputRef}
-        type="text"
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value)
-          // Reset deadline so the modal doesn't close while the user is typing
-          deadlineRef.current = Date.now() + TIMEOUT_S * 1000
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder={t('quicknote.placeholder')}
-        className={`mb-4 w-full ${INPUT}`}
-      />
+      {/* Q8: suggestions from the recent texts of the stopped entry's pair. */}
+      <div className="mb-4">
+        <DescriptionInput
+          inputRef={inputRef}
+          value={text}
+          onChange={(v) => {
+            setText(v)
+            // Reset deadline so the modal doesn't close while the user is typing
+            deadlineRef.current = Date.now() + TIMEOUT_S * 1000
+          }}
+          onEnter={() => void save()}
+          clientId={entry.client_id}
+          projectId={entry.project_id ?? null}
+          placeholder={t('quicknote.placeholder')}
+          className={`w-full ${INPUT}`}
+        />
+      </div>
 
       {/* Countdown: the bar grows left→right as the time runs out */}
       <div className="mb-5 h-1 w-full bg-[var(--line)]">

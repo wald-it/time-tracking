@@ -35,7 +35,12 @@ const ENTRY: Entry = {
 describe('QuickNoteModal', () => {
   it('sends the description only, as a patch; the other fields stay as they are in main', async () => {
     const update = vi.fn(async () => ({ ok: true as const, data: ENTRY }))
-    ;(window as unknown as { api: unknown }).api = { entries: { update } }
+    // Q8: the prompt's field asks for suggestions; none here.
+    const recentDescriptions = async (): Promise<{ ok: true; data: string[] }> => ({
+      ok: true,
+      data: []
+    })
+    ;(window as unknown as { api: unknown }).api = { entries: { update, recentDescriptions } }
     const onDone = vi.fn()
     render(
       <I18nProvider>
@@ -53,5 +58,39 @@ describe('QuickNoteModal', () => {
       description: 'Rollout vorbereitet',
       source: 'quicknote'
     })
+  })
+})
+
+// Q8, 2.2: the prompt suggests the recent texts of the stopped entry's
+// client and project; a suggestion taken with ↓ Enter is saved by the next
+// Enter, as typed text would be.
+describe('QuickNoteModal — suggestions (Q8)', () => {
+  it('suggests the stopped entry’s pair and saves a taken suggestion', async () => {
+    const update = vi.fn(async () => ({ ok: true as const, data: ENTRY }))
+    const recentDescriptions = vi.fn(async () => ({
+      ok: true as const,
+      data: ['Rollout: Planung', 'Review']
+    }))
+    ;(window as unknown as { api: unknown }).api = { entries: { update, recentDescriptions } }
+    const onDone = vi.fn()
+    render(
+      <I18nProvider>
+        <QuickNoteModal entry={ENTRY} onDone={onDone} />
+      </I18nProvider>
+    )
+    await waitFor(() =>
+      expect(recentDescriptions).toHaveBeenCalledWith({ clientId: 2, projectId: 8 })
+    )
+
+    const input = screen.getByRole('textbox')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(update).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(onDone).toHaveBeenCalled())
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Rollout: Planung' })
+    )
   })
 })
