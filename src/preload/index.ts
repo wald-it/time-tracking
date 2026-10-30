@@ -1,4 +1,5 @@
 import type { BillingRunSummary } from '../main/billingRuns'
+import type { ChangedSinceRunRequest, ChangedSinceRunResult } from '../main/changedSinceRun'
 import type {
   RateTarget,
   RateEditorData,
@@ -238,6 +239,10 @@ const api = {
     merge: (source: string, target: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('tags:merge', source, target),
     delete: (name: string): Promise<IpcResult<void>> => ipcRenderer.invoke('tags:delete', name)
+  },
+  review: {
+    changedSinceRun: (req: ChangedSinceRunRequest): Promise<IpcResult<ChangedSinceRunResult>> =>
+      ipcRenderer.invoke('review:changedSinceRun', req)
   },
   billingRuns: {
     list: (clientId?: number): Promise<IpcResult<BillingRunSummary[]>> =>

@@ -7,6 +7,11 @@ import {
   setInvoiceRef
 } from './billingRuns'
 import { isExternalUrlAllowed } from './externalLinks'
+import {
+  changedSinceLastRun,
+  type ChangedSinceRunRequest,
+  type ChangedSinceRunResult
+} from './changedSinceRun'
 import { readMasterNames } from './feedbackRules'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
@@ -767,6 +772,34 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       return fail(e)
     }
   })
+
+  ipcMain.handle(
+    'review:changedSinceRun',
+    (_e, req: ChangedSinceRunRequest): IpcResult<ChangedSinceRunResult> => {
+      try {
+        const positiveId = (id: unknown): boolean =>
+          typeof id === 'number' && Number.isInteger(id) && id > 0
+        const validDay = (day: unknown): day is string =>
+          typeof day === 'string' &&
+          /^\d{4}-\d{2}-\d{2}$/.test(day) &&
+          Number.isFinite(Date.parse(day)) &&
+          new Date(day).toISOString().slice(0, 10) === day
+        if (
+          !req ||
+          !positiveId(req.clientId) ||
+          (req.projectId != null && !positiveId(req.projectId)) ||
+          !validDay(req.fromIso) ||
+          !validDay(req.toIso) ||
+          req.fromIso > req.toIso
+        ) {
+          return fail('Ungültige Anfrage für den Abrechnungsvergleich')
+        }
+        return ok(changedSinceLastRun(db, req))
+      } catch (e) {
+        return fail(e)
+      }
+    }
+  )
 
   // ── Settings ──────────────────────────────────────────────────
   ipcMain.handle('feedbackRules:names', (): IpcResult<string[]> => {
