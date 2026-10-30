@@ -1,4 +1,5 @@
 import type { BillingRunSummary } from '../main/billingRuns'
+import type { ChangedSinceRunRequest, ChangedSinceRunResult } from '../main/changedSinceRun'
 import type { RuleCheckRequest } from '../main/ruleCheck'
 import type { RuleCheckFinding, PeriodReviewEntry } from '../shared/ruleCheck'
 import type {
@@ -168,6 +169,9 @@ declare global {
         rename(oldName: string, newName: string): Promise<IpcResult<void>>
         merge(source: string, target: string): Promise<IpcResult<void>>
         delete(name: string): Promise<IpcResult<void>>
+      }
+      review: {
+        changedSinceRun(req: ChangedSinceRunRequest): Promise<IpcResult<ChangedSinceRunResult>>
       }
       billingRuns: {
         list(clientId?: number): Promise<IpcResult<BillingRunSummary[]>>
