@@ -31,6 +31,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
+- **Deleting a client or project with entries now says why it was refused.** The app refuses it as long as any entry, deleted ones included, points to the record, but the refusal was silently dropped; a message now names the reason and suggests archiving instead. The confirmation no longer claims that a client's entries are deleted with it or that a project's entries move to the client ([#452](https://github.com/wald-it/time-tracking/issues/452)).
 - **Kalender and Heute show changes made through MCP or the Stream Deck without a manual reload.** An open editor in the calendar keeps the entry as it was when it opened, so saving after such a change is refused with an error instead of overwriting it; the form keeps the typed values ([#442](https://github.com/wald-it/time-tracking/issues/442)).
 
 ## [2.1.0] — 2026-10-29

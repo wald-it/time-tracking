@@ -425,7 +425,11 @@ export const en: Record<TranslationKey, string> = {
   'clients.archived.label': 'Archived',
   'clients.action.archive': 'Archive',
   'clients.action.reactivate': 'Reactivate',
-  'clients.confirm.delete': 'Really delete client "{name}"?\nAll time entries will be deleted too.',
+  'clients.confirm.delete':
+    'Really delete client "{name}"?\nA client with entries, including deleted ones, can only be archived.',
+  'clients.delete.refused':
+    'Client "{name}" has entries (including deleted ones) and cannot be deleted. Archive it instead.',
+  'clients.delete.failed': 'Client "{name}" could not be deleted: {error}',
   'clients.confirm.deleteTitle': 'Delete client?',
   'clients.form.createTitle': 'New client',
   'clients.form.editTitle': 'Edit client',
@@ -481,7 +485,10 @@ export const en: Record<TranslationKey, string> = {
   'projects.confirm.delete': 'Really delete project "{name}"?',
   'projects.confirm.deleteTitle': 'Delete project?',
   'projects.confirm.deleteWithEntries':
-    'Project "{name}" still has {count} entries. Delete anyway?\nEntries will be reassigned to the client.',
+    'Project "{name}" has {count} entries and therefore cannot be deleted, only archived.',
+  'projects.delete.refused':
+    'Project "{name}" has entries (including deleted ones) and cannot be deleted. Archive it instead.',
+  'projects.delete.failed': 'Project "{name}" could not be deleted: {error}',
   'projects.form.createTitle': 'New project',
   'projects.form.editTitle': 'Edit project',
   'projects.form.nameLabel': 'Name',

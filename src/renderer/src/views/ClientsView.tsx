@@ -38,6 +38,11 @@ import { CLIENT_COLORS } from '../components/clientColors'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { BillingEditors } from '../components/BillingEditors'
 import { RATE_EDITOR_CONFLICT_ERROR } from '../../../shared/rateEditor'
+import {
+  CLIENT_HAS_ENTRIES_ERROR,
+  PROJECT_HAS_ENTRIES_ERROR
+} from '../../../shared/masterDataDelete'
+import { useToastStore } from '../store/toastStore'
 
 /** Lightens a hex color by the given amount (0-100) to create a visually
  * related but distinct project color from the client color. */
@@ -173,8 +178,20 @@ export default function ClientsView(): React.JSX.Element {
 
   async function doDeleteClient(): Promise<void> {
     if (!pendingDeleteClient) return
-    await window.api.clients.delete(pendingDeleteClient.id)
+    const { id, name } = pendingDeleteClient
+    const res = await window.api.clients.delete(id)
     setPendingDeleteClient(null)
+    // #452: a refusal used to vanish; say why and point to archiving.
+    if (!res.ok) {
+      useToastStore
+        .getState()
+        .show(
+          res.error === CLIENT_HAS_ENTRIES_ERROR
+            ? t('clients.delete.refused', { name })
+            : t('clients.delete.failed', { name, error: res.error })
+        )
+      return
+    }
     await loadClients()
     bumpClientsVersion()
   }
@@ -278,10 +295,20 @@ export default function ClientsView(): React.JSX.Element {
 
   async function doDeleteProject(): Promise<void> {
     if (!pendingDeleteProject) return
+    const { name } = pendingDeleteProject
     const res = await window.api.projects.delete(pendingDeleteProject.id)
     const clientId = pendingDeleteProject.client_id
     setPendingDeleteProject(null)
-    if (!res.ok) return
+    if (!res.ok) {
+      useToastStore
+        .getState()
+        .show(
+          res.error === PROJECT_HAS_ENTRIES_ERROR
+            ? t('projects.delete.refused', { name })
+            : t('projects.delete.failed', { name, error: res.error })
+        )
+      return
+    }
     if (clientId !== null) await loadProjectsForClient(clientId)
     bumpProjectsVersion()
   }

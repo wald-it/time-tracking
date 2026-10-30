@@ -429,7 +429,10 @@ export const de = {
   'clients.action.archive': 'Archivieren',
   'clients.action.reactivate': 'Reaktivieren',
   'clients.confirm.delete':
-    'Kunde "{name}" wirklich löschen?\nAlle Zeiteinträge werden mitgelöscht.',
+    'Kunde „{name}“ wirklich löschen?\nEin Kunde mit Einträgen, auch gelöschten, lässt sich nur archivieren.',
+  'clients.delete.refused':
+    'Kunde „{name}“ hat Einträge (auch gelöschte) und lässt sich nicht löschen. Stattdessen archivieren.',
+  'clients.delete.failed': 'Kunde „{name}“ ließ sich nicht löschen: {error}',
   'clients.confirm.deleteTitle': 'Kunde löschen?',
   'clients.form.createTitle': 'Neuer Kunde',
   'clients.form.editTitle': 'Kunde bearbeiten',
@@ -485,7 +488,10 @@ export const de = {
   'projects.confirm.delete': 'Projekt „{name}“ wirklich löschen?',
   'projects.confirm.deleteTitle': 'Projekt löschen?',
   'projects.confirm.deleteWithEntries':
-    'Projekt „{name}" hat noch {count} Einträge. Trotzdem löschen?\nDie Einträge werden dem Kunden zugeordnet.',
+    'Projekt „{name}“ hat {count} Einträge und lässt sich deshalb nicht löschen, nur archivieren.',
+  'projects.delete.refused':
+    'Projekt „{name}“ hat Einträge (auch gelöschte) und lässt sich nicht löschen. Stattdessen archivieren.',
+  'projects.delete.failed': 'Projekt „{name}“ ließ sich nicht löschen: {error}',
   'projects.form.createTitle': 'Neues Projekt',
   'projects.form.editTitle': 'Projekt bearbeiten',
   'projects.form.nameLabel': 'Name',

@@ -14,11 +14,9 @@
  */
 import type Database from 'better-sqlite3'
 import type { IpcResult } from '../shared/types'
+import { CLIENT_HAS_ENTRIES_ERROR, PROJECT_HAS_ENTRIES_ERROR } from '../shared/masterDataDelete'
 
-export const CLIENT_HAS_ENTRIES_ERROR =
-  'Kunde hat Einträge (auch gelöschte oder frühere Versionen) und kann nicht gelöscht werden'
-export const PROJECT_HAS_ENTRIES_ERROR =
-  'Projekt hat Einträge (auch gelöschte oder frühere Versionen) und kann nicht gelöscht werden'
+export { CLIENT_HAS_ENTRIES_ERROR, PROJECT_HAS_ENTRIES_ERROR }
 
 function fail(error: string): IpcResult<never> {
   return { ok: false, error }
