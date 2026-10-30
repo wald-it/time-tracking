@@ -251,6 +251,7 @@ const api = {
   },
   pdf: {
     export: (req: {
+      invoiceRef?: string
       markAsBilled?: boolean
       replacesRunId?: number
       clientId: number

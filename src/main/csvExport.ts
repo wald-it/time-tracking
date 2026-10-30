@@ -17,8 +17,10 @@ import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
 import { appLocale, cancelledResult, dialogT, exportFileName } from './mainI18n'
 import { exportDefaultPath, rememberExportFolder } from './exportFolders'
+import { normalizeInvoiceRef } from './invoiceRef'
 
 export interface CsvRequest {
+  invoiceRef?: string
   clientId: number
   /** ISO-date strings, inclusive: '2026-04-01' to '2026-04-30'. */
   fromIso: string
@@ -50,6 +52,7 @@ export async function handleCsvExport(
       return fail('Ungültige CSV-Anfrage')
     }
 
+    const invoiceRef = normalizeInvoiceRef(req.invoiceRef)
     const client = db
       .prepare(`SELECT id, name, color, active, rate_cent, created_at FROM clients WHERE id = ?`)
       .get(req.clientId) as Client | undefined
@@ -77,7 +80,8 @@ export async function handleCsvExport(
         exportFileName(locale, 'csv', {
           client: client.name,
           project: proj?.name ?? null,
-          month: req.fromIso.slice(0, 7)
+          month: req.fromIso.slice(0, 7),
+          invoiceRef
         })
       ),
       filters: [{ name: 'CSV', extensions: ['csv'] }]

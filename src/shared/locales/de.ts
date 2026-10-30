@@ -545,6 +545,10 @@ export const de = {
   'export.status.shortCodeMissing':
     'Dieser Kunde hat noch keinen Kurzcode. Trage ihn unter Kunden ein, dann geht der Lauf.',
   'billingRuns.title': 'Abrechnungsläufe',
+  'export.invoiceRef': 'Zu Rechnung Nr. (optional)',
+  'billingRuns.invoiceRef': 'Zu Rechnung Nr.: {ref}',
+  'billingRuns.editInvoiceRef': 'Rechnungsnummer bearbeiten',
+  'billingRuns.invoiceRefHint': 'Das archivierte PDF bleibt unverändert.',
   'billingRuns.empty': 'Noch keine Abrechnungsläufe.',
   'billingRuns.period': '{from} bis {to}',
   'billingRuns.total': '{minutes} min · {amount}',

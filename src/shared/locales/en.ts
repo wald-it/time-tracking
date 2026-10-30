@@ -543,6 +543,10 @@ export const en: Record<TranslationKey, string> = {
   'export.status.shortCodeMissing':
     'This client has no short code yet. Add one under Clients, then the run works.',
   'billingRuns.title': 'Billing runs',
+  'export.invoiceRef': 'For invoice no. (optional)',
+  'billingRuns.invoiceRef': 'For invoice no.: {ref}',
+  'billingRuns.editInvoiceRef': 'Edit invoice number',
+  'billingRuns.invoiceRefHint': 'The archived PDF stays unchanged.',
   'billingRuns.empty': 'No billing runs yet.',
   'billingRuns.period': '{from} to {to}',
   'billingRuns.total': '{minutes} min · {amount}',

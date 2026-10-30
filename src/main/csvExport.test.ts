@@ -17,6 +17,38 @@ beforeAll(async () => {
 })
 
 describe('handleCsvExport', () => {
+  it('#424 passes the trimmed reference to the CSV name and rejects overlong input before the dialog', async () => {
+    const db = new DatabaseImpl(':memory:')
+    try {
+      applyMigrations(db)
+      db.exec("INSERT INTO clients (id, name) VALUES (1, 'Acme')")
+      const { dialog } = await import('electron')
+      const { handleCsvExport } = await import('./csvExport')
+      const req = { clientId: 1, fromIso: '2026-04-01', toIso: '2026-04-30' }
+      vi.mocked(dialog.showSaveDialog).mockClear()
+      expect(await handleCsvExport(db, { ...req, invoiceRef: 'x'.repeat(65) })).toEqual({
+        ok: false,
+        error: 'Die Rechnungsnummer darf höchstens 64 Zeichen lang sein.'
+      })
+      expect(dialog.showSaveDialog).not.toHaveBeenCalled()
+      for (const invoiceRef of ['  RE/123  ', '  ', ` ${'x'.repeat(64)} `]) {
+        await handleCsvExport(db, { ...req, invoiceRef })
+      }
+      expect(
+        vi
+          .mocked(dialog.showSaveDialog)
+          .mock.calls.map((c) => (c[0] as Electron.SaveDialogOptions).defaultPath)
+      ).toEqual([
+        'Zeiterfassung-Acme-2026-04-RE_123.csv',
+        'Zeiterfassung-Acme-2026-04.csv',
+        `Zeiterfassung-Acme-2026-04-${'x'.repeat(64)}.csv`
+      ])
+    } finally {
+      const { dialog } = await import('electron')
+      vi.mocked(dialog.showSaveDialog).mockClear()
+      db.close()
+    }
+  })
   it('titles and names the save dialog in the app language; a cancel is a code', async () => {
     const db: Database.Database = new DatabaseImpl(':memory:')
     applyMigrations(db)
