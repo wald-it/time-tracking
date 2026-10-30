@@ -1,5 +1,7 @@
 import type { BillingRunSummary } from '../main/billingRuns'
 import type { ChangedSinceRunRequest, ChangedSinceRunResult } from '../main/changedSinceRun'
+import type { RuleCheckRequest } from '../main/ruleCheck'
+import type { RuleCheckFinding, PeriodReviewEntry } from '../shared/ruleCheck'
 import type {
   RateTarget,
   RateEditorData,
@@ -53,6 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // ──────────────────────────────────────────────────────────────────────────
 
 const api = {
+  ruleCheck: {
+    period: (request: RuleCheckRequest): Promise<IpcResult<RuleCheckFinding[]>> =>
+      ipcRenderer.invoke('ruleCheck:period', request)
+  },
   mcpApproval: {
     get: (): Promise<IpcResult<McpApprovalState>> => ipcRenderer.invoke('mcp:approval-state'),
     onChanged: (callback: (state: McpApprovalState) => void): (() => void) => {
@@ -156,6 +162,8 @@ const api = {
   },
   // Entries
   entries: {
+    getForReview: (request: RuleCheckRequest): Promise<IpcResult<PeriodReviewEntry[]>> =>
+      ipcRenderer.invoke('entries:getForReview', request),
     versions: (id: number): Promise<IpcResult<EntryVersion[]>> =>
       ipcRenderer.invoke('entries:versions', id),
     start: (input: CreateEntryInput): Promise<IpcResult<Entry>> =>

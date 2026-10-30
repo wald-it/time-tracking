@@ -15,6 +15,8 @@ interface Props {
   onClose: () => void
   /** Pre-fills the range when opened from a quick-filter. */
   prefilledRange?: { fromIso: string; toIso: string }
+  prefilledClientId?: number
+  prefilledProjectId?: number
   replacementRun?: BillingRunSummary
   onRunsChanged?: () => void
 }
@@ -34,7 +36,15 @@ interface Props {
  * modal. Opened from the Export tab (its own tab since #153).
  */
 export function ExportModal(props: Props): React.JSX.Element {
-  const { open, onClose, prefilledRange, replacementRun, onRunsChanged } = props
+  const {
+    open,
+    onClose,
+    prefilledRange,
+    prefilledClientId,
+    prefilledProjectId,
+    replacementRun,
+    onRunsChanged
+  } = props
   const t = useT()
   // Names the switches by their row labels (aria-labelledby).
   const labelId = useId()
@@ -52,11 +62,17 @@ export function ExportModal(props: Props): React.JSX.Element {
   // modal opens. Lazy useState: parse once per mount, not on every render.
   const [initialPrefs] = useState<ExportPrefs>(() => parsePrefs(exportPrefs ?? readLegacyPrefs()))
 
-  const [tab, setTab] = useState<Tab>(replacementRun ? 'pdf' : initialPrefs.tab)
+  const [tab, setTab] = useState<Tab>(
+    replacementRun || prefilledClientId != null ? 'pdf' : initialPrefs.tab
+  )
   const [clients, setClients] = useState<Client[]>([])
-  const [clientId, setClientId] = useState<number | null>(replacementRun?.client_id ?? null)
+  const [clientId, setClientId] = useState<number | null>(
+    replacementRun?.client_id ?? prefilledClientId ?? null
+  )
   const [projects, setProjects] = useState<Project[]>([])
-  const [projectId, setProjectId] = useState<number | null>(replacementRun?.project_id ?? null)
+  const [projectId, setProjectId] = useState<number | null>(
+    replacementRun ? replacementRun.project_id : (prefilledProjectId ?? null)
+  )
   const [fromIso, setFromIso] = useState(prefilledRange?.fromIso ?? '')
   const [toIso, setToIso] = useState(prefilledRange?.toIso ?? '')
 
@@ -155,7 +171,7 @@ export function ExportModal(props: Props): React.JSX.Element {
     void window.api.clients.getAll().then((res) => {
       if (res.ok) {
         setClients(res.data)
-        if (!replacementRun && res.data.length === 1) {
+        if (!replacementRun && prefilledClientId == null && res.data.length === 1) {
           setClientId(res.data[0].id)
         }
       } else {
@@ -163,7 +179,7 @@ export function ExportModal(props: Props): React.JSX.Element {
         setStatusMsg(t('export.status.clientsError', { error: res.error }))
       }
     })
-  }, [open, clients.length, replacementRun, t])
+  }, [open, clients.length, replacementRun, prefilledClientId, t])
 
   // Sync the prefilled range if it changes after mount (e.g. quick-filters).
   useEffect(() => {

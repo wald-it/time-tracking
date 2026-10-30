@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useT } from '../contexts/I18nContext'
 import type { TranslationKey } from '../../../shared/locales/de'
 import { ExportModal } from '../components/ExportModal'
+import { MonthlyReview, type ReviewSelection } from '../components/MonthlyReview'
 import { BillingRunList } from '../components/BillingRunList'
 import type { BillingRunSummary } from '../../../main/billingRuns'
 import { PdfMergeModal } from '../components/PdfMergeModal'
@@ -46,6 +47,7 @@ export default function ExportView(): React.JSX.Element {
   const [mergeOpen, setMergeOpen] = useState(false)
   const [replacementRun, setReplacementRun] = useState<BillingRunSummary | undefined>()
   const [runsRevision, setRunsRevision] = useState(0)
+  const [reviewSelection, setReviewSelection] = useState<ReviewSelection | undefined>()
 
   // "Diese/Letzte Woche" follows the week_start setting (#188) — otherwise the
   // quick filter would hand over a different week than the week total shows.
@@ -53,6 +55,7 @@ export default function ExportView(): React.JSX.Element {
     (kind: QuickRangeKind) => {
       const range = getQuickRange(kind, new Date(), weekStart)
       setReplacementRun(undefined)
+      setReviewSelection(undefined)
       setPdfRange({ fromIso: localDateKey(range.from), toIso: localDateKey(range.to) })
     },
     [weekStart]
@@ -61,6 +64,15 @@ export default function ExportView(): React.JSX.Element {
   return (
     <div className="flex w-full min-w-0 flex-col gap-10">
       <h1 className={VIEW_TITLE}>{t('export.view.title')}</h1>
+
+      <MonthlyReview
+        refreshKey={runsRevision}
+        onPdf={(selection) => {
+          setReplacementRun(undefined)
+          setReviewSelection(selection)
+          setPdfRange({ fromIso: selection.fromIso, toIso: selection.toIso })
+        }}
+      />
 
       <div
         className="grid min-w-0 items-start gap-8 [&>section]:min-w-0 [&_p]:max-w-[65ch] [&_p]:[overflow-wrap:anywhere]"
@@ -91,7 +103,9 @@ export default function ExportView(): React.JSX.Element {
 
         <BillingRunList
           refreshKey={runsRevision}
+          onReleased={() => setRunsRevision((n) => n + 1)}
           onRebill={(run) => {
+            setReviewSelection(undefined)
             setReplacementRun(run)
             setPdfRange({ fromIso: run.period_from, toIso: run.period_to })
           }}
@@ -124,6 +138,8 @@ export default function ExportView(): React.JSX.Element {
         }
         open={pdfRange !== null}
         prefilledRange={pdfRange ?? undefined}
+        prefilledClientId={reviewSelection?.clientId}
+        prefilledProjectId={reviewSelection?.projectId}
         replacementRun={replacementRun}
         onRunsChanged={() => setRunsRevision((n) => n + 1)}
         onClose={() => setPdfRange(null)}

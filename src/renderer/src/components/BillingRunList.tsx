@@ -7,9 +7,11 @@ import { INPUT, KEY, KEY_INV, LEGEND, SECTION } from './instrumentClasses'
 interface Props {
   refreshKey: number
   onRebill: (run: BillingRunSummary) => void
+  /** A run was released: its entries are no longer billed. */
+  onReleased?: () => void
 }
 
-export function BillingRunList({ refreshKey, onRebill }: Props): React.JSX.Element {
+export function BillingRunList({ refreshKey, onRebill, onReleased }: Props): React.JSX.Element {
   const t = useT()
   const { locale } = useLocale()
   const [runs, setRuns] = useState<BillingRunSummary[] | null>(null)
@@ -73,6 +75,7 @@ export function BillingRunList({ refreshKey, onRebill }: Props): React.JSX.Eleme
       }
       setReleaseTarget(null)
       setReload((n) => n + 1)
+      onReleased?.()
     } catch (e) {
       setReleaseError(String(e))
     } finally {
