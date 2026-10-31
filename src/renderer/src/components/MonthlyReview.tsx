@@ -288,7 +288,10 @@ function BillingPreviewSection({ selection }: { selection: ReviewSelection }): R
           row
             .map((cell, i) => {
               const flat = cell.replace(/[\t\r\n]+/g, ' ')
-              return i === 0 ? guardFormula(flat) : flat
+              if (i !== 0) return flat
+              const guarded = guardFormula(flat)
+              // A leading quote opens a quoted TSV field: quote the cell, double inner quotes.
+              return guarded.includes('"') ? `"${guarded.replace(/"/g, '""')}"` : guarded
             })
             .join('\t')
         )

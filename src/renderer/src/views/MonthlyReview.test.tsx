@@ -826,6 +826,33 @@ describe('monthly review follow-ups', () => {
     expect(text).not.toContain("'1,00")
   })
 
+  it('quotes a project name with quotes so the pasted columns stay in place', async () => {
+    billingPreview.mockResolvedValue({
+      ok: true,
+      data: {
+        lines: [
+          {
+            projectId: 3,
+            projectName: '"Migration" phase 2',
+            rateCent: 6000,
+            billedMinutes: 60,
+            feeCent: 6000,
+            fromIso: '2026-09-01',
+            toIso: '2026-09-01'
+          }
+        ],
+        totals: { billedMinutes: 60, feeCent: 6000 },
+        billedEntriesCount: 0,
+        dayGrid: []
+      }
+    })
+    const ui = await selectClient()
+    fireEvent.click(await ui.findByRole('button', { name: /Positionen kopieren|Copy line items/ }))
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalledTimes(1))
+    const text = clipboardWrite.mock.lastCall![0] as string
+    expect(text).toContain('\n"""Migration"" phase 2"\t')
+  })
+
   it('reports clipboard and export failures and treats cancellation as silent', async () => {
     const ui = await selectClient()
     clipboardWrite.mockRejectedValue(new Error('Clipboard denied'))
