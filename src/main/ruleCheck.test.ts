@@ -5,7 +5,8 @@ import { seedEntry, type SeedEntryInput } from '../test/entryFixtures'
 import { checkPeriod, type RuleCheckRequest } from './ruleCheck'
 import { buildPdfPayload } from './pdf'
 import { splitAtMidnight } from '../shared/midnightSplit'
-import type { RuleCheckId } from '../shared/ruleCheck'
+import { DEFAULT_RULE_CHECK, DESCRIPTION_FIELD_LIMIT, type RuleCheckId } from '../shared/ruleCheck'
+import { MAX_DESCRIPTION_LEN } from './entryMutations'
 
 let Ctor: DatabaseCtor
 let db: Database.Database
@@ -49,6 +50,24 @@ function findings(
 }
 
 describe('checkPeriod', () => {
+  it('keeps the rule description cap equal to the entry field limit', () => {
+    expect(DESCRIPTION_FIELD_LIMIT).toBe(MAX_DESCRIPTION_LEN)
+  })
+
+  it('accepts a 497-character description with the default rules', () => {
+    entry(1, 8, 9, { description: 'x'.repeat(497) })
+    setting('rule_check', DEFAULT_RULE_CHECK)
+    expect(findings('too_long')).toEqual([])
+  })
+
+  it('reports a 497-character description with an explicit limit of 300', () => {
+    const id = entry(1, 8, 9, { description: 'x'.repeat(497) })
+    setting('rule_check', { ...DEFAULT_RULE_CHECK, maxDescriptionLength: 300 })
+    expect(findings('too_long')).toEqual([
+      { entryId: id, rule: 'too_long', params: { length: 497, threshold: 300 } }
+    ])
+  })
+
   it('checks migrated zero-length entries without throwing or adding working time', () => {
     const id = entry(1, 8, 8, { description: '' })
     expect(checkPeriod(db, request)).toEqual([
@@ -186,10 +205,10 @@ describe('checkPeriod', () => {
   })
 
   it('uses UTF-16 length like the write cap and accepts exactly the threshold', () => {
-    entry(1, 8, 9, { description: '😀'.repeat(150) })
-    const over = entry(2, 8, 9, { description: '😀'.repeat(150) + 'x' })
+    entry(1, 8, 9, { description: '😀'.repeat(250) })
+    const over = entry(2, 8, 9, { description: '😀'.repeat(250) + 'x' })
     expect(findings('too_long')).toEqual([
-      { entryId: over, rule: 'too_long', params: { length: 301, threshold: 300 } }
+      { entryId: over, rule: 'too_long', params: { length: 501, threshold: 500 } }
     ])
   })
 

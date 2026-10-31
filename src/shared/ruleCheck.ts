@@ -19,13 +19,15 @@ export interface RuleCheckSettings {
   maxDescriptionLength: number
 }
 
+export const DESCRIPTION_FIELD_LIMIT = 500
+
 export const DEFAULT_RULE_CHECK: RuleCheckSettings = {
   entryMaxHours: 10,
   dayMaxHours: 10,
   windowStart: '06:00',
   windowEnd: '22:00',
   weekend: true,
-  maxDescriptionLength: 300
+  maxDescriptionLength: DESCRIPTION_FIELD_LIMIT
 }
 
 const time = (value: unknown): value is string =>
@@ -43,7 +45,8 @@ export function isValidRuleCheck(value: RuleCheckSettings): boolean {
     value.windowStart < value.windowEnd &&
     typeof value.weekend === 'boolean' &&
     positive(value.maxDescriptionLength) &&
-    Number.isSafeInteger(value.maxDescriptionLength)
+    Number.isSafeInteger(value.maxDescriptionLength) &&
+    value.maxDescriptionLength <= DESCRIPTION_FIELD_LIMIT
   )
 }
 

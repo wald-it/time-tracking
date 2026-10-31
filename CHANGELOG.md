@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Rule check: the description length limit defaults to 500 characters, the entry field limit, and cannot be set higher (#463).
+
 ## [2.2.0] — 2026-10-31
 
 ### Added

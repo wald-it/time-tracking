@@ -43,8 +43,24 @@ describe('rule check settings and messages', () => {
       windowStart: '06:00',
       windowEnd: '22:00',
       weekend: true,
-      maxDescriptionLength: 300
+      maxDescriptionLength: 500
     })
+  })
+  it.each([300, 500])('keeps a stored description limit of %i', (maxDescriptionLength) => {
+    expect(parseRuleCheck(JSON.stringify({ maxDescriptionLength })).maxDescriptionLength).toBe(
+      maxDescriptionLength
+    )
+  })
+  it('defaults a stored description limit above the field limit to 500', () => {
+    expect(parseRuleCheck(JSON.stringify({ maxDescriptionLength: 800 })).maxDescriptionLength).toBe(
+      500
+    )
+  })
+  it.each([
+    [500, true],
+    [501, false]
+  ])('validates description limit %i as %s', (maxDescriptionLength, valid) => {
+    expect(isValidRuleCheck({ ...DEFAULT_RULE_CHECK, maxDescriptionLength })).toBe(valid)
   })
   it('preserves valid fields and defaults invalid fields and reversed windows', () => {
     expect(
