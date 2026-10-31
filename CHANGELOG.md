@@ -10,6 +10,7 @@ All notable changes to TimeTrack are documented here.
 ### Added
 
 - Monthly review shows billing line items, copies them to the clipboard, and saves a daily activity grid as CSV (#465).
+- Optional weekly hours and hourly rate targets, with utilisation, effective rate and current-month projections in Analytics and a weekly target readout in Today (#466).
 
 ### Changed
 

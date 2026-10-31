@@ -34,7 +34,7 @@ export function KpiReadout({
   value: string
   unit?: string
   delta?: KpiDelta | null
-  sub?: string
+  sub?: React.ReactNode
 }): React.JSX.Element {
   const t = useT()
   return (
