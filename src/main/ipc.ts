@@ -93,6 +93,7 @@ import {
   effectiveSecretStorage,
   feedSettings,
   FEED_TOKEN_RECREATED_KEY,
+  SECRETS_SCRUBBED_KEY,
   markFeedTokenRecreated,
   wasFeedTokenRecreated,
   webhookTargetsForRenderer,
@@ -899,7 +900,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
             (r) =>
               !MAIN_ONLY_SETTING_KEYS.has(r.key) &&
               r.key !== 'ical_feed_token' &&
-              r.key !== FEED_TOKEN_RECREATED_KEY
+              r.key !== FEED_TOKEN_RECREATED_KEY &&
+              r.key !== SECRETS_SCRUBBED_KEY
           )
           .map((r) => [r.key, r.value])
       ) as unknown as Settings

@@ -56,6 +56,7 @@ export async function initializeSecrets(
     // Plain database values remain usable and are retried on the next start.
     deps.log?.(`secret store: migration failed (${(err as Error).name})`)
   }
+  if (effectiveSecretStorage(db, s) !== 'plain') scrubOnce(db, deps.log)
   // eslint-disable-next-line react-hooks/rules-of-hooks -- Main-process store registration, not a React hook.
   useSecretStore(s)
   return s
@@ -130,7 +131,7 @@ export async function writeFeedToken(
   }
   // A start migration that failed left the token in plain text; this write
   // moved it, so the old bytes must leave the free pages too.
-  if (plainBefore) scrubFreeSpace(db)
+  if (plainBefore && scrubFreeSpace(db)) markScrubbed(db)
 }
 
 /**
@@ -181,7 +182,7 @@ export async function saveWebhookTargets(
     if (encrypted) await restoreSecrets(s, 'webhook:', snapshot)
     throw err
   }
-  if (encrypted && plainBefore) scrubFreeSpace(db)
+  if (encrypted && plainBefore && scrubFreeSpace(db)) markScrubbed(db)
 }
 
 /**
@@ -377,7 +378,7 @@ export async function migrateSecrets(
     writeRow(db, 'webhook_targets', serializeWebhookTargets(stripped))
   })()
   log('secret store: secrets moved out of the database')
-  scrubFreeSpace(db, log)
+  if (scrubFreeSpace(db, log)) markScrubbed(db)
 }
 
 /**
@@ -387,11 +388,37 @@ export async function migrateSecrets(
  * WAL file. Best effort: a busy database (another reader) is retried at the
  * next migration, and the live rows are already clean.
  */
-export function scrubFreeSpace(db: Db, log: (m: string) => void = (): void => {}): void {
+export function scrubFreeSpace(db: Db, log: (m: string) => void = (): void => {}): boolean {
   try {
     db.exec('VACUUM')
     db.pragma('wal_checkpoint(TRUNCATE)')
+    return true
   } catch (err) {
     log(`secret store: free-space scrub skipped (${(err as Error).name})`)
+    return false
   }
+}
+
+/** Settings row set once the first full scrub after the Q32 update succeeded. */
+export const SECRETS_SCRUBBED_KEY = 'secrets_scrubbed'
+
+/**
+ * One scrub at the first start with the store, also when there was nothing to
+ * migrate: a secret removed earlier (the last webhook deleted, an old feed
+ * token) may still sit in free pages and so in every backup. The marker is
+ * written only after the VACUUM succeeded; a failure (no space, the database
+ * held by another process) is logged, does not stop the start, and the next
+ * start tries again. Skipped while plain secrets are still in the database:
+ * the save that moves them out scrubs (see saveWebhookTargets).
+ *
+ * Runs inside `initializeSecrets`, which `index.ts` awaits before the daily
+ * backup, IPC and the MCP bridge start, so no write of this process overlaps.
+ */
+export function scrubOnce(db: Db, log: (m: string) => void = (): void => {}): void {
+  if (row(db, SECRETS_SCRUBBED_KEY) === '1') return
+  if (scrubFreeSpace(db, log)) markScrubbed(db)
+}
+
+function markScrubbed(db: Db): void {
+  writeRow(db, SECRETS_SCRUBBED_KEY, '1')
 }

@@ -494,3 +494,86 @@ describe('settings write failures and late migration (#470 counter-check 4)', ()
     }
   })
 })
+
+describe('one scrub at the first start, also without secrets to move (#470 counter-check 5)', () => {
+  function historyDb(): { path: string; fileDir: string; fdb: Database.Database } {
+    const fileDir = mkdtempSync(join(tmpdir(), 'tt-secret-once-'))
+    const path = join(fileDir, 'tt.sqlite')
+    const fdb = new Sqlite(path)
+    fdb.pragma('journal_mode = WAL')
+    applyMigrations(fdb)
+    const put = (k: string, v: string): void => {
+      fdb.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v)
+    }
+    // The last webhook with a long secret, removed before the update: nothing
+    // is left to migrate, but the bytes sit on the freelist.
+    put(
+      'webhook_targets',
+      JSON.stringify([
+        {
+          id: 'w',
+          url: 'https://w.example/h',
+          secret: 'gone-zz9 '.repeat(2000),
+          events: ['entry.created'],
+          enabled: true
+        }
+      ])
+    )
+    put('webhook_targets', '[]')
+    fdb.pragma('wal_checkpoint(TRUNCATE)')
+    expect(readFileSync(path).toString('latin1')).toContain('gone-zz9')
+    return { path, fileDir, fdb }
+  }
+  function fileBytes(path: string): string {
+    return [path, `${path}-wal`]
+      .filter((p) => existsSync(p))
+      .map((p) => readFileSync(p).toString('latin1'))
+      .join('')
+  }
+
+  it('scrubs once and remembers it', async () => {
+    const { path, fileDir, fdb } = historyDb()
+    try {
+      await initializeSecrets(fdb, path, { box: box() })
+      useSecretStore(null)
+      expect(
+        fdb.prepare(`SELECT value FROM settings WHERE key = 'secrets_scrubbed'`).pluck().get()
+      ).toBe('1')
+      fdb.close()
+      expect(fileBytes(path)).not.toContain('gone-zz9')
+    } finally {
+      if (fdb.open) fdb.close()
+      rmSync(fileDir, { recursive: true, force: true })
+    }
+  })
+
+  it('a failed scrub does not stop the start and is tried again at the next start', async () => {
+    const { path, fileDir, fdb } = historyDb()
+    // Another process holds the write lock (e.g. a running MCP server write).
+    const other = new Sqlite(path)
+    try {
+      fdb.pragma('busy_timeout = 0')
+      other.exec('BEGIN IMMEDIATE')
+      const log = vi.fn()
+      await expect(initializeSecrets(fdb, path, { box: box(), log })).resolves.toBeDefined()
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('free-space scrub skipped'))
+      expect(
+        fdb.prepare(`SELECT value FROM settings WHERE key = 'secrets_scrubbed'`).pluck().get()
+      ).toBeUndefined()
+      other.exec('ROLLBACK')
+      other.close()
+      useSecretStore(null)
+      await initializeSecrets(fdb, path, { box: box() })
+      useSecretStore(null)
+      expect(
+        fdb.prepare(`SELECT value FROM settings WHERE key = 'secrets_scrubbed'`).pluck().get()
+      ).toBe('1')
+      fdb.close()
+      expect(fileBytes(path)).not.toContain('gone-zz9')
+    } finally {
+      if (other.open) other.close()
+      if (fdb.open) fdb.close()
+      rmSync(fileDir, { recursive: true, force: true })
+    }
+  })
+})
