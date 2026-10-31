@@ -132,14 +132,42 @@ export class SecretStore {
 
   /** Remove every key not in `keep` that starts with `prefix`. */
   prune(prefix: string, keep: ReadonlySet<string>): Promise<void> {
+    return this.commit([], { prefix, keep })
+  }
+
+  /**
+   * Several changes as one write: every `set` entry (value '' removes) and,
+   * optionally, a prune of `prefix` keys not in `keep`. Either all of it
+   * reaches the file or none of it — a save of several webhook targets must
+   * not leave half its secret changes on disk when a later one fails.
+   */
+  commit(
+    entries: ReadonlyArray<readonly [string, string]>,
+    prune?: { prefix: string; keep: ReadonlySet<string> }
+  ): Promise<void> {
     if (this.currentMode === 'plain') return Promise.resolve()
-    const removed = [...this.values.keys()].filter((k) => k.startsWith(prefix) && !keep.has(k))
-    if (removed.length === 0) return this.writes
+    for (const [key, value] of entries) {
+      if (value === '') this.values.delete(key)
+      else this.values.set(key, value)
+    }
+    const removed = prune
+      ? [...this.values.keys()].filter((k) => k.startsWith(prune.prefix) && !prune.keep.has(k))
+      : []
     for (const key of removed) this.values.delete(key)
+    if (entries.length === 0 && removed.length === 0) return this.writes
+    this.currentMode = 'encrypted'
     return this.enqueue((next) => {
+      for (const [key, value] of entries) {
+        if (value === '') next.delete(key)
+        else next.set(key, value)
+      }
       for (const key of removed) next.delete(key)
     }).catch((err: unknown) => {
-      // Not on disk: the targets keep their secrets (unless set again meanwhile).
+      // Not on disk: every touched key back to what the file holds, unless a
+      // later call changed it meanwhile.
+      for (const [key, value] of entries) {
+        if (this.values.get(key) === (value === '' ? undefined : value)) this.revert(key)
+      }
       for (const key of removed) if (!this.values.has(key)) this.revert(key)
       throw err
     })

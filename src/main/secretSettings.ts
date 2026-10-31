@@ -195,6 +195,9 @@ export async function prepareWebhookTargets(
   const current = new Map(parseWebhookTargets(currentRaw).map((t) => [t.id, t]))
   const out: WebhookTarget[] = []
   const plain = !s || s.mode === 'plain'
+  // Collected and written once at the end, together with the prune, so a
+  // failed write leaves every secret as it was (see SecretStore.commit).
+  const changes: Array<[string, string]> = []
   for (const t of targets) {
     const rest = { ...t }
     delete rest.secretUnreadable
@@ -208,12 +211,12 @@ export async function prepareWebhookTargets(
     }
     const key = webhookSecretKey(t.id)
     if (secret !== '') {
-      await s.set(key, secret)
+      changes.push([key, secret])
       out.push({ ...rest, secret: '', secretStored: true })
     } else if (rest.secretStored) {
       out.push({ ...rest, secretStored: true })
     } else {
-      await s.set(key, '')
+      changes.push([key, ''])
       out.push({ ...rest, secretStored: undefined })
     }
   }
@@ -236,7 +239,7 @@ export async function prepareWebhookTargets(
     // for now (e.g. a URL half-typed when the field lost focus) is still in the
     // raw list and keeps its secret, so fixing the URL brings it back intact.
     const keep = new Set([...out.map((t) => t.id), ...rawTargetIds(raw)].map(webhookSecretKey))
-    await s.prune('webhook:', keep)
+    await s.commit(changes, { prefix: 'webhook:', keep })
     await s.flush()
   }
   return serializeWebhookTargets(out)

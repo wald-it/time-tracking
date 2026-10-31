@@ -13,6 +13,7 @@ import { emitWebhooks, signBody } from './webhooks'
 import {
   FEED_TOKEN_KEY,
   SECRETS_FILENAME,
+  SecretStore,
   webhookSecretKey,
   type AsyncSecretBox
 } from './secretStore'
@@ -20,6 +21,7 @@ import {
   feedSettings,
   initializeSecrets,
   markFeedTokenRecreated,
+  prepareWebhookTargets,
   readFeedToken,
   readWebhookTargets,
   useSecretStore
@@ -353,5 +355,49 @@ describe('reported storage when the migration fails (#470 counter-check 2)', () 
     expect(get(FEED_TOKEN_KEY)).toBe('old-token')
     register()
     expect(settings().secret_storage).toBe('plain')
+  })
+})
+
+describe('saving several webhook targets is one write (#470 counter-check 3)', () => {
+  it('keeps every secret when the write fails', async () => {
+    // Only the write carrying B's new secret fails, so a save that writes per
+    // target would already have removed A's secret from the file.
+    let fail = false
+    const flaky: AsyncSecretBox = {
+      ...box(),
+      encryptStringAsync: async (value) => {
+        if (fail && value.includes('new-b')) throw new Error('cannot write')
+        return box().encryptStringAsync(value)
+      }
+    }
+    const s = new SecretStore({ dir, box: flaky })
+    await s.load()
+    await s.set(webhookSecretKey('a'), 'old-a')
+    await s.set(webhookSecretKey('b'), 'old-b')
+    const target = (id: string): Record<string, unknown> => ({
+      id,
+      url: `https://${id}.example`,
+      secret: '',
+      secretStored: true,
+      events: ['entry.created'],
+      enabled: true
+    })
+    const current = JSON.stringify([target('a'), target('b')])
+    // A clears its secret, B gets a new one; the single write fails.
+    const next = [
+      { ...target('a'), secretStored: undefined },
+      { ...target('b'), secret: 'new-b' }
+    ]
+    fail = true
+    await expect(prepareWebhookTargets(JSON.stringify(next), s, current)).rejects.toThrow(
+      'cannot write'
+    )
+    expect(s.get(webhookSecretKey('a'))).toBe('old-a')
+    expect(s.get(webhookSecretKey('b'))).toBe('old-b')
+    fail = false
+    const reread = new SecretStore({ dir, box: flaky })
+    await reread.load()
+    expect(reread.get(webhookSecretKey('a'))).toBe('old-a')
+    expect(reread.get(webhookSecretKey('b'))).toBe('old-b')
   })
 })
