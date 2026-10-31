@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { ClientHours, yearLabelStep } from './ClientHours'
+import { ClientHours } from './ClientHours'
+import { yearLabelStep } from '../../../../shared/clientShares'
 import { I18nProvider } from '../../contexts/I18nContext'
 import { useSettingsStore } from '../../store/settingsStore'
 import type { AnalyticsSummary, Settings } from '../../../../shared/types'

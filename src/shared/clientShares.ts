@@ -18,3 +18,12 @@ export function revenueShare(
   const total = clients.reduce((sum, client) => sum + client.rev, 0)
   return total > 0 ? revenueCent / total : null
 }
+
+/** Ruler label step for the 12-month client view: 10, 20, 50, 100, 200, 500 … h, at most five steps. */
+export function yearLabelStep(maxHours: number): number {
+  for (let base = 10; ; base *= 10) {
+    for (const step of [base, base * 2, base * 5]) {
+      if (Math.ceil(maxHours / step) <= 5) return step
+    }
+  }
+}

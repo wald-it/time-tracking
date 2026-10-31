@@ -5,7 +5,8 @@ import { workedHourlyRateCent } from '../../../../shared/targets'
 import {
   CLIENT_REVENUE_SHARE_THRESHOLD,
   nonBillableShare,
-  revenueShare
+  revenueShare,
+  yearLabelStep
 } from '../../../../shared/clientShares'
 import { useLocale, useT } from '../../contexts/I18nContext'
 import { SegmentedControl } from './SegmentedControl'
@@ -33,15 +34,6 @@ const COLUMN =
  * ready from the data (billed like the invoice).
  */
 export type ClientHoursMode = 'month' | 'year'
-
-/** Ruler label step for the 12-month view: 10, 20, 50, 100, 200, 500 … h, at most five steps. */
-export function yearLabelStep(maxHours: number): number {
-  for (let base = 10; ; base *= 10) {
-    for (const step of [base, base * 2, base * 5]) {
-      if (Math.ceil(maxHours / step) <= 5) return step
-    }
-  }
-}
 
 export function ClientHours({
   clients,
@@ -111,7 +103,9 @@ export function ClientHours({
     <section
       aria-labelledby="auswertung-clients"
       className="min-w-0 border-t-2 border-[var(--ink)] pt-3.5"
-      style={{ flex: '3 1 520px' }}
+      // Year mode needs its extra columns plus a readable ruler: a wider basis
+      // makes it take its own row beside the weekday average instead of squeezing.
+      style={{ flex: yearMode ? '3 1 860px' : '3 1 520px' }}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2
@@ -142,8 +136,8 @@ export function ClientHours({
           style={{
             gridTemplateColumns: yearMode
               ? showRevenue
-                ? 'minmax(80px, 110px) minmax(32px, 1fr) 52px 64px 60px 76px 82px'
-                : 'minmax(80px, 170px) minmax(32px, 1fr) 72px 76px'
+                ? 'minmax(80px, 110px) minmax(200px, 1fr) 52px 64px 60px 76px 82px'
+                : 'minmax(80px, 170px) minmax(200px, 1fr) 72px 76px'
               : showRevenue
                 ? '170px minmax(0, 1fr) 72px 88px'
                 : '170px minmax(0, 1fr) 72px',
