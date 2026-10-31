@@ -10,6 +10,8 @@ import { fireEvent } from '@testing-library/dom'
 import { WebhooksSection } from './SettingsView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { de } from '../../../shared/locales/de'
+import { en } from '../../../shared/locales/en'
+import { FeedTokenRecreatedHint, SecretStorageHint } from '../components/SecretStorageHint'
 
 afterEach(cleanup)
 
@@ -41,6 +43,133 @@ async function renderSection(): Promise<HTMLInputElement> {
   await act(async () => {})
   return screen.getByLabelText(de['settings.webhooks.url']) as HTMLInputElement
 }
+
+describe('stored webhook secret markers (#470)', () => {
+  it('shows a stored secret without receiving it; an empty field keeps it and explicit clear removes it', async () => {
+    const set = mockSet({ ok: true, data: undefined })
+    render(
+      <I18nProvider>
+        <WebhooksSection
+          initialRaw={JSON.stringify([
+            {
+              id: 'stored',
+              url: URL_OLD,
+              secret: '',
+              secretStored: true,
+              events: ['timer.started'],
+              enabled: true
+            }
+          ])}
+          logsPath="logs"
+        />
+      </I18nProvider>
+    )
+    const secret = screen.getByLabelText(de['settings.webhooks.secret']) as HTMLInputElement
+    expect(secret.value).toBe('')
+    expect(secret.placeholder).toBe(de['settings.webhooks.secretStored'])
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText(de['settings.webhooks.event.timerStopped']))
+    })
+    expect(JSON.parse(set.mock.calls[0][1])[0]).toMatchObject({ secret: '', secretStored: true })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: de['settings.webhooks.clearSecret'] }))
+    })
+    expect(JSON.parse(set.mock.calls[1][1])[0]).toMatchObject({ secret: '' })
+    expect(JSON.parse(set.mock.calls[1][1])[0].secretStored).toBeUndefined()
+    expect(secret.placeholder).toBe('')
+  })
+
+  it('says at the target when its secret is missing on this machine, and only there', () => {
+    render(
+      <I18nProvider>
+        <WebhooksSection
+          initialRaw={JSON.stringify([
+            {
+              id: 'lost',
+              url: URL_OLD,
+              secret: '',
+              secretStored: true,
+              secretUnreadable: true,
+              events: ['timer.started'],
+              enabled: true
+            },
+            {
+              id: 'fine',
+              url: 'https://fine.example/hook',
+              secret: '',
+              secretStored: true,
+              events: ['timer.started'],
+              enabled: true
+            }
+          ])}
+          logsPath="logs"
+          secretStorage="encrypted"
+        />
+      </I18nProvider>
+    )
+    expect(screen.getAllByText(de['settings.webhooks.secretMissing'])).toHaveLength(1)
+    expect(screen.getAllByText(de['settings.webhooks.secretHint'])).toHaveLength(2)
+    expect(de['settings.webhooks.secretHint']).not.toContain('Klartext')
+  })
+
+  it('says the feed address was created anew only while the feed is on', () => {
+    const { container, rerender } = render(
+      <I18nProvider>
+        <FeedTokenRecreatedHint recreated enabled />
+      </I18nProvider>
+    )
+    expect(screen.getByText(de['settings.icalFeed.tokenRecreated'])).toBeTruthy()
+    rerender(
+      <I18nProvider>
+        <FeedTokenRecreatedHint recreated enabled={false} />
+      </I18nProvider>
+    )
+    expect(container.textContent).toBe('')
+    rerender(
+      <I18nProvider>
+        <FeedTokenRecreatedHint recreated={undefined} enabled />
+      </I18nProvider>
+    )
+    expect(container.textContent).toBe('')
+  })
+
+  it('keeps the plain-text wording of the secret hint in plain mode', () => {
+    render(
+      <I18nProvider>
+        <WebhooksSection
+          initialRaw={JSON.stringify([
+            { id: 'p', url: URL_OLD, secret: '', events: ['timer.started'], enabled: true }
+          ])}
+          logsPath="logs"
+          secretStorage="plain"
+        />
+      </I18nProvider>
+    )
+    expect(screen.getByText(de['settings.webhooks.secretHintPlain'])).toBeTruthy()
+  })
+
+  it.each(['plain', 'unreadable'] as const)('shows the %s storage hint beside webhooks', (mode) => {
+    render(
+      <I18nProvider>
+        <WebhooksSection initialRaw="[]" logsPath="logs" secretStorage={mode} />
+      </I18nProvider>
+    )
+    expect(screen.getByText(de[`settings.secrets.${mode}`])).toBeTruthy()
+  })
+
+  it('has English and German hints and hides the hint for encrypted storage', () => {
+    expect(en['settings.secrets.plain']).toBe(
+      'Secrets are stored unencrypted in the local database because system encryption is not available or could not be set up'
+    )
+    expect(en['settings.secrets.unreadable']).toContain('Regenerate the feed address')
+    const { container } = render(
+      <I18nProvider>
+        <SecretStorageHint mode="encrypted" />
+      </I18nProvider>
+    )
+    expect(container.textContent).toBe('')
+  })
+})
 
 describe('webhook address (#272 A3)', () => {
   it('typing saves nothing; leaving the field saves the whole address once', async () => {

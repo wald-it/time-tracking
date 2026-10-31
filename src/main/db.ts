@@ -3,7 +3,6 @@ import { app } from 'electron'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
 import { runMigrations, MigrationError } from './migrations/runner'
-import { runDailyBackupIfNeeded } from './backup'
 import { writeEntry } from './entryMutations'
 import { syncDueRates } from './rateEditor'
 
@@ -36,8 +35,8 @@ export function getDb(): Database.Database {
     console.error('[db] syncDueRates failed', e)
   }
 
-  // Daily backup is fire-and-forget — must not block startup or throw.
-  void runDailyBackupIfNeeded(conn)
+  // The daily backup starts in index.ts after the secret migration (Q32, #470),
+  // so a backup taken on the update day carries no plaintext secrets.
 
   return conn
 }

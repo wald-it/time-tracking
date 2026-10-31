@@ -970,8 +970,20 @@ export const de = {
   'settings.webhooks.urlInvalid':
     'Bitte eine gültige http(s)-URL angeben — sonst wird nicht gesendet.',
   'settings.webhooks.secret': 'Secret (optional)',
-  'settings.webhooks.secretHint':
+  'settings.webhooks.secretStored': 'Secret ist gesetzt; leer lassen, um es zu behalten',
+  'settings.webhooks.clearSecret': 'Secret entfernen',
+  'settings.secrets.plain':
+    'Secrets liegen unverschlüsselt in der lokalen Datenbank, weil die Systemverschlüsselung nicht verfügbar ist oder nicht eingerichtet werden konnte',
+  'settings.secrets.unreadable':
+    'Gespeicherte Secrets konnten auf diesem Rechner nicht gelesen werden. Erzeuge die Feed-Adresse neu und gib die Webhook-Secrets erneut ein.',
+  'settings.webhooks.secretHintPlain':
     'Wenn gesetzt, wird jede Nachricht per HMAC-SHA256 signiert (Header X-TimeTrack-Signature). Liegt im Klartext in der lokalen Datenbank.',
+  'settings.webhooks.secretMissing':
+    'Das Secret fehlt auf diesem Rechner, etwa nach der Wiederherstellung eines Backups. Gib es erneut ein; bis dahin wird dieser Webhook nicht gesendet.',
+  'settings.icalFeed.tokenRecreated':
+    'Die Feed-Adresse wurde auf diesem Rechner neu erzeugt, weil keine gespeicherte gefunden wurde (etwa nach der Wiederherstellung eines Backups). Trage die neue Adresse im Kalender ein; die alte liefert nichts mehr.',
+  'settings.webhooks.secretHint':
+    'Wenn gesetzt, wird jede Nachricht per HMAC-SHA256 signiert (Header X-TimeTrack-Signature). Liegt verschlüsselt neben der Datenbank und ist nicht im Backup enthalten.',
   'settings.webhooks.events': 'Ereignisse',
   'settings.webhooks.enabled': 'Aktiv',
   'settings.webhooks.remove': 'Entfernen',

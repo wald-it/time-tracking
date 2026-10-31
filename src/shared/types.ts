@@ -307,6 +307,10 @@ export interface Settings {
   ical_feed_enabled?: string
   ical_feed_port?: string
   ical_feed_token?: string
+  /** Reported by settings:getAll; never saved as a setting. */
+  secret_storage?: 'encrypted' | 'plain' | 'unreadable'
+  /** Reported by settings:getAll; true after a lost feed token was minted anew at startup. */
+  feed_token_recreated?: boolean
   // #273 — automatic update check at app start, '1'/'0'. No migration: absent
   // means on (see shared/updateCheck.ts). Manual "Check now" is unaffected.
   update_check_enabled?: string
