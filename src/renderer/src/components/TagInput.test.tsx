@@ -278,6 +278,77 @@ describe('TagInput — Dropdown gegen den Host-Dialog (#158)', () => {
   })
 })
 
+describe('TagInput — scrolling the highlighted suggestion (#449)', () => {
+  let original: PropertyDescriptor | undefined
+  const scrollIntoView = vi.fn()
+
+  beforeEach(() => {
+    original = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView')
+    scrollIntoView.mockClear()
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView
+    })
+  })
+
+  afterEach(() => {
+    if (original) Object.defineProperty(Element.prototype, 'scrollIntoView', original)
+    else Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+  })
+
+  it('scrolls each keyboard-highlighted option into view in a long list', async () => {
+    const { input } = await setup({ known: Array.from({ length: 8 }, (_, i) => `tag${i}`) })
+    const options = screen.getAllByRole('option')
+    expect(options).toHaveLength(8)
+
+    for (const [i, option] of options.entries()) {
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+      expect(option.getAttribute('aria-selected')).toBe('true')
+      expect(scrollIntoView).toHaveBeenCalledTimes(i + 1)
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' })
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(option)
+    }
+
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(options[6].getAttribute('aria-selected')).toBe('true')
+    expect(scrollIntoView).toHaveBeenCalledTimes(9)
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(options[6])
+  })
+
+  it('does not scroll when no option is highlighted', async () => {
+    const { input } = await setup()
+    expect(highlightedText()).toBeNull()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    scrollIntoView.mockClear()
+
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(highlightedText()).toBeNull()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('does not scroll while closed and scrolls the retained highlight on reopening', async () => {
+    const { input } = await setup()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+    scrollIntoView.mockClear()
+
+    fireEvent.pointerDown(document.body)
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    fireEvent.click(input)
+    const first = screen.getAllByRole('option')[0]
+    expect(first.getAttribute('aria-selected')).toBe('true')
+    expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
+    expect(scrollIntoView.mock.contexts[0]).toBe(first)
+  })
+})
+
 describe('TagInput — chip remove key', () => {
   it('is a 24 px target (WCAG 2.5.8) with a name', async () => {
     mockApi(KNOWN)

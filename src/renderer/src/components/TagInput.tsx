@@ -47,6 +47,7 @@ export function TagInput({
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const highlightedRef = useRef<HTMLLIElement>(null)
 
   const reloadKnown = useCallback(async () => {
     const res = await window.api.tags.getAllWithCount()
@@ -199,6 +200,12 @@ export function TagInput({
 
   const showDropdown = dropdownOpen && suggestions.length > 0 && !disabled
 
+  useEffect(() => {
+    if (showDropdown && highlightedIndex >= 0) {
+      highlightedRef.current?.scrollIntoView?.({ block: 'nearest' })
+    }
+  }, [highlightedIndex, showDropdown])
+
   return (
     <div ref={containerRef} className="relative">
       <div
@@ -265,6 +272,7 @@ export function TagInput({
           {suggestions.map((s, i) => (
             <li
               key={s}
+              ref={i === highlightedIndex ? highlightedRef : null}
               role="option"
               aria-selected={i === highlightedIndex}
               onPointerDown={(e) => {
