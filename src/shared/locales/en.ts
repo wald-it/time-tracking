@@ -1048,6 +1048,13 @@ export const en: Record<TranslationKey, string> = {
   'analytics.clients.colHours': 'h',
   'analytics.clients.colRevenue': '€',
   'analytics.clients.internal': 'internal',
+  'analytics.clients.modeMonth': 'Month',
+  'analytics.clients.modeYear': '12 months',
+  'analytics.clients.colRate': 'Effective',
+  'analytics.clients.colNonBillable': 'Non-billable',
+  'analytics.clients.colRevenueShare': 'Revenue share',
+  'analytics.clients.shareThreshold':
+    '5/6 of revenue. A high share from one client is one criterion the German pension insurance looks at in a status review. The number is not an assessment; individual cases need professional advice.',
   'analytics.trend.title': 'Trend',
   'analytics.trend.metaMonths': '12 months · move the cursor over a column',
   'analytics.trend.metaWeeks': '12 weeks · move the cursor over a column',

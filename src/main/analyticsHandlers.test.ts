@@ -51,6 +51,76 @@ function addEntry(
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+describe('buildAnalyticsSummary — client year', () => {
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = new DatabaseImpl(':memory:')
+    db.pragma('foreign_keys = ON')
+    applyMigrations(db)
+    db.exec(`
+      INSERT INTO clients (id, name, color, rate_cent) VALUES
+        (1, 'Main', '#111', 10000), (2, 'Second', '#222', 10000),
+        (3, 'Goodwill', '#333', 10000), (4, 'Internal', '#444', 10000),
+        (5, 'Running', '#555', 10000);
+      INSERT INTO projects (id, client_id, name, rate_cent) VALUES (1, 3, 'Goodwill', 0);
+      INSERT OR REPLACE INTO settings (key, value) VALUES ('pdf_round_minutes', '0');
+    `)
+  })
+
+  afterEach(() => db.close())
+
+  it.each([new Date(2027, 0, 15, 12), new Date(2027, 1, 15, 12)])(
+    'aggregates a synthetic year across January 2027 without an elapsed-day clamp (now=%s)',
+    (now) => {
+      const add = (
+        client_id: number,
+        day: string,
+        hours: number,
+        billable = 1,
+        project_id?: number
+      ): void => {
+        seedEntry(db, {
+          client_id,
+          project_id,
+          started_at: `${day}T08:00:00.000Z`,
+          stopped_at: `${day}T${String(8 + hours).padStart(2, '0')}:00:00.000Z`,
+          billable
+        })
+      }
+      add(1, '2026-01-31', 10) // month −12: excluded
+      add(1, '2026-02-01', 1) // month −11: first included day
+      for (let month = 3; month <= 12; month++) {
+        add(1, `2026-${String(month).padStart(2, '0')}-15`, 1)
+      }
+      add(1, '2027-01-31', 1) // last included day, even if now is January 15
+      add(1, '2026-06-15', 1, 0)
+      add(1, '2027-02-01', 2) // following month: excluded
+      add(2, '2026-12-15', 2)
+      add(3, '2026-08-15', 4, 1, 1) // billable but the project rate is zero
+      add(4, '2026-09-15', 3, 0) // client rate exists, no billable work
+      seedEntry(db, { client_id: 5, started_at: '2027-01-10T08:00:00.000Z', stopped_at: null })
+
+      const result = buildAnalyticsSummary(db, { year: 2027, month: 1 }, now)
+      if (!result.ok) throw new Error(result.error)
+      expect(result.data.byClientYear).toEqual({
+        from: '2026-02-01',
+        to: '2027-01-31',
+        clients: [
+          { client_id: 1, name: 'Main', color: '#111', h: 13 * 3600, b: 12 * 3600, rev: 120_000 },
+          { client_id: 3, name: 'Goodwill', color: '#333', h: 4 * 3600, b: 4 * 3600, rev: 0 },
+          { client_id: 4, name: 'Internal', color: '#444', h: 3 * 3600, b: 0, rev: 0 },
+          { client_id: 2, name: 'Second', color: '#222', h: 2 * 3600, b: 2 * 3600, rev: 20_000 }
+        ]
+      })
+      expect(120_000 / 140_000).toBeGreaterThan(5 / 6)
+      expect(result.data.byClient).toEqual([
+        { client_id: 1, name: 'Main', color: '#111', h: 3600, b: 3600, rev: 10_000 }
+      ])
+    }
+  )
+})
+
 describe('buildAnalyticsSummary', () => {
   let tmpDir: string
   let db: Database.Database

@@ -433,3 +433,36 @@ describe('AuswertungView — empty state', () => {
     expect(screen.queryByTestId('compare-note')).toBeNull()
   })
 })
+
+describe('AuswertungView — 12-month client view (Q13)', () => {
+  const year = (base: AnalyticsSummary): AnalyticsSummary => ({
+    ...base,
+    byClientYear: {
+      from: '2025-11-01',
+      to: '2026-10-31',
+      clients: [
+        { client_id: 9, name: 'Jahreskunde', color: '#111', h: 40 * H, b: 40 * H, rev: 400_000 }
+      ]
+    }
+  })
+
+  it('keeps the chosen mode across a month change', async () => {
+    const { getSummary } = await setup({ data: () => year(summary()) })
+    fireEvent.click(screen.getByRole('button', { name: '12 Monate' }))
+    expect(screen.getByText('Jahreskunde')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Vorheriger Monat' }))
+    await waitFor(() => expect(getSummary).toHaveBeenLastCalledWith({ year: 2026, month: 9 }))
+    await waitFor(() => expect(screen.getByText('Jahreskunde')).toBeTruthy())
+    expect(screen.getByRole('button', { name: '12 Monate' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+  })
+
+  it('an empty month still offers the 12-month view when the window has data', async () => {
+    await setup({ data: () => year(summary({ hasData: false })) })
+    expect(screen.getByText('Noch keine Einträge')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '12 Monate' }))
+    expect(screen.getByText('Jahreskunde')).toBeTruthy()
+  })
+})
