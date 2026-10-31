@@ -106,9 +106,13 @@ const FORMULA_START = ['=', '+', '-', '@', '\t', '\r']
  * (dates, times, durations, rates, amounts) go through `escapeField` only —
  * a negative amount like `-12,50` must stay a number.
  */
+/** Prefix a text cell that a spreadsheet would read as a formula (CSV and pasted TSV alike). */
+export function guardFormula(value: string): string {
+  return FORMULA_START.some((c) => value.startsWith(c)) ? "'" + value : value
+}
+
 export function escapeTextField(value: string, sep: string): string {
-  const guarded = FORMULA_START.some((c) => value.startsWith(c)) ? "'" + value : value
-  return escapeField(guarded, sep)
+  return escapeField(guardFormula(value), sep)
 }
 
 /** Format a fractional number using the chosen decimal separator, 2 decimal places. */

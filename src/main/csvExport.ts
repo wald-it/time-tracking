@@ -46,6 +46,24 @@ function fail(e: unknown): IpcResult<never> {
   return { ok: false, error: e instanceof Error ? e.message : String(e) }
 }
 
+/** Document language resolved project → client → default billing profile. */
+function documentLanguage(
+  db: Database.Database,
+  clientId: number,
+  projectId: number | null | undefined
+): 'de' | 'en' {
+  const profile = db
+    .prepare(
+      `SELECT COALESCE(p.language, c.language, d.language) AS language
+      FROM billing_profile d
+      LEFT JOIN billing_profile c ON c.client_id = ?
+      LEFT JOIN billing_profile p ON p.project_id = ?
+      WHERE d.client_id IS NULL AND d.project_id IS NULL`
+    )
+    .get(clientId, projectId ?? null) as { language: 'de' | 'en' }
+  return profile.language
+}
+
 export async function handleDayGridExport(
   db: Database.Database,
   req: ReviewSelection
@@ -83,11 +101,14 @@ export async function handleDayGridExport(
     })
     if (result.canceled || !result.filePath)
       return cancelledResult(locale, 'mainError.exportCancelled')
+    // A client document: its language comes from the billing profile, like the entry
+    // CSV and the PDF (design D8); the dialog above follows the UI language.
+    const language = documentLanguage(db, req.clientId, req.projectId)
     const csv = formatDayGridCsv(
       dayGrid,
-      locale === 'en'
+      language === 'en'
         ? { language: 'en', fieldSeparator: ',', decimalSeparator: '.' }
-        : { language: 'de' }
+        : { language: 'de', fieldSeparator: ';', decimalSeparator: ',' }
     )
     writeFileSync(result.filePath, csv, 'utf8')
     rememberExportFolder(db, 'csv', result.filePath)
@@ -150,16 +171,7 @@ export async function handleCsvExport(
         ? { fieldSeparator: ',', decimalSeparator: '.', groupByTag: req.groupByTag }
         : { fieldSeparator: ';', decimalSeparator: ',', groupByTag: req.groupByTag }
 
-    const profile = db
-      .prepare(
-        `SELECT COALESCE(p.language, c.language, d.language) AS language
-      FROM billing_profile d
-      LEFT JOIN billing_profile c ON c.client_id = ?
-      LEFT JOIN billing_profile p ON p.project_id = ?
-      WHERE d.client_id IS NULL AND d.project_id IS NULL`
-      )
-      .get(req.clientId, req.projectId ?? null) as { language: 'de' | 'en' }
-    opts.language = profile.language
+    opts.language = documentLanguage(db, req.clientId, req.projectId)
 
     const clientMap = new Map([[client.id, client]])
     const csv = formatCsv(entries, clientMap, opts)

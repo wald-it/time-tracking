@@ -54,17 +54,27 @@ beforeEach(() => {
 afterEach(() => db.close())
 
 describe('day grid CSV export', () => {
-  it.each(['de', 'en'])(
-    'saves %s CSV with the shared escaping and includes billed time',
-    async (locale) => {
+  // The dialog follows the UI language; the CSV, a client document, follows the
+  // document language of the billing profile (design D8), like the entry CSV.
+  it.each([
+    ['de', 'de'],
+    ['en', 'en'],
+    ['de', 'en'],
+    ['en', 'de']
+  ])(
+    'UI %s, document %s: CSV in the document language, shared escaping, billed time included',
+    async (locale, docLanguage) => {
       db.prepare("UPDATE settings SET value = ? WHERE key = 'language'").run(locale)
+      db.prepare(
+        'UPDATE billing_profile SET language = ? WHERE client_id IS NULL AND project_id IS NULL'
+      ).run(docLanguage)
       await createRun(db, req, async () => Buffer.from('pdf'))
       expect(await handleDayGridExport(db, req)).toEqual({
         ok: true,
         data: { path: 'C:\\exports\\days.csv' }
       })
       const csv =
-        locale === 'de'
+        docLanguage === 'de'
           ? '\uFEFFDatum;Stunden;Tätigkeit\r\n2026-10-01;1,50;"\'=SUM(""x"");\nquoted; Other, work"\r\n'
           : '\uFEFFDate,Hours,Activity\r\n2026-10-01,1.50,"\'=SUM(""x"");\nquoted; Other, work"\r\n'
       expect(mocks.write).toHaveBeenCalledExactlyOnceWith('C:\\exports\\days.csv', csv, 'utf8')

@@ -6,6 +6,7 @@ import type { PeriodReviewEntry, RuleCheckFinding } from '../../../shared/ruleCh
 import { formatRuleCheckFinding } from '../../../shared/ruleCheck'
 import { getQuickRange, localDateKey, type QuickRangeKind } from '../../../shared/dateRanges'
 import { formatSecondsHm } from '../../../shared/currency'
+import { guardFormula } from '../../../shared/csv'
 import { useLocale, useT } from '../contexts/I18nContext'
 import { useWeekStart } from '../hooks/useWeekStart'
 import { useEntriesStore } from '../store/entriesStore'
@@ -280,8 +281,17 @@ function BillingPreviewSection({ selection }: { selection: ReviewSelection }): R
   async function copy(): Promise<void> {
     try {
       // Keep each project name in one spreadsheet cell, including pasted tabs/newlines.
+      // The name column is free text: guard it against formula evaluation like the CSV
+      // export does; the numeric columns stay as they are.
       const text = [headers, ...lines, total]
-        .map((row) => row.map((cell) => cell.replace(/[\t\r\n]+/g, ' ')).join('\t'))
+        .map((row) =>
+          row
+            .map((cell, i) => {
+              const flat = cell.replace(/[\t\r\n]+/g, ' ')
+              return i === 0 ? guardFormula(flat) : flat
+            })
+            .join('\t')
+        )
         .join('\n')
       await navigator.clipboard.writeText(text)
       setError(null)
