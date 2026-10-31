@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import type { IpcResult, McpApprovalState } from '../shared/types'
+import type { ReviewSelection } from '../shared/billingPreview'
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn().mockResolvedValue({ ok: true, data: { state: 'silent' } }),
@@ -23,12 +24,21 @@ it('exposes only a read and a removable approval subscription on fixed channels'
   try {
     await import('../preload')
     const api = mocks.expose.mock.calls.find(([name]) => name === 'api')![1] as {
+      review: {
+        billingPreview(req: ReviewSelection): Promise<unknown>
+        exportDayGrid(req: ReviewSelection): Promise<unknown>
+      }
       mcpApproval: {
         get(): Promise<IpcResult<McpApprovalState>>
         onChanged(callback: (state: McpApprovalState) => void): () => void
       }
     }
     expect(Object.keys(api.mcpApproval).sort()).toEqual(['get', 'onChanged'])
+    const selection = { clientId: 1, fromIso: '2026-10-01', toIso: '2026-10-31', projectId: 2 }
+    await api.review.billingPreview(selection)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('review:billingPreview', selection)
+    await api.review.exportDayGrid(selection)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('review:exportDayGrid', selection)
     expect(await api.mcpApproval.get()).toEqual({ ok: true, data: { state: 'silent' } })
     expect(mocks.invoke).toHaveBeenCalledWith('mcp:approval-state')
     const callback = vi.fn()

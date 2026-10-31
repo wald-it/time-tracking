@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Monthly review shows billing line items, copies them to the clipboard, and saves a daily activity grid as CSV (#465).
+
 ### Changed
 
 - Rule check: the description length limit defaults to 500 characters, the entry field limit, and cannot be set higher (#463).

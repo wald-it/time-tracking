@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Client, Project } from '../../../shared/types'
+import type { BillingPreview, ReviewSelection } from '../../../shared/billingPreview'
+export type { ReviewSelection } from '../../../shared/billingPreview'
 import type { PeriodReviewEntry, RuleCheckFinding } from '../../../shared/ruleCheck'
 import { formatRuleCheckFinding } from '../../../shared/ruleCheck'
 import { getQuickRange, localDateKey, type QuickRangeKind } from '../../../shared/dateRanges'
@@ -11,20 +13,22 @@ import { useTimerStore } from '../store/timerStore'
 import { BilledChip } from './BilledChip'
 import { EntryEditForm } from './EntryEditForm'
 import { Toggle } from './Toggle'
-import { FIELD_LABEL, FOCUS, INPUT, KEY_INV, LEGEND, READOUT, SECTION } from './instrumentClasses'
+import {
+  FIELD_LABEL,
+  FOCUS,
+  INPUT,
+  KEY,
+  KEY_INV,
+  LEGEND,
+  READOUT,
+  SECTION
+} from './instrumentClasses'
 
 // The renderer takes its types from shared/ or the preload API, never from main/.
 type ChangedSinceRunResult = Extract<
   Awaited<ReturnType<Window['api']['review']['changedSinceRun']>>,
   { ok: true }
 >['data']
-
-export interface ReviewSelection {
-  clientId: number
-  projectId?: number
-  fromIso: string
-  toIso: string
-}
 
 export function MonthlyReview({
   onPdf,
@@ -210,6 +214,171 @@ export function MonthlyReview({
         </>
       )}
     </section>
+  )
+}
+
+function BillingPreviewSection({ selection }: { selection: ReviewSelection }): React.JSX.Element {
+  const t = useT()
+  const { locale } = useLocale()
+  const [preview, setPreview] = useState<BillingPreview | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const { clientId, projectId, fromIso, toIso } = selection
+  useEffect(() => {
+    let cancelled = false
+    void window.api.review
+      .billingPreview({ clientId, projectId, fromIso, toIso })
+      .then((res) => {
+        if (cancelled) return
+        if (!res.ok) throw new Error(res.error)
+        setError(null)
+        setPreview(res.data)
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(String(e))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [clientId, projectId, fromIso, toIso])
+  useEffect(() => {
+    if (!status) return
+    const timer = window.setTimeout(() => setStatus(null), 3000)
+    return () => window.clearTimeout(timer)
+  }, [status])
+  const decimal = (n: number): string =>
+    n.toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: false
+    })
+  const headers = [
+    t('review.position'),
+    t('review.hours'),
+    t('review.rate'),
+    t('review.net'),
+    t('review.servicePeriod')
+  ]
+  const lines =
+    preview?.lines.map((line) => [
+      line.projectName ?? t('review.noProject'),
+      decimal(line.billedMinutes / 60),
+      decimal(line.rateCent / 100),
+      decimal(line.feeCent / 100),
+      `${line.fromIso} – ${line.toIso}`
+    ]) ?? []
+  const total = preview
+    ? [
+        t('review.total'),
+        decimal(preview.totals.billedMinutes / 60),
+        '',
+        decimal(preview.totals.feeCent / 100),
+        ''
+      ]
+    : []
+  async function copy(): Promise<void> {
+    try {
+      // Keep each project name in one spreadsheet cell, including pasted tabs/newlines.
+      const text = [headers, ...lines, total]
+        .map((row) => row.map((cell) => cell.replace(/[\t\r\n]+/g, ' ')).join('\t'))
+        .join('\n')
+      await navigator.clipboard.writeText(text)
+      setError(null)
+      setStatus(t('review.copied'))
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+  async function save(): Promise<void> {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await window.api.review.exportDayGrid(selection)
+      if (res.ok) setStatus(t('review.dayGridSaved'))
+      else if (res.code !== 'cancelled') setError(res.error)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      {error && (
+        <p role="alert" className="text-sm text-[var(--danger)]">
+          {error}
+        </p>
+      )}
+      {preview ? (
+        <>
+          {preview.billedEntriesCount > 0 && (
+            <p className={READOUT}>
+              {t('review.alreadyBilled', { count: preview.billedEntriesCount })}
+            </p>
+          )}
+          <div className={`${READOUT} overflow-x-auto`}>
+            <table className="w-full text-left tabular-nums">
+              <caption className={`${LEGEND} pb-2 text-left`}>{t('review.preview')}</caption>
+              <thead>
+                <tr>
+                  {headers.map((header, i) => (
+                    <th
+                      key={header}
+                      scope="col"
+                      className={`px-2 py-1 ${i > 0 && i < 4 ? 'text-right' : ''}`}
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, i) => (
+                  <tr key={`${preview.lines[i].projectId}:${preview.lines[i].rateCent}`}>
+                    {line.map((cell, j) => (
+                      <td key={j} className={`px-2 py-1 ${j > 0 && j < 4 ? 'text-right' : ''}`}>
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-[var(--line)] font-semibold">
+                  {total.map((cell, i) =>
+                    i === 0 ? (
+                      <th key={i} scope="row" className="px-2 py-1">
+                        {cell}
+                      </th>
+                    ) : (
+                      <td key={i} className={`px-2 py-1 ${i < 4 ? 'text-right' : ''}`}>
+                        {cell}
+                      </td>
+                    )
+                  )}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={KEY} onClick={() => void copy()}>
+              {t('review.copyItems')}
+            </button>
+            <button type="button" className={KEY} disabled={saving} onClick={() => void save()}>
+              {t('review.saveDayGrid')}
+            </button>
+          </div>
+        </>
+      ) : (
+        !error && <p className={READOUT}>{t('review.loading')}</p>
+      )}
+      {status && (
+        <p role="status" className={READOUT}>
+          {status}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -406,6 +575,10 @@ function ReviewResults({
       <button type="button" className={`${KEY_INV} self-start`} onClick={() => onPdf(selection)}>
         {t('review.pdf')}
       </button>
+      <BillingPreviewSection
+        key={`${refreshKey}:${entriesVersion}:${runningId}`}
+        selection={selection}
+      />
       {result && (
         <div>
           <h3 className={`${LEGEND} mb-2`}>

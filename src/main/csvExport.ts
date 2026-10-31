@@ -12,7 +12,10 @@
 import { app, dialog } from 'electron'
 import { writeFileSync } from 'fs'
 import type Database from 'better-sqlite3'
-import { formatCsv, type CsvOptions } from '../shared/csv'
+import { formatCsv, formatDayGridCsv, type CsvOptions } from '../shared/csv'
+import type { ReviewSelection } from '../shared/billingPreview'
+import { buildBillingPreview } from './billingPreview'
+import { validateRuleCheckRequest } from './ruleCheck'
 import type { Client, IpcResult } from '../shared/types'
 import { exportEntries } from './entryRanges'
 import { appLocale, cancelledResult, dialogT, exportFileName } from './mainI18n'
@@ -41,6 +44,57 @@ function ok<T>(data: T): IpcResult<T> {
 }
 function fail(e: unknown): IpcResult<never> {
   return { ok: false, error: e instanceof Error ? e.message : String(e) }
+}
+
+export async function handleDayGridExport(
+  db: Database.Database,
+  req: ReviewSelection
+): Promise<IpcResult<{ path: string }>> {
+  try {
+    validateRuleCheckRequest(req)
+    const client = db.prepare('SELECT name FROM clients WHERE id = ?').get(req.clientId) as
+      | { name: string }
+      | undefined
+    if (!client) return fail(`Kunde ${req.clientId} nicht gefunden`)
+    const project =
+      req.projectId == null
+        ? undefined
+        : (db
+            .prepare('SELECT name FROM projects WHERE id = ? AND client_id = ?')
+            .get(req.projectId, req.clientId) as { name: string } | undefined)
+    if (req.projectId != null && !project) return fail('Projekt gehört nicht zum Kunden')
+    const dayGrid = buildBillingPreview(db, req).dayGrid
+    const locale = appLocale(
+      () => db,
+      () => app.getPreferredSystemLanguages()
+    )
+    const result = await dialog.showSaveDialog({
+      title: dialogT(locale)('mainDialog.dayGrid.title'),
+      defaultPath: await exportDefaultPath(
+        db,
+        'csv',
+        exportFileName(locale, 'dayGrid', {
+          client: client.name,
+          project: project?.name,
+          month: req.fromIso.slice(0, 7)
+        })
+      ),
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    })
+    if (result.canceled || !result.filePath)
+      return cancelledResult(locale, 'mainError.exportCancelled')
+    const csv = formatDayGridCsv(
+      dayGrid,
+      locale === 'en'
+        ? { language: 'en', fieldSeparator: ',', decimalSeparator: '.' }
+        : { language: 'de' }
+    )
+    writeFileSync(result.filePath, csv, 'utf8')
+    rememberExportFolder(db, 'csv', result.filePath)
+    return ok({ path: result.filePath })
+  } catch (e) {
+    return fail(e)
+  }
 }
 
 export async function handleCsvExport(

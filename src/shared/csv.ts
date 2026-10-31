@@ -26,6 +26,7 @@ import { formatTimeHHMM } from './date'
 import { formatDuration } from './duration'
 import { deserializeTags } from './tags'
 import type { Entry, Client } from './types'
+import type { DayGridRow } from './billingPreview'
 
 export interface CsvOptions {
   /** Document labels; independent of the data format and app language. */
@@ -115,6 +116,28 @@ function formatDecimal(n: number, decimalSep: string): string {
   return n.toFixed(2).replace('.', decimalSep)
 }
 
+function finishCsv(rows: string[]): string {
+  return '\uFEFF' + rows.join('\r\n') + '\r\n'
+}
+
+/** Day attachment: use the entry export's escaping, decimals, BOM and line endings. */
+export function formatDayGridCsv(rows: DayGridRow[], opts: CsvOptions = {}): string {
+  const sep = opts.fieldSeparator ?? ';'
+  const dec = opts.decimalSeparator ?? ','
+  const header =
+    opts.language === 'en' ? ['Date', 'Hours', 'Activity'] : ['Datum', 'Stunden', 'Tätigkeit']
+  return finishCsv([
+    header.map((cell) => escapeField(cell, sep)).join(sep),
+    ...rows.map((row) =>
+      [
+        escapeField(row.date, sep),
+        escapeField(formatDecimal(row.billedMinutes / 60, dec), sep),
+        escapeTextField(row.activity, sep)
+      ].join(sep)
+    )
+  ])
+}
+
 /**
  * Build a CSV string (UTF-8 BOM + header + data rows) from a list of entries.
  *
@@ -151,7 +174,7 @@ export function formatCsv(
   }
 
   // UTF-8 BOM + CRLF line endings
-  return '\uFEFF' + rows.join('\r\n') + '\r\n'
+  return finishCsv(rows)
 }
 
 /**

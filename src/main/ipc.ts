@@ -1,3 +1,6 @@
+import { buildBillingPreview } from './billingPreview'
+import type { BillingPreview, ReviewSelection } from '../shared/billingPreview'
+import { handleDayGridExport } from './csvExport'
 import {
   exportRunToFile,
   listRuns,
@@ -522,6 +525,21 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         return fail(e)
       }
     }
+  )
+
+  ipcMain.handle(
+    'review:billingPreview',
+    (_e, request: ReviewSelection): IpcResult<BillingPreview> => {
+      try {
+        validateRuleCheckRequest(request)
+        return ok(buildBillingPreview(db, request))
+      } catch (e) {
+        return fail(e)
+      }
+    }
+  )
+  ipcMain.handle('review:exportDayGrid', (_e, request: ReviewSelection) =>
+    handleDayGridExport(db, request)
   )
 
   /**

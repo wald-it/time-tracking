@@ -9,6 +9,9 @@ import ExportView from './ExportView'
 const period = vi.fn()
 const getForReview = vi.fn()
 const changedSinceRun = vi.fn()
+const billingPreview = vi.fn()
+const exportDayGrid = vi.fn()
+const clipboardWrite = vi.fn()
 const update = vi.fn()
 const pdf = vi.fn()
 const scroll = vi.fn()
@@ -45,6 +48,40 @@ beforeEach(() => {
   })
   period.mockResolvedValue({ ok: true, data: findings })
   getForReview.mockResolvedValue({ ok: true, data: entries })
+  billingPreview.mockResolvedValue({
+    ok: true,
+    data: {
+      lines: [
+        {
+          projectId: 3,
+          projectName: 'Project',
+          rateCent: 6001,
+          billedMinutes: 2,
+          feeCent: 202,
+          fromIso: '2026-09-01',
+          toIso: '2026-09-02'
+        },
+        {
+          projectId: null,
+          projectName: null,
+          rateCent: 0,
+          billedMinutes: 60,
+          feeCent: 0,
+          fromIso: '2026-09-03',
+          toIso: '2026-09-03'
+        }
+      ],
+      totals: { billedMinutes: 62, feeCent: 202 },
+      billedEntriesCount: 2,
+      dayGrid: []
+    }
+  })
+  exportDayGrid.mockResolvedValue({ ok: true, data: { path: 'day.csv' } })
+  clipboardWrite.mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: clipboardWrite }
+  })
   changedSinceRun.mockResolvedValue({
     ok: true,
     data: {
@@ -76,7 +113,7 @@ beforeEach(() => {
       })
     },
     ruleCheck: { period },
-    review: { changedSinceRun },
+    review: { changedSinceRun, billingPreview, exportDayGrid },
     entries: { getForReview, update },
     tags: { getAllWithCount: async () => ({ ok: true, data: [] }) },
     settings: { set: async () => ({ ok: true, data: undefined }) },
@@ -705,6 +742,75 @@ describe('monthly review', () => {
 })
 
 describe('monthly review follow-ups', () => {
+  it('renders preview lines, totals and the distinct billed-entry hint, and copies locale TSV', async () => {
+    const ui = await selectClient()
+    const table = within(await ui.findByRole('table', { name: 'Abrechnungspositionen' }))
+    expect(table.getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual([
+      'Position',
+      'Stunden',
+      'Stundensatz',
+      'Netto',
+      'Leistungszeitraum'
+    ])
+    expect(table.getByText('Ohne Projekt')).toBeVisible()
+    expect(table.getByText('60,01')).toBeVisible()
+    expect(table.getByText('0,03')).toBeVisible()
+    expect(table.getByText('1,03')).toBeVisible()
+    expect(ui.getByText('2 Einträge schon abgerechnet')).toBeVisible()
+    fireEvent.click(ui.getByRole('button', { name: 'Positionen kopieren' }))
+    await waitFor(() =>
+      expect(clipboardWrite).toHaveBeenCalledExactlyOnceWith(
+        'Position\tStunden\tStundensatz\tNetto\tLeistungszeitraum\n' +
+          'Project\t0,03\t60,01\t2,02\t2026-09-01 – 2026-09-02\n' +
+          'Ohne Projekt\t1,00\t0,00\t0,00\t2026-09-03 – 2026-09-03\n' +
+          'Summe\t1,03\t\t2,02\t'
+      )
+    )
+    expect(await ui.findByText('Positionen kopiert')).toBeVisible()
+    expect(billingPreview).toHaveBeenLastCalledWith(getForReview.mock.lastCall![0])
+    fireEvent.click(ui.getByRole('button', { name: 'Tagesraster als CSV speichern' }))
+    await ui.findByText('Tagesraster gespeichert')
+    expect(exportDayGrid).toHaveBeenCalledExactlyOnceWith(getForReview.mock.lastCall![0])
+  })
+
+  it('formats the preview in English, hides the zero hint, and reloads after external writes', async () => {
+    const ui = await selectClient()
+    await act(async () => useSettingsStore.setState({ settings: { language: 'en' } as never }))
+    expect(ui.getByRole('table', { name: 'Billing line items' })).toHaveTextContent('60.01')
+    fireEvent.click(ui.getByRole('button', { name: 'Copy line items' }))
+    await waitFor(() =>
+      expect(clipboardWrite).toHaveBeenCalledWith(
+        expect.stringContaining('Project\t0.03\t60.01\t2.02\t')
+      )
+    )
+    billingPreview.mockResolvedValue({
+      ok: true,
+      data: {
+        lines: [],
+        totals: { billedMinutes: 0, feeCent: 0 },
+        billedEntriesCount: 0,
+        dayGrid: []
+      }
+    })
+    await act(async () => useEntriesStore.getState().bumpVersion())
+    await waitFor(() => expect(billingPreview).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(ui.queryByText('2 entries already billed')).toBeNull())
+    expect(ui.getByRole('table', { name: 'Billing line items' })).toHaveTextContent('0.00')
+  })
+
+  it('reports clipboard and export failures and treats cancellation as silent', async () => {
+    const ui = await selectClient()
+    clipboardWrite.mockRejectedValue(new Error('Clipboard denied'))
+    fireEvent.click(ui.getByRole('button', { name: 'Positionen kopieren' }))
+    expect(await ui.findByRole('alert')).toHaveTextContent('Clipboard denied')
+    exportDayGrid.mockResolvedValueOnce({ ok: false, error: 'Cancelled', code: 'cancelled' })
+    fireEvent.click(ui.getByRole('button', { name: 'Tagesraster als CSV speichern' }))
+    await waitFor(() => expect(ui.queryByRole('alert')).toBeNull())
+    exportDayGrid.mockResolvedValueOnce({ ok: false, error: 'Disk full' })
+    fireEvent.click(ui.getByRole('button', { name: 'Tagesraster als CSV speichern' }))
+    expect(await ui.findByRole('alert')).toHaveTextContent('Disk full')
+  })
+
   it.each([
     ['de', 'Monats-Review', ['Kunde', 'Projekt', 'Zeitraum', 'von', 'bis']],
     ['en', 'Monthly review', ['Client', 'Project', 'Period', 'From', 'To']]

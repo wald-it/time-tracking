@@ -142,7 +142,7 @@ describe('export save dialogs use the remembered folder', () => {
     [...source.matchAll(new RegExp(`${call}\\(\\s*db,\\s*'([a-z]+)'`, 'g'))].map((m) => m[1]).sort()
 
   it.each([
-    ['csvExport.ts', ['csv']],
+    ['csvExport.ts', ['csv', 'csv']],
     ['icalExport.ts', ['ical']],
     ['ipc.ts', ['json', 'pdf']]
   ])('%s', (file, expected) => {
