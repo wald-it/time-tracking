@@ -1,7 +1,7 @@
 /**
  * At-rest storage for the iCal feed token and the webhook secrets (Q32).
  *
- * Until 2.0 both sat in the `settings` table in plain text, so every backup of
+ * Until 2.3 both sat in the `settings` table in plain text, so every backup of
  * the `.sqlite` file carried them. They now live in a file of their own beside
  * the database, encrypted with Electron's `safeStorage` — the same reasoning as
  * `graphTokenStore.ts`: a backup restored on another machine does not bring
