@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-11-01
+
 ### Added
 
 - **The MCP tool `get_report` reports time and revenue over any period.** Group by client, project and day in any order, or request totals only, with filters for client, project and billable time. Three recipes are available as MCP prompts, documented in [docs/mcp-recipes.md](docs/mcp-recipes.md) ([#450](https://github.com/wald-it/time-tracking/issues/450)).
@@ -14,7 +16,7 @@ All notable changes to TimeTrack are documented here.
 - **The monthly review can show only entries changed since the client's last billing run.** A switch narrows entries and findings to entries created or changed after the latest active run and marks each with its change; without an active run it says so ([#428](https://github.com/wald-it/time-tracking/issues/428)).
 - **Monthly review in the Export tab.** For a client and period it lists the rule check findings with a jump to the entry, then the entries with inline edit; the export stays possible with open findings ([#427](https://github.com/wald-it/time-tracking/issues/427)).
 - **The rule check is available to agents as the read-only MCP tool `check_period`.** It returns the same findings as the app for a client and period ([#429](https://github.com/wald-it/time-tracking/issues/429)).
-- **A rule check reports findings for a client's entries in a period.** It checks missing descriptions or projects, billable entries without a rate, long entries and days, work outside working hours or on weekends, format rules, overlong texts and non-billable entries. Thresholds are in Settings; the check only reports and never blocks an export. It is not shown outside Settings yet ([#426](https://github.com/wald-it/time-tracking/issues/426)).
+- **A rule check reports findings for a client's entries in a period.** It checks missing descriptions or projects, billable entries without a rate, long entries and days, work outside working hours or on weekends, format rules, overlong texts and non-billable entries. Thresholds are in Settings; the check only reports and never blocks an export. Its findings appear in the monthly review ([#426](https://github.com/wald-it/time-tracking/issues/426)).
 - **PDF timesheets and CSV column headers follow the language of the client or project profile.** The profile’s fee column setting decides whether the PDF fee column is shown ([#423](https://github.com/wald-it/time-tracking/issues/423)).
 - **PDF timesheets can leave out start and end times.** The column set comes from the client or project profile and can be changed in the export dialog for one export ([#422](https://github.com/wald-it/time-tracking/issues/422)).
 - **The export dialog accepts an optional invoice number.** It is printed on the timesheet of a billing run and appended to the CSV file name. The run list can set or change it later without changing the archived PDF ([#424](https://github.com/wald-it/time-tracking/issues/424)).
@@ -34,6 +36,10 @@ All notable changes to TimeTrack are documented here.
 - **Tag suggestions scroll into view when highlighted with the arrow keys.** The selected suggestion stays visible in long lists ([#449](https://github.com/wald-it/time-tracking/issues/449)).
 - **Deleting a client or project with entries now says why it is refused.** The app refuses it as long as any entry, deleted ones included, points to the record, but the refusal was silently dropped. The delete key of such a record is now greyed out, and its tooltip names the reason and suggests archiving instead; should a delete still be refused, a message says so. The confirmation no longer claims that a client's entries are deleted with it or that a project's entries move to the client ([#452](https://github.com/wald-it/time-tracking/issues/452)).
 - **Kalender and Heute show changes made through MCP or the Stream Deck without a manual reload.** An open editor in the calendar keeps the entry as it was when it opened, so saving after such a change is refused with an error instead of overwriting it; the form keeps the typed values ([#442](https://github.com/wald-it/time-tracking/issues/442)).
+
+### Known limitations
+
+- **The MCP prompts are tested as texts, not in Claude Desktop's interface.** Their wording and results were checked by hand in Claude Code; the prompt list and the argument entry in Claude Desktop have not been tested yet ([#450](https://github.com/wald-it/time-tracking/issues/450)).
 
 ### Internal
 
