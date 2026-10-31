@@ -1,4 +1,5 @@
 import type { RendererSettingKey } from '../shared/settingKeys'
+import type { BillingPreview, ReviewSelection } from '../shared/billingPreview'
 import type { BillingRunSummary } from '../main/billingRuns'
 import type { ChangedSinceRunRequest, ChangedSinceRunResult } from '../main/changedSinceRun'
 import type { RuleCheckRequest } from '../main/ruleCheck'
@@ -176,6 +177,8 @@ declare global {
         delete(name: string): Promise<IpcResult<void>>
       }
       review: {
+        billingPreview(req: ReviewSelection): Promise<IpcResult<BillingPreview>>
+        exportDayGrid(req: ReviewSelection): Promise<IpcResult<{ path: string }>>
         changedSinceRun(req: ChangedSinceRunRequest): Promise<IpcResult<ChangedSinceRunResult>>
       }
       billingRuns: {

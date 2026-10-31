@@ -6,11 +6,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const exposed: string[] = []
+let exposedApi: { review: Record<string, unknown> }
 
 vi.mock('electron', () => ({
   contextBridge: {
-    exposeInMainWorld: (name: string) => {
+    exposeInMainWorld: (name: string, api: typeof exposedApi) => {
       exposed.push(name)
+      exposedApi = api
     }
   },
   ipcRenderer: {
@@ -50,5 +52,10 @@ describe('preload surface', () => {
   it('exposes exactly one global, `api`', async () => {
     await import('../preload/index')
     expect(exposed).toEqual(['api'])
+    expect(Object.keys(exposedApi.review).sort()).toEqual([
+      'billingPreview',
+      'changedSinceRun',
+      'exportDayGrid'
+    ])
   })
 })

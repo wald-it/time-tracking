@@ -149,7 +149,29 @@ describe('monthly review IPC', () => {
     expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(before)
   })
 
-  for (const channel of ['ruleCheck:period', 'entries:getForReview']) {
+  it('returns the billing preview on its fixed channel without writing', () => {
+    seedEntry(db, { client_id: 1, project_id: 1, started_at: at(1, 8), stopped_at: at(1, 9) })
+    const before = db.prepare('SELECT total_changes() AS n').get()
+    expect(invoke('review:billingPreview', { ...request, projectId: 1 })).toMatchObject({
+      ok: true,
+      data: {
+        lines: [{ projectId: 1, projectName: 'Project', billedMinutes: 60, feeCent: 6000 }],
+        totals: { billedMinutes: 60, feeCent: 6000 },
+        billedEntriesCount: 0,
+        dayGrid: [{ date: '2026-06-01', billedMinutes: 60, activity: '' }]
+      }
+    })
+    expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(before)
+    expect(handlers.has('review:exportDayGrid')).toBe(true)
+  })
+
+  it('rejects malformed day-grid requests before any save dialog', async () => {
+    expect(await invoke('review:exportDayGrid', { ...request, toIso: '2026-02-30' })).toMatchObject(
+      { ok: false, error: expect.any(String) }
+    )
+  })
+
+  for (const channel of ['ruleCheck:period', 'entries:getForReview', 'review:billingPreview']) {
     it(`${channel} rejects malformed IDs, calendar dates and reversed ranges`, () => {
       for (const input of [
         null,

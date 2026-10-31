@@ -274,12 +274,18 @@ function safeFilePart(name: string): string {
  */
 export function exportFileName(
   locale: Locale,
-  kind: 'pdf' | 'csv' | 'ical',
+  kind: 'pdf' | 'csv' | 'ical' | 'dayGrid',
   e: { client: string; project?: string | null; month: string; invoiceRef?: string }
 ): string {
   const t = dialogT(locale)
   const name = t(
-    kind === 'pdf' ? 'mainFile.pdf' : kind === 'csv' ? 'mainFile.csv' : 'mainFile.ical',
+    kind === 'pdf'
+      ? 'mainFile.pdf'
+      : kind === 'csv'
+        ? 'mainFile.csv'
+        : kind === 'dayGrid'
+          ? 'mainFile.dayGrid'
+          : 'mainFile.ical',
     {
       client: safeFilePart(e.client) || t('mainFile.fallbackClient'),
       // As the app always did: a given project adds `-<name>`.

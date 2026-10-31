@@ -1,4 +1,5 @@
 import type { RendererSettingKey } from '../shared/settingKeys'
+import type { BillingPreview, ReviewSelection } from '../shared/billingPreview'
 import type { BillingRunSummary } from '../main/billingRuns'
 import type { ChangedSinceRunRequest, ChangedSinceRunResult } from '../main/changedSinceRun'
 import type { RuleCheckRequest } from '../main/ruleCheck'
@@ -255,6 +256,10 @@ const api = {
     delete: (name: string): Promise<IpcResult<void>> => ipcRenderer.invoke('tags:delete', name)
   },
   review: {
+    billingPreview: (req: ReviewSelection): Promise<IpcResult<BillingPreview>> =>
+      ipcRenderer.invoke('review:billingPreview', req),
+    exportDayGrid: (req: ReviewSelection): Promise<IpcResult<{ path: string }>> =>
+      ipcRenderer.invoke('review:exportDayGrid', req),
     changedSinceRun: (req: ChangedSinceRunRequest): Promise<IpcResult<ChangedSinceRunResult>> =>
       ipcRenderer.invoke('review:changedSinceRun', req)
   },
