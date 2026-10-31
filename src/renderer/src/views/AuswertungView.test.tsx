@@ -78,6 +78,7 @@ async function setup(
     now?: Date
     data?: (q: { year: number; month: number }) => AnalyticsSummary
     roundMinutes?: number
+    settings?: Partial<Settings>
   } = {}
 ): Promise<{ getSummary: ReturnType<typeof vi.fn> }> {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -86,6 +87,9 @@ async function setup(
     useSettingsStore.setState({
       settings: { pdf_round_minutes: String(opts.roundMinutes) } as unknown as Settings
     })
+  }
+  if (opts.settings) {
+    useSettingsStore.setState({ settings: opts.settings as Settings })
   }
   const getSummary = vi.fn(async (q: { year: number; month: number }) => ({
     ok: true as const,
@@ -201,6 +205,109 @@ describe('AuswertungView — KPI row', () => {
     const revenue = kpi('Umsatz')
     expect(within(revenue).getByText('—')).toBeTruthy()
     expect(within(revenue).getByText('Kein Satz konfiguriert')).toBeTruthy()
+  })
+})
+
+describe('AuswertungView — targets', () => {
+  const fixture = (): AnalyticsSummary =>
+    summary({
+      hours: 33.6 * H,
+      revenue: 292320,
+      billable: 0.5,
+      daysElapsed: 16,
+      daysInMonth: 31
+    })
+  const options = {
+    now: new Date(2026, 7, 16, 10),
+    data: fixture,
+    settings: { language: 'en', target_hours_week: '16', target_rate_cent: '9500' }
+  }
+
+  it.each([
+    ['en', 'Target', 'no target set'],
+    ['de', 'Soll', 'kein Soll gesetzt']
+  ])('without targets shows only the unset readout (%s)', async (language, title, unset) => {
+    await setup({ settings: { language } })
+    const target = kpi(title)
+    expect(within(target).getByText('—')).toBeTruthy()
+    expect(within(target).getByText(unset)).toBeTruthy()
+    expect(target.textContent).not.toMatch(/%|≈|€/)
+    expect(target.querySelector('svg')).toBeNull()
+  })
+
+  it.each([
+    [
+      'en',
+      'Target',
+      '33:36 h of 67:12 h target',
+      '≈ 65:06 h at the current pace · 5.664 €',
+      'effective rate 87 €/h · target 95 €/h'
+    ],
+    [
+      'de',
+      'Soll',
+      '33:36 h von 67:12 h Soll',
+      '≈ 65:06 h bei bisherigem Tempo · 5.664 €',
+      'Effektiver Satz 87 €/h · Ziel 95 €/h'
+    ]
+  ])(
+    'shows weekday-based utilisation, calendar projection and all-hours rate (%s)',
+    async (language, title, hours, projection, rate) => {
+      await setup({ ...options, settings: { ...options.settings, language } })
+      const target = kpi(title)
+      expect(within(target).getByText('50')).toBeTruthy()
+      expect(within(target).getByText('%')).toBeTruthy()
+      expect(within(target).getByText(hours)).toBeTruthy()
+      expect(within(target).getByText(projection)).toBeTruthy()
+      expect(within(target).getByText(rate)).toBeTruthy()
+      expect(target.querySelector('svg')).toBeNull()
+    }
+  )
+
+  it('a past month has its own weekday target and no projection', async () => {
+    const { getSummary } = await setup(options)
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
+    await waitFor(() => expect(getSummary).toHaveBeenLastCalledWith({ year: 2026, month: 7 }))
+    await waitFor(() =>
+      expect(within(kpi('Target')).getByText('33:36 h of 73:36 h target')).toBeTruthy()
+    )
+    expect(kpi('Target').textContent).not.toMatch(/≈|current pace/)
+    expect(within(kpi('Target')).getByText('effective rate 87 €/h · target 95 €/h')).toBeTruthy()
+  })
+
+  it('only a rate target shows the achieved rate without utilisation or projection', async () => {
+    await setup({ ...options, settings: { language: 'en', target_rate_cent: '9500' } })
+    const target = kpi('Target')
+    expect(within(target).getByText('—')).toBeTruthy()
+    expect(within(target).getByText('effective rate 87 €/h · target 95 €/h')).toBeTruthy()
+    expect(target.textContent).not.toMatch(/%|≈|no target set/)
+  })
+
+  it('weekly target alone shows the effective rate when a billing rate exists', async () => {
+    await setup({ ...options, settings: { language: 'en', target_hours_week: '16' } })
+    expect(within(kpi('Target')).getByText('effective rate 87 €/h')).toBeTruthy()
+    expect(kpi('Target').textContent).not.toContain('target 95')
+  })
+
+  it('weekly target without any rate shows hours and projection without money', async () => {
+    await setup({
+      ...options,
+      data: () => ({
+        ...fixture(),
+        month: { ...fixture().month, hasRateConfigured: false, revenue: 0 }
+      }),
+      settings: { language: 'en', target_hours_week: '16' }
+    })
+    const target = kpi('Target')
+    expect(within(target).getByText('50')).toBeTruthy()
+    expect(within(target).getByText('≈ 65:06 h at the current pace')).toBeTruthy()
+    expect(target.textContent).not.toMatch(/€|effective rate/)
+  })
+
+  it('zero hours show an unknown effective rate without dividing by zero', async () => {
+    await setup({ ...options, data: () => summary({ hours: 0, revenue: 1 }) })
+    expect(within(kpi('Target')).getByText('effective rate — €/h · target 95 €/h')).toBeTruthy()
+    expect(kpi('Target').textContent).not.toMatch(/NaN|Infinity/)
   })
 })
 

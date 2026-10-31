@@ -1,8 +1,10 @@
-import { useT } from '../../contexts/I18nContext'
+import { useLocale, useT } from '../../contexts/I18nContext'
 import { formatHoursMinutes } from '../../../../shared/currency'
 import type { RoundingRule } from '../../../../shared/types'
 import { Readout } from './Readout'
 import { WeekMeter } from './WeekMeter'
+import { useSettingsStore } from '../../store/settingsStore'
+import { parseWeeklyTargetHours } from '../../../../shared/targets'
 
 /**
  * The Summen column beside the display (HANDOFF §4.1): HEUTE readout L with
@@ -33,6 +35,10 @@ export function SummaryColumn({
   todayRoundedSeconds?: number
 }): React.JSX.Element {
   const t = useT()
+  const { locale } = useLocale()
+  const weeklyTarget = parseWeeklyTargetHours(
+    useSettingsStore((s) => s.settings?.target_hours_week)
+  )
   const roundedSub =
     todayRoundedSeconds !== undefined
       ? roundingRule?.kind === 'interval'
@@ -59,6 +65,16 @@ export function SummaryColumn({
           legend={t('today.summary.week', { week: weekNumber })}
           seconds={weekSeconds}
           size="M"
+          sub={
+            weeklyTarget === null
+              ? undefined
+              : t('today.summary.target', {
+                  total: formatHoursMinutes(Math.max(0, Math.floor(weekSeconds / 60))),
+                  // 16.5 → "16,5" in German, like every other number in the app.
+                  target:
+                    locale === 'en' ? String(weeklyTarget) : String(weeklyTarget).replace('.', ',')
+                })
+          }
         />
         <WeekMeter weekDaySeconds={weekDaySeconds} todayIndex={todayIndex} />
       </div>

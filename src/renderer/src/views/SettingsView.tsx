@@ -11,6 +11,12 @@ import { useRounding } from '../contexts/RoundingContext'
 import { Toggle } from '../components/Toggle'
 import { ToggleHintContext, ToggleLabelContext } from '../components/toggleLabelContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
+import { useSettingsStore } from '../store/settingsStore'
+import {
+  parseWeeklyTargetHours,
+  parseTargetRateCent,
+  targetRateFromSetting
+} from '../../../shared/targets'
 import TagManagementView from './TagManagementView'
 import { GraphAccountSection } from '../components/GraphAccountSection'
 import { IcalFeedSection } from '../components/IcalFeedSection'
@@ -178,6 +184,10 @@ export default function SettingsView(): React.JSX.Element {
       if (res.code !== 'cancelled') setStatusMsg(t('common.error', { error: res.error }))
       // revert by reloading
       await loadAll()
+    } else if (key === 'target_hours_week' || key === 'target_rate_cent') {
+      useSettingsStore.setState((s) =>
+        s.settings ? { settings: { ...s.settings, [key]: value } } : s
+      )
     }
   }
 
@@ -422,6 +432,27 @@ export default function SettingsView(): React.JSX.Element {
                 onChange={(e) => update('company_name', e.target.value)}
                 className={inputClass}
                 placeholder={t('settings.general.companyPlaceholder')}
+              />
+            </Row>
+          </Section>
+        )}
+        {tab === 'general' && (
+          <Section title={t('settings.targets.title')}>
+            <Row label={t('settings.targets.weeklyHours')} hint={t('settings.targets.weeklyHint')}>
+              <TargetInput
+                label={t('settings.targets.weeklyHours')}
+                raw={settings.target_hours_week}
+                parse={parseWeeklyTargetHours}
+                onChange={(value) => void update('target_hours_week', value)}
+              />
+            </Row>
+            <Row label={t('settings.targets.rate')} hint={t('settings.targets.rateHint')}>
+              <TargetInput
+                label={t('settings.targets.rate')}
+                raw={settings.target_rate_cent}
+                parse={parseTargetRateCent}
+                inEuros
+                onChange={(value) => void update('target_rate_cent', value)}
               />
             </Row>
           </Section>
@@ -1132,6 +1163,60 @@ function RuleCheckSection({
         </p>
       )}
     </Section>
+  )
+}
+
+/** Keep invalid and incomplete decimal input visible, but never persist it. */
+function TargetInput({
+  label,
+  raw,
+  parse,
+  inEuros = false,
+  onChange
+}: {
+  label: string
+  raw: string | undefined
+  parse: (value: string) => number | null
+  inEuros?: boolean
+  onChange: (value: string) => void
+}): React.JSX.Element {
+  const t = useT()
+  const { locale } = useLocale()
+  const errorId = useId()
+  const storedRate = targetRateFromSetting(raw)
+  const shown = inEuros ? (storedRate === null ? '' : (storedRate / 100).toFixed(2)) : (raw ?? '')
+  const fromRaw = locale === 'en' ? shown : shown.replace('.', ',')
+  const [draft, setDraft] = useState(() => ({ raw, value: fromRaw }))
+  const value = draft.raw === raw ? draft.value : fromRaw
+  const invalid = value.trim() !== '' && parse(value) === null
+  return (
+    <>
+      <input
+        type="text"
+        inputMode="decimal"
+        aria-label={label}
+        aria-invalid={invalid}
+        aria-describedby={invalid ? errorId : undefined}
+        value={value}
+        onChange={(e) => {
+          const next = e.target.value
+          const parsed = parse(next)
+          if (next.trim() !== '' && parsed === null) {
+            setDraft({ raw, value: next })
+            return
+          }
+          const serialized = parsed === null ? '' : String(parsed)
+          setDraft({ raw: serialized, value: next })
+          onChange(serialized)
+        }}
+        className={inputClass}
+      />
+      {invalid && (
+        <p id={errorId} role="alert" className="py-3 text-sm">
+          {t('settings.targets.invalid')}
+        </p>
+      )}
+    </>
   )
 }
 

@@ -17,6 +17,8 @@ import type { Settings } from './types'
  * checks that the renderer still writes every key in the list.
  */
 export const RENDERER_SETTING_KEYS = [
+  'target_hours_week',
+  'target_rate_cent',
   'company_name',
   'idle_threshold_minutes',
   'language',

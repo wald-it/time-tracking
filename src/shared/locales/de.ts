@@ -356,6 +356,7 @@ export const de = {
   'today.summary.roundedOnly': 'gerundet {total} h',
   'today.summary.minimum': 'gerundet {total} h · mind. {min} Min',
   'today.summary.week': 'Woche · KW {week}',
+  'today.summary.target': '{total} von {target} h Soll',
   'today.dayscale.legend': 'Tagesverlauf',
   'today.entries.legend': 'Einträge heute',
   'today.table.clientProject': 'Kunde · Projekt',
@@ -705,6 +706,15 @@ export const de = {
   'settings.loading': 'Lade Einstellungen …',
   'settings.title': 'Einstellungen',
   'settings.section.general': 'Allgemein',
+  'settings.targets.title': 'Soll',
+  'settings.targets.weeklyHours': 'Wochen-Sollstunden',
+  'settings.targets.weeklyHint':
+    'Optional, mehr als 0 bis 168 Stunden pro Woche. Leer lassen zum Löschen.',
+  'settings.targets.rate': 'Ziel-Stundensatz (€/h)',
+  'settings.targets.rateHint':
+    'Optional, Euro pro Stunde. Komma oder Punkt als Dezimalzeichen; leer lassen zum Löschen.',
+  'settings.targets.invalid':
+    'Bitte einen gültigen positiven Wert eingeben; maximal 168 Wochenstunden.',
   'settings.general.onboarding': 'Onboarding',
   'settings.general.onboardingReset':
     'Onboarding zurückgesetzt — App neu starten oder Seite neu laden.',
@@ -998,6 +1008,12 @@ export const de = {
   'analytics.month.revenue': 'Umsatz',
   'analytics.month.billable': 'Abrechenbar',
   'analytics.noRate': 'Kein Satz konfiguriert',
+  'analytics.target.title': 'Soll',
+  'analytics.target.unset': 'kein Soll gesetzt',
+  'analytics.target.hours': '{actual} h von {target} h Soll',
+  'analytics.target.projection': '≈ {hours} h bei bisherigem Tempo',
+  'analytics.target.effectiveRate': 'Effektiver Satz {rate} €/h',
+  'analytics.target.rate': 'Ziel {rate} €/h',
   'analytics.chart.weeks': 'Wochen',
   'analytics.chart.months': 'Monate',
   'analytics.chart.billable': 'Abrechenbar',
