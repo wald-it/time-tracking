@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type Database from 'better-sqlite3'
+import { dirname } from 'path'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { seedEntry } from '../test/entryFixtures'
 import { createRun } from './billingRuns'
@@ -89,7 +90,9 @@ describe('day grid CSV export', () => {
       const setting = db
         .prepare("SELECT value FROM settings WHERE key = 'export_folders'")
         .get() as { value: string }
-      expect(JSON.parse(setting.value)).toEqual({ csv: 'C:\\exports' })
+      // The folder is the platform's dirname of the chosen file ('.' for a Windows
+      // path on the Linux CI job), so compute it the same way.
+      expect(JSON.parse(setting.value)).toEqual({ csv: dirname('C:\\exports\\days.csv') })
     }
   )
   it('returns cancellation without writing or remembering a folder', async () => {
