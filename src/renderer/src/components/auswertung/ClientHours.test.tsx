@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { ClientHours } from './ClientHours'
+import { ClientHours, yearLabelStep } from './ClientHours'
 import { I18nProvider } from '../../contexts/I18nContext'
 import { useSettingsStore } from '../../store/settingsStore'
 import type { AnalyticsSummary, Settings } from '../../../../shared/types'
@@ -164,5 +164,34 @@ describe('ClientHours — client year', () => {
     }
     expect(screen.getAllByRole('img', { name: tooltipEn })).toHaveLength(4)
     expect(screen.getAllByTitle(tooltipEn)).toHaveLength(4)
+  })
+})
+
+describe('ClientHours — 12-month ruler', () => {
+  it.each([
+    [0, 10],
+    [50, 10],
+    [51, 20],
+    [100, 20],
+    [101, 50],
+    [250, 50],
+    [251, 100],
+    [1000, 200],
+    [1001, 500]
+  ])('yearLabelStep(%i h) = %i', (max, step) => {
+    expect(yearLabelStep(max)).toBe(step)
+  })
+
+  it('keeps at most five labels for a year with 1,000 hours, and the month ruler unchanged', () => {
+    const big = {
+      ...clientYear,
+      clients: [{ ...clientYear.clients[0], h: 1000 * H, b: 1000 * H }]
+    }
+    setup(true, big)
+    const monthLabels = within(screen.getByTestId('client-ruler')).getAllByText(/^\d+$/)
+    expect(monthLabels.map((l) => l.textContent)).toEqual(['0', '10'])
+    switchToYear()
+    const yearLabels = within(screen.getByTestId('client-ruler')).getAllByText(/^\d+$/)
+    expect(yearLabels.map((l) => l.textContent)).toEqual(['0', '200', '400', '600', '800', '1000'])
   })
 })

@@ -32,21 +32,42 @@ const COLUMN =
  * Values are worked time, raw (owner decision 2026-10-22); revenue comes
  * ready from the data (billed like the invoice).
  */
+export type ClientHoursMode = 'month' | 'year'
+
+/** Ruler label step for the 12-month view: 10, 20, 50, 100, 200, 500 … h, at most five steps. */
+export function yearLabelStep(maxHours: number): number {
+  for (let base = 10; ; base *= 10) {
+    for (const step of [base, base * 2, base * 5]) {
+      if (Math.ceil(maxHours / step) <= 5) return step
+    }
+  }
+}
+
 export function ClientHours({
   clients,
   clientYear,
   isCurrentMonth,
-  showRevenue
+  showRevenue,
+  mode: controlledMode,
+  onModeChange
 }: {
   clients: AnalyticsSummary['byClient']
   clientYear?: AnalyticsSummary['byClientYear']
   isCurrentMonth: boolean
   /** false when no client or project has a rate: no revenue column at all. */
   showRevenue: boolean
+  /** Held by the view so the choice survives a month change (reload unmounts this). */
+  mode?: ClientHoursMode
+  onModeChange?: (mode: ClientHoursMode) => void
 }): React.JSX.Element {
   const t = useT()
   const { locale } = useLocale()
-  const [mode, setMode] = useState<'month' | 'year'>('month')
+  const [localMode, setLocalMode] = useState<ClientHoursMode>('month')
+  const mode = controlledMode ?? localMode
+  const setMode = (next: ClientHoursMode): void => {
+    setLocalMode(next)
+    onModeChange?.(next)
+  }
   const yearMode = mode === 'year'
   const windowClients = yearMode ? (clientYear?.clients ?? []) : clients
 
@@ -69,9 +90,12 @@ export function ClientHours({
       : top
 
   const maxHours = Math.max(0, ...rows.map((r) => r.h / 3600))
-  const axisMax = Math.max(10, Math.ceil(maxHours / 10) * 10)
+  // Month: labels every 10 h, minor ticks every 5 h (unchanged). Year: the
+  // label step grows with the range so the narrower ruler keeps at most five steps.
+  const labelStep = yearMode ? yearLabelStep(maxHours) : 10
+  const axisMax = Math.max(labelStep, Math.ceil(maxHours / labelStep) * labelStep)
   const ticks: number[] = []
-  for (let v = 0; v <= axisMax; v += 5) ticks.push(v)
+  for (let v = 0; v <= axisMax; v += labelStep / 2) ticks.push(v)
 
   const monthFormatter = new Intl.DateTimeFormat(locale, {
     month: 'short',
@@ -136,11 +160,11 @@ export function ClientHours({
               <span
                 key={`t${v}`}
                 className="absolute bottom-0 w-px bg-[var(--tick)]"
-                style={{ left: `${(v / axisMax) * 100}%`, height: v % 10 === 0 ? 8 : 4 }}
+                style={{ left: `${(v / axisMax) * 100}%`, height: v % labelStep === 0 ? 8 : 4 }}
               />
             ))}
             {ticks
-              .filter((v) => v % 10 === 0)
+              .filter((v) => v % labelStep === 0)
               .map((v) => (
                 <span
                   key={`l${v}`}
