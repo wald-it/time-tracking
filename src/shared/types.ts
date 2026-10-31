@@ -572,6 +572,13 @@ export interface AnalyticsSummary {
     rev: number
     rest?: boolean
   }>
+  /** App-only trailing 12-month window. Produced by analytics:summary. */
+  byClientYear?: {
+    /** Inclusive ISO dates, from the first to the last day of the window. */
+    from: string
+    to: string
+    clients: AnalyticsSummary['byClient']
+  }
   /**
    * Average worked seconds per calendar day by weekday (Mo–So) over the last
    * 90 completed days, global: the weekday's total divided by how often it

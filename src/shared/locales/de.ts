@@ -1061,6 +1061,13 @@ export const de = {
   'analytics.clients.colHours': 'h',
   'analytics.clients.colRevenue': '€',
   'analytics.clients.internal': 'intern',
+  'analytics.clients.modeMonth': 'Monat',
+  'analytics.clients.modeYear': '12 Monate',
+  'analytics.clients.colRate': 'Effektiv',
+  'analytics.clients.colNonBillable': 'Nicht abrechenbar',
+  'analytics.clients.colRevenueShare': 'Umsatzanteil',
+  'analytics.clients.shareThreshold':
+    '5/6 des Umsatzes. Ein hoher Anteil eines Auftraggebers ist ein Merkmal, das die Rentenversicherung bei der Statusprüfung ansieht. Die Zahl ist keine Bewertung; im Einzelfall entscheidet die Beratung.',
   'analytics.trend.title': 'Verlauf',
   'analytics.trend.metaMonths': '12 Monate · Zeiger über eine Spalte bewegen',
   'analytics.trend.metaWeeks': '12 Wochen · Zeiger über eine Spalte bewegen',

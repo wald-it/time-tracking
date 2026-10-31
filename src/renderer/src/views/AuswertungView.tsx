@@ -350,6 +350,7 @@ export default function AuswertungView(): React.JSX.Element {
           <div className="flex flex-wrap items-start gap-12">
             <ClientHours
               clients={data.byClient}
+              clientYear={data.byClientYear}
               isCurrentMonth={isCurrentMonth}
               showRevenue={data.month.hasRateConfigured}
             />
