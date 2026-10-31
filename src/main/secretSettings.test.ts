@@ -577,3 +577,52 @@ describe('one scrub at the first start, also without secrets to move (#470 count
     }
   })
 })
+
+describe('scrub completeness and targets the parser drops (#470 counter-check 6)', () => {
+  it('moves the secret of a half-typed target 2.2 stored unparsed', async () => {
+    set(FEED_TOKEN_KEY, '')
+    set(
+      'webhook_targets',
+      JSON.stringify([
+        { id: 'h', url: 'https://', secret: 'halfway-zz9', events: [], enabled: false },
+        { url: 'nope', secret: 'no-id-zz9' }
+      ])
+    )
+    const s = await initializeSecrets(db, join(dir, 'custom.sqlite'), { box: box() })
+    expect(get('webhook_targets')).not.toContain('halfway-zz9')
+    expect(get('webhook_targets')).not.toContain('no-id-zz9')
+    expect(s.get(webhookSecretKey('h'))).toBe('halfway-zz9')
+    register()
+    expect(settings().secret_storage).toBe('encrypted')
+  })
+
+  it('a checkpoint left busy by a reader is no completed scrub', async () => {
+    const fileDir = mkdtempSync(join(tmpdir(), 'tt-secret-busy-'))
+    const path = join(fileDir, 'tt.sqlite')
+    const fdb = new Sqlite(path)
+    const reader = new Sqlite(path)
+    const marker = (): unknown =>
+      fdb.prepare(`SELECT value FROM settings WHERE key = 'secrets_scrubbed'`).pluck().get()
+    try {
+      fdb.pragma('journal_mode = WAL')
+      fdb.pragma('busy_timeout = 0')
+      applyMigrations(fdb)
+      // A reader on another connection keeps its snapshot open.
+      reader.exec('BEGIN')
+      reader.prepare('SELECT count(*) FROM settings').get()
+      const log = vi.fn()
+      await initializeSecrets(fdb, path, { box: box(), log })
+      useSecretStore(null)
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('checkpoint busy'))
+      expect(marker()).toBeUndefined()
+      reader.exec('COMMIT')
+      await initializeSecrets(fdb, path, { box: box() })
+      useSecretStore(null)
+      expect(marker()).toBe('1')
+    } finally {
+      if (reader.open) reader.close()
+      if (fdb.open) fdb.close()
+      rmSync(fileDir, { recursive: true, force: true })
+    }
+  })
+})

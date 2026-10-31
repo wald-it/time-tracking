@@ -95,8 +95,7 @@ export function effectiveSecretStorage(db: Db, explicit?: SecretStore | null): S
   const mode = secretStorageMode(explicit)
   if (mode === 'plain') return mode
   const plainLeft =
-    row(db, FEED_TOKEN_KEY) !== '' ||
-    parseWebhookTargets(row(db, 'webhook_targets')).some((t) => t.secret !== '')
+    row(db, FEED_TOKEN_KEY) !== '' || hasPlainWebhookSecret(row(db, 'webhook_targets'))
   return plainLeft ? 'plain' : mode
 }
 
@@ -174,7 +173,7 @@ export async function saveWebhookTargets(
   const s = store(explicit)
   const encrypted = !!s && s.mode !== 'plain'
   const snapshot = encrypted ? s.entries('webhook:') : new Map<string, string>()
-  const plainBefore = parseWebhookTargets(currentRaw).some((t) => t.secret !== '')
+  const plainBefore = hasPlainWebhookSecret(currentRaw)
   const stored = await prepareWebhookTargets(raw, s, currentRaw)
   try {
     writeRow(db, 'webhook_targets', stored)
@@ -318,6 +317,28 @@ export async function prepareWebhookTargets(
 /** Plain mode: secrets of targets the last save dropped as invalid (see above). */
 const parkedPlainSecrets = new Map<string, string>()
 
+/** Every object in the stored list, valid or not (2.2 stored it unparsed). */
+function rawObjects(raw: string): Array<Record<string, unknown>> {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (t): t is Record<string, unknown> => !!t && typeof t === 'object' && !Array.isArray(t)
+    )
+  } catch {
+    return []
+  }
+}
+
+function rawSecret(o: Record<string, unknown>): string {
+  return typeof o.secret === 'string' ? o.secret : ''
+}
+
+/** A plain secret anywhere in the stored webhook list, also on a target the parser drops. */
+function hasPlainWebhookSecret(raw: string): boolean {
+  return rawObjects(raw).some((o) => rawSecret(o) !== '')
+}
+
 /** Ids of every object in the raw list, valid or not. */
 function rawTargetIds(raw: string): string[] {
   try {
@@ -345,9 +366,18 @@ export async function migrateSecrets(
 ): Promise<void> {
   if (s.mode === 'plain') return
   const token = row(db, FEED_TOKEN_KEY)
-  const targets = parseWebhookTargets(row(db, 'webhook_targets'))
-  const moving = targets.filter((t) => t.secret !== '')
-  if (token === '' && moving.length === 0) return
+  // The raw objects, not the delivery parser's view: 2.2 stored the window's
+  // list unparsed, so a half-typed target (invalid URL) can carry a secret the
+  // parser drops. Those move as well; one without a usable id cannot be keyed
+  // and loses its secret (it was never delivered or shown).
+  const objects = rawObjects(row(db, 'webhook_targets'))
+  const moving = objects
+    .filter((o) => rawSecret(o) !== '' && typeof o.id === 'string' && o.id !== '')
+    .map((o) => ({ id: o.id as string, secret: rawSecret(o) }))
+  const unkeyed = objects.some(
+    (o) => rawSecret(o) !== '' && !(typeof o.id === 'string' && o.id !== '')
+  )
+  if (token === '' && moving.length === 0 && !unkeyed) return
 
   if (token !== '') await s.set(FEED_TOKEN_KEY, token)
   for (const t of moving) await s.set(webhookSecretKey(t.id), t.secret)
@@ -372,10 +402,13 @@ export async function migrateSecrets(
   db.pragma('secure_delete = ON')
   db.transaction(() => {
     if (token !== '') writeRow(db, FEED_TOKEN_KEY, '')
-    const stripped = targets.map((t) =>
-      t.secret !== '' ? { ...t, secret: '', secretStored: true } : t
+    const keyed = new Set(moving.map((t) => t.id))
+    const stripped = objects.map((o) =>
+      rawSecret(o) === ''
+        ? o
+        : { ...o, secret: '', secretStored: keyed.has(o.id as string) ? true : undefined }
     )
-    writeRow(db, 'webhook_targets', serializeWebhookTargets(stripped))
+    writeRow(db, 'webhook_targets', JSON.stringify(stripped))
   })()
   log('secret store: secrets moved out of the database')
   if (scrubFreeSpace(db, log)) markScrubbed(db)
@@ -391,7 +424,13 @@ export async function migrateSecrets(
 export function scrubFreeSpace(db: Db, log: (m: string) => void = (): void => {}): boolean {
   try {
     db.exec('VACUUM')
-    db.pragma('wal_checkpoint(TRUNCATE)')
+    // A reader on another connection makes the checkpoint report busy instead
+    // of throwing; the old frames then stay in the WAL, so that is a failure.
+    const [cp] = db.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number }>
+    if (cp && cp.busy !== 0) {
+      log('secret store: free-space scrub incomplete (checkpoint busy)')
+      return false
+    }
     return true
   } catch (err) {
     log(`secret store: free-space scrub skipped (${(err as Error).name})`)
