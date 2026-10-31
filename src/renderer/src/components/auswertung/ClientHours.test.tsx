@@ -106,7 +106,9 @@ describe('ClientHours — client year', () => {
       const mark = within(clientRow).getByRole('img', { name: tooltipDe })
       expect(mark).toHaveAttribute('title', tooltipDe)
       expect(mark.style.left).toBe(`${(5 / 6) * 100}%`)
-      expect(mark.className).toContain('bg-[var(--ink3)]')
+      // Ink tone only, no colour: the visible 1 px line sits inside the hit area.
+      expect((mark.firstElementChild as HTMLElement).className).toContain('bg-[var(--ink)]')
+      expect(mark.className).not.toMatch(/red|green|amber|warn/)
       expect(clientRow.className).toBe('contents')
       expect(clientRow).not.toHaveAttribute('style')
       expect(clientRow.lastElementChild?.className).toBe(row('Main').lastElementChild?.className)
