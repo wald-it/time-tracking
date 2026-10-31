@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { prepareWebhookTargets } from './secretSettings'
+import { saveWebhookTargets } from './secretSettings'
 import type { IpcHooks } from './ipc'
 import type { HotkeyChange } from './hotkeySlot'
 import type { IpcResult } from '../shared/types'
@@ -147,9 +147,8 @@ async function writeOne(
     )?.value
     const change = sensitiveSettingChange(key, value, current)
     if (change && !(await hooks.confirmSensitiveSetting(change))) return cancelled()
-    const stored =
-      key === 'webhook_targets' ? await prepareWebhookTargets(value, undefined, current) : value
-    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, stored)
+    if (key === 'webhook_targets') await saveWebhookTargets(db, value, current)
+    else db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
     // Apply side-effects for known keys.
     if (key === 'idle_threshold_minutes') {
       const n = parseInt(value, 10)

@@ -92,6 +92,7 @@ import { feedUrl, generateFeedToken } from './icalFeed'
 import {
   effectiveSecretStorage,
   feedSettings,
+  FEED_TOKEN_RECREATED_KEY,
   markFeedTokenRecreated,
   wasFeedTokenRecreated,
   webhookTargetsForRenderer,
@@ -894,12 +895,17 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
       }[]
       const settings = Object.fromEntries(
         rows
-          .filter((r) => !MAIN_ONLY_SETTING_KEYS.has(r.key) && r.key !== 'ical_feed_token')
+          .filter(
+            (r) =>
+              !MAIN_ONLY_SETTING_KEYS.has(r.key) &&
+              r.key !== 'ical_feed_token' &&
+              r.key !== FEED_TOKEN_RECREATED_KEY
+          )
           .map((r) => [r.key, r.value])
       ) as unknown as Settings
       settings.webhook_targets = webhookTargetsForRenderer(db)
       settings.secret_storage = effectiveSecretStorage(db)
-      if (wasFeedTokenRecreated()) settings.feed_token_recreated = true
+      if (wasFeedTokenRecreated(db)) settings.feed_token_recreated = true
       return ok(settings)
     } catch (e) {
       return fail(e)
@@ -928,7 +934,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   ipcMain.handle('icalFeed:regenerate', async (): Promise<IpcResult<string>> => {
     try {
       await writeFeedToken(db, generateFeedToken())
-      markFeedTokenRecreated(false)
+      markFeedTokenRecreated(db, false)
       hooks.restartIcalFeed()
       return ok(feedUrl(feedSetting))
     } catch (e) {

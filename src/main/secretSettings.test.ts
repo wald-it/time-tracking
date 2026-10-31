@@ -18,13 +18,17 @@ import {
   type AsyncSecretBox
 } from './secretStore'
 import {
+  FEED_TOKEN_RECREATED_KEY,
   feedSettings,
   initializeSecrets,
   markFeedTokenRecreated,
   prepareWebhookTargets,
   readFeedToken,
   readWebhookTargets,
-  useSecretStore
+  saveWebhookTargets,
+  useSecretStore,
+  webhookTargetsForRenderer,
+  writeFeedToken
 } from './secretSettings'
 
 const state = vi.hoisted(() => ({
@@ -274,12 +278,15 @@ describe('startup secret migration and consumers', () => {
       expect(JSON.stringify(s)).not.toContain('old-secret')
       expect(await delivery()).toEqual([])
       expect(s.feed_token_recreated).toBeUndefined()
-      markFeedTokenRecreated(true)
+      markFeedTokenRecreated(db, true)
+      // Kept in the database: a restart before the settings were opened keeps it.
+      expect(get(FEED_TOKEN_RECREATED_KEY)).toBe('1')
+      register()
       expect(settings().feed_token_recreated).toBe(true)
       await state.handlers.get('icalFeed:regenerate')!()
       expect(settings().feed_token_recreated).toBeUndefined()
     } finally {
-      markFeedTokenRecreated(false)
+      markFeedTokenRecreated(db, false)
       rmSync(other, { recursive: true, force: true })
     }
   })
@@ -399,5 +406,91 @@ describe('saving several webhook targets is one write (#470 counter-check 3)', (
     await reread.load()
     expect(reread.get(webhookSecretKey('a'))).toBe('old-a')
     expect(reread.get(webhookSecretKey('b'))).toBe('old-b')
+  })
+})
+
+describe('settings write failures and late migration (#470 counter-check 4)', () => {
+  it('restores the webhook secrets when the database write fails', async () => {
+    await initializeSecrets(db, join(dir, 'custom.sqlite'), { box: box() })
+    db.exec(`CREATE TRIGGER no_targets BEFORE INSERT ON settings
+      WHEN NEW.key = 'webhook_targets' BEGIN SELECT RAISE(ABORT, 'disk full'); END`)
+    const before = get('webhook_targets')
+    // The window removes target a.
+    const onlyB = JSON.stringify(
+      parseWebhookTargets(webhookTargetsForRenderer(db)).filter((t) => t.id === 'b')
+    )
+    await expect(saveWebhookTargets(db, onlyB, before)).rejects.toThrow('disk full')
+    expect(get('webhook_targets')).toBe(before)
+    expect(readWebhookTargets(db).map((t) => t.secret)).toEqual(['old-secret-a', 'old-secret-b'])
+    useSecretStore(null)
+    const reread = await initializeSecrets(db, join(dir, 'custom.sqlite'), { box: box() })
+    expect(reread.get(webhookSecretKey('a'))).toBe('old-secret-a')
+  })
+
+  it('keeps the feed token when the database write after regenerating fails', async () => {
+    const s = await initializeSecrets(db, join(dir, 'custom.sqlite'), { box: box() })
+    db.exec(`CREATE TRIGGER no_token BEFORE INSERT ON settings
+      WHEN NEW.key = 'ical_feed_token' BEGIN SELECT RAISE(ABORT, 'disk full'); END`)
+    await expect(writeFeedToken(db, 'new-token')).rejects.toThrow('disk full')
+    expect(s.get(FEED_TOKEN_KEY)).toBe('old-token')
+    expect(readFeedToken(db)).toBe('old-token')
+  })
+
+  it('scrubs the file when a later save moves secrets a failed start migration left', async () => {
+    const fileDir = mkdtempSync(join(tmpdir(), 'tt-secret-late-'))
+    const path = join(fileDir, 'tt.sqlite')
+    const fdb = new Sqlite(path)
+    try {
+      fdb.pragma('journal_mode = WAL')
+      applyMigrations(fdb)
+      const target = {
+        id: 'w',
+        url: 'https://w.example/h',
+        secret: 'late-secret-zz9',
+        events: ['entry.created'],
+        enabled: true
+      }
+      const put = (k: string, v: string): void => {
+        fdb.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v)
+      }
+      // An earlier, long secret of the same target, replaced before the update:
+      // its overflow pages sit on the freelist with the bytes intact. Only the
+      // scrub after the late save removes them (red probe 2026-10-31).
+      put('webhook_targets', JSON.stringify([{ ...target, secret: 'history-zz9 '.repeat(2000) }]))
+      put('webhook_targets', JSON.stringify([target]))
+      fdb.pragma('wal_checkpoint(TRUNCATE)')
+      expect(fdb.pragma('freelist_count', { simple: true })).toBeGreaterThan(0)
+      expect(readFileSync(path).toString('latin1')).toContain('history-zz9')
+      let broken = true
+      const flaky: AsyncSecretBox = {
+        ...box(),
+        encryptStringAsync: async (value) => {
+          if (broken) throw new Error('cannot write')
+          return box().encryptStringAsync(value)
+        }
+      }
+      await initializeSecrets(fdb, path, { box: flaky })
+      const current = fdb
+        .prepare(`SELECT value FROM settings WHERE key = 'webhook_targets'`)
+        .pluck()
+        .get() as string
+      expect(current).toContain('late-secret-zz9')
+      broken = false
+      const fromWindow = webhookTargetsForRenderer(fdb)
+      await saveWebhookTargets(fdb, fromWindow, current)
+      expect(readWebhookTargets(fdb).map((t) => t.secret)).toEqual(['late-secret-zz9'])
+      useSecretStore(null)
+      fdb.close()
+      const bytes = [path, `${path}-wal`]
+        .filter((p) => existsSync(p))
+        .map((p) => readFileSync(p).toString('latin1'))
+        .join('')
+      expect(bytes).not.toContain('late-secret-zz9')
+      expect(bytes).not.toContain('history-zz9')
+    } finally {
+      useSecretStore(null)
+      if (fdb.open) fdb.close()
+      rmSync(fileDir, { recursive: true, force: true })
+    }
   })
 })

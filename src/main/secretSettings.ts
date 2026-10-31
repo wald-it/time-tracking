@@ -46,6 +46,10 @@ export async function initializeSecrets(
   const dir = dirname(dbPath)
   const s = new SecretStore({ ...deps, dir })
   await s.load()
+  // For the whole session, not only the migration: a migration that fails now
+  // leaves plain secrets that a later save moves out, and those replaced cells
+  // must be zeroed as well (see saveWebhookTargets, writeFeedToken).
+  if (s.mode !== 'plain') db.pragma('secure_delete = ON')
   try {
     await migrateSecrets(db, s, dir, deps.log)
   } catch (err) {
@@ -115,8 +119,69 @@ export async function writeFeedToken(
     writeRow(db, FEED_TOKEN_KEY, token)
     return
   }
+  const before = s.get(FEED_TOKEN_KEY) ?? ''
+  const plainBefore = row(db, FEED_TOKEN_KEY) !== ''
   await s.set(FEED_TOKEN_KEY, token)
-  writeRow(db, FEED_TOKEN_KEY, '')
+  try {
+    writeRow(db, FEED_TOKEN_KEY, '')
+  } catch (err) {
+    await restoreSecrets(s, FEED_TOKEN_KEY, new Map(before ? [[FEED_TOKEN_KEY, before]] : []))
+    throw err
+  }
+  // A start migration that failed left the token in plain text; this write
+  // moved it, so the old bytes must leave the free pages too.
+  if (plainBefore) scrubFreeSpace(db)
+}
+
+/**
+ * Put the store's keys starting with `prefix` back to `snapshot`, after the
+ * database write that should have followed the store write failed: the store
+ * and the database then agree on the previous state again. If this
+ * compensating write fails as well it is logged and left; the database still
+ * holds the previous targets and the next save rewrites the store.
+ */
+async function restoreSecrets(
+  s: SecretStore,
+  prefix: string,
+  snapshot: ReadonlyMap<string, string>
+): Promise<void> {
+  const now = s.entries(prefix)
+  const entries: Array<[string, string]> = [...snapshot]
+  for (const key of now.keys()) if (!snapshot.has(key)) entries.push([key, ''])
+  try {
+    await s.commit(entries)
+  } catch (err) {
+    console.error(
+      `[secrets] rollback after a failed settings write failed (${(err as Error).name})`
+    )
+  }
+}
+
+/**
+ * `settings:set` for `webhook_targets`: secrets to the store, then the blob to
+ * the database. A failed database write restores the store's webhook secrets,
+ * so a removed or cleared secret does not leave a still enabled target without
+ * one. A save that moved plain secrets out (a start migration that failed
+ * earlier) scrubs the free pages like the migration does.
+ */
+export async function saveWebhookTargets(
+  db: Db,
+  raw: string,
+  currentRaw = '',
+  explicit?: SecretStore | null
+): Promise<void> {
+  const s = store(explicit)
+  const encrypted = !!s && s.mode !== 'plain'
+  const snapshot = encrypted ? s.entries('webhook:') : new Map<string, string>()
+  const plainBefore = parseWebhookTargets(currentRaw).some((t) => t.secret !== '')
+  const stored = await prepareWebhookTargets(raw, s, currentRaw)
+  try {
+    writeRow(db, 'webhook_targets', stored)
+  } catch (err) {
+    if (encrypted) await restoreSecrets(s, 'webhook:', snapshot)
+    throw err
+  }
+  if (encrypted && plainBefore) scrubFreeSpace(db)
 }
 
 /**
@@ -157,19 +222,23 @@ export function webhookTargetsForRenderer(db: Db, explicit?: SecretStore | null)
   )
 }
 
-let feedTokenRecreated = false
+/** Settings row behind `wasFeedTokenRecreated`; main-only, never sent as a raw row. */
+export const FEED_TOKEN_RECREATED_KEY = 'feed_token_recreated'
 
 /**
  * Set at startup when the feed is switched on but no token could be found, so
  * a new one was minted: the subscription URL changed (typically a backup
- * restored on another machine). Cleared when the user regenerates the token.
+ * restored on another machine). Kept in the database, so the hint survives a
+ * restart before the user opened the settings; cleared when the user
+ * regenerates the token.
  */
-export function markFeedTokenRecreated(value: boolean): void {
-  feedTokenRecreated = value
+export function markFeedTokenRecreated(db: Db, value: boolean): void {
+  if (value) writeRow(db, FEED_TOKEN_RECREATED_KEY, '1')
+  else db.prepare(`DELETE FROM settings WHERE key = ?`).run(FEED_TOKEN_RECREATED_KEY)
 }
 
-export function wasFeedTokenRecreated(): boolean {
-  return feedTokenRecreated
+export function wasFeedTokenRecreated(db: Db): boolean {
+  return row(db, FEED_TOKEN_RECREATED_KEY) === '1'
 }
 
 /** Resolve the feed token through the store, other feed settings through SQLite. */

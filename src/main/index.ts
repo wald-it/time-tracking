@@ -893,7 +893,7 @@ app.whenReady().then(async () => {
     // A failure to store the new token must not stop the start (tray, hotkeys
     // and timers come after this): the feed then has no token and refuses.
     try {
-      markFeedTokenRecreated(await ensureFeedToken())
+      if (await ensureFeedToken()) markFeedTokenRecreated(getDb(), true)
     } catch (err) {
       log.warn('[ical-feed] token creation failed', (err as Error).name)
     }

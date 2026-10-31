@@ -106,6 +106,11 @@ export class SecretStore {
     return this.values.has(key)
   }
 
+  /** The cached values whose key starts with `prefix` — a snapshot to roll back to. */
+  entries(prefix: string): Map<string, string> {
+    return new Map([...this.values].filter(([k]) => k.startsWith(prefix)))
+  }
+
   /**
    * Set (or, with '', remove) a value. The cache changes at once; the returned
    * promise settles when the file is written. In `plain` mode nothing is
