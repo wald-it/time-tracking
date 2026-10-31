@@ -109,12 +109,25 @@ export class SecretStore {
    */
   set(key: string, value: string): Promise<void> {
     if (this.currentMode === 'plain') return Promise.resolve()
+    const had = this.values.has(key)
+    const previous = this.values.get(key)
+    const previousMode = this.currentMode
     if (value === '') this.values.delete(key)
     else this.values.set(key, value)
     // A write replaces an unreadable file: what could not be read is gone
     // anyway, and what is set now must not be lost.
     this.currentMode = 'encrypted'
-    return this.persist()
+    return this.persist().catch((err: unknown) => {
+      // Not on disk: put the old value back (unless a later set replaced it),
+      // so a failed regeneration does not invalidate the feed URL in use and a
+      // failed secret change does not alter signatures while reporting failure.
+      if (this.values.get(key) === (value === '' ? undefined : value)) {
+        if (had) this.values.set(key, previous as string)
+        else this.values.delete(key)
+        this.currentMode = previousMode
+      }
+      throw err
+    })
   }
 
   /** Remove every key not in `keep` that starts with `prefix`. */
@@ -162,6 +175,7 @@ export class SecretStore {
     }
     this.currentMode = 'encrypted'
     if (!existsSync(this.file)) return
+    let reEncrypt = false
     try {
       const { result, shouldReEncrypt } = await this.box().decryptStringAsync(
         readFileSync(this.file)
@@ -179,12 +193,21 @@ export class SecretStore {
       for (const [k, v] of Object.entries(parsed.values)) {
         if (typeof v === 'string' && v !== '') this.values.set(k, v)
       }
-      if (shouldReEncrypt) await this.persist()
+      reEncrypt = shouldReEncrypt
     } catch (err) {
       // No token material in the message.
       this.currentMode = 'unreadable'
       this.values.clear()
       this.log(`secret store: stored secrets unreadable (${(err as Error).name})`)
+      return
+    }
+    // The file was read; a failed optional re-encryption keeps what was read.
+    if (reEncrypt) {
+      try {
+        await this.persist()
+      } catch (err) {
+        this.log(`secret store: re-encryption failed, keeping read values (${(err as Error).name})`)
+      }
     }
   }
 

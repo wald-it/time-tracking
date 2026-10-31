@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type Database from 'better-sqlite3'
@@ -279,6 +279,64 @@ describe('startup secret migration and consumers', () => {
     } finally {
       markFeedTokenRecreated(false)
       rmSync(other, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('no plaintext left in the database file after migration (#470 counter-check)', () => {
+  it('neither the migrated values nor an older token remain in the file or its WAL', async () => {
+    const fileDir = mkdtempSync(join(tmpdir(), 'tt-secret-file-'))
+    const path = join(fileDir, 'tt.sqlite')
+    const fdb = new Sqlite(path)
+    try {
+      fdb.pragma('journal_mode = WAL')
+      applyMigrations(fdb)
+      const put = (k: string, v: string): void => {
+        fdb.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v)
+      }
+      // Order matters for the page layout: without secure_delete and the scrub,
+      // 'current-token-zz9' stays in the freed cell (red probe 2026-10-31).
+      put(
+        'webhook_targets',
+        JSON.stringify([
+          {
+            id: 'w',
+            url: 'https://w.example/h',
+            secret: 'hook-secret-zz9',
+            events: ['entry.created'],
+            enabled: true
+          }
+        ])
+      )
+      put(FEED_TOKEN_KEY, 'older-token-zz9')
+      put(FEED_TOKEN_KEY, 'current-token-zz9')
+      // An earlier, long secret value deleted before the update: its overflow
+      // pages sit on the freelist with the bytes intact (secure_delete was off).
+      put('zz_old_secret', 'history-secret-zz9 '.repeat(2000))
+      fdb.prepare(`DELETE FROM settings WHERE key = 'zz_old_secret'`).run()
+      fdb.pragma('wal_checkpoint(TRUNCATE)')
+      expect(fdb.pragma('freelist_count', { simple: true })).toBeGreaterThan(0)
+      expect(readFileSync(path).toString('latin1')).toContain('history-secret-zz9')
+      await initializeSecrets(fdb, path, { box: box() })
+      useSecretStore(null)
+      expect(fdb.pragma('secure_delete', { simple: true })).toBe(1)
+      expect(fdb.pragma('freelist_count', { simple: true })).toBe(0)
+      fdb.close()
+      const bytes = [path, `${path}-wal`]
+        .filter((p) => existsSync(p))
+        .map((p) => readFileSync(p).toString('latin1'))
+        .join('')
+      for (const secret of [
+        'older-token-zz9',
+        'current-token-zz9',
+        'hook-secret-zz9',
+        'history-secret-zz9'
+      ]) {
+        expect(bytes).not.toContain(secret)
+      }
+    } finally {
+      if (fdb.open) fdb.close()
+      rmSync(fileDir, { recursive: true, force: true })
     }
   })
 })

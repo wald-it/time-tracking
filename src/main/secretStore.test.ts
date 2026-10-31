@@ -315,3 +315,48 @@ describe('reading and writing through the store', () => {
     ])
   })
 })
+
+describe('secret store — failures keep what is in force (#470 counter-check)', () => {
+  it('a failed write puts the previous value back and reports the failure', async () => {
+    const opts: FakeBoxOptions = {}
+    const store = new SecretStore({ dir, box: fakeBox(opts) })
+    await store.load()
+    await store.set(FEED_TOKEN_KEY, 'in-use')
+    opts.failEncrypt = true
+    await expect(store.set(FEED_TOKEN_KEY, 'new')).rejects.toThrow('encryption failed')
+    expect(store.get(FEED_TOKEN_KEY)).toBe('in-use')
+    await expect(store.set(webhookSecretKey('x'), 'fresh')).rejects.toThrow()
+    expect(store.has(webhookSecretKey('x'))).toBe(false)
+  })
+
+  it('a failed optional re-encryption keeps the values that were read', async () => {
+    const plain = JSON.stringify({ v: 1, values: { [FEED_TOKEN_KEY]: 'kept' } })
+    writeFileSync(join(dir, SECRETS_FILENAME), `old:${Buffer.from(plain).toString('base64')}`)
+    const store = new SecretStore({ dir, box: fakeBox({ oldPrefix: 'old:', failEncrypt: true }) })
+    await store.load()
+    expect(store.mode).toBe('encrypted')
+    expect(store.get(FEED_TOKEN_KEY)).toBe('kept')
+  })
+
+  it('a target dropped for an invalid URL keeps its secret until the URL is fixed', async () => {
+    const store = new SecretStore({ dir, box: fakeBox() })
+    await store.load()
+    const target = {
+      id: 't1',
+      url: 'https://ok.example/hook',
+      secret: 's3cret',
+      events: ['entry.created'],
+      enabled: true
+    }
+    const saved = await prepareWebhookTargets(JSON.stringify([target]), store)
+    const marked = { ...JSON.parse(saved)[0], secret: '' }
+    // Half-typed URL: the parser drops the target, the secret must survive.
+    await prepareWebhookTargets(JSON.stringify([{ ...marked, url: 'https://' }]), store, saved)
+    expect(store.get(webhookSecretKey('t1'))).toBe('s3cret')
+    await prepareWebhookTargets(JSON.stringify([marked]), store, saved)
+    expect(store.get(webhookSecretKey('t1'))).toBe('s3cret')
+    // Really removed: pruned.
+    await prepareWebhookTargets('[]', store, saved)
+    expect(store.has(webhookSecretKey('t1'))).toBe(false)
+  })
+})

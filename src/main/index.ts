@@ -887,7 +887,13 @@ app.whenReady().then(async () => {
     // Switched on but no token: it was lost (Q32, a backup restored on another
     // machine carries no secrets). The new token changes the subscription URL;
     // the settings say so until the user regenerates.
-    markFeedTokenRecreated(await ensureFeedToken())
+    // A failure to store the new token must not stop the start (tray, hotkeys
+    // and timers come after this): the feed then has no token and refuses.
+    try {
+      markFeedTokenRecreated(await ensureFeedToken())
+    } catch (err) {
+      log.warn('[ical-feed] token creation failed', (err as Error).name)
+    }
     startFeedServer(icalFeedDeps())
   }
 

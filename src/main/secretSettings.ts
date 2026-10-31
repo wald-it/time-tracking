@@ -201,10 +201,27 @@ export async function prepareWebhookTargets(
     }
   }
   if (s && s.mode !== 'plain') {
-    await s.prune('webhook:', new Set(out.map((t) => webhookSecretKey(t.id))))
+    // Prune only targets the window really removed. A target the parser drops
+    // for now (e.g. a URL half-typed when the field lost focus) is still in the
+    // raw list and keeps its secret, so fixing the URL brings it back intact.
+    const keep = new Set([...out.map((t) => t.id), ...rawTargetIds(raw)].map(webhookSecretKey))
+    await s.prune('webhook:', keep)
     await s.flush()
   }
   return serializeWebhookTargets(out)
+}
+
+/** Ids of every object in the raw list, valid or not. */
+function rawTargetIds(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((t) => (t && typeof t === 'object' ? (t as { id?: unknown }).id : undefined))
+      .filter((id): id is string => typeof id === 'string' && id !== '')
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -243,6 +260,9 @@ export async function migrateSecrets(
     return
   }
 
+  // secure_delete zeroes the replaced cells, so the old values do not linger in
+  // freed page space that `db.backup()` would copy into every new backup.
+  db.pragma('secure_delete = ON')
   db.transaction(() => {
     if (token !== '') writeRow(db, FEED_TOKEN_KEY, '')
     const stripped = targets.map((t) =>
@@ -251,4 +271,21 @@ export async function migrateSecrets(
     writeRow(db, 'webhook_targets', serializeWebhookTargets(stripped))
   })()
   log('secret store: secrets moved out of the database')
+  scrubFreeSpace(db, log)
+}
+
+/**
+ * Rewrite the file once after a migration: earlier values (an older feed token,
+ * a changed webhook secret) may sit in free pages from before secure_delete.
+ * VACUUM leaves no free space; the checkpoint clears the old frames out of the
+ * WAL file. Best effort: a busy database (another reader) is retried at the
+ * next migration, and the live rows are already clean.
+ */
+export function scrubFreeSpace(db: Db, log: (m: string) => void = (): void => {}): void {
+  try {
+    db.exec('VACUUM')
+    db.pragma('wal_checkpoint(TRUNCATE)')
+  } catch (err) {
+    log(`secret store: free-space scrub skipped (${(err as Error).name})`)
+  }
 }
