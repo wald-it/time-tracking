@@ -973,7 +973,7 @@ export const de = {
   'settings.webhooks.secretStored': 'Secret ist gesetzt; leer lassen, um es zu behalten',
   'settings.webhooks.clearSecret': 'Secret entfernen',
   'settings.secrets.plain':
-    'Secrets werden unverschlüsselt gespeichert, weil das System keine Verschlüsselung anbietet',
+    'Secrets liegen unverschlüsselt in der lokalen Datenbank, weil die Systemverschlüsselung nicht verfügbar ist oder nicht eingerichtet werden konnte',
   'settings.secrets.unreadable':
     'Gespeicherte Secrets konnten auf diesem Rechner nicht gelesen werden. Erzeuge die Feed-Adresse neu und gib die Webhook-Secrets erneut ein.',
   'settings.webhooks.secretHintPlain':

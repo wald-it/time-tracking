@@ -360,3 +360,65 @@ describe('secret store — failures keep what is in force (#470 counter-check)',
     expect(store.has(webhookSecretKey('t1'))).toBe(false)
   })
 })
+
+describe('secret store — overlapping writes and plain-mode edits (#470 counter-check 2)', () => {
+  function selectiveBox(failWhen: (plain: string) => boolean): AsyncSecretBox {
+    const base = fakeBox()
+    return {
+      ...base,
+      encryptStringAsync: async (plain) => {
+        if (failWhen(plain)) throw new Error('encryption failed')
+        return base.encryptStringAsync(plain)
+      }
+    }
+  }
+
+  it('a failed write does not reach the file through a later successful one', async () => {
+    const box = selectiveBox((plain) => plain.includes('rejected-token'))
+    const store = new SecretStore({ dir, box })
+    await store.load()
+    await store.set(FEED_TOKEN_KEY, 'token-in-use')
+    const failing = store.set(FEED_TOKEN_KEY, 'rejected-token')
+    const succeeding = store.set(webhookSecretKey('w'), 'hook-secret')
+    await expect(failing).rejects.toThrow()
+    await succeeding
+    expect(store.get(FEED_TOKEN_KEY)).toBe('token-in-use')
+    const reread = new SecretStore({ dir, box })
+    await reread.load()
+    expect(reread.get(FEED_TOKEN_KEY)).toBe('token-in-use')
+    expect(reread.get(webhookSecretKey('w'))).toBe('hook-secret')
+  })
+
+  it('a failed prune keeps the secrets in force', async () => {
+    const opts: FakeBoxOptions = {}
+    const store = new SecretStore({ dir, box: fakeBox(opts) })
+    await store.load()
+    await store.set(webhookSecretKey('w'), 'hook-secret')
+    opts.failEncrypt = true
+    await expect(store.prune('webhook:', new Set())).rejects.toThrow()
+    expect(store.get(webhookSecretKey('w'))).toBe('hook-secret')
+  })
+
+  it('plain mode: a target dropped for an invalid URL gets its secret back when fixed', async () => {
+    const store = new SecretStore({ dir, box: fakeBox({ available: false }) })
+    await store.load()
+    expect(store.mode).toBe('plain')
+    const target = {
+      id: 'p1',
+      url: 'https://ok.example/hook',
+      secret: 'plain-secret',
+      events: ['entry.created'],
+      enabled: true
+    }
+    const saved = await prepareWebhookTargets(JSON.stringify([target]), store)
+    const marked = { ...target, secret: '', secretStored: true }
+    const dropped = await prepareWebhookTargets(
+      JSON.stringify([{ ...marked, url: 'https://' }]),
+      store,
+      saved
+    )
+    expect(JSON.parse(dropped)).toEqual([])
+    const fixed = await prepareWebhookTargets(JSON.stringify([marked]), store, dropped)
+    expect(JSON.parse(fixed)[0]).toMatchObject({ id: 'p1', secret: 'plain-secret' })
+  })
+})

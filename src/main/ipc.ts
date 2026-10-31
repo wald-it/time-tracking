@@ -90,9 +90,9 @@ import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
 import {
+  effectiveSecretStorage,
   feedSettings,
   markFeedTokenRecreated,
-  secretStorageMode,
   wasFeedTokenRecreated,
   webhookTargetsForRenderer,
   writeFeedToken
@@ -898,7 +898,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           .map((r) => [r.key, r.value])
       ) as unknown as Settings
       settings.webhook_targets = webhookTargetsForRenderer(db)
-      settings.secret_storage = secretStorageMode()
+      settings.secret_storage = effectiveSecretStorage(db)
       if (wasFeedTokenRecreated()) settings.feed_token_recreated = true
       return ok(settings)
     } catch (e) {

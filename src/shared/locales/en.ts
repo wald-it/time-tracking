@@ -960,7 +960,7 @@ export const en: Record<TranslationKey, string> = {
   'settings.webhooks.secretStored': 'Secret is set; leave empty to keep it',
   'settings.webhooks.clearSecret': 'Remove secret',
   'settings.secrets.plain':
-    'Secrets are stored unencrypted because the system offers no encryption',
+    'Secrets are stored unencrypted in the local database because system encryption is not available or could not be set up',
   'settings.secrets.unreadable':
     'Stored secrets could not be read on this machine. Regenerate the feed address and re-enter webhook secrets.',
   'settings.webhooks.secretHintPlain':

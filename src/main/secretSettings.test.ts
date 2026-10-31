@@ -340,3 +340,18 @@ describe('no plaintext left in the database file after migration (#470 counter-c
     }
   })
 })
+
+describe('reported storage when the migration fails (#470 counter-check 2)', () => {
+  it('says plain while plain secrets are still in the database', async () => {
+    const failing: AsyncSecretBox = {
+      ...box(),
+      encryptStringAsync: async () => {
+        throw new Error('cannot write')
+      }
+    }
+    await initializeSecrets(db, join(dir, 'custom.sqlite'), { box: failing })
+    expect(get(FEED_TOKEN_KEY)).toBe('old-token')
+    register()
+    expect(settings().secret_storage).toBe('plain')
+  })
+})

@@ -159,7 +159,7 @@ describe('stored webhook secret markers (#470)', () => {
 
   it('has English and German hints and hides the hint for encrypted storage', () => {
     expect(en['settings.secrets.plain']).toBe(
-      'Secrets are stored unencrypted because the system offers no encryption'
+      'Secrets are stored unencrypted in the local database because system encryption is not available or could not be set up'
     )
     expect(en['settings.secrets.unreadable']).toContain('Regenerate the feed address')
     const { container } = render(

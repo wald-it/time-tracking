@@ -18,6 +18,7 @@ import icon from '../../resources/icon.png?asset'
 import trayRunningIcon from '../../resources/tray-running.png?asset'
 import trayStoppedIcon from '../../resources/tray-stopped.png?asset'
 import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
+import { runDailyBackupIfNeeded } from './backup'
 import {
   initializeSecrets,
   feedSettings,
@@ -762,6 +763,8 @@ app.whenReady().then(async () => {
   }
   recoverZombieEntries()
   await initializeSecrets(getDb(), getDbPath(), { log: (m) => log.info(m) })
+  // Fire-and-forget, after the migration: a backup must not carry plaintext secrets.
+  void runDailyBackupIfNeeded(getDb())
   registerIpcHandlers({
     refreshTrayClients: () => {
       refreshActiveClients()

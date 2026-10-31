@@ -75,6 +75,10 @@ export class SecretStore {
   private currentMode: SecretMode = 'plain'
   private loaded: Promise<void> | null = null
   private writes: Promise<void> = Promise.resolve()
+  /** What the file holds: the read values, then each successful write. */
+  private committed = new Map<string, string>()
+  private everWritten = false
+  private unreadableAtLoad = false
 
   constructor(deps: SecretStoreDeps) {
     this.file = join(deps.dir, SECRETS_FILENAME)
@@ -109,23 +113,19 @@ export class SecretStore {
    */
   set(key: string, value: string): Promise<void> {
     if (this.currentMode === 'plain') return Promise.resolve()
-    const had = this.values.has(key)
-    const previous = this.values.get(key)
-    const previousMode = this.currentMode
     if (value === '') this.values.delete(key)
     else this.values.set(key, value)
     // A write replaces an unreadable file: what could not be read is gone
     // anyway, and what is set now must not be lost.
     this.currentMode = 'encrypted'
-    return this.persist().catch((err: unknown) => {
-      // Not on disk: put the old value back (unless a later set replaced it),
-      // so a failed regeneration does not invalidate the feed URL in use and a
-      // failed secret change does not alter signatures while reporting failure.
-      if (this.values.get(key) === (value === '' ? undefined : value)) {
-        if (had) this.values.set(key, previous as string)
-        else this.values.delete(key)
-        this.currentMode = previousMode
-      }
+    return this.enqueue((next) => {
+      if (value === '') next.delete(key)
+      else next.set(key, value)
+    }).catch((err: unknown) => {
+      // Not on disk: back to what the file holds (unless a later set replaced
+      // it), so a failed regeneration does not invalidate the feed URL in use
+      // and a failed secret change does not alter signatures.
+      if (this.values.get(key) === (value === '' ? undefined : value)) this.revert(key)
       throw err
     })
   }
@@ -133,14 +133,24 @@ export class SecretStore {
   /** Remove every key not in `keep` that starts with `prefix`. */
   prune(prefix: string, keep: ReadonlySet<string>): Promise<void> {
     if (this.currentMode === 'plain') return Promise.resolve()
-    let changed = false
-    for (const key of [...this.values.keys()]) {
-      if (key.startsWith(prefix) && !keep.has(key)) {
-        this.values.delete(key)
-        changed = true
-      }
-    }
-    return changed ? this.persist() : this.writes
+    const removed = [...this.values.keys()].filter((k) => k.startsWith(prefix) && !keep.has(k))
+    if (removed.length === 0) return this.writes
+    for (const key of removed) this.values.delete(key)
+    return this.enqueue((next) => {
+      for (const key of removed) next.delete(key)
+    }).catch((err: unknown) => {
+      // Not on disk: the targets keep their secrets (unless set again meanwhile).
+      for (const key of removed) if (!this.values.has(key)) this.revert(key)
+      throw err
+    })
+  }
+
+  /** Put `key` in the cache back to what the file holds. */
+  private revert(key: string): void {
+    const onDisk = this.committed.get(key)
+    if (onDisk === undefined) this.values.delete(key)
+    else this.values.set(key, onDisk)
+    if (!this.everWritten && this.unreadableAtLoad) this.currentMode = 'unreadable'
   }
 
   /** The box in use, so a read-back check can open the file the same way. */
@@ -153,9 +163,20 @@ export class SecretStore {
     return this.writes
   }
 
-  private persist(): Promise<void> {
-    const snapshot: FileShape = { v: 1, values: Object.fromEntries(this.values) }
-    const run = this.writes.then(() => this.writeFile(snapshot))
+  /**
+   * Queue one change. The file content is built when the write runs, from what
+   * the file holds after the earlier writes plus this change, never from the
+   * cache: a write that failed (and was reverted) does not reach the file
+   * through a later one.
+   */
+  private enqueue(change: (next: Map<string, string>) => void): Promise<void> {
+    const run = this.writes.then(async () => {
+      const next = new Map(this.committed)
+      change(next)
+      await this.writeFile({ v: 1, values: Object.fromEntries(next) })
+      this.committed = next
+      this.everWritten = true
+    })
     // A failed write is reported to its caller, but must not block later ones.
     this.writes = run.catch(() => undefined)
     return run
@@ -194,9 +215,11 @@ export class SecretStore {
         if (typeof v === 'string' && v !== '') this.values.set(k, v)
       }
       reEncrypt = shouldReEncrypt
+      this.committed = new Map(this.values)
     } catch (err) {
       // No token material in the message.
       this.currentMode = 'unreadable'
+      this.unreadableAtLoad = true
       this.values.clear()
       this.log(`secret store: stored secrets unreadable (${(err as Error).name})`)
       return
@@ -204,7 +227,7 @@ export class SecretStore {
     // The file was read; a failed optional re-encryption keeps what was read.
     if (reEncrypt) {
       try {
-        await this.persist()
+        await this.enqueue(() => {})
       } catch (err) {
         this.log(`secret store: re-encryption failed, keeping read values (${(err as Error).name})`)
       }

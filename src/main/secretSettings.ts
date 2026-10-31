@@ -80,6 +80,21 @@ export function secretStorageMode(explicit?: SecretStore | null): SecretMode {
   return store(explicit)?.mode ?? 'plain'
 }
 
+/**
+ * What the settings window should say: `plain` also when encryption works but
+ * plain secrets are still in the database (a migration that failed, e.g. the
+ * file could not be written), so the window never claims an encryption that
+ * is not in place.
+ */
+export function effectiveSecretStorage(db: Db, explicit?: SecretStore | null): SecretMode {
+  const mode = secretStorageMode(explicit)
+  if (mode === 'plain') return mode
+  const plainLeft =
+    row(db, FEED_TOKEN_KEY) !== '' ||
+    parseWebhookTargets(row(db, 'webhook_targets')).some((t) => t.secret !== '')
+  return plainLeft ? 'plain' : mode
+}
+
 /** The iCal feed token, or '' when there is none (or it cannot be read). */
 export function readFeedToken(db: Db, explicit?: SecretStore | null): string {
   const s = store(explicit)
@@ -179,10 +194,12 @@ export async function prepareWebhookTargets(
   const targets = parseWebhookTargets(raw)
   const current = new Map(parseWebhookTargets(currentRaw).map((t) => [t.id, t]))
   const out: WebhookTarget[] = []
+  const plain = !s || s.mode === 'plain'
   for (const t of targets) {
     const rest = { ...t }
     delete rest.secretUnreadable
-    const secret = rest.secret || (rest.secretStored ? (current.get(t.id)?.secret ?? '') : '')
+    const kept = current.get(t.id)?.secret || (plain ? parkedPlainSecrets.get(t.id) : '') || ''
+    const secret = rest.secret || (rest.secretStored ? kept : '')
     if (!s || s.mode === 'plain') {
       out.push(
         secret === '' && rest.secretStored ? rest : { ...rest, secret, secretStored: undefined }
@@ -200,6 +217,20 @@ export async function prepareWebhookTargets(
       out.push({ ...rest, secretStored: undefined })
     }
   }
+  if (plain) {
+    // Plain mode keeps secrets in the blob, so a target the parser drops for
+    // now (half-typed URL) would lose its secret with it. Park it in memory
+    // until the target comes back or the list no longer names it.
+    const saved = new Set(out.map((t) => t.id))
+    const named = new Set(rawTargetIds(raw))
+    for (const id of [...parkedPlainSecrets.keys()]) {
+      if (saved.has(id) || !named.has(id)) parkedPlainSecrets.delete(id)
+    }
+    for (const id of named) {
+      const secret = current.get(id)?.secret
+      if (!saved.has(id) && secret) parkedPlainSecrets.set(id, secret)
+    }
+  }
   if (s && s.mode !== 'plain') {
     // Prune only targets the window really removed. A target the parser drops
     // for now (e.g. a URL half-typed when the field lost focus) is still in the
@@ -210,6 +241,9 @@ export async function prepareWebhookTargets(
   }
   return serializeWebhookTargets(out)
 }
+
+/** Plain mode: secrets of targets the last save dropped as invalid (see above). */
+const parkedPlainSecrets = new Map<string, string>()
 
 /** Ids of every object in the raw list, valid or not. */
 function rawTargetIds(raw: string): string[] {
