@@ -63,8 +63,9 @@ export const de = {
   'settings.ruleCheck.windowEnd': 'Arbeitszeit bis',
   'settings.ruleCheck.weekend': 'Wochenende prüfen',
   'settings.ruleCheck.maxDescriptionLength': 'Maximale Beschreibungslänge',
+  'settings.ruleCheck.maxDescriptionHint': 'Feldgrenze 500 Zeichen',
   'settings.ruleCheck.invalid':
-    'Bitte positive Zahlen, eine ganze Zeichenanzahl und einen Beginn vor dem Ende eingeben.',
+    'Bitte positive Zahlen, eine ganze Zeichenanzahl bis 500 und einen Beginn vor dem Ende eingeben.',
   'settings.ruleCheck.hint':
     'Der Prüfstand meldet nur Hinweise und blockiert nie einen Export. Die Ergebnisanzeige folgt später.',
   'settings.feedback.prefixes': 'Erlaubte Präfixe',

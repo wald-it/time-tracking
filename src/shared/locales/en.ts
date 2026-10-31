@@ -60,8 +60,9 @@ export const en: Record<TranslationKey, string> = {
   'settings.ruleCheck.windowEnd': 'Working hours until',
   'settings.ruleCheck.weekend': 'Check weekends',
   'settings.ruleCheck.maxDescriptionLength': 'Maximum description length',
+  'settings.ruleCheck.maxDescriptionHint': 'Field limit 500 characters',
   'settings.ruleCheck.invalid':
-    'Enter positive numbers, a whole character count and a start before the end.',
+    'Enter positive numbers, a whole character count up to 500 and a start before the end.',
   'settings.ruleCheck.hint':
     'The rule check only reports findings and never blocks an export. The results view will follow later.',
   'settings.feedback.prefixes': 'Allowed prefixes',

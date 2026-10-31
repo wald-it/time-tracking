@@ -38,7 +38,11 @@ import {
 } from '../../../shared/webhooks'
 import { isUpdateCheckEnabled } from '../../../shared/updateCheck'
 import { useFeedbackRules } from './settings/useFeedbackRules'
-import { isValidRuleCheck, parseRuleCheck } from '../../../shared/ruleCheck'
+import {
+  DESCRIPTION_FIELD_LIMIT,
+  isValidRuleCheck,
+  parseRuleCheck
+} from '../../../shared/ruleCheck'
 
 const DEFAULT_HOTKEY = 'Alt+Shift+S'
 const DEFAULT_MINI_HOTKEY = 'Alt+Shift+M'
@@ -1099,11 +1103,19 @@ function RuleCheckSection({
         <Row
           key={key}
           label={t(`settings.ruleCheck.${key}`)}
-          hint={key === 'dayMaxHours' ? t('settings.ruleCheck.dayHint') : undefined}
+          hint={
+            key === 'dayMaxHours'
+              ? t('settings.ruleCheck.dayHint')
+              : key === 'maxDescriptionLength'
+                ? t('settings.ruleCheck.maxDescriptionHint')
+                : undefined
+          }
         >
           <input
             type={key.startsWith('window') ? 'time' : 'number'}
             step={key === 'maxDescriptionLength' ? '1' : key.startsWith('window') ? '60' : 'any'}
+            min={key === 'maxDescriptionLength' ? '1' : undefined}
+            max={key === 'maxDescriptionLength' ? DESCRIPTION_FIELD_LIMIT : undefined}
             aria-label={t(`settings.ruleCheck.${key}`)}
             value={String(fields[key])}
             onChange={(e) => change(key, e.target.value)}

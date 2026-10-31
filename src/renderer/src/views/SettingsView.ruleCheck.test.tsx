@@ -79,7 +79,7 @@ describe('Settings rule check', () => {
       expect(screen.getByLabelText(strings['settings.ruleCheck.windowStart'])).toHaveValue('06:00')
       expect(screen.getByLabelText(strings['settings.ruleCheck.windowEnd'])).toHaveValue('22:00')
       expect(screen.getByLabelText(strings['settings.ruleCheck.maxDescriptionLength'])).toHaveValue(
-        300
+        500
       )
       for (const [key, value] of Object.entries({
         entryMaxHours: '8.5',
@@ -109,6 +109,31 @@ describe('Settings rule check', () => {
       )
     }
   )
+
+  it.each([
+    ['de', 'Feldgrenze 500 Zeichen'],
+    ['en', 'Field limit 500 characters']
+  ] as const)('shows the field limit and rejects 501 but saves 500 (%s)', async (locale, hint) => {
+    const { set, strings } = await setup(locale)
+    const field = screen.getByLabelText(strings['settings.ruleCheck.maxDescriptionLength'])
+    expect(field).toHaveAttribute('min', '1')
+    expect(field).toHaveAttribute('max', '500')
+    expect(field.parentElement!.parentElement).toContainElement(screen.getByText(hint))
+
+    fireEvent.change(field, { target: { value: '501' } })
+    expect(screen.getByRole('alert')).toHaveTextContent(strings['settings.ruleCheck.invalid'])
+    expect(field).toHaveValue(501)
+    expect(set).not.toHaveBeenCalled()
+
+    fireEvent.change(field, { target: { value: '500' } })
+    await waitFor(() =>
+      expect(set).toHaveBeenCalledWith(
+        'rule_check',
+        JSON.stringify({ ...DEFAULT_RULE_CHECK, maxDescriptionLength: 500 })
+      )
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
 
   it('keeps invalid drafts unsaved and saves once every field is valid', async () => {
     const { set } = await setup()
