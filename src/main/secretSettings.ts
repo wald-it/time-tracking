@@ -14,7 +14,14 @@
  * short window before the store is loaded).
  */
 import type Database from 'better-sqlite3'
-import { FEED_TOKEN_KEY, SecretStore, webhookSecretKey, type SecretMode } from './secretStore'
+import { dirname } from 'node:path'
+import {
+  FEED_TOKEN_KEY,
+  SecretStore,
+  webhookSecretKey,
+  type SecretMode,
+  type SecretStoreDeps
+} from './secretStore'
 import {
   parseWebhookTargets,
   serializeWebhookTargets,
@@ -28,6 +35,26 @@ let active: SecretStore | null = null
 /** Register the app's (loaded) store. */
 export function useSecretStore(store: SecretStore | null): void {
   active = store
+}
+
+/** Load and migrate before registering IPC or starting integrations. */
+export async function initializeSecrets(
+  db: Db,
+  dbPath: string,
+  deps: Omit<SecretStoreDeps, 'dir'> = {}
+): Promise<SecretStore> {
+  const dir = dirname(dbPath)
+  const s = new SecretStore({ ...deps, dir })
+  await s.load()
+  try {
+    await migrateSecrets(db, s, dir, deps.log)
+  } catch (err) {
+    // Plain database values remain usable and are retried on the next start.
+    deps.log?.(`secret store: migration failed (${(err as Error).name})`)
+  }
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- Main-process store registration, not a React hook.
+  useSecretStore(s)
+  return s
 }
 
 function store(explicit?: SecretStore | null): SecretStore | null {
@@ -78,14 +105,14 @@ export async function writeFeedToken(
 }
 
 /**
- * The webhook targets with their secrets filled in — for delivery and for the
- * settings window. A target whose secret is stored but cannot be read comes
+ * The webhook targets with their secrets filled in for delivery.
+ * A target whose secret is stored but cannot be read comes
  * back with `secret: ''` and `secretUnreadable: true`.
  */
 export function readWebhookTargets(db: Db, explicit?: SecretStore | null): WebhookTarget[] {
   const s = store(explicit)
   return parseWebhookTargets(row(db, 'webhook_targets')).map((t) => {
-    if (!t.secretStored) return { ...t, secretUnreadable: undefined }
+    if (t.secret !== '' || !t.secretStored) return { ...t, secretUnreadable: undefined }
     const secret = s && s.mode === 'encrypted' ? s.get(webhookSecretKey(t.id)) : undefined
     return secret === undefined
       ? { ...t, secret: '', secretUnreadable: true }
@@ -94,35 +121,79 @@ export function readWebhookTargets(db: Db, explicit?: SecretStore | null): Webho
 }
 
 /**
+ * Only markers cross IPC, including in plain mode or after a failed migration.
+ * `secretUnreadable` tells the window that a stored secret is missing on this
+ * machine (a backup restored elsewhere, or an unreadable file), so it can say
+ * so at the target; the secret itself never crosses.
+ */
+export function webhookTargetsForRenderer(db: Db, explicit?: SecretStore | null): string {
+  const unreadable = new Set(
+    readWebhookTargets(db, explicit)
+      .filter((t) => t.secretUnreadable)
+      .map((t) => t.id)
+  )
+  return serializeWebhookTargets(
+    parseWebhookTargets(row(db, 'webhook_targets')).map((t) => ({
+      ...t,
+      secret: '',
+      secretStored: t.secret !== '' || t.secretStored ? true : undefined,
+      secretUnreadable: unreadable.has(t.id) ? true : undefined
+    }))
+  )
+}
+
+let feedTokenRecreated = false
+
+/**
+ * Set at startup when the feed is switched on but no token could be found, so
+ * a new one was minted: the subscription URL changed (typically a backup
+ * restored on another machine). Cleared when the user regenerates the token.
+ */
+export function markFeedTokenRecreated(value: boolean): void {
+  feedTokenRecreated = value
+}
+
+export function wasFeedTokenRecreated(): boolean {
+  return feedTokenRecreated
+}
+
+/** Resolve the feed token through the store, other feed settings through SQLite. */
+export function feedSettings(db: Db): (key: string) => string {
+  return (key) => (key === FEED_TOKEN_KEY ? readFeedToken(db) : row(db, key))
+}
+
+/**
  * The `webhook_targets` blob to store for targets coming from the settings
  * window: secrets go to the store, the blob keeps none. Settles once the store
  * is on disk, so the caller writes the blob only after that.
  *
- * A target that arrives with an empty secret while its stored one is
- * unreadable keeps `secretStored`: the window cannot tell "left unchanged"
- * from "removed", and only the first keeps the target from going out
- * unsigned. A new secret clears the state.
+ * An empty secret with `secretStored` keeps the previous secret. Explicit
+ * clearing removes the marker. This also keeps an unreadable target closed.
  */
 export async function prepareWebhookTargets(
   raw: string,
-  explicit?: SecretStore | null
+  explicit?: SecretStore | null,
+  currentRaw = ''
 ): Promise<string> {
   const s = store(explicit)
   const targets = parseWebhookTargets(raw)
+  const current = new Map(parseWebhookTargets(currentRaw).map((t) => [t.id, t]))
   const out: WebhookTarget[] = []
   for (const t of targets) {
-    const { secretUnreadable, ...rest } = t
+    const rest = { ...t }
+    delete rest.secretUnreadable
+    const secret = rest.secret || (rest.secretStored ? (current.get(t.id)?.secret ?? '') : '')
     if (!s || s.mode === 'plain') {
       out.push(
-        rest.secret === '' && rest.secretStored ? rest : { ...rest, secretStored: undefined }
+        secret === '' && rest.secretStored ? rest : { ...rest, secret, secretStored: undefined }
       )
       continue
     }
     const key = webhookSecretKey(t.id)
-    if (rest.secret !== '') {
-      await s.set(key, rest.secret)
+    if (secret !== '') {
+      await s.set(key, secret)
       out.push({ ...rest, secret: '', secretStored: true })
-    } else if (rest.secretStored && secretUnreadable) {
+    } else if (rest.secretStored) {
       out.push({ ...rest, secretStored: true })
     } else {
       await s.set(key, '')

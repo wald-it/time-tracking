@@ -10,19 +10,23 @@ sends and to whom.
 
 ## Where is the data?
 
-| Type                | Windows                                    | macOS                                                          |
-| ------------------- | ------------------------------------------ | -------------------------------------------------------------- |
-| Database + settings | `%APPDATA%\time-tracking\timetrack.sqlite` | `~/Library/Application Support/time-tracking/timetrack.sqlite` |
-| Backups             | `%APPDATA%\time-tracking\backups\` (or the folder you chose) | `~/Library/Application Support/time-tracking/backups/` (or the folder you chose) |
-| Log files           | `%APPDATA%\time-tracking\logs\`            | `~/Library/Logs/time-tracking/`                                |
-| Installer log       | `%TEMP%\TimeTrack-setup-holders.log`       | —                                                              |
-| Exports (PDF, CSV, iCal, JSON) | where you save them             | where you save them                                            |
+| Type                           | Windows                                                      | macOS                                                                            |
+| ------------------------------ | ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| Database + settings            | `%APPDATA%\time-tracking\timetrack.sqlite`                   | `~/Library/Application Support/time-tracking/timetrack.sqlite`                   |
+| Backups                        | `%APPDATA%\time-tracking\backups\` (or the folder you chose) | `~/Library/Application Support/time-tracking/backups/` (or the folder you chose) |
+| Log files                      | `%APPDATA%\time-tracking\logs\`                              | `~/Library/Logs/time-tracking/`                                                  |
+| Installer log                  | `%TEMP%\TimeTrack-setup-holders.log`                         | —                                                                                |
+| Exports (PDF, CSV, iCal, JSON) | where you save them                                          | where you save them                                                              |
 
 **Backups:** a daily backup (the last 7 are kept), plus a backup before every
 database update, before a restore, before the first MCP write of a session, and
-when you make one by hand. Backups are full copies of the database — they
-include the iCal feed token and the webhook targets with their secrets. The JSON
-export leaves those secrets out.
+when you make one by hand. Backups are full copies of the database. The iCal
+feed token and webhook secrets are kept encrypted beside the database, so new
+backups no longer contain them. A backup restored on another machine needs a
+new feed address and the webhook secrets re-entered. If the system offers no
+encryption, secrets stay in the database and its backups; Settings shows a hint.
+Older backups can still contain secrets. The JSON export leaves the feed token
+and webhook targets out in all modes.
 
 **Logs:** `main.log` (app events and errors, including messages from the user
 interface; with **Mirror Teams status** on, also whether Teams holds
@@ -152,6 +156,11 @@ finds a new version, the app downloads it in the background as above.
   what MCP clients may read.
 - Each delivery is signed with the target's HMAC secret when one is set
   (header `X-TimeTrack-Signature`).
+- Webhook secrets are kept encrypted beside the database when system encryption
+  is available. They are excluded from new database backups in that mode.
+  After restoring a backup on another machine, re-enter the webhook secrets
+  and generate a new feed address. A target with an unreadable stored secret
+  is not delivered until you replace or explicitly remove that secret.
 
 ### iCal feed
 

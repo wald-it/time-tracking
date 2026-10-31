@@ -957,8 +957,20 @@ export const en: Record<TranslationKey, string> = {
   'settings.webhooks.url': 'URL',
   'settings.webhooks.urlInvalid': 'Enter a valid http(s) URL — otherwise nothing is sent.',
   'settings.webhooks.secret': 'Secret (optional)',
-  'settings.webhooks.secretHint':
+  'settings.webhooks.secretStored': 'Secret is set; leave empty to keep it',
+  'settings.webhooks.clearSecret': 'Remove secret',
+  'settings.secrets.plain':
+    'Secrets are stored unencrypted because the system offers no encryption',
+  'settings.secrets.unreadable':
+    'Stored secrets could not be read on this machine. Regenerate the feed address and re-enter webhook secrets.',
+  'settings.webhooks.secretHintPlain':
     'When set, every message is signed with HMAC-SHA256 (X-TimeTrack-Signature header). Stored in plain text in the local database.',
+  'settings.webhooks.secretMissing':
+    'The secret is missing on this machine, for example after restoring a backup. Enter it again; until then this webhook is not sent.',
+  'settings.icalFeed.tokenRecreated':
+    'The feed address was created anew on this machine because no stored one was found (for example after restoring a backup). Add the new address to your calendar; the old one no longer delivers anything.',
+  'settings.webhooks.secretHint':
+    'When set, every message is signed with HMAC-SHA256 (X-TimeTrack-Signature header). Stored encrypted next to the database and not included in backups.',
   'settings.webhooks.events': 'Events',
   'settings.webhooks.enabled': 'Enabled',
   'settings.webhooks.remove': 'Remove',

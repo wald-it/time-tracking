@@ -68,6 +68,12 @@ async function opened(o: FakeBoxOptions = {}): Promise<SecretStore> {
 }
 
 describe('SecretStore', () => {
+  it('treats a decrypted file with an invalid shape as unreadable', async () => {
+    writeFileSync(file(), await fakeBox().encryptStringAsync('{"v":1}'))
+    const s = await opened()
+    expect(s.mode).toBe('unreadable')
+    expect(s.get(FEED_TOKEN_KEY)).toBeUndefined()
+  })
   it('keeps values across a restart, encrypted on disk', async () => {
     const s = await opened()
     await s.set(FEED_TOKEN_KEY, 'tok-1')

@@ -19,6 +19,14 @@ import trayRunningIcon from '../../resources/tray-running.png?asset'
 import trayStoppedIcon from '../../resources/tray-stopped.png?asset'
 import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
 import {
+  initializeSecrets,
+  feedSettings,
+  markFeedTokenRecreated,
+  readFeedToken,
+  secretStorageMode,
+  writeFeedToken
+} from './secretSettings'
+import {
   dbErrorDialog,
   hotkeyConflictDialog,
   localeFromSystem,
@@ -547,19 +555,16 @@ function pokePresence(): void {
 function icalFeedDeps(): FeedDeps {
   return {
     getDb,
-    getSetting: (key) => mcpBridgeDeps().getSetting(key),
+    getSetting: feedSettings(getDb()),
     log: (m) => log.info(m)
   }
 }
 
 /** The token is persistent (subscribers store the URL) — mint it only once. */
-function ensureFeedToken(): void {
-  const current = icalFeedDeps().getSetting('ical_feed_token')
-  if (!current || current === '') {
-    getDb()
-      .prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('ical_feed_token', ?)`)
-      .run(generateFeedToken())
-  }
+async function ensureFeedToken(): Promise<boolean> {
+  if (readFeedToken(getDb()) !== '' || secretStorageMode() === 'unreadable') return false
+  await writeFeedToken(getDb(), generateFeedToken())
+  return true
 }
 
 /** Dependencies handed to the MCP write bridge (all resolved lazily at call time). */
@@ -756,6 +761,7 @@ app.whenReady().then(async () => {
     return
   }
   recoverZombieEntries()
+  await initializeSecrets(getDb(), getDbPath(), { log: (m) => log.info(m) })
   registerIpcHandlers({
     refreshTrayClients: () => {
       refreshActiveClients()
@@ -796,8 +802,12 @@ app.whenReady().then(async () => {
     pokePresence,
     setIcalFeedEnabled: (enabled) => {
       if (enabled) {
-        ensureFeedToken()
-        startFeedServer(icalFeedDeps())
+        void ensureFeedToken()
+          .then(() => {
+            if (icalFeedDeps().getSetting('ical_feed_enabled') === '1')
+              startFeedServer(icalFeedDeps())
+          })
+          .catch((err) => log.warn('[ical-feed] token creation failed', (err as Error).name))
       } else {
         stopFeedServer()
       }
@@ -874,7 +884,10 @@ app.whenReady().then(async () => {
 
   // v1.17 #169 — local iCal feed, only while the app runs (like the bridge).
   if (mcpBridgeDeps().getSetting('ical_feed_enabled') === '1') {
-    ensureFeedToken()
+    // Switched on but no token: it was lost (Q32, a backup restored on another
+    // machine carries no secrets). The new token changes the subscription URL;
+    // the settings say so until the user regenerates.
+    markFeedTokenRecreated(await ensureFeedToken())
     startFeedServer(icalFeedDeps())
   }
 

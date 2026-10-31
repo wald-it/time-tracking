@@ -167,8 +167,16 @@ export class SecretStore {
         readFileSync(this.file)
       )
       const parsed = JSON.parse(result) as Partial<FileShape>
-      const values = parsed && typeof parsed.values === 'object' ? parsed.values : {}
-      for (const [k, v] of Object.entries(values ?? {})) {
+      if (
+        !parsed ||
+        parsed.v !== 1 ||
+        !parsed.values ||
+        typeof parsed.values !== 'object' ||
+        Array.isArray(parsed.values)
+      ) {
+        throw new Error('unexpected secret store shape')
+      }
+      for (const [k, v] of Object.entries(parsed.values)) {
         if (typeof v === 'string' && v !== '') this.values.set(k, v)
       }
       if (shouldReEncrypt) await this.persist()

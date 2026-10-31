@@ -14,6 +14,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Changed
 
+- The iCal feed token and webhook secrets use system encryption beside the database and stay out of new backups; Settings reports unavailable encryption or unreadable secrets (#470).
 - Rule check: the description length limit defaults to 500 characters, the entry field limit, and cannot be set higher (#463).
 
 ## [2.2.0] — 2026-10-31
