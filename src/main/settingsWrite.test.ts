@@ -86,6 +86,23 @@ afterEach(() => {
 })
 
 describe('settings:set allow-list', () => {
+  it.each([
+    ['target_hours_week', '16.5'],
+    ['target_rate_cent', '9550']
+  ])('stores and clears optional target %s without side effects', async (key, value) => {
+    expect(await writeSettingFromRenderer(db, hooks(), key, value)).toEqual({
+      ok: true,
+      data: undefined
+    })
+    expect(stored(key)).toBe(value)
+    expect(await writeSettingFromRenderer(db, hooks(), key, '')).toEqual({
+      ok: true,
+      data: undefined
+    })
+    expect(stored(key)).toBe('')
+    expect(calls).toEqual([])
+    expect(asked).toEqual([])
+  })
   it('returns the error message without the Error prefix when a hook throws', async () => {
     const failingHooks = hooks()
     failingHooks.setHotkey = () => {

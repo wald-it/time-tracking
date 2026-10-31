@@ -12,6 +12,15 @@ import { WeekdayAverage } from '../components/auswertung/WeekdayAverage'
 import { compareNote } from '../components/auswertung/compareNote'
 import { TrendBands } from '../components/auswertung/TrendBands'
 import { TrendChart } from '../components/TrendChart'
+import { useSettingsStore } from '../store/settingsStore'
+import {
+  parseWeeklyTargetHours,
+  targetRateFromSetting,
+  monthlyTargetHours,
+  utilisation,
+  monthProjection,
+  workedHourlyRateCent
+} from '../../../shared/targets'
 
 /**
  * B3 switch (HANDOFF §6): the trend shows hours and revenue in two bands that
@@ -232,7 +241,7 @@ export default function AuswertungView(): React.JSX.Element {
             className="grid gap-8"
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))' }}
           >
-            {[0, 1, 2].map((i) => (
+            {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
                 className="h-[120px] border-t-2 border-[var(--line)] motion-safe:animate-pulse"
@@ -329,6 +338,12 @@ export default function AuswertungView(): React.JSX.Element {
               ratioPrev={data.month.billablePrev}
               hasBase={data.month.hoursPrev > 0}
             />
+            <TargetKpi
+              stats={data.month}
+              year={year}
+              month={month}
+              isCurrentMonth={isCurrentMonth}
+            />
           </section>
 
           {/* Middle row (§4.3.3) */}
@@ -362,6 +377,69 @@ export default function AuswertungView(): React.JSX.Element {
         </>
       )}
     </div>
+  )
+}
+
+function TargetKpi({
+  stats,
+  year,
+  month,
+  isCurrentMonth
+}: {
+  stats: AnalyticsSummary['month']
+  year: number
+  month: number
+  isCurrentMonth: boolean
+}): React.JSX.Element {
+  const t = useT()
+  const weekly = parseWeeklyTargetHours(useSettingsStore((s) => s.settings?.target_hours_week))
+  const targetRate = targetRateFromSetting(useSettingsStore((s) => s.settings?.target_rate_cent))
+  const target = weekly === null ? null : monthlyTargetHours(weekly, year, month)
+  const hours = stats.hours / 3600
+  const ratio = target === null ? null : utilisation(hours, target)
+  const hasTarget = weekly !== null || targetRate !== null
+  const hasRate = stats.hasRateConfigured || targetRate !== null
+  const hourlyRate = workedHourlyRateCent(stats.revenue, hours)
+  return (
+    <KpiReadout
+      legend={t('analytics.target.title')}
+      value={ratio === null ? '—' : String(Math.round(ratio * 100))}
+      unit={ratio === null ? undefined : '%'}
+      sub={
+        !hasTarget ? (
+          t('analytics.target.unset')
+        ) : (
+          <>
+            {target !== null && (
+              <div>
+                {t('analytics.target.hours', {
+                  actual: hm(stats.hours),
+                  target: hm(target * 3600)
+                })}
+              </div>
+            )}
+            {target !== null && isCurrentMonth && (
+              <div>
+                {t('analytics.target.projection', {
+                  hours: hm(monthProjection(stats.hours, stats.daysElapsed, stats.daysInMonth))
+                })}
+                {stats.hasRateConfigured &&
+                  ` · ${wholeEurDigits(monthProjection(stats.revenue, stats.daysElapsed, stats.daysInMonth))} €`}
+              </div>
+            )}
+            {hasRate && (
+              <div>
+                {t('analytics.target.effectiveRate', {
+                  rate: hourlyRate === null ? '—' : wholeEurDigits(hourlyRate)
+                })}
+                {targetRate !== null &&
+                  ` · ${t('analytics.target.rate', { rate: wholeEurDigits(targetRate) })}`}
+              </div>
+            )}
+          </>
+        )
+      }
+    />
   )
 }
 
