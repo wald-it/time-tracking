@@ -9,7 +9,7 @@
  *
  * Security model: the server binds to 127.0.0.1 only, and the token rides in
  * the URL because calendar clients cannot send custom headers. The token is
- * persistent (subscribers store the URL) and lives in the settings table;
+ * persistent (subscribers store the URL) and read through secretSettings;
  * regenerating it invalidates every existing subscription. Read-only by
  * construction — there is no write path.
  *
@@ -56,8 +56,7 @@ export function feedUrl(getSetting: FeedDeps['getSetting']): string {
 
 /**
  * Pure request handler — no sockets, fully testable. Token comparison is the
- * only auth; timing-safe comparison is deliberately not used (the attacker
- * model is other local processes, which could read the settings DB anyway).
+ * only authentication. Production dependencies resolve it through secretSettings.
  */
 export function buildFeedResponse(deps: FeedDeps, rawUrl: string): FeedResponse {
   const url = new URL(rawUrl, 'http://127.0.0.1')

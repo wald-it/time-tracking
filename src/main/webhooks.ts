@@ -21,7 +21,8 @@ import type Database from 'better-sqlite3'
 import { effectiveRateCent } from '../shared/currency'
 import { dueRateSql } from '../shared/dueRate'
 import { deserializeTags } from '../shared/tags'
-import { parseWebhookTargets, type WebhookEvent, type WebhookTarget } from '../shared/webhooks'
+import { type WebhookEvent, type WebhookTarget } from '../shared/webhooks'
+import { readWebhookTargets } from './secretSettings'
 import { resolvePrivacy } from '../mcp/privacy'
 import { readStoredPrivacy } from '../mcp/queries'
 import type { PrivacyConfig } from '../mcp/privacy'
@@ -294,12 +295,7 @@ export function emitWebhooks(
 ): void {
   try {
     if (!entry) return
-    const raw = db.prepare(`SELECT value FROM settings WHERE key = 'webhook_targets'`).get() as
-      | { value: string }
-      | undefined
-    const targets = parseWebhookTargets(raw?.value).filter(
-      (t) => t.enabled && t.events.includes(event)
-    )
+    const targets = readWebhookTargets(db).filter((t) => t.enabled && t.events.includes(event))
     if (targets.length === 0) return
 
     const privacy = resolvePrivacy(readStoredPrivacy(db))
@@ -310,6 +306,18 @@ export function emitWebhooks(
     const log = deps.log ?? ((): void => {})
 
     for (const target of targets) {
+      if (target.secretUnreadable) {
+        log({
+          delivery_id: newDeliveryId ? newDeliveryId() : freshId(),
+          event,
+          target_id: target.id,
+          host: safeHost(target.url),
+          ok: false,
+          attempts: 0,
+          error: 'secret_unreadable'
+        })
+        continue
+      }
       // Per-target so one bad target can't abort the others, and the whole
       // block is inside try/catch so a build error can't reach the caller.
       const deliveryId = newDeliveryId ? newDeliveryId() : freshId()

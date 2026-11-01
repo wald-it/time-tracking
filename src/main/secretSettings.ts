@@ -1,0 +1,463 @@
+/**
+ * Q32: the iCal feed token and the webhook secrets between the `settings`
+ * table and the encrypted secret store (`secretStore.ts`).
+ *
+ * The database keeps everything that is not secret — the feed switches, the
+ * webhook targets with their URLs and events, and per target the marker
+ * `secretStored` — and the store keeps the secrets. Without system encryption
+ * (`plain` mode) the secrets stay in the database as before. A target whose
+ * stored secret cannot be read fails closed: it is not delivered, instead of
+ * going out unsigned.
+ *
+ * `index.ts` registers the app's store once (`useSecretStore`); the readers
+ * here fall back to the database when none is registered (tests, and the
+ * short window before the store is loaded).
+ */
+import type Database from 'better-sqlite3'
+import { dirname } from 'node:path'
+import {
+  FEED_TOKEN_KEY,
+  SecretStore,
+  webhookSecretKey,
+  type SecretMode,
+  type SecretStoreDeps
+} from './secretStore'
+import {
+  parseWebhookTargets,
+  serializeWebhookTargets,
+  type WebhookTarget
+} from '../shared/webhooks'
+
+type Db = Database.Database
+
+let active: SecretStore | null = null
+
+/** Register the app's (loaded) store. */
+export function useSecretStore(store: SecretStore | null): void {
+  active = store
+}
+
+/** Load and migrate before registering IPC or starting integrations. */
+export async function initializeSecrets(
+  db: Db,
+  dbPath: string,
+  deps: Omit<SecretStoreDeps, 'dir'> = {}
+): Promise<SecretStore> {
+  const dir = dirname(dbPath)
+  const s = new SecretStore({ ...deps, dir })
+  await s.load()
+  // For the whole session, not only the migration: a migration that fails now
+  // leaves plain secrets that a later save moves out, and those replaced cells
+  // must be zeroed as well (see saveWebhookTargets, writeFeedToken).
+  if (s.mode !== 'plain') db.pragma('secure_delete = ON')
+  try {
+    await migrateSecrets(db, s, dir, deps.log)
+  } catch (err) {
+    // Plain database values remain usable and are retried on the next start.
+    deps.log?.(`secret store: migration failed (${(err as Error).name})`)
+  }
+  if (effectiveSecretStorage(db, s) !== 'plain') scrubOnce(db, deps.log)
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- Main-process store registration, not a React hook.
+  useSecretStore(s)
+  return s
+}
+
+function store(explicit?: SecretStore | null): SecretStore | null {
+  return explicit === undefined ? active : explicit
+}
+
+function row(db: Db, key: string): string {
+  return (
+    (
+      db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+        | { value: string }
+        | undefined
+    )?.value ?? ''
+  )
+}
+
+function writeRow(db: Db, key: string, value: string): void {
+  db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, value)
+}
+
+/** How the secrets are kept right now — for the hint in the settings. */
+export function secretStorageMode(explicit?: SecretStore | null): SecretMode {
+  return store(explicit)?.mode ?? 'plain'
+}
+
+/**
+ * What the settings window should say: `plain` also when encryption works but
+ * plain secrets are still in the database (a migration that failed, e.g. the
+ * file could not be written), so the window never claims an encryption that
+ * is not in place.
+ */
+export function effectiveSecretStorage(db: Db, explicit?: SecretStore | null): SecretMode {
+  const mode = secretStorageMode(explicit)
+  if (mode === 'plain') return mode
+  const plainLeft =
+    row(db, FEED_TOKEN_KEY) !== '' || hasPlainWebhookSecret(row(db, 'webhook_targets'))
+  return plainLeft ? 'plain' : mode
+}
+
+/** The iCal feed token, or '' when there is none (or it cannot be read). */
+export function readFeedToken(db: Db, explicit?: SecretStore | null): string {
+  const s = store(explicit)
+  const plain = row(db, FEED_TOKEN_KEY)
+  // A plain value in the database is either `plain` mode or not migrated yet.
+  if (!s || s.mode === 'plain' || plain !== '') return plain
+  return s.get(FEED_TOKEN_KEY) ?? ''
+}
+
+/** Store a new feed token. Settles once it is on disk. */
+export async function writeFeedToken(
+  db: Db,
+  token: string,
+  explicit?: SecretStore | null
+): Promise<void> {
+  const s = store(explicit)
+  if (!s || s.mode === 'plain') {
+    writeRow(db, FEED_TOKEN_KEY, token)
+    return
+  }
+  const before = s.get(FEED_TOKEN_KEY) ?? ''
+  const plainBefore = row(db, FEED_TOKEN_KEY) !== ''
+  await s.set(FEED_TOKEN_KEY, token)
+  try {
+    writeRow(db, FEED_TOKEN_KEY, '')
+  } catch (err) {
+    await restoreSecrets(s, FEED_TOKEN_KEY, new Map(before ? [[FEED_TOKEN_KEY, before]] : []))
+    throw err
+  }
+  // A start migration that failed left the token in plain text; this write
+  // moved it, so the old bytes must leave the free pages too.
+  if (plainBefore && scrubFreeSpace(db)) markScrubbed(db)
+}
+
+/**
+ * Put the store's keys starting with `prefix` back to `snapshot`, after the
+ * database write that should have followed the store write failed: the store
+ * and the database then agree on the previous state again. If this
+ * compensating write fails as well it is logged and left; the database still
+ * holds the previous targets and the next save rewrites the store.
+ */
+async function restoreSecrets(
+  s: SecretStore,
+  prefix: string,
+  snapshot: ReadonlyMap<string, string>
+): Promise<void> {
+  const now = s.entries(prefix)
+  const entries: Array<[string, string]> = [...snapshot]
+  for (const key of now.keys()) if (!snapshot.has(key)) entries.push([key, ''])
+  try {
+    await s.commit(entries)
+  } catch (err) {
+    console.error(
+      `[secrets] rollback after a failed settings write failed (${(err as Error).name})`
+    )
+  }
+}
+
+/**
+ * `settings:set` for `webhook_targets`: secrets to the store, then the blob to
+ * the database. A failed database write restores the store's webhook secrets,
+ * so a removed or cleared secret does not leave a still enabled target without
+ * one. A save that moved plain secrets out (a start migration that failed
+ * earlier) scrubs the free pages like the migration does.
+ */
+export async function saveWebhookTargets(
+  db: Db,
+  raw: string,
+  currentRaw = '',
+  explicit?: SecretStore | null
+): Promise<void> {
+  const s = store(explicit)
+  const encrypted = !!s && s.mode !== 'plain'
+  const snapshot = encrypted ? s.entries('webhook:') : new Map<string, string>()
+  const plainBefore = hasPlainWebhookSecret(currentRaw)
+  const stored = await prepareWebhookTargets(raw, s, currentRaw)
+  try {
+    writeRow(db, 'webhook_targets', stored)
+  } catch (err) {
+    if (encrypted) await restoreSecrets(s, 'webhook:', snapshot)
+    throw err
+  }
+  if (encrypted && plainBefore && scrubFreeSpace(db)) markScrubbed(db)
+}
+
+/**
+ * The webhook targets with their secrets filled in for delivery.
+ * A target whose secret is stored but cannot be read comes
+ * back with `secret: ''` and `secretUnreadable: true`.
+ */
+export function readWebhookTargets(db: Db, explicit?: SecretStore | null): WebhookTarget[] {
+  const s = store(explicit)
+  return parseWebhookTargets(row(db, 'webhook_targets')).map((t) => {
+    if (t.secret !== '' || !t.secretStored) return { ...t, secretUnreadable: undefined }
+    const secret = s && s.mode === 'encrypted' ? s.get(webhookSecretKey(t.id)) : undefined
+    return secret === undefined
+      ? { ...t, secret: '', secretUnreadable: true }
+      : { ...t, secret, secretUnreadable: undefined }
+  })
+}
+
+/**
+ * Only markers cross IPC, including in plain mode or after a failed migration.
+ * `secretUnreadable` tells the window that a stored secret is missing on this
+ * machine (a backup restored elsewhere, or an unreadable file), so it can say
+ * so at the target; the secret itself never crosses.
+ */
+export function webhookTargetsForRenderer(db: Db, explicit?: SecretStore | null): string {
+  const unreadable = new Set(
+    readWebhookTargets(db, explicit)
+      .filter((t) => t.secretUnreadable)
+      .map((t) => t.id)
+  )
+  return serializeWebhookTargets(
+    parseWebhookTargets(row(db, 'webhook_targets')).map((t) => ({
+      ...t,
+      secret: '',
+      secretStored: t.secret !== '' || t.secretStored ? true : undefined,
+      secretUnreadable: unreadable.has(t.id) ? true : undefined
+    }))
+  )
+}
+
+/** Settings row behind `wasFeedTokenRecreated`; main-only, never sent as a raw row. */
+export const FEED_TOKEN_RECREATED_KEY = 'feed_token_recreated'
+
+/**
+ * Set at startup when the feed is switched on but no token could be found, so
+ * a new one was minted: the subscription URL changed (typically a backup
+ * restored on another machine). Kept in the database, so the hint survives a
+ * restart before the user opened the settings; cleared when the user
+ * regenerates the token.
+ */
+export function markFeedTokenRecreated(db: Db, value: boolean): void {
+  if (value) writeRow(db, FEED_TOKEN_RECREATED_KEY, '1')
+  else db.prepare(`DELETE FROM settings WHERE key = ?`).run(FEED_TOKEN_RECREATED_KEY)
+}
+
+export function wasFeedTokenRecreated(db: Db): boolean {
+  return row(db, FEED_TOKEN_RECREATED_KEY) === '1'
+}
+
+/** Resolve the feed token through the store, other feed settings through SQLite. */
+export function feedSettings(db: Db): (key: string) => string {
+  return (key) => (key === FEED_TOKEN_KEY ? readFeedToken(db) : row(db, key))
+}
+
+/**
+ * The `webhook_targets` blob to store for targets coming from the settings
+ * window: secrets go to the store, the blob keeps none. Settles once the store
+ * is on disk, so the caller writes the blob only after that.
+ *
+ * An empty secret with `secretStored` keeps the previous secret. Explicit
+ * clearing removes the marker. This also keeps an unreadable target closed.
+ */
+export async function prepareWebhookTargets(
+  raw: string,
+  explicit?: SecretStore | null,
+  currentRaw = ''
+): Promise<string> {
+  const s = store(explicit)
+  const targets = parseWebhookTargets(raw)
+  const current = new Map(parseWebhookTargets(currentRaw).map((t) => [t.id, t]))
+  const out: WebhookTarget[] = []
+  const plain = !s || s.mode === 'plain'
+  // Collected and written once at the end, together with the prune, so a
+  // failed write leaves every secret as it was (see SecretStore.commit).
+  const changes: Array<[string, string]> = []
+  for (const t of targets) {
+    const rest = { ...t }
+    delete rest.secretUnreadable
+    const kept = current.get(t.id)?.secret || (plain ? parkedPlainSecrets.get(t.id) : '') || ''
+    const secret = rest.secret || (rest.secretStored ? kept : '')
+    if (!s || s.mode === 'plain') {
+      out.push(
+        secret === '' && rest.secretStored ? rest : { ...rest, secret, secretStored: undefined }
+      )
+      continue
+    }
+    const key = webhookSecretKey(t.id)
+    if (secret !== '') {
+      changes.push([key, secret])
+      out.push({ ...rest, secret: '', secretStored: true })
+    } else if (rest.secretStored) {
+      out.push({ ...rest, secretStored: true })
+    } else {
+      changes.push([key, ''])
+      out.push({ ...rest, secretStored: undefined })
+    }
+  }
+  if (plain) {
+    // Plain mode keeps secrets in the blob, so a target the parser drops for
+    // now (half-typed URL) would lose its secret with it. Park it in memory
+    // until the target comes back or the list no longer names it.
+    const saved = new Set(out.map((t) => t.id))
+    const named = new Set(rawTargetIds(raw))
+    for (const id of [...parkedPlainSecrets.keys()]) {
+      if (saved.has(id) || !named.has(id)) parkedPlainSecrets.delete(id)
+    }
+    for (const id of named) {
+      const secret = current.get(id)?.secret
+      if (!saved.has(id) && secret) parkedPlainSecrets.set(id, secret)
+    }
+  }
+  if (s && s.mode !== 'plain') {
+    // Prune only targets the window really removed. A target the parser drops
+    // for now (e.g. a URL half-typed when the field lost focus) is still in the
+    // raw list and keeps its secret, so fixing the URL brings it back intact.
+    const keep = new Set([...out.map((t) => t.id), ...rawTargetIds(raw)].map(webhookSecretKey))
+    await s.commit(changes, { prefix: 'webhook:', keep })
+    await s.flush()
+  }
+  return serializeWebhookTargets(out)
+}
+
+/** Plain mode: secrets of targets the last save dropped as invalid (see above). */
+const parkedPlainSecrets = new Map<string, string>()
+
+/** Every object in the stored list, valid or not (2.2 stored it unparsed). */
+function rawObjects(raw: string): Array<Record<string, unknown>> {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (t): t is Record<string, unknown> => !!t && typeof t === 'object' && !Array.isArray(t)
+    )
+  } catch {
+    return []
+  }
+}
+
+function rawSecret(o: Record<string, unknown>): string {
+  return typeof o.secret === 'string' ? o.secret : ''
+}
+
+/** A plain secret anywhere in the stored webhook list, also on a target the parser drops. */
+function hasPlainWebhookSecret(raw: string): boolean {
+  return rawObjects(raw).some((o) => rawSecret(o) !== '')
+}
+
+/** Ids of every object in the raw list, valid or not. */
+function rawTargetIds(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((t) => (t && typeof t === 'object' ? (t as { id?: unknown }).id : undefined))
+      .filter((id): id is string => typeof id === 'string' && id !== '')
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Move plain secrets out of the database (at start). The file is written and
+ * read back before the database rows are emptied, so a crash in between does
+ * no harm and the next start does it again. A plain value in the database
+ * wins over the file — after a restored backup it is the newer intent.
+ */
+export async function migrateSecrets(
+  db: Db,
+  s: SecretStore,
+  dir: string,
+  log: (m: string) => void = (): void => {}
+): Promise<void> {
+  if (s.mode === 'plain') return
+  const token = row(db, FEED_TOKEN_KEY)
+  // The raw objects, not the delivery parser's view: 2.2 stored the window's
+  // list unparsed, so a half-typed target (invalid URL) can carry a secret the
+  // parser drops. Those move as well; one without a usable id cannot be keyed
+  // and loses its secret (it was never delivered or shown).
+  const objects = rawObjects(row(db, 'webhook_targets'))
+  const moving = objects
+    .filter((o) => rawSecret(o) !== '' && typeof o.id === 'string' && o.id !== '')
+    .map((o) => ({ id: o.id as string, secret: rawSecret(o) }))
+  const unkeyed = objects.some(
+    (o) => rawSecret(o) !== '' && !(typeof o.id === 'string' && o.id !== '')
+  )
+  if (token === '' && moving.length === 0 && !unkeyed) return
+
+  if (token !== '') await s.set(FEED_TOKEN_KEY, token)
+  for (const t of moving) await s.set(webhookSecretKey(t.id), t.secret)
+  await s.flush()
+
+  // Read back from disk with a fresh store: only what really arrived there
+  // may leave the database.
+  const check = new SecretStore({ dir, box: s.boxForCheck() })
+  await check.load()
+  const arrived = (key: string, value: string): boolean => check.get(key) === value
+  if (token !== '' && !arrived(FEED_TOKEN_KEY, token)) {
+    log('secret store: migration read-back failed, secrets stay in the database')
+    return
+  }
+  if (moving.some((t) => !arrived(webhookSecretKey(t.id), t.secret))) {
+    log('secret store: migration read-back failed, secrets stay in the database')
+    return
+  }
+
+  // secure_delete zeroes the replaced cells, so the old values do not linger in
+  // freed page space that `db.backup()` would copy into every new backup.
+  db.pragma('secure_delete = ON')
+  db.transaction(() => {
+    if (token !== '') writeRow(db, FEED_TOKEN_KEY, '')
+    const keyed = new Set(moving.map((t) => t.id))
+    const stripped = objects.map((o) =>
+      rawSecret(o) === ''
+        ? o
+        : { ...o, secret: '', secretStored: keyed.has(o.id as string) ? true : undefined }
+    )
+    writeRow(db, 'webhook_targets', JSON.stringify(stripped))
+  })()
+  log('secret store: secrets moved out of the database')
+  if (scrubFreeSpace(db, log)) markScrubbed(db)
+}
+
+/**
+ * Rewrite the file once after a migration: earlier values (an older feed token,
+ * a changed webhook secret) may sit in free pages from before secure_delete.
+ * VACUUM leaves no free space; the checkpoint clears the old frames out of the
+ * WAL file. Best effort: a busy database (another reader) is retried at the
+ * next migration, and the live rows are already clean.
+ */
+export function scrubFreeSpace(db: Db, log: (m: string) => void = (): void => {}): boolean {
+  try {
+    db.exec('VACUUM')
+    // A reader on another connection makes the checkpoint report busy instead
+    // of throwing; the old frames then stay in the WAL, so that is a failure.
+    const [cp] = db.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number }>
+    if (cp && cp.busy !== 0) {
+      log('secret store: free-space scrub incomplete (checkpoint busy)')
+      return false
+    }
+    return true
+  } catch (err) {
+    log(`secret store: free-space scrub skipped (${(err as Error).name})`)
+    return false
+  }
+}
+
+/** Settings row set once the first full scrub after the Q32 update succeeded. */
+export const SECRETS_SCRUBBED_KEY = 'secrets_scrubbed'
+
+/**
+ * One scrub at the first start with the store, also when there was nothing to
+ * migrate: a secret removed earlier (the last webhook deleted, an old feed
+ * token) may still sit in free pages and so in every backup. The marker is
+ * written only after the VACUUM succeeded; a failure (no space, the database
+ * held by another process) is logged, does not stop the start, and the next
+ * start tries again. Skipped while plain secrets are still in the database:
+ * the save that moves them out scrubs (see saveWebhookTargets).
+ *
+ * Runs inside `initializeSecrets`, which `index.ts` awaits before the daily
+ * backup, IPC and the MCP bridge start, so no write of this process overlaps.
+ */
+export function scrubOnce(db: Db, log: (m: string) => void = (): void => {}): void {
+  if (row(db, SECRETS_SCRUBBED_KEY) === '1') return
+  if (scrubFreeSpace(db, log)) markScrubbed(db)
+}
+
+function markScrubbed(db: Db): void {
+  writeRow(db, SECRETS_SCRUBBED_KEY, '1')
+}

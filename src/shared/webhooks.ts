@@ -35,6 +35,17 @@ export interface WebhookTarget {
   events: WebhookEvent[]
   /** Only enabled targets ever fire. Missing/!== true ⇒ off (safe default). */
   enabled: boolean
+  /**
+   * Q32: the secret lives in the encrypted secret store, not in this blob
+   * (`secret` is '' in the database). Not a secret itself.
+   */
+  secretStored?: boolean
+  /**
+   * Q32: the secret is stored but cannot be read on this machine (a restore
+   * elsewhere, a changed key). Set on the way to the window and the delivery,
+   * never stored; such a target is not delivered until a new secret is entered.
+   */
+  secretUnreadable?: boolean
 }
 
 function isWebhookEvent(v: unknown): v is WebhookEvent {
@@ -88,7 +99,9 @@ export function parseWebhookTargets(raw: string | null | undefined): WebhookTarg
       events,
       // Safe default: only an explicit `true` arms a target. A blob missing the
       // flag never fires by accident.
-      enabled: t.enabled === true
+      enabled: t.enabled === true,
+      ...(t.secretStored === true ? { secretStored: true } : {}),
+      ...(t.secretUnreadable === true ? { secretUnreadable: true } : {})
     })
   }
   return out
