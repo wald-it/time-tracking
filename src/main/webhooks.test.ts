@@ -104,7 +104,7 @@ function fakeDb(data: FakeData): Database.Database {
     prepare(sql: string) {
       return {
         get: (...args: unknown[]): unknown => {
-          if (sql.includes("key = 'webhook_targets'")) {
+          if (sql.includes('FROM settings WHERE key = ?') && args[0] === 'webhook_targets') {
             return data.targetsRaw === undefined ? undefined : { value: data.targetsRaw }
           }
           if (sql.includes('FROM settings WHERE key = ?')) {

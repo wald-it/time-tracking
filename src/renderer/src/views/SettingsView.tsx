@@ -20,6 +20,7 @@ import {
 import TagManagementView from './TagManagementView'
 import { GraphAccountSection } from '../components/GraphAccountSection'
 import { IcalFeedSection } from '../components/IcalFeedSection'
+import { FeedTokenRecreatedHint, SecretStorageHint } from '../components/SecretStorageHint'
 import {
   FIELD_LABEL,
   FOCUS,
@@ -1003,6 +1004,11 @@ export default function SettingsView(): React.JSX.Element {
 
             {/* Subscribable iCal feed (v1.17 #169) */}
             <Section title={t('settings.icalFeed.title')}>
+              <SecretStorageHint mode={settings.secret_storage} />
+              <FeedTokenRecreatedHint
+                recreated={settings.feed_token_recreated}
+                enabled={settings.ical_feed_enabled === '1'}
+              />
               <IcalFeedSection
                 enabled={settings.ical_feed_enabled === '1'}
                 port={settings.ical_feed_port ?? ''}
@@ -1012,7 +1018,11 @@ export default function SettingsView(): React.JSX.Element {
             </Section>
 
             {/* Outbound-Webhooks (v1.15 #134) — own contiguous block below MCP */}
-            <WebhooksSection initialRaw={settings.webhook_targets} logsPath={paths.logs} />
+            <WebhooksSection
+              initialRaw={settings.webhook_targets}
+              logsPath={paths.logs}
+              secretStorage={settings.secret_storage}
+            />
           </>
         )}
 
@@ -1294,10 +1304,12 @@ function Row({
  */
 export function WebhooksSection({
   initialRaw,
-  logsPath
+  logsPath,
+  secretStorage
 }: {
   initialRaw: string | undefined
   logsPath: string
+  secretStorage?: Settings['secret_storage']
 }): React.JSX.Element {
   const t = useT()
   const [targets, setTargets] = useState<WebhookTarget[]>(() => parseWebhookTargets(initialRaw))
@@ -1392,6 +1404,7 @@ export function WebhooksSection({
 
   return (
     <Section title={t('settings.webhooks.section')}>
+      <SecretStorageHint mode={secretStorage} />
       <Row label={t('settings.webhooks.section')} hint={t('settings.webhooks.desc')} stacked>
         <div className="flex flex-col gap-4">
           {targets.length === 0 && (
@@ -1479,15 +1492,47 @@ export function WebhooksSection({
                   {t('settings.webhooks.secret')}
                   <input
                     type="password"
+                    aria-label={t('settings.webhooks.secret')}
                     value={tg.secret}
+                    placeholder={tg.secretStored ? t('settings.webhooks.secretStored') : ''}
                     autoComplete="off"
-                    onChange={(e) => patch(tg.id, { secret: e.target.value })}
+                    onChange={(e) =>
+                      patch(tg.id, {
+                        secret: e.target.value,
+                        secretStored: e.target.value !== '' || tg.secretStored ? true : undefined
+                      })
+                    }
                     className={inputClass}
                   />
                   <span className="text-xs" style={{ color: 'var(--ink3)' }}>
-                    {t('settings.webhooks.secretHint')}
+                    {t(
+                      secretStorage === 'plain'
+                        ? 'settings.webhooks.secretHintPlain'
+                        : 'settings.webhooks.secretHint'
+                    )}
                   </span>
+                  {tg.secretUnreadable && tg.secret === '' && (
+                    <span className="text-xs" style={{ color: 'var(--ink3)' }}>
+                      {t('settings.webhooks.secretMissing')}
+                    </span>
+                  )}
                 </label>
+
+                {(tg.secretStored || tg.secret !== '') && (
+                  <button
+                    type="button"
+                    className={`${btnSecondaryClass} w-fit`}
+                    onClick={() =>
+                      patch(tg.id, {
+                        secret: '',
+                        secretStored: undefined,
+                        secretUnreadable: undefined
+                      })
+                    }
+                  >
+                    {t('settings.webhooks.clearSecret')}
+                  </button>
+                )}
 
                 <div className="flex flex-col gap-1.5 text-xs" style={{ color: 'var(--ink3)' }}>
                   {t('settings.webhooks.events')}

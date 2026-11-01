@@ -89,6 +89,16 @@ import {
 import { registerTagHandlers } from './tagHandlers'
 import { registerGraphHandlers } from './graphHandlers'
 import { feedUrl, generateFeedToken } from './icalFeed'
+import {
+  effectiveSecretStorage,
+  feedSettings,
+  FEED_TOKEN_RECREATED_KEY,
+  SECRETS_SCRUBBED_KEY,
+  markFeedTokenRecreated,
+  wasFeedTokenRecreated,
+  webhookTargetsForRenderer,
+  writeFeedToken
+} from './secretSettings'
 import { buildMcpRegistration, type McpRegistration } from './mcpLaunch'
 import {
   readRecentEntries,
@@ -885,8 +895,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         value: string
       }[]
       const settings = Object.fromEntries(
-        rows.filter((r) => !MAIN_ONLY_SETTING_KEYS.has(r.key)).map((r) => [r.key, r.value])
+        rows
+          .filter(
+            (r) =>
+              !MAIN_ONLY_SETTING_KEYS.has(r.key) &&
+              r.key !== 'ical_feed_token' &&
+              r.key !== FEED_TOKEN_RECREATED_KEY &&
+              r.key !== SECRETS_SCRUBBED_KEY
+          )
+          .map((r) => [r.key, r.value])
       ) as unknown as Settings
+      settings.webhook_targets = webhookTargetsForRenderer(db)
+      settings.secret_storage = effectiveSecretStorage(db)
+      if (wasFeedTokenRecreated(db)) settings.feed_token_recreated = true
       return ok(settings)
     } catch (e) {
       return fail(e)
@@ -902,29 +923,22 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   )
 
   // ── iCal feed (#169) ───────────────────────────────────────────
-  const readSetting = (key: string): string | undefined =>
-    (
-      db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
-        | { value: string }
-        | undefined
-    )?.value
-
+  const feedSetting = feedSettings(db)
   ipcMain.handle('icalFeed:url', (): IpcResult<string> => {
     try {
-      return ok(feedUrl(readSetting))
+      return ok(feedUrl(feedSetting))
     } catch (e) {
       return fail(e)
     }
   })
 
   // Regenerating invalidates every stored subscription URL — the UI says so.
-  ipcMain.handle('icalFeed:regenerate', (): IpcResult<string> => {
+  ipcMain.handle('icalFeed:regenerate', async (): Promise<IpcResult<string>> => {
     try {
-      db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES ('ical_feed_token', ?)`).run(
-        generateFeedToken()
-      )
+      await writeFeedToken(db, generateFeedToken())
+      markFeedTokenRecreated(db, false)
       hooks.restartIcalFeed()
-      return ok(feedUrl(readSetting))
+      return ok(feedUrl(feedSetting))
     } catch (e) {
       return fail(e)
     }
