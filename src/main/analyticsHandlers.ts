@@ -184,6 +184,29 @@ export function buildAnalyticsSummary(
         rev: Math.round(r.rev ?? 0)
       }))
 
+      // Same invoice source and worked-time rules, for the selected month and
+      // its eleven predecessors. Do not clamp completed data to daysElapsed.
+      const clientYearWindow = db
+        .prepare(`SELECT DATE(?, '-11 months') AS "from", DATE(?, '+1 month', '-1 day') AS "to"`)
+        .get(anchor, anchor) as { from: string; to: string }
+      const clientYearSql = clientSql.replace(
+        'AND substr(e.segment_date, 1, 7) = ?',
+        'AND e.segment_date BETWEEN ? AND ?'
+      )
+      const byClientYear = {
+        ...clientYearWindow,
+        clients: (
+          db.prepare(clientYearSql).all(clientYearWindow.from, clientYearWindow.to) as ClientRow[]
+        ).map((r) => ({
+          client_id: r.client_id,
+          name: r.name,
+          color: r.color,
+          h: Math.round(r.h ?? 0),
+          b: Math.round(r.b ?? 0),
+          rev: Math.round(r.rev ?? 0)
+        }))
+      }
+
       // ── 3. 12 weeks trailing to end of selected month ─────────────
       type WeekRow = { week_start: string; b: number; n: number; r: number }
 
@@ -355,6 +378,7 @@ export function buildAnalyticsSummary(
         weeks,
         months,
         byClient,
+        byClientYear,
         weekday
       }
     })

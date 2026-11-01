@@ -7,7 +7,7 @@ import type { TranslationKey } from '../../../shared/locales/de'
 import { formatEurWholeDigits, formatSecondsHm } from '../../../shared/currency'
 import { localDateKey } from '../../../shared/dateRanges'
 import { KpiReadout, type KpiDelta } from '../components/auswertung/KpiReadout'
-import { ClientHours } from '../components/auswertung/ClientHours'
+import { ClientHours, type ClientHoursMode } from '../components/auswertung/ClientHours'
 import { WeekdayAverage } from '../components/auswertung/WeekdayAverage'
 import { compareNote } from '../components/auswertung/compareNote'
 import { TrendBands } from '../components/auswertung/TrendBands'
@@ -111,6 +111,8 @@ export default function AuswertungView(): React.JSX.Element {
   const [month, setMonth] = useState(() => new Date().getMonth() + 1) // 1-based
 
   const [chartMode, setChartMode] = useState<'week' | 'month'>('month')
+  // Q13: kept here like chartMode, so a month change does not reset it.
+  const [clientMode, setClientMode] = useState<ClientHoursMode>('month')
 
   const [data, setData] = useState<AnalyticsSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -278,6 +280,20 @@ export default function AuswertungView(): React.JSX.Element {
         </section>
       )}
 
+      {/* Q13: an empty month can still have a year — keep the 12-month view reachable. */}
+      {ready && !data.month.hasData && (data.byClientYear?.clients.length ?? 0) > 0 && (
+        <div className="flex flex-wrap items-start gap-12">
+          <ClientHours
+            clients={data.byClient}
+            clientYear={data.byClientYear}
+            isCurrentMonth={isCurrentMonth}
+            showRevenue={data.month.hasRateConfigured}
+            mode={clientMode}
+            onModeChange={setClientMode}
+          />
+        </div>
+      )}
+
       {/* Data */}
       {hasData && (
         <>
@@ -350,8 +366,11 @@ export default function AuswertungView(): React.JSX.Element {
           <div className="flex flex-wrap items-start gap-12">
             <ClientHours
               clients={data.byClient}
+              clientYear={data.byClientYear}
               isCurrentMonth={isCurrentMonth}
               showRevenue={data.month.hasRateConfigured}
+              mode={clientMode}
+              onModeChange={setClientMode}
             />
             <WeekdayAverage weekday={data.weekday} />
           </div>
