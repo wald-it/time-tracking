@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-11-01
+
 ### Added
 
 - Monthly review shows billing line items, copies them to the clipboard, and saves a daily activity grid as CSV (#465).
