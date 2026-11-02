@@ -14,6 +14,7 @@ All notable changes to TimeTrack are documented here.
 - Gaps in today's working hours are outlined buttons on the Today day scale; a click opens the backfill form with the gap's start and end, and "+ Add entry" now starts at the latest gap (#483).
 - The calendar day panel lists the selected day's gaps as buttons above its entries, independent of the tag filter; a click opens the backfill form with the gap's start and end, and "+ Add entry for …" starts at the latest gap (#483).
 - The idle dialog has a fourth key, "Was work for …": it stops the running entry at the idle start and books the idle span as work for the chosen client and optional project; the quick note then asks for its description (#484).
+- While a timer runs, sleep and screen lock longer than the idle threshold raise the idle dialog on return, starting at the moment the machine went away; listeners exist only while a timer runs and nothing is stored (#484).
 
 ## [2.4.0] — 2026-11-02
 
