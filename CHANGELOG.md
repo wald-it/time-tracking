@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-11-02
+
 ### Added
 
 - Project budget bars show a 28-day pace forecast, separate internal hours, scale ticks and a time-progress mark. Euro budgets without a current rate show a hint in the bar and project form (#478).
