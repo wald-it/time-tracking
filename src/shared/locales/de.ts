@@ -68,6 +68,14 @@ export const de = {
   'ruleCheck.format_name': 'Kontaktperson im Text: {name}.',
   'ruleCheck.too_long': 'Beschreibung: {length} Zeichen, über {threshold}.',
   'ruleCheck.not_billable': 'Hinweis: Eintrag ist nicht abrechenbar.',
+  'settings.workingHours.title': 'Arbeitszeit',
+  'settings.workingHours.start': 'Von',
+  'settings.workingHours.end': 'Bis',
+  'settings.workingHours.days': 'Arbeitstage',
+  'settings.workingHours.hint':
+    'Dieses Fenster dient zur Anzeige ungeklärter Zeit und ist unabhängig vom Zeitfenster des Prüfstands.',
+  'settings.workingHours.invalid':
+    'Bitte gültige Uhrzeiten mit Von vor Bis und mindestens einen Arbeitstag wählen.',
   'settings.ruleCheck.title': 'Prüfstand',
   'settings.ruleCheck.entryMaxHours': 'Maximale Stunden pro Eintrag',
   'settings.ruleCheck.dayMaxHours': 'Maximale Stunden pro Tag',

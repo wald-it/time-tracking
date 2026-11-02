@@ -249,6 +249,8 @@ export interface Settings {
   /** #466: decimal weekly hours and integer cents; empty/absent means no target. */
   target_hours_week?: string
   target_rate_cent?: string
+  /** #481: JSON working window and weekdays; independent of rule_check. */
+  working_hours?: string
   company_name: string
   backup_path: string
   // v1.1

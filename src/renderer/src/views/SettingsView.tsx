@@ -44,6 +44,11 @@ import {
   type WebhookTarget
 } from '../../../shared/webhooks'
 import { isUpdateCheckEnabled } from '../../../shared/updateCheck'
+import {
+  isValidWorkingHours,
+  parseWorkingHours,
+  type WorkingHours
+} from '../../../shared/workingHours'
 import { useFeedbackRules } from './settings/useFeedbackRules'
 import {
   DESCRIPTION_FIELD_LIMIT,
@@ -457,6 +462,14 @@ export default function SettingsView(): React.JSX.Element {
               />
             </Row>
           </Section>
+        )}
+
+        {tab === 'general' && (
+          <WorkingHoursSection
+            raw={settings.working_hours}
+            weekStart={settings.week_start}
+            onChange={(raw) => void update('working_hours', raw)}
+          />
         )}
 
         {/* Timer & Hotkeys */}
@@ -1086,6 +1099,86 @@ function FeedbackRulesSection({
           </ul>
         )}
       </div>
+    </Section>
+  )
+}
+
+function WorkingHoursSection({
+  raw,
+  weekStart,
+  onChange
+}: {
+  raw: string | undefined
+  weekStart: string | undefined
+  onChange: (raw: string) => void
+}): React.JSX.Element {
+  const t = useT()
+  const hintId = useId()
+  const errorId = useId()
+  const [draft, setDraft] = useState(() => ({ raw, fields: parseWorkingHours(raw) }))
+  const fields = draft.raw === raw ? draft.fields : parseWorkingHours(raw)
+  const valid = isValidWorkingHours(fields)
+  const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+  const orderedDays = weekStart === 'sunday' ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0]
+  function change(next: WorkingHours): void {
+    if (!isValidWorkingHours(next)) {
+      setDraft({ raw, fields: next })
+      return
+    }
+    const serialized = JSON.stringify(next)
+    setDraft({ raw: serialized, fields: next })
+    onChange(serialized)
+  }
+  return (
+    <Section title={t('settings.workingHours.title')}>
+      <p id={hintId} className="py-3 text-sm text-[var(--ink2)]">
+        {t('settings.workingHours.hint')}
+      </p>
+      {(['start', 'end'] as const).map((key) => (
+        <Row key={key} label={t(`settings.workingHours.${key}`)}>
+          <input
+            type="time"
+            step="60"
+            aria-label={t(`settings.workingHours.${key}`)}
+            aria-invalid={!valid}
+            aria-describedby={valid ? hintId : `${hintId} ${errorId}`}
+            value={fields[key]}
+            onChange={(e) => change({ ...fields, [key]: e.target.value })}
+            className={inputClass}
+          />
+        </Row>
+      ))}
+      <Row label={t('settings.workingHours.days')}>
+        <div
+          role="group"
+          aria-label={t('settings.workingHours.days')}
+          className="flex flex-wrap gap-2"
+        >
+          {orderedDays.map((day) => (
+            <button
+              key={day}
+              type="button"
+              aria-pressed={fields.days.includes(day)}
+              className={fields.days.includes(day) ? KEY_INV : KEY}
+              onClick={() =>
+                change({
+                  ...fields,
+                  days: fields.days.includes(day)
+                    ? fields.days.filter((value) => value !== day)
+                    : [...fields.days, day].sort((a, b) => a - b)
+                })
+              }
+            >
+              {t(`calendar.days.${dayKeys[day]}`)}
+            </button>
+          ))}
+        </div>
+      </Row>
+      {!valid && (
+        <p id={errorId} role="alert" className="py-3 text-sm">
+          {t('settings.workingHours.invalid')}
+        </p>
+      )}
     </Section>
   )
 }
