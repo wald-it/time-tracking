@@ -19,6 +19,7 @@ import {
   CLIENT_HAS_ENTRIES_ERROR,
   PROJECT_HAS_ENTRIES_ERROR
 } from '../../../shared/masterDataDelete'
+import { useSettingsStore } from '../store/settingsStore'
 import { useToastStore } from '../store/toastStore'
 
 afterEach(cleanup)
@@ -811,5 +812,158 @@ describe('ClientsView — refused delete (#452)', () => {
     const text = within(screen.getByRole('alertdialog')).getByText(/wirklich löschen/).textContent
     expect(text).not.toMatch(/mitgelöscht/)
     expect(text).toMatch(/nur archivieren/)
+  })
+})
+
+describe('Q11 step 2 budget display', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    useSettingsStore.setState({ settings: null })
+  })
+
+  async function showBudget(overrides: Partial<Project> = {}): Promise<void> {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 10, 9, 12))
+    const project: Project = {
+      ...PROJECTS[0],
+      budget_kind: 'eur',
+      budget_period: 'month',
+      budget_cent: 10000,
+      used_cent: 8000,
+      pace_cent: 2800,
+      effective_rate_cent: 6000,
+      internal_minutes: 600,
+      month_internal_minutes: 210,
+      ...overrides
+    }
+    window.api.projects.getAll = vi.fn(async () => ({ ok: true as const, data: [project] }))
+    await renderView()
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /Projekte anzeigen|Show projects/ })[0])
+    })
+  }
+
+  it.each(['de', 'en'] as const)(
+    'shows euro monthly ticks, target, forecast and grey internal hours (%s)',
+    async (locale) => {
+      useSettingsStore.setState({
+        settings: { language: locale } as import('../../../shared/types').Settings
+      })
+      await showBudget()
+      const bar = screen.getByRole('progressbar')
+      expect(bar).toHaveAttribute('aria-valuenow', '80')
+      expect(
+        Array.from(bar.querySelectorAll('[data-budget-tick]')).map(
+          (tick) => (tick as HTMLElement).style.left
+        )
+      ).toEqual(['25%', '50%', '75%'])
+      expect(bar.querySelector('[data-budget-target]')).toHaveStyle({ left: '30%' })
+      // 2000 remaining / (2800/28) = 20 days -> November 29.
+      expect(
+        screen.getByText(
+          locale === 'de' ? 'reicht bis ca. 29.11.2026' : 'lasts until about 29/11/2026'
+        )
+      ).toBeInTheDocument()
+      const internal = screen.getByText(locale === 'de' ? '+ 3,5 h intern' : '+ 3.5 h internal')
+      expect(internal).toHaveStyle({ color: 'var(--ink3)' })
+      expect(internal).toHaveAttribute(
+        'title',
+        locale === 'de'
+          ? 'nicht abrechenbar, zählt nicht zum Budget'
+          : 'non-billable, does not count towards the budget'
+      )
+    }
+  )
+
+  it('shows month-end text when the forecast reaches the next month', async () => {
+    await showBudget({ pace_cent: 1400 })
+    expect(screen.getByText('reicht bis Monatsende')).toBeInTheDocument()
+  })
+
+  it('uses total internal hours and omits an undated total target', async () => {
+    await showBudget({ budget_period: 'total', start_date: null, end_date: null })
+    expect(screen.getByText('+ 10 h intern')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar').querySelector('[data-budget-target]')).toBeNull()
+  })
+
+  it('omits zero internal time and a forecast without pace', async () => {
+    await showBudget({ month_internal_minutes: 0, pace_cent: 0 })
+    expect(screen.queryByText(/h intern/)).toBeNull()
+    expect(screen.queryByText(/reicht bis/)).toBeNull()
+  })
+
+  it.each([
+    ['eur', null, null, 0, true],
+    ['eur', null, 0, 0, true],
+    ['eur', 5000, null, 5000, false],
+    ['eur', 6000, 6000, 0, false],
+    ['eur', 0, 0, 5000, true],
+    ['hours', null, null, 0, false]
+  ] as const)(
+    'rate hint kind=%s effective=%s project=%s client=%s',
+    async (kind, effective, projectRate, clientRate, hint) => {
+      window.api.clients.getAll = vi.fn(async () => ({
+        ok: true as const,
+        data: CLIENTS.map((c) => ({ ...c, rate_cent: clientRate }))
+      }))
+      window.api.rates.list = vi
+        .fn()
+        .mockResolvedValue({ ok: true, data: { rows: [], current_rate_cent: projectRate } })
+      await showBudget({
+        budget_kind: kind,
+        budget_minutes: 600,
+        rate_cent: projectRate,
+        effective_rate_cent: effective
+      })
+      const message = 'Kein Satz: Euro-Budget zählt nicht'
+      expect(Boolean(screen.queryByText(message))).toBe(hint)
+      if (hint) expect(screen.queryByText(/reicht bis/)).toBeNull()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Rollout' }))
+      })
+      const dialog = within(screen.getByRole('dialog'))
+      expect(Boolean(dialog.queryByText(message))).toBe(hint)
+    }
+  )
+
+  it('clears the form hint immediately when a project rate is typed', async () => {
+    window.api.rates.list = vi
+      .fn()
+      .mockResolvedValue({ ok: true, data: { rows: [], current_rate_cent: null } })
+    await showBudget({ rate_cent: null, effective_rate_cent: null })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Rollout' }))
+    })
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText('Kein Satz: Euro-Budget zählt nicht')).toBeInTheDocument()
+    fireEvent.change(dialog.getByPlaceholderText('Leer = Kundensatz'), { target: { value: '60' } })
+    expect(dialog.queryByText('Kein Satz: Euro-Budget zählt nicht')).toBeNull()
+    fireEvent.change(dialog.getByPlaceholderText('Leer = Kundensatz'), { target: { value: '' } })
+    expect(dialog.getByText('Kein Satz: Euro-Budget zählt nicht')).toBeInTheDocument()
+  })
+
+  it('reloads the shown projects after a client save, so the rate hint follows a new client rate', async () => {
+    await showBudget({ rate_cent: null, effective_rate_cent: null })
+    expect(screen.getByText('Kein Satz: Euro-Budget zählt nicht')).toBeInTheDocument()
+    window.api.clients.update = vi.fn(async () => ({ ok: true as const, data: CLIENTS[0] }))
+    window.api.projects.getAll = vi.fn(async () => ({
+      ok: true as const,
+      data: [
+        {
+          ...PROJECTS[0],
+          budget_kind: 'eur' as const,
+          budget_cent: 10000,
+          effective_rate_cent: 6000
+        }
+      ]
+    }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Acme' }))
+    })
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Speichern' }))
+    })
+    expect(window.api.projects.getAll).toHaveBeenCalled()
+    expect(screen.queryByText('Kein Satz: Euro-Budget zählt nicht')).toBeNull()
   })
 })

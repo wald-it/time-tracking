@@ -137,31 +137,43 @@ export function feeCentSql(step: number): string {
 /**
  * Budget consumption per project, one row per `project_id` with
  * Minutes and cents, over all time and in the supplied local calendar month.
- * Only completed, live, billable segments from the invoice's billing_lines.
+ * Completed, live segments from the invoice's billing_lines. Internal time
+ * stays separate from consumption and pace, in worked minutes.
  * Every budget reader (projects:getAll, projects:getBudgetStatus, MCP
  * list_projects) uses this one query.
  */
 export function budgetUsageSql(): string {
   return `SELECT e.project_id AS project_id,
-            COALESCE(SUM(e.billed_minutes), 0) AS used_minutes,
-            COALESCE(SUM(e.fee_cent), 0) AS used_cent,
-            COALESCE(SUM(CASE WHEN e.segment_date >= :monthStart AND e.segment_date < :nextMonthStart
+            COALESCE(SUM(CASE WHEN e.billable = 1 THEN e.billed_minutes ELSE 0 END), 0) AS used_minutes,
+            COALESCE(SUM(CASE WHEN e.billable = 1 THEN e.fee_cent ELSE 0 END), 0) AS used_cent,
+            COALESCE(SUM(CASE WHEN e.billable = 1 AND e.segment_date >= :monthStart AND e.segment_date < :nextMonthStart
               THEN e.billed_minutes ELSE 0 END), 0) AS month_used_minutes,
-            COALESCE(SUM(CASE WHEN e.segment_date >= :monthStart AND e.segment_date < :nextMonthStart
-              THEN e.fee_cent ELSE 0 END), 0) AS month_used_cent
+            COALESCE(SUM(CASE WHEN e.billable = 1 AND e.segment_date >= :monthStart AND e.segment_date < :nextMonthStart
+              THEN e.fee_cent ELSE 0 END), 0) AS month_used_cent,
+            COALESCE(SUM(CASE WHEN e.billable = 1 AND e.segment_date >= :paceStart AND e.segment_date < :paceEnd
+              THEN e.billed_minutes ELSE 0 END), 0) AS pace_minutes,
+            COALESCE(SUM(CASE WHEN e.billable = 1 AND e.segment_date >= :paceStart AND e.segment_date < :paceEnd
+              THEN e.fee_cent ELSE 0 END), 0) AS pace_cent,
+            COALESCE(SUM(CASE WHEN e.billable = 0 THEN e.raw_min ELSE 0 END), 0) AS internal_minutes,
+            COALESCE(SUM(CASE WHEN e.billable = 0 AND e.segment_date >= :monthStart AND e.segment_date < :nextMonthStart
+              THEN e.raw_min ELSE 0 END), 0) AS month_internal_minutes
           FROM billing_lines e
-          WHERE e.stopped_at IS NOT NULL AND e.billable = 1
+          WHERE e.stopped_at IS NOT NULL
           GROUP BY e.project_id`
 }
 
 /** Local dates, not UTC instants: also correct just after midnight on the 1st. */
-export function budgetMonthBounds(now = new Date()): {
+export function budgetBounds(now = new Date()): {
   monthStart: string
   nextMonthStart: string
+  paceStart: string
+  paceEnd: string
 } {
   return {
     monthStart: localDateKey(new Date(now.getFullYear(), now.getMonth(), 1)),
-    nextMonthStart: localDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 1))
+    nextMonthStart: localDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 1)),
+    paceStart: localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 27)),
+    paceEnd: localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
   }
 }
 
@@ -194,6 +206,44 @@ export function projectBudgetStatus(
 /** A zero budget is set; any positive consumption exceeds it. */
 export function budgetPercent(budget: number, used: number): number {
   return budget > 0 ? (used / budget) * 100 : used > 0 ? 100 : 0
+}
+
+/** Text-only forecast; presentation translates the result and formats its local date. */
+export function budgetForecast(
+  status: BudgetStatus,
+  pace: number,
+  now: Date,
+  effectiveRateCent: number | null = null
+): { kind: 'monthEnd' } | { kind: 'date'; date: Date } | null {
+  if (
+    status.budget === null ||
+    pace <= 0 ||
+    status.budget - status.used <= 0 ||
+    (status.kind === 'eur' && !(effectiveRateCent !== null && effectiveRateCent > 0))
+  )
+    return null
+  const days = Math.floor((status.budget - status.used) / (pace / 28))
+  const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days)
+  if (status.period === 'month' && date >= new Date(now.getFullYear(), now.getMonth() + 1, 1)) {
+    return { kind: 'monthEnd' }
+  }
+  return { kind: 'date', date }
+}
+
+/** Calendar-day progress, independent of 23/25-hour daylight-saving days. */
+export function budgetTargetShare(
+  project: Pick<Project, 'budget_period' | 'start_date' | 'end_date'>,
+  now: Date
+): number | null {
+  if (project.budget_period === 'month') {
+    return now.getDate() / new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  }
+  if (!project.start_date || !project.end_date) return null
+  const start = Date.parse(project.start_date.slice(0, 10))
+  const end = Date.parse(project.end_date.slice(0, 10))
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.max(0, Math.min(1, (today - start) / (end - start)))
 }
 
 export function formatBudgetAmount(value: number, kind: BudgetStatus['kind']): string {

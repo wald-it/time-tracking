@@ -13,7 +13,7 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
-import { budgetUsageSql, budgetPeriodUsageSql, budgetMonthBounds } from '../shared/currency'
+import { budgetUsageSql, budgetPeriodUsageSql, budgetBounds } from '../shared/currency'
 import { readDefaultIntervalMin } from '../shared/billingProfile'
 import { localDayRange, localMonthRange } from '../shared/dateRanges'
 import { dueRateSql } from '../shared/dueRate'
@@ -356,7 +356,7 @@ export function listProjects(
   const order = `ORDER BY CASE WHEN p.status = 'active' THEN 0 WHEN p.status = 'paused' THEN 1 ELSE 2 END, p.name`
   const rows = db
     .prepare(`${base} ${where} ${order}`)
-    .all(budgetMonthBounds(), ...params) as ProjectRow[]
+    .all(budgetBounds(), ...params) as ProjectRow[]
   return rows
     .filter(
       (r) =>

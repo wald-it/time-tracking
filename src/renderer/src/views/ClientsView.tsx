@@ -1,4 +1,10 @@
-import { projectBudgetStatus, budgetPercent, formatBudgetAmount } from '../../../shared/currency'
+import {
+  projectBudgetStatus,
+  budgetPercent,
+  formatBudgetAmount,
+  budgetForecast,
+  budgetTargetShare
+} from '../../../shared/currency'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type {
   Client,
@@ -232,6 +238,11 @@ export default function ClientsView(): React.JSX.Element {
     }
     await loadClients()
     bumpClientsVersion()
+    // A client rate change alters the shown projects' inherited rate (rate hint, forecast).
+    if (editingClient && projectsByClient[editingClient.id]) {
+      await loadProjectsForClient(editingClient.id)
+      bumpProjectsVersion()
+    }
     setShowForm(false)
     setEditingClient(null)
     return null
@@ -428,6 +439,7 @@ export default function ClientsView(): React.JSX.Element {
             bumpProjectsVersion()
           }}
           clientColor={clients.find((c) => c.id === projectFormClientId)?.color ?? ''}
+          clientRateCent={clients.find((c) => c.id === projectFormClientId)?.rate_cent ?? null}
           onSave={handleProjectSave}
           onClose={() => {
             setShowProjectForm(false)
@@ -768,6 +780,17 @@ function ProjectItem({
   const budgetPct = hasBudget ? Math.min(100, budgetPercent(budgetMin, usedMin)) : 0
   const overBudget = hasBudget && usedMin > budgetMin
   const budgetWarn = hasBudget && budgetPct >= 80
+  const now = new Date()
+  const noRate = budgetStatus.kind === 'eur' && !((p.effective_rate_cent ?? 0) > 0)
+  const forecast = budgetForecast(
+    budgetStatus,
+    (budgetStatus.kind === 'eur' ? p.pace_cent : p.pace_minutes) ?? 0,
+    now,
+    p.effective_rate_cent
+  )
+  const targetShare = budgetTargetShare(p, now)
+  const internalMinutes =
+    (budgetStatus.period === 'month' ? p.month_internal_minutes : p.internal_minutes) ?? 0
 
   return (
     <li className="group flex min-h-11 min-w-0 items-center gap-2.5 border-t border-[var(--line)] py-1 min-[960px]:gap-5 first:border-t-0 hover:bg-[var(--key)]">
@@ -799,7 +822,7 @@ function ProjectItem({
           </span>
         )}
         {hasBudget && (
-          <span className="flex items-center gap-1.5 mt-1">
+          <span className="flex items-center flex-wrap gap-1.5 mt-1">
             <span
               role="progressbar"
               aria-label={t(
@@ -810,7 +833,7 @@ function ProjectItem({
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={budgetPct}
-              className="h-1 flex-1 overflow-hidden"
+              className="relative h-1 flex-1 min-w-16"
               style={{ background: 'var(--line)' }}
             >
               <span
@@ -826,6 +849,23 @@ function ProjectItem({
                       : 'var(--tick)'
                 }}
               />
+              {[25, 50, 75].map((percent) => (
+                <span
+                  key={percent}
+                  aria-hidden="true"
+                  data-budget-tick={percent}
+                  className="absolute top-0 h-full border-l border-[var(--ink3)] opacity-60"
+                  style={{ left: `${percent}%` }}
+                />
+              ))}
+              {targetShare !== null && (
+                <span
+                  aria-hidden="true"
+                  data-budget-target
+                  className="absolute -top-0.5 h-2 border-l border-[var(--ink3)]"
+                  style={{ left: `${targetShare * 100}%` }}
+                />
+              )}
             </span>
             <span
               className="font-num shrink-0 text-xs"
@@ -837,6 +877,36 @@ function ProjectItem({
               {formatBudgetAmount(budgetMin, budgetStatus.kind)}
               {budgetStatus.period === 'month' && ` · ${t('projects.form.budgetMonth')}`}
             </span>
+            {internalMinutes > 0 && (
+              <span
+                className="font-num text-xs"
+                style={{ color: 'var(--ink3)' }}
+                title={t('projects.budget.internalHint')}
+              >
+                {t('projects.budget.internal', {
+                  hours: (internalMinutes / 60).toLocaleString(
+                    locale === 'en' ? 'en-GB' : 'de-DE',
+                    { maximumFractionDigits: 1 }
+                  )
+                })}
+              </span>
+            )}
+            {(noRate || forecast) && (
+              <span className="basis-full text-xs" style={{ color: 'var(--ink3)' }}>
+                {noRate
+                  ? t('projects.budget.noRate')
+                  : forecast?.kind === 'monthEnd'
+                    ? t('projects.budget.monthEnd')
+                    : forecast?.kind === 'date'
+                      ? t('projects.budget.until', {
+                          date: forecast.date.toLocaleDateString(
+                            locale === 'en' ? 'en-GB' : 'de-DE',
+                            { day: '2-digit', month: '2-digit', year: 'numeric' }
+                          )
+                        })
+                      : null}
+              </span>
+            )}
           </span>
         )}
       </span>
@@ -1298,12 +1368,14 @@ function ProjectFormModal({
   project,
   onBillingChanged,
   clientColor,
+  clientRateCent,
   onSave,
   onClose
 }: {
   project: Project | null
   onBillingChanged: () => void
   clientColor: string
+  clientRateCent: number | null
   onSave: (data: {
     name: string
     color: string
@@ -1327,7 +1399,7 @@ function ProjectFormModal({
   )
   const [rateInput, setRateInput] = useState(() =>
     project?.rate_cent !== null && project?.rate_cent !== undefined
-      ? formatRateInput(project.rate_cent)
+      ? formatRateInput(project.rate_cent) || '0'
       : ''
   )
   // As in the client form; null is the inherited client rate.
@@ -1356,6 +1428,11 @@ function ProjectFormModal({
     const value = current.budget / (current.kind === 'eur' ? 100 : 60)
     return value % 1 === 0 ? String(value) : value.toFixed(2)
   })
+  const formRate = rateInput.trim() === '' ? clientRateCent : parseRateInput(rateInput)
+  const noBudgetRate =
+    budgetKind === 'eur' &&
+    budgetInput.trim() !== '' &&
+    !(typeof formRate === 'number' && formRate > 0)
   // v1.12 #105
   const [contactPerson, setContactPerson] = useState(project?.contact_person ?? '')
 
@@ -1650,6 +1727,11 @@ function ProjectFormModal({
           <p className="text-xs" style={{ color: 'var(--ink3)' }}>
             {t('projects.form.budgetHint')}
           </p>
+          {noBudgetRate && (
+            <p className="text-xs" style={{ color: 'var(--ink3)' }}>
+              {t('projects.budget.noRate')}
+            </p>
+          )}
         </div>
 
         {/* Buttons */}
