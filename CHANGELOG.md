@@ -13,6 +13,7 @@ All notable changes to TimeTrack are documented here.
 - Today shows the unexplained time within the working hours under its total, and calendar cells of past workdays with unexplained time get a small tick, with the duration in the cell's title and accessible label (#482).
 - Gaps in today's working hours are outlined buttons on the Today day scale; a click opens the backfill form with the gap's start and end, and "+ Add entry" now starts at the latest gap (#483).
 - The calendar day panel lists the selected day's gaps as buttons above its entries, independent of the tag filter; a click opens the backfill form with the gap's start and end, and "+ Add entry for …" starts at the latest gap (#483).
+- The idle dialog has a fourth key, "Was work for …": it stops the running entry at the idle start and books the idle span as work for the chosen client and optional project; the quick note then asks for its description (#484).
 
 ## [2.4.0] — 2026-11-02
 

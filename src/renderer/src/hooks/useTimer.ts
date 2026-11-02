@@ -6,6 +6,8 @@ import { useEntriesStore } from '../store/entriesStore'
 import { readLastStartPair, useStartTimerModalStore } from '../store/startTimerModalStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
 
+export type IdleWorkResult = 'createFailed' | null
+
 export interface ResumeFailure {
   error: string
   path: 'start' | 'switch'
@@ -54,6 +56,8 @@ export interface UseTimerResult {
   idleKeep: () => void
   idleStopAtIdle: () => Promise<void>
   idleMarkPause: () => Promise<void>
+  /** 'createFailed': the timer stopped, but the idle span could not be booked (caller shows it). */
+  idleWorkFor: (clientId: number, projectId?: number | null) => Promise<IdleWorkResult>
 }
 
 /**
@@ -550,6 +554,47 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     dismissIdle()
   }, [dismissIdle])
 
+  const idleWorkFor = useCallback(
+    async (clientId: number, projectId?: number | null): Promise<IdleWorkResult> => {
+      const { idleEvent: ev, runningEntry: entry, isLoading } = useTimerStore.getState()
+      if (isLoading) return null
+      if (!ev || !entry) {
+        dismissIdle()
+        return null
+      }
+      setIsLoading(true)
+      try {
+        const boundary = ev.idleSince
+        const stopped = await window.api.entries.stopAt(entry.id, boundary)
+        if (!stopped.ok) return null
+        let created: IpcResult<Entry>
+        try {
+          created = await window.api.entries.create({
+            client_id: clientId,
+            project_id: projectId ?? null,
+            description: '',
+            started_at: boundary,
+            stopped_at: new Date().toISOString(),
+            source: 'idle'
+          })
+        } catch {
+          created = { ok: false, error: 'IPC failed' }
+        }
+        // The stop already committed, including when booking the idle span failed.
+        setRunningEntry(null)
+        setDescription('')
+        await pushTrayUpdate(false, '')
+        dismissIdle()
+        if (!created.ok) return 'createFailed'
+        setQuickNoteEntry(created.data)
+        return null
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [dismissIdle, setDescription, setIsLoading, setQuickNoteEntry, setRunningEntry]
+  )
+
   // External writes (#133): the MCP bridge / hardware keys mutate the DB in
   // the main process and broadcast 'data:changed' — the renderer, which owns
   // the timer state machine, bumps the entries version in the global listener,
@@ -648,7 +693,8 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     resume,
     idleKeep,
     idleStopAtIdle,
-    idleMarkPause
+    idleMarkPause,
+    idleWorkFor
   }
 }
 
