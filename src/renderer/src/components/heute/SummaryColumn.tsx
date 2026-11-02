@@ -5,9 +5,10 @@ import { Readout } from './Readout'
 import { WeekMeter } from './WeekMeter'
 import { useSettingsStore } from '../../store/settingsStore'
 import { parseWeeklyTargetHours } from '../../../../shared/targets'
-import { unexplainedGaps, unexplainedMs, type GapEntry } from '../../../../shared/gaps'
+import { unexplainedMs, type GapEntry } from '../../../../shared/gaps'
 import { parseWorkingHours } from '../../../../shared/workingHours'
 import { useNow } from '../../contexts/NowContext'
+import { todayGaps } from './todayGaps'
 
 /**
  * The Summen column beside the display (HANDOFF §4.1): HEUTE readout L with
@@ -43,26 +44,8 @@ export function SummaryColumn({
   const t = useT()
   const { locale } = useLocale()
   const now = new Date(useNow())
-  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const previousStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
   const hours = parseWorkingHours(useSettingsStore((s) => s.settings?.working_hours))
-  // A carryover alone does not make today eligible. The dashboard includes
-  // running carryovers, but not yesterday's already-stopped entries.
-  const ownEntries = todayEntries.filter(
-    (entry) => new Date(entry.started_at).toDateString() === dayStart.toDateString()
-  )
-  const carryovers = todayEntries.filter((entry) => {
-    const start = Date.parse(entry.started_at)
-    return (
-      start >= previousStart.getTime() &&
-      start < dayStart.getTime() &&
-      (entry.stopped_at === null ? now.getTime() : Date.parse(entry.stopped_at)) >
-        dayStart.getTime()
-    )
-  })
-  const unexplained = ownEntries.length
-    ? unexplainedMs(unexplainedGaps([...ownEntries, ...carryovers], dayStart, now, hours))
-    : 0
+  const unexplained = unexplainedMs(todayGaps(todayEntries, now, hours))
   const weeklyTarget = parseWeeklyTargetHours(
     useSettingsStore((s) => s.settings?.target_hours_week)
   )

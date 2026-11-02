@@ -178,9 +178,17 @@ export function barGeometry(entry: ScaleEntry, range: DayRange, nowMs: number): 
   return { left, width, running: isRunning(entry), startSec, endSec }
 }
 
-/** Everything the DayScale component draws, in one pass. Bars keep the input order. */
-export function layoutDayScale(entries: ScaleEntry[], nowMs: number): DayScaleLayout {
-  const range = dayRange(entries, nowMs)
+/**
+ * Everything the DayScale component draws, in one pass. Bars keep the input
+ * order. `extraSpans` (e.g. unexplained gaps before the first entry) only widen
+ * the range so they stay visible; they get no bar.
+ */
+export function layoutDayScale(
+  entries: ScaleEntry[],
+  nowMs: number,
+  extraSpans: ScaleEntry[] = []
+): DayScaleLayout {
+  const range = dayRange([...entries, ...extraSpans], nowMs)
   const nowSec = clockSeconds(nowMs, nowMs)
   return {
     range,

@@ -19,6 +19,8 @@ interface Props {
   entry?: Entry
   /** Default date used in create-mode when no entry is supplied. */
   defaultDate?: Date
+  /** Default end in create-mode; omitted means one hour after the start. */
+  defaultEnd?: Date
   clients: Client[]
   onSaved: (entry: Entry) => void
   onCancel: () => void
@@ -51,6 +53,7 @@ function toDateInputValue(d: Date): string {
 export function EntryEditForm({
   entry,
   defaultDate,
+  defaultEnd,
   clients,
   onSaved,
   onCancel
@@ -61,7 +64,9 @@ export function EntryEditForm({
   const initialStart = entry ? new Date(entry.started_at) : (defaultDate ?? new Date())
   const initialStop = entry?.stopped_at
     ? new Date(entry.stopped_at)
-    : new Date(initialStart.getTime() + 60 * 60 * 1000)
+    : !entry && defaultEnd
+      ? defaultEnd
+      : new Date(initialStart.getTime() + 60 * 60 * 1000)
 
   // #334: the first half of an entry across midnight (or a whole day) ends at
   // the next midnight, which the form shows as 00:00 (01:00 where the clock

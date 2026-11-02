@@ -407,6 +407,7 @@ export const de = {
   'today.table.resume': 'Fortsetzen',
   'today.table.resumeArchived': 'Der Kunde ist archiviert.',
   'today.dayscale.running': 'läuft',
+  'today.dayscale.gap': 'Lücke {start}–{end} · ungeklärt {duration} · nachtragen',
 
   // ── CalendarView ─────────────────────────────────────────────────────────
   'calendar.nav.prev': 'Vorheriger Monat',

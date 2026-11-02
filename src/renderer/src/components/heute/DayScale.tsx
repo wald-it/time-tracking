@@ -1,8 +1,16 @@
 import { useMemo } from 'react'
 import type { Client, Entry, Project } from '../../../../shared/types'
+import type { Gap } from '../../../../shared/gaps'
 import { entryRowKey } from '../../../../shared/entryKey'
 import { useLocale, useT } from '../../contexts/I18nContext'
-import { entrySecondsToday, formatClock, formatHm, layoutDayScale } from './dayScaleLayout'
+import {
+  clockSeconds,
+  entrySecondsToday,
+  formatClock,
+  formatHm,
+  layoutDayScale,
+  pctOf
+} from './dayScaleLayout'
 
 /**
  * Tagesverlauf — the signature element of Heute (HANDOFF §3.8).
@@ -18,18 +26,35 @@ export function DayScale({
   clientsById,
   projectsById,
   nowMs,
-  onSelect
+  onSelect,
+  gaps,
+  onGap
 }: {
   entries: Entry[]
   clientsById: Map<number, Client>
   projectsById: Map<number, Project>
   nowMs: number
   onSelect: (e: Entry) => void
+  gaps: Gap[]
+  onGap: (gap: Gap) => void
 }): React.JSX.Element {
   const t = useT()
   const { locale } = useLocale()
 
-  const layout = useMemo(() => layoutDayScale(entries, nowMs), [entries, nowMs])
+  // Gaps widen the range too, so a gap before the first entry (a working
+  // window that starts before 07:00) stays visible and clickable.
+  const layout = useMemo(
+    () =>
+      layoutDayScale(
+        entries,
+        nowMs,
+        gaps.map((gap) => ({
+          started_at: new Date(gap.startMs).toISOString(),
+          stopped_at: new Date(gap.endMs).toISOString()
+        }))
+      ),
+    [entries, nowMs, gaps]
+  )
   const isRunning = entries.some((e) => e.stopped_at === null)
 
   // Only the calendar day matters for the title, not every clock tick.
@@ -115,6 +140,36 @@ export function DayScale({
       </div>
 
       <div className="relative mx-3 h-[100px]">
+        {gaps.map((gap) => {
+          const left = pctOf(clockSeconds(gap.startMs, nowMs), layout.range)
+          const right = pctOf(clockSeconds(gap.endMs, nowMs), layout.range)
+          if (right <= left) return null
+          const label = t('today.dayscale.gap', {
+            start: formatClock(gap.startMs),
+            end: formatClock(gap.endMs),
+            duration: formatHm((gap.endMs - gap.startMs) / 1000)
+          })
+          return (
+            <button
+              key={gap.startMs}
+              type="button"
+              title={label}
+              aria-label={label}
+              onClick={() => onGap(gap)}
+              className="absolute cursor-pointer p-0 hover:outline-1 hover:outline-offset-1 hover:outline-solid hover:outline-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-[var(--focus)]"
+              style={{
+                top: 22,
+                height: 40,
+                left: `${left.toFixed(3)}%`,
+                width: `${(right - left).toFixed(3)}%`,
+                minWidth: `min(4px, ${(100 - left).toFixed(3)}%)`,
+                border: '1px solid var(--tick)',
+                borderRadius: 1,
+                background: 'transparent'
+              }}
+            />
+          )
+        })}
         {entries.map((e, i) => {
           const bar = layout.bars[i]
           const client = clientsById.get(e.client_id)
