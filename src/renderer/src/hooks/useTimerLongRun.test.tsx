@@ -273,6 +273,25 @@ describe('long-running engine and dialog', () => {
     expect(s.useTimerStore.getState().idleEvent).toBeNull()
     expect(s.api.idle.dismiss).toHaveBeenCalled()
   })
+  // Codex counter-check round 3 on #485: an untouched field shows the time an
+  // untouched stop saves, also after the dialog stood open for an hour.
+  it('untouched fields follow the clock and show what the stop saves', async () => {
+    const s = await setup()
+    expect(screen.getByLabelText('Ende')).toHaveValue('02:00')
+    await tick(60 * 60_000)
+    expect(screen.getByLabelText('Datum')).toHaveValue('2026-11-02')
+    expect(screen.getByLabelText('Ende')).toHaveValue('03:00')
+    await click('Stoppen um …')
+    const saved = new Date(s.api.entries.stopAt.mock.calls[0][1])
+    expect([saved.getHours(), saved.getMinutes()]).toEqual([3, 0])
+  })
+  it('a touched field stops following the clock', async () => {
+    await setup()
+    fireEvent.change(screen.getByLabelText('Ende'), { target: { value: '01:30' } })
+    await tick(60 * 60_000)
+    expect(screen.getByLabelText('Ende')).toHaveValue('01:30')
+    expect(screen.getByLabelText('Datum')).toHaveValue('2026-11-02')
+  })
   it('uses click time for an untouched field and opens the quick note after an empty description', async () => {
     const s = await setup({ description: '' })
     await tick(75_123)

@@ -56,10 +56,13 @@ function LongRunPrompt({ entry, onEdit }: { entry: Entry; onEdit: () => void }):
   // itself rechecks against Date.now() (see stop below).
   const now = useNow()
   const keepRef = useRef<HTMLButtonElement>(null)
-  const [openedAt] = useState(() => new Date())
-  const [date, setDate] = useState(localDate(openedAt))
-  const [time, setTime] = useState(formatTimeHHMM(openedAt))
-  const [touched, setTouched] = useState(false)
+  // Untouched, both fields follow the app clock, so what they show is what an
+  // untouched stop saves (the click time, same minute). The first edit of
+  // either field freezes both at what they showed (Codex counter-check, #485).
+  const [draft, setDraft] = useState<{ date: string; time: string } | null>(null)
+  const touched = draft !== null
+  const date = draft?.date ?? localDate(new Date(now))
+  const time = draft?.time ?? formatTimeHHMM(new Date(now))
   const [error, setError] = useState<string | null>(null)
 
   function stopMs(at: number): number {
@@ -132,8 +135,7 @@ function LongRunPrompt({ entry, onEdit }: { entry: Entry; onEdit: () => void }):
               value={date}
               disabled={timer.isLoading}
               onChange={(e) => {
-                setTouched(true)
-                setDate(e.target.value)
+                setDraft({ date: e.target.value, time })
                 setError(null)
               }}
             />
@@ -146,8 +148,7 @@ function LongRunPrompt({ entry, onEdit }: { entry: Entry; onEdit: () => void }):
               value={time}
               disabled={timer.isLoading}
               onChange={(e) => {
-                setTouched(true)
-                setTime(e.target.value)
+                setDraft({ date, time: e.target.value })
                 setError(null)
               }}
             />
