@@ -9,12 +9,14 @@ export function Readout({
   legend,
   seconds,
   size,
-  sub
+  sub,
+  secondSub
 }: {
   legend: string
   seconds: number
   size: 'L' | 'M'
   sub?: string
+  secondSub?: string
 }): React.JSX.Element {
   const minutes = Math.max(0, Math.floor((Number.isFinite(seconds) ? seconds : 0) / 60))
   return (
@@ -33,6 +35,7 @@ export function Readout({
         <span className="text-[13px] text-[var(--ink2)]">h</span>
       </div>
       {sub && <div className="mt-1.5 text-xs text-[var(--ink3)]">{sub}</div>}
+      {secondSub && <div className="mt-1.5 text-xs text-[var(--ink3)]">{secondSub}</div>}
     </div>
   )
 }

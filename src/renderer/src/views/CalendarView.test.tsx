@@ -437,7 +437,9 @@ describe('CalendarView — selection state (§4.2.3)', () => {
 
   it('labels a cell with weekday, date and hours', async () => {
     await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
-    expect(cell('2026-08-10').getAttribute('aria-label')).toBe('Montag, 10. August, 2:30 Stunden')
+    expect(cell('2026-08-10').getAttribute('aria-label')).toBe(
+      'Montag, 10. August, 2:30 Stunden · ungeklärt 7:30'
+    )
     expect(cell('2026-08-11').getAttribute('aria-label')).toBe(
       'Dienstag, 11. August, keine Einträge'
     )
@@ -868,5 +870,133 @@ describe('CalendarView — open form holds back the panel/drawer switch (PR 3)',
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(document.activeElement).toBe(within(drawer).getByRole('button', { name: /nachtragen/ }))
+  })
+})
+
+describe('CalendarView — unexplained time (#482)', () => {
+  const localTime = (day: number, hour: number): string =>
+    new Date(2026, 7, day, hour).toISOString()
+  const row = (day: number, start: number, end: number): Entry =>
+    makeEntry({ id: day, started_at: localTime(day, start), stopped_at: localTime(day, end) })
+
+  it.each([
+    ['de', 'ungeklärt 9:00'],
+    ['en', 'unexplained 9:00']
+  ])(
+    'marks only past in-month workdays with gaps in %s, with duration in aria and title',
+    async (language, label) => {
+      useSettingsStore.setState({ settings: { language } as unknown as never })
+      await setup({
+        now: localTime(17, 12),
+        byMonth: {
+          '2026-8': [
+            row(10, 9, 10), // past workday, nine hours uncovered
+            row(11, 8, 18), // covered workday
+            row(15, 9, 10), // Saturday
+            row(17, 9, 10), // today, a Monday
+            row(18, 9, 10) // future workday
+          ]
+        }
+      })
+      const past = cell('2026-08-10')
+      const tick = within(past).getByTestId('unexplained-tick')
+      expect(tick.getAttribute('aria-hidden')).toBe('true')
+      expect(tick.textContent).toBe('')
+      expect(past.getAttribute('aria-label')).toMatch(new RegExp(` · ${label}$`))
+      expect(past.getAttribute('title')).toBe(label)
+      expect(past.textContent).not.toContain(label)
+      for (const day of [
+        '2026-07-27',
+        '2026-08-11',
+        '2026-08-12',
+        '2026-08-15',
+        '2026-08-17',
+        '2026-08-18'
+      ]) {
+        expect(within(cell(day)).queryByTestId('unexplained-tick')).toBeNull()
+        expect(cell(day).getAttribute('aria-label')).not.toMatch(/ungeklärt|unexplained/)
+        expect(cell(day).getAttribute('title')).toBeNull()
+      }
+    }
+  )
+
+  it('appends the duration to the existing revenue title and retains billed status', async () => {
+    await setup({ byMonth: { '2026-8': [{ ...priced(row(10, 9, 10), 60, 10000), billed: 1 }] } })
+    const day = cell('2026-08-10')
+    expect(day.getAttribute('aria-label')).toBe(
+      'Montag, 10. August, 1:00 Stunden · 100,00 € · abgerechnet · ungeklärt 9:00'
+    )
+    expect(within(day).getByTestId('day-number').parentElement?.getAttribute('title')).toBe(
+      '100,00 € · ungeklärt 9:00'
+    )
+  })
+
+  it('uses working_hours from the settings store, including configured weekend workdays', async () => {
+    useSettingsStore.setState({
+      settings: {
+        working_hours: JSON.stringify({ start: '09:00', end: '12:00', days: [6] })
+      } as unknown as never
+    })
+    await setup({
+      now: localTime(17, 12),
+      byMonth: { '2026-8': [row(10, 9, 10), row(15, 9, 10)] }
+    })
+    expect(within(cell('2026-08-10')).queryByTestId('unexplained-tick')).toBeNull()
+    expect(cell('2026-08-15').getAttribute('aria-label')).toContain(' · ungeklärt 2:00')
+  })
+
+  it.each([false, true])(
+    'clips a previous-day carryover for coverage without adding it to cell hours (running: %s)',
+    async (running) => {
+      const carryover = makeEntry({
+        id: 90,
+        started_at: localTime(9, 23),
+        stopped_at: running ? null : localTime(10, 9)
+      })
+      await setup({ byMonth: { '2026-8': [carryover, row(10, 9, 18)] } })
+      const day = cell('2026-08-10')
+      expect(within(day).getByTestId('day-total').textContent).toBe('9:00')
+      expect(within(day).queryByTestId('unexplained-tick')).toBeNull()
+      expect(day.getAttribute('aria-label')).toBe('Montag, 10. August, 9:00 Stunden')
+    }
+  )
+
+  it('does not let carryover alone qualify a day, and retains a genuine remaining gap', async () => {
+    const carryover = makeEntry({
+      id: 90,
+      started_at: localTime(9, 23),
+      stopped_at: localTime(10, 9)
+    })
+    const nextCarryover = makeEntry({
+      id: 91,
+      started_at: localTime(11, 23),
+      stopped_at: localTime(12, 9)
+    })
+    await setup({ byMonth: { '2026-8': [carryover, row(10, 10, 18), nextCarryover] } })
+    expect(cell('2026-08-10').getAttribute('aria-label')).toContain(' · ungeklärt 1:00')
+    expect(within(cell('2026-08-12')).queryByTestId('unexplained-tick')).toBeNull()
+    expect(cell('2026-08-12').getAttribute('aria-label')).toBe(
+      'Mittwoch, 12. August, keine Einträge'
+    )
+  })
+
+  it('keeps the month guard: a prior-month carryover cannot cover day 1', async () => {
+    const own = makeEntry({
+      id: 1,
+      started_at: new Date(2026, 8, 1, 9).toISOString(),
+      stopped_at: new Date(2026, 8, 1, 18).toISOString()
+    })
+    const outside = makeEntry({
+      id: 2,
+      started_at: localTime(31, 23),
+      stopped_at: new Date(2026, 8, 1, 9).toISOString()
+    })
+    await setup({
+      now: new Date(2026, 8, 2, 12).toISOString(),
+      byMonth: { '2026-9': [outside, own] }
+    })
+    expect(cell('2026-09-01').getAttribute('aria-label')).toContain(' · ungeklärt 1:00')
+    expect(screen.getByTestId('month-total').textContent).toBe('9:00')
+    expect(within(cell('2026-08-31')).queryByTestId('unexplained-tick')).toBeNull()
   })
 })

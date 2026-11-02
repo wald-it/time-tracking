@@ -182,6 +182,7 @@ export default function TodayView(): React.JSX.Element {
         </div>
         {status === 'ready' && summary ? (
           <SummaryColumn
+            todayEntries={summary.todayEntries}
             todaySeconds={summary.todaySeconds + liveDelta}
             weekSeconds={summary.weekSeconds + liveDelta}
             weekDaySeconds={weekDaySeconds}
