@@ -10,6 +10,7 @@ All notable changes to TimeTrack are documented here.
 ### Added
 
 - Settings have a working-hours window and workdays (default 08:00–18:00, Monday to Friday), the basis for showing unexplained time; separate from the rule-check window (#481).
+- Today shows the unexplained time within the working hours under its total, and calendar cells of past workdays with unexplained time get a small tick, with the duration in the cell's title and accessible label (#482).
 
 ## [2.4.0] — 2026-11-02
 

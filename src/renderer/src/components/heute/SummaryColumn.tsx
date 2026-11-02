@@ -5,6 +5,9 @@ import { Readout } from './Readout'
 import { WeekMeter } from './WeekMeter'
 import { useSettingsStore } from '../../store/settingsStore'
 import { parseWeeklyTargetHours } from '../../../../shared/targets'
+import { unexplainedGaps, unexplainedMs, type GapEntry } from '../../../../shared/gaps'
+import { parseWorkingHours } from '../../../../shared/workingHours'
+import { useNow } from '../../contexts/NowContext'
 
 /**
  * The Summen column beside the display (HANDOFF §4.1): HEUTE readout L with
@@ -19,7 +22,8 @@ export function SummaryColumn({
   weekNumber,
   todayIndex,
   roundingRule,
-  todayRoundedSeconds
+  todayRoundedSeconds,
+  todayEntries = []
 }: {
   todaySeconds: number
   weekSeconds: number
@@ -33,9 +37,32 @@ export function SummaryColumn({
    * Omitted ⇒ nothing rounds today and no sub-line is shown.
    */
   todayRoundedSeconds?: number
+  /** Dashboard rows: starts today plus any still-running entry. */
+  todayEntries?: GapEntry[]
 }): React.JSX.Element {
   const t = useT()
   const { locale } = useLocale()
+  const now = new Date(useNow())
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const previousStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+  const hours = parseWorkingHours(useSettingsStore((s) => s.settings?.working_hours))
+  // A carryover alone does not make today eligible. The dashboard includes
+  // running carryovers, but not yesterday's already-stopped entries.
+  const ownEntries = todayEntries.filter(
+    (entry) => new Date(entry.started_at).toDateString() === dayStart.toDateString()
+  )
+  const carryovers = todayEntries.filter((entry) => {
+    const start = Date.parse(entry.started_at)
+    return (
+      start >= previousStart.getTime() &&
+      start < dayStart.getTime() &&
+      (entry.stopped_at === null ? now.getTime() : Date.parse(entry.stopped_at)) >
+        dayStart.getTime()
+    )
+  })
+  const unexplained = ownEntries.length
+    ? unexplainedMs(unexplainedGaps([...ownEntries, ...carryovers], dayStart, now, hours))
+    : 0
   const weeklyTarget = parseWeeklyTargetHours(
     useSettingsStore((s) => s.settings?.target_hours_week)
   )
@@ -58,7 +85,17 @@ export function SummaryColumn({
 
   return (
     <div className="flex flex-[1_1_260px] flex-col gap-[18px] border-t-2 border-[var(--ink)] pt-3.5">
-      <Readout legend={t('today.summary.today')} seconds={todaySeconds} size="L" sub={roundedSub} />
+      <Readout
+        legend={t('today.summary.today')}
+        seconds={todaySeconds}
+        size="L"
+        sub={roundedSub}
+        secondSub={
+          unexplained > 0
+            ? t('time.unexplained', { total: formatHoursMinutes(Math.floor(unexplained / 60_000)) })
+            : undefined
+        }
+      />
       <div className="h-px bg-[var(--line)]" />
       <div>
         <Readout

@@ -374,6 +374,7 @@ export const de = {
   'today.bigkey.stop': 'Stopp',
   'today.bigkey.start': 'Start',
   'today.summary.today': 'Heute',
+  'time.unexplained': 'ungeklärt {total}',
   'today.summary.rounded': 'gerundet {total} h · {step}-min-Takt',
   'today.summary.roundedOnly': 'gerundet {total} h',
   'today.summary.minimum': 'gerundet {total} h · mind. {min} Min',

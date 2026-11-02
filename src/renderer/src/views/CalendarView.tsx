@@ -21,6 +21,9 @@ import { BilledChip } from '../components/BilledChip'
 import { dayBilledSeconds, dayRevenueCent } from '../components/kalender/dayRevenue'
 import { uniformRoundingRule } from '../../../shared/entryMoney'
 import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
+import { useSettingsStore } from '../store/settingsStore'
+import { unexplainedGaps, unexplainedMs } from '../../../shared/gaps'
+import { parseWorkingHours } from '../../../shared/workingHours'
 
 /**
  * B4 switch point (HANDOFF §6): from this window width on, the day details
@@ -499,6 +502,7 @@ function Week({
   onSelect: (d: Date) => void
 }): React.JSX.Element {
   const t = useT()
+  const hours = parseWorkingHours(useSettingsStore((s) => s.settings?.working_hours))
   // Only the loaded month has entries; out-of-month days count nothing.
   const weekSeconds = week.days.reduce(
     (sum, day) =>
@@ -532,6 +536,21 @@ function Week({
         const key = localDateKey(day)
         const inMonth = isSameMonth(day, cursor)
         const dayEntries = inMonth ? (byDay.get(key) ?? []) : []
+        // Eligibility comes only from this cell's own rows. Carryovers cover
+        // time but never add to its hours; the month guard also stays intact.
+        const carryovers = (byDay.get(localDateKey(addDays(day, -1))) ?? []).filter(
+          (entry) =>
+            (entry.stopped_at === null ? nowMs : Date.parse(entry.stopped_at)) > day.getTime()
+        )
+        const unexplained =
+          inMonth && key < todayKey && dayEntries.length > 0
+            ? unexplainedMs(
+                unexplainedGaps([...dayEntries, ...carryovers], day, new Date(nowMs), hours)
+              )
+            : 0
+        const unexplainedLabel =
+          unexplained > 0 ? t('time.unexplained', { total: formatHm(unexplained / 1000) }) : ''
+        const unexplainedSuffix = unexplainedLabel ? ` · ${unexplainedLabel}` : ''
         const isToday = key === todayKey
         const isSelected = inMonth && key === selectedKey
         const weekend = isWeekend(day)
@@ -564,8 +583,10 @@ function Week({
             aria-pressed={isSelected}
             aria-label={
               ariaLabel +
-              (dayEntries.some((entry) => !!entry.billed) ? ` · ${t('entry.billed')}` : '')
+              (dayEntries.some((entry) => !!entry.billed) ? ` · ${t('entry.billed')}` : '') +
+              unexplainedSuffix
             }
+            title={unexplainedLabel || undefined}
             onClick={() => onSelect(day)}
             className={[
               '@container flex min-h-[104px] min-w-0 cursor-pointer flex-col justify-between gap-2.5 overflow-hidden rounded-none p-2.5 text-left',
@@ -583,7 +604,7 @@ function Week({
                 instead of running into the neighbour cell. */}
             <span
               className="flex w-full flex-wrap items-start justify-between gap-x-1.5 gap-y-0.5"
-              title={revenueCent > 0 ? formatEur(revenueCent) : undefined}
+              title={revenueCent > 0 ? formatEur(revenueCent) + unexplainedSuffix : undefined}
             >
               <span
                 data-testid="day-number"
@@ -594,6 +615,13 @@ function Week({
                 }}
               >
                 {day.getDate()}
+                {unexplained > 0 && (
+                  <span
+                    data-testid="unexplained-tick"
+                    aria-hidden="true"
+                    className="ml-1.5 inline-block w-1.5 border-t border-[var(--ink3)] align-middle"
+                  />
+                )}
               </span>
               <span className="ml-auto flex flex-col items-end gap-0.5">
                 {totalSeconds > 0 && (

@@ -372,6 +372,7 @@ export const en: Record<TranslationKey, string> = {
   'today.bigkey.stop': 'Stop',
   'today.bigkey.start': 'Start',
   'today.summary.today': 'Today',
+  'time.unexplained': 'unexplained {total}',
   'today.summary.rounded': 'rounded {total} h · {step}-min step',
   'today.summary.roundedOnly': 'rounded {total} h',
   'today.summary.minimum': 'rounded {total} h · min. {min} min',
