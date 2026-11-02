@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Secret cleanup is retried after unencrypted feed-token or webhook changes and after a failed scrub when secrets move out of the database (#473).
+
 ## [2.3.0] — 2026-11-01
 
 ### Added

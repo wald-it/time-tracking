@@ -531,6 +531,157 @@ describe('one scrub at the first start, also without secrets to move (#470 count
       .join('')
   }
 
+  it.each(['write', 'replace', 'clear'])(
+    '#473 invalidates a previous scrub on a plain feed-token %s and scrubs at the next start',
+    async (operation) => {
+      const { path, fileDir, fdb } = historyDb()
+      const marker = (): unknown =>
+        fdb.prepare(`SELECT value FROM settings WHERE key = 'secrets_scrubbed'`).pluck().get()
+      try {
+        await initializeSecrets(fdb, path, { box: box() })
+        expect(marker()).toBe('1')
+        await initializeSecrets(fdb, path, { box: box(false) })
+        fdb.pragma('secure_delete = OFF')
+        const secret = 'plain-feed-473 '.repeat(2000)
+        // A pre-fix plain session could already have left a stale marker.
+        if (operation !== 'write') {
+          fdb
+            .prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+            .run(FEED_TOKEN_KEY, secret)
+        }
+        await writeFeedToken(
+          fdb,
+          operation === 'clear' ? '' : operation === 'replace' ? 'replacement-feed-473' : secret
+        )
+        fdb.pragma('wal_checkpoint(TRUNCATE)')
+        expect(fileBytes(path)).toContain('plain-feed-473')
+        expect(marker()).toBeUndefined()
+        await initializeSecrets(fdb, path, { box: box() })
+        expect(marker()).toBe('1')
+        expect(fileBytes(path)).not.toContain('plain-feed-473')
+        expect(fileBytes(path)).not.toContain('replacement-feed-473')
+      } finally {
+        useSecretStore(null)
+        if (fdb.open) fdb.close()
+        rmSync(fileDir, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it.each(['write', 'replace', 'clear', 'remove'])(
+    '#473 invalidates a previous scrub on a plain webhook %s and scrubs at the next start',
+    async (operation) => {
+      const { path, fileDir, fdb } = historyDb()
+      const marker = (): unknown =>
+        fdb.prepare(`SELECT value FROM settings WHERE key = 'secrets_scrubbed'`).pluck().get()
+      try {
+        await initializeSecrets(fdb, path, { box: box() })
+        expect(marker()).toBe('1')
+        await initializeSecrets(fdb, path, { box: box(false) })
+        fdb.pragma('secure_delete = OFF')
+        const target = {
+          id: 'w',
+          url: 'https://w.example/h',
+          secret: 'plain-webhook-473 '.repeat(2000),
+          events: ['entry.created'],
+          enabled: true
+        }
+        const current = operation === 'write' ? '[]' : JSON.stringify([target])
+        fdb.prepare(`UPDATE settings SET value = ? WHERE key = 'webhook_targets'`).run(current)
+        const next =
+          operation === 'remove'
+            ? '[]'
+            : JSON.stringify([
+                {
+                  ...target,
+                  secret:
+                    operation === 'clear'
+                      ? ''
+                      : operation === 'replace'
+                        ? 'replacement-webhook-473'
+                        : target.secret
+                }
+              ])
+        // Exercise the settings IPC as well as prepareWebhookTargets/saveWebhookTargets.
+        state.db = fdb
+        register()
+        await expect(
+          state.handlers.get('settings:set')!({}, 'webhook_targets', next)
+        ).resolves.toEqual({
+          ok: true,
+          data: undefined
+        })
+        fdb.pragma('wal_checkpoint(TRUNCATE)')
+        expect(fileBytes(path)).toContain('plain-webhook-473')
+        expect(marker()).toBeUndefined()
+        await initializeSecrets(fdb, path, { box: box() })
+        expect(marker()).toBe('1')
+        expect(fileBytes(path)).not.toContain('plain-webhook-473')
+        expect(fileBytes(path)).not.toContain('replacement-webhook-473')
+      } finally {
+        useSecretStore(null)
+        if (fdb.open) fdb.close()
+        rmSync(fileDir, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it.each(['migration', 'feed save', 'webhook save'])(
+    '#473 invalidates a previous scrub before %s even when its checkpoint is busy',
+    async (operation) => {
+      const { path, fileDir, fdb } = historyDb()
+      const reader = new Sqlite(path)
+      const marker = (): unknown =>
+        fdb.prepare(`SELECT value FROM settings WHERE key = 'secrets_scrubbed'`).pluck().get()
+      try {
+        fdb.pragma('busy_timeout = 0')
+        const raw = JSON.stringify([
+          {
+            id: 'w',
+            url: 'https://w.example/h',
+            secret: 'moving-webhook-473',
+            events: ['entry.created'],
+            enabled: true
+          }
+        ])
+        const key = operation === 'webhook save' ? 'webhook_targets' : FEED_TOKEN_KEY
+        fdb
+          .prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+          .run(key, operation === 'webhook save' ? raw : 'moving-feed-473')
+        fdb.prepare(`INSERT INTO settings (key, value) VALUES ('secrets_scrubbed', '1')`).run()
+        reader.exec('BEGIN')
+        reader.prepare('SELECT count(*) FROM settings').get()
+        if (operation === 'migration') {
+          const log = vi.fn()
+          await initializeSecrets(fdb, path, { box: box(), log })
+          expect(log).toHaveBeenCalledWith(expect.stringContaining('checkpoint busy'))
+        } else {
+          const s = new SecretStore({ dir: fileDir, box: box() })
+          await s.load()
+          fdb.pragma('secure_delete = ON')
+          if (operation === 'feed save') await writeFeedToken(fdb, 'replacement-feed-473', s)
+          else await saveWebhookTargets(fdb, raw, raw, s)
+        }
+        expect(
+          fdb.prepare('SELECT value FROM settings WHERE key = ?').pluck().get(key)
+        ).not.toContain(operation === 'webhook save' ? 'moving-webhook-473' : 'moving-feed-473')
+        expect(fileBytes(path)).toContain('gone-zz9')
+        expect(marker()).toBeUndefined()
+        reader.exec('COMMIT')
+        await initializeSecrets(fdb, path, { box: box() })
+        expect(marker()).toBe('1')
+        expect(fileBytes(path)).not.toContain('gone-zz9')
+        expect(fileBytes(path)).not.toContain('moving-feed-473')
+        expect(fileBytes(path)).not.toContain('moving-webhook-473')
+      } finally {
+        useSecretStore(null)
+        if (reader.open) reader.close()
+        if (fdb.open) fdb.close()
+        rmSync(fileDir, { recursive: true, force: true })
+      }
+    }
+  )
+
   it('scrubs once and remembers it', async () => {
     const { path, fileDir, fdb } = historyDb()
     try {
