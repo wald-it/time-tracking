@@ -257,6 +257,22 @@ describe('long-running engine and dialog', () => {
     expect(s.useTimerStore.getState().description).toBe('')
     expect(s.api.tray.update).toHaveBeenLastCalledWith(false, '', 100, null)
   })
+  // Codex counter-check on #485: an idle event that lands while the stop is
+  // on its way belongs to the stopped entry and must not stay open.
+  it('an idle event during the stop IPC is dismissed with the stopped entry', async () => {
+    const s = await setup()
+    let finish: (value: { ok: true; data: Entry }) => void = () => {}
+    s.api.entries.stopAt.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+    fireEvent.click(stopButton())
+    await s.idle()
+    expect(s.useTimerStore.getState().idleEvent).not.toBeNull()
+    await act(async () =>
+      finish({ ok: true, data: { ...s.entry, stopped_at: s.now.toISOString() } })
+    )
+    expect(s.useTimerStore.getState().runningEntry).toBeNull()
+    expect(s.useTimerStore.getState().idleEvent).toBeNull()
+    expect(s.api.idle.dismiss).toHaveBeenCalled()
+  })
   it('uses click time for an untouched field and opens the quick note after an empty description', async () => {
     const s = await setup({ description: '' })
     await tick(75_123)

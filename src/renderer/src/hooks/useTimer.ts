@@ -547,12 +547,18 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       if (useTimerStore.getState().runningEntry?.id === entryId) {
         setRunningEntry(null)
         setDescription('')
+        // An idle event that arrived during the IPC belongs to the stopped
+        // entry: drop it, as stop() does (Codex counter-check on #485).
+        if (useTimerStore.getState().idleEvent) {
+          setIdleEvent(null)
+          window.api.idle.dismiss()
+        }
         await pushTrayUpdate(false, '')
       }
       if (entry.description.trim() === '') setQuickNoteEntry(res.data)
       return null
     },
-    [longRunAnswer, setRunningEntry, setDescription, setQuickNoteEntry]
+    [longRunAnswer, setRunningEntry, setDescription, setIdleEvent, setQuickNoteEntry]
   )
 
   const idleStopAtIdle = useCallback(async () => {
