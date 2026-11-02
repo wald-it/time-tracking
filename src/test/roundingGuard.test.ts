@@ -17,7 +17,9 @@ const ALLOWED: Record<string, string> = {
   'main/pdf.ts': 'snapToStepLocal: grid alignment of the displayed start time, set by the profile',
   'main/analyticsHandlers.ts': 'ISO week number, not billing',
   'renderer/src/components/heute/ApprovalSquare.tsx': 'remaining MCP approval minutes, not billing',
-  'renderer/src/components/auswertung/ClientHours.tsx': 'chart axis maximum, not billing'
+  'renderer/src/components/auswertung/ClientHours.tsx': 'chart axis maximum, not billing',
+  'renderer/src/components/heute/todayGaps.ts':
+    'backfill form defaults start at the next whole minute inside a gap, not billing'
 }
 
 function sourceFiles(dir: string): string[] {
