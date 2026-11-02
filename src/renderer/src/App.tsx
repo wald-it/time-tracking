@@ -32,6 +32,9 @@ function App(): React.JSX.Element {
     idleKeep,
     idleStopAtIdle,
     idleMarkPause,
+    idleWorkFor,
+    clients,
+    isLoading,
     quickNoteEntry,
     setQuickNoteEntry,
     runningEntry
@@ -99,6 +102,14 @@ function App(): React.JSX.Element {
             onKeep={idleKeep}
             onStopAtIdle={idleStopAtIdle}
             onMarkPause={idleMarkPause}
+            onWorkFor={(clientId, projectId) => {
+              void idleWorkFor(clientId, projectId).then((result) => {
+                if (result === 'createFailed') useToastStore.getState().show(t('idle.workFailed'))
+              })
+            }}
+            clients={clients}
+            runningClientId={runningEntry?.client_id ?? null}
+            isLoading={isLoading}
           />
         )}
         {quickNoteEntry && (
