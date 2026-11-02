@@ -116,11 +116,13 @@ export async function writeFeedToken(
 ): Promise<void> {
   const s = store(explicit)
   if (!s || s.mode === 'plain') {
+    invalidateScrub(db)
     writeRow(db, FEED_TOKEN_KEY, token)
     return
   }
   const before = s.get(FEED_TOKEN_KEY) ?? ''
   const plainBefore = row(db, FEED_TOKEN_KEY) !== ''
+  if (plainBefore) invalidateScrub(db)
   await s.set(FEED_TOKEN_KEY, token)
   try {
     writeRow(db, FEED_TOKEN_KEY, '')
@@ -174,6 +176,7 @@ export async function saveWebhookTargets(
   const encrypted = !!s && s.mode !== 'plain'
   const snapshot = encrypted ? s.entries('webhook:') : new Map<string, string>()
   const plainBefore = hasPlainWebhookSecret(currentRaw)
+  if (!encrypted || plainBefore) invalidateScrub(db)
   const stored = await prepareWebhookTargets(raw, s, currentRaw)
   try {
     writeRow(db, 'webhook_targets', stored)
@@ -379,6 +382,7 @@ export async function migrateSecrets(
   )
   if (token === '' && moving.length === 0 && !unkeyed) return
 
+  invalidateScrub(db)
   if (token !== '') await s.set(FEED_TOKEN_KEY, token)
   for (const t of moving) await s.set(webhookSecretKey(t.id), t.secret)
   await s.flush()
@@ -438,8 +442,13 @@ export function scrubFreeSpace(db: Db, log: (m: string) => void = (): void => {}
   }
 }
 
-/** Settings row set once the first full scrub after the Q32 update succeeded. */
+/** Settings row set after a full scrub, invalidated when plain secrets may leave bytes. */
 export const SECRETS_SCRUBBED_KEY = 'secrets_scrubbed'
+
+/** Invalidate before writing or moving secrets, so a failed scrub is retried at startup. */
+function invalidateScrub(db: Db): void {
+  db.prepare('DELETE FROM settings WHERE key = ?').run(SECRETS_SCRUBBED_KEY)
+}
 
 /**
  * One scrub at the first start with the store, also when there was nothing to
