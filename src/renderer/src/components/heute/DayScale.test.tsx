@@ -81,11 +81,10 @@ describe('DayScale gap buttons', () => {
     expect(screen.getByRole('button', { name: /^Lücke/ }).className).toBe(running.className)
   })
 
-  it('clips to the drawn range and omits gaps wholly outside it', () => {
+  it('widens the range so gaps before 07:00 and after 20:00 stay fully visible', () => {
+    // Range becomes 05–22 (17 h) instead of the default 07–20.
     mount(
       [
-        { startMs: local(6), endMs: local(8) },
-        { startMs: local(19), endMs: local(21) },
         { startMs: local(5), endMs: local(6) },
         { startMs: local(21), endMs: local(22) }
       ],
@@ -94,9 +93,9 @@ describe('DayScale gap buttons', () => {
     const buttons = screen.getAllByRole('button')
     expect(buttons).toHaveLength(2)
     expect(buttons[0].style.left).toBe('0%')
-    expect(buttons[0].style.width).toBe('7.692%')
-    expect(buttons[1].style.left).toBe('92.308%')
-    expect(buttons[1].style.width).toBe('7.692%')
+    expect(buttons[0].style.width).toBe('5.882%')
+    expect(buttons[1].style.left).toBe('94.118%')
+    expect(buttons[1].style.width).toBe('5.882%')
   })
 
   it('gives a short gap a minimum hit width without shifting its start', () => {

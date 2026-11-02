@@ -41,7 +41,20 @@ export function DayScale({
   const t = useT()
   const { locale } = useLocale()
 
-  const layout = useMemo(() => layoutDayScale(entries, nowMs), [entries, nowMs])
+  // Gaps widen the range too, so a gap before the first entry (a working
+  // window that starts before 07:00) stays visible and clickable.
+  const layout = useMemo(
+    () =>
+      layoutDayScale(
+        entries,
+        nowMs,
+        gaps.map((gap) => ({
+          started_at: new Date(gap.startMs).toISOString(),
+          stopped_at: new Date(gap.endMs).toISOString()
+        }))
+      ),
+    [entries, nowMs, gaps]
+  )
   const isRunning = entries.some((e) => e.stopped_at === null)
 
   // Only the calendar day matters for the title, not every clock tick.
