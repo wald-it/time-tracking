@@ -205,4 +205,30 @@ describe('IdleModal work picker', () => {
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'War Arbeit für …' })).toHaveFocus()
   })
+
+  it('locks every action and Escape while a booking runs', () => {
+    const keep = vi.fn()
+    const view = (isLoading: boolean): React.JSX.Element => (
+      <I18nProvider>
+        <IdleModal
+          idleSince={new Date(2026, 10, 2, 11, 23, 45, 678).toISOString()}
+          idleSeconds={1800}
+          onKeep={keep}
+          onStopAtIdle={vi.fn()}
+          onMarkPause={vi.fn()}
+          onWorkFor={vi.fn()}
+          clients={clients}
+          runningClientId={1}
+          isLoading={isLoading}
+        />
+      </I18nProvider>
+    )
+    const { rerender } = render(view(false))
+    expand()
+    rerender(view(true))
+    for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(keep).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Kunde')).toBeInTheDocument()
+  })
 })

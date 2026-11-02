@@ -98,7 +98,8 @@ export function IdleModal({
   return (
     <Dialog
       open
-      onClose={pickerOpen ? collapsePicker : onKeep}
+      // While a booking runs, nothing may close the dialog or start a second action.
+      onClose={isLoading ? () => {} : pickerOpen ? collapsePicker : onKeep}
       title={t('idle.title')}
       initialFocusRef={keepRef}
       closeButton={false}
@@ -108,19 +109,26 @@ export function IdleModal({
         {t('idle.body', { time: idleSinceLocal, duration: formatDuration(idleSeconds) })}
       </p>
       <div className="flex flex-col gap-2">
-        <button ref={keepRef} type="button" onClick={onKeep} className={KEY_INV}>
+        <button
+          ref={keepRef}
+          type="button"
+          onClick={onKeep}
+          disabled={isLoading}
+          className={KEY_INV}
+        >
           {t('idle.keep')}
         </button>
-        <button type="button" onClick={onStopAtIdle} className={KEY}>
+        <button type="button" onClick={onStopAtIdle} disabled={isLoading} className={KEY}>
           {t('idle.stopAtIdle', { time: idleSinceLocal })}
         </button>
-        <button type="button" onClick={onMarkPause} className={KEY}>
+        <button type="button" onClick={onMarkPause} disabled={isLoading} className={KEY}>
           {t('idle.markPause')}
         </button>
         <button
           ref={workRef}
           type="button"
           className={KEY}
+          disabled={isLoading}
           aria-expanded={pickerOpen}
           onClick={() => {
             setClientChosen(false)
@@ -185,7 +193,7 @@ export function IdleModal({
             >
               {t('idle.book')}
             </button>
-            <button type="button" className={KEY} onClick={collapsePicker}>
+            <button type="button" className={KEY} disabled={isLoading} onClick={collapsePicker}>
               {t('idle.back')}
             </button>
           </div>

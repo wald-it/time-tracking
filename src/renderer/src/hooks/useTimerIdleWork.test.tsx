@@ -62,15 +62,21 @@ interface Setup {
   useToastStore: typeof import('../store/toastStore').useToastStore
 }
 
+// What main reports as running; null means the original entry.
+let mainRunning: Entry | null = null
+let dataChanged: () => void = () => {}
+
 async function setup(): Promise<Setup> {
   vi.resetModules()
+  mainRunning = null
+  dataChanged = () => {}
   const { useTimer } = await import('./useTimer')
   const { useTimerStore } = await import('../store/timerStore')
   const { useToastStore } = await import('../store/toastStore')
   const api = {
     clients: { getAll: async () => ({ ok: true as const, data: [] }) },
     entries: {
-      getRunning: async () => ({ ok: true as const, data: running }),
+      getRunning: async () => ({ ok: true as const, data: mainRunning ?? running }),
       stopAt: vi.fn(
         async (): Promise<IpcResult<Entry>> => ({
           ok: true,
@@ -85,7 +91,9 @@ async function setup(): Promise<Setup> {
     onHotkeyToggle: () => {},
     onTrayQuickStart: () => {},
     onTrayStop: () => {},
-    onDataChanged: () => {},
+    onDataChanged: (cb: () => void) => {
+      dataChanged = cb
+    },
     onIdleDetected: () => {}
   }
   ;(window as unknown as { api: typeof api }).api = api
@@ -178,6 +186,7 @@ describe('idle work booking', () => {
         else await result
       })
       expect(api.entries.create).not.toHaveBeenCalled()
+      expect(useEntriesStore.getState().version).toBe(versionBefore)
       expect(hook.result.current.runningEntry).toEqual(running)
       expect(hook.result.current.idleEvent?.idleSince).toBe(boundary)
       expect(hook.result.current.quickNoteEntry).toBeNull()
@@ -227,5 +236,34 @@ describe('idle work booking', () => {
     })
     expect(api.entries.stopAt).toHaveBeenCalledTimes(1)
     expect(api.entries.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a timer started externally while the booking runs', async () => {
+    const { hook, api } = await setup()
+    let releaseCreate!: (value: IpcResult<Entry>) => void
+    api.entries.create.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseCreate = resolve
+        })
+    )
+    let booking!: Promise<unknown>
+    act(() => {
+      booking = hook.result.current.idleWorkFor(2)
+    })
+    await waitFor(() => expect(api.entries.create).toHaveBeenCalledTimes(1))
+    // MCP starts a timer while the create is pending; its resync lands first.
+    const external: Entry = { ...running, id: 3, client_id: 3, started_at: now.toISOString() }
+    mainRunning = external
+    await act(async () => {
+      dataChanged()
+    })
+    await waitFor(() => expect(hook.result.current.runningEntry?.id).toBe(3))
+    await act(async () => {
+      releaseCreate({ ok: true, data: booked })
+      await booking
+    })
+    expect(hook.result.current.runningEntry?.id).toBe(3)
+    expect(hook.result.current.quickNoteEntry).toEqual(booked)
   })
 })
