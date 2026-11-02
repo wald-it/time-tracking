@@ -22,6 +22,7 @@ export const RENDERER_SETTING_KEYS = [
   'target_rate_cent',
   'company_name',
   'idle_threshold_minutes',
+  'long_run_threshold_hours',
   'language',
   'auto_start',
   'hotkey_toggle',

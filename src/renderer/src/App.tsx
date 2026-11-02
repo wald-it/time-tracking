@@ -6,6 +6,7 @@ import SettingsView from './views/SettingsView'
 import AuswertungView from './views/AuswertungView'
 import ExportView from './views/ExportView'
 import { IdleModal } from './components/IdleModal'
+import { LongRunModal } from './components/LongRunModal'
 import { QuickNoteModal } from './components/QuickNoteModal'
 import { StartTimerModal } from './components/StartTimerModal'
 import { useStartTimerModalStore } from './store/startTimerModalStore'
@@ -95,6 +96,7 @@ function App(): React.JSX.Element {
           </div>
         </main>
 
+        <LongRunModal key={runningEntry?.id ?? 'stopped'} />
         {idleEvent && (
           <IdleModal
             idleSince={idleEvent.idleSince}

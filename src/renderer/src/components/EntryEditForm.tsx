@@ -62,6 +62,7 @@ export function EntryEditForm({
   const billableLabelId = useId()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const initialStart = entry ? new Date(entry.started_at) : (defaultDate ?? new Date())
+  const isRunning = entry?.stopped_at === null
   const initialStop = entry?.stopped_at
     ? new Date(entry.stopped_at)
     : !entry && defaultEnd
@@ -119,14 +120,15 @@ export function EntryEditForm({
   function validateLocal(): string | null {
     if (!clientId) return t('entry.validation.clientRequired')
     let start: Date
-    let stop: Date
     try {
       start = parseTimeToDate(date, startTime)
-      stop = parseStopToDate(date, stopTime, untilMidnight)
+      if (!isRunning) {
+        const stop = parseStopToDate(date, stopTime, untilMidnight)
+        if (stop.getTime() <= start.getTime()) return t('entry.validation.endAfterStart')
+      }
     } catch (e) {
       return (e as Error).message
     }
-    if (stop.getTime() <= start.getTime()) return t('entry.validation.endAfterStart')
     if (start.getTime() > Date.now()) return t('entry.validation.startNotFuture')
     if (description.length > MAX_DESCRIPTION_LEN) {
       return t('entry.validation.descriptionTooLong', { max: String(MAX_DESCRIPTION_LEN) })
@@ -182,8 +184,14 @@ export function EntryEditForm({
           // goes as null, never as undefined.
           project_id: projectId,
           description: description.trim(),
-          started_at: start,
-          stopped_at: stop,
+          // A running entry is amended, never sealed by this form. Preserve
+          // its seconds unless the user actually changed the displayed start.
+          ...(!isRunning ||
+          date !== toDateInputValue(initialStart) ||
+          startTime !== formatTimeHHMM(initialStart)
+            ? { started_at: start }
+            : {}),
+          ...(!isRunning ? { stopped_at: stop } : {}),
           tags,
           reference: reference.trim(),
           billable,

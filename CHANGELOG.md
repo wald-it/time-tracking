@@ -9,12 +9,17 @@ All notable changes to TimeTrack are documented here.
 
 ### Added
 
+- A long-running timer prompt asks once per entry while the app runs: keep running, stop at a date and time, or edit. Its separate threshold defaults to 6 hours and can be set to 1–24 hours (#485).
 - Settings have a working-hours window and workdays (default 08:00–18:00, Monday to Friday), the basis for showing unexplained time; separate from the rule-check window (#481).
 - Today shows the unexplained time within the working hours under its total, and calendar cells of past workdays with unexplained time get a small tick, with the duration in the cell's title and accessible label (#482).
 - Gaps in today's working hours are outlined buttons on the Today day scale; a click opens the backfill form with the gap's start and end, and "+ Add entry" now starts at the latest gap (#483).
 - The calendar day panel lists the selected day's gaps as buttons above its entries, independent of the tag filter; a click opens the backfill form with the gap's start and end, and "+ Add entry for …" starts at the latest gap (#483).
 - The idle dialog has a fourth key, "Was work for …": it stops the running entry at the idle start and books the idle span as work for the chosen client and optional project; the quick note then asks for its description (#484).
 - While a timer runs, sleep and screen lock longer than the idle threshold raise the idle dialog on return, starting at the moment the machine went away; listeners exist only while a timer runs and nothing is stored (#484).
+
+### Fixed
+
+- Editing a running entry keeps it running and preserves its start seconds when the displayed start was not changed (#485).
 
 ## [2.4.0] — 2026-11-02
 

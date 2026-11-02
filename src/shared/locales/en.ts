@@ -599,6 +599,12 @@ export const en: Record<TranslationKey, string> = {
 
   // ── IdleModal ─────────────────────────────────────────────────────────────
   'idle.title': 'Inactivity detected',
+  'longRun.title': 'Long-running timer',
+  'longRun.body': 'The timer for {client} has been running since {start} ({duration}).',
+  'longRun.stopAt': 'Stop at …',
+  'longRun.stopAtInvalid': 'The end must be after the start and must not be in the future.',
+  'settings.timer.longRun': 'Long-running threshold (hours)',
+  'settings.timer.longRunHint': 'Ask after this running time: 1–24 hours, default 6 hours.',
   'idle.body': 'You have been inactive since {time} ({duration}). What should happen to this time?',
   'idle.keep': 'Keep running',
   'idle.stopAtIdle': 'Stop at inactivity ({time})',

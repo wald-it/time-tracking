@@ -1,4 +1,5 @@
 import type { RendererSettingKey } from '../../../shared/settingKeys'
+import { parseLongRunThresholdHours } from '../../../shared/longRun'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Settings, BackupInfo } from '../../../shared/types'
 import { useUpdateStore } from '../store/updateStore'
@@ -190,7 +191,11 @@ export default function SettingsView(): React.JSX.Element {
       if (res.code !== 'cancelled') setStatusMsg(t('common.error', { error: res.error }))
       // revert by reloading
       await loadAll()
-    } else if (key === 'target_hours_week' || key === 'target_rate_cent') {
+    } else if (
+      key === 'target_hours_week' ||
+      key === 'target_rate_cent' ||
+      key === 'long_run_threshold_hours'
+    ) {
       useSettingsStore.setState((s) =>
         s.settings ? { settings: { ...s.settings, [key]: value } } : s
       )
@@ -491,6 +496,21 @@ export default function SettingsView(): React.JSX.Element {
                     {t('settings.timer.idleUnit')}
                   </span>
                 </div>
+              </Row>
+              <Row label={t('settings.timer.longRun')} hint={t('settings.timer.longRunHint')}>
+                <input
+                  aria-label={t('settings.timer.longRun')}
+                  type="number"
+                  min={1}
+                  max={24}
+                  step={1}
+                  value={parseLongRunThresholdHours(settings.long_run_threshold_hours)}
+                  onChange={(e) => {
+                    if (e.target.validity.valid && e.target.value !== '')
+                      void update('long_run_threshold_hours', e.target.value)
+                  }}
+                  className={`${inputClass} w-24`}
+                />
               </Row>
               <Row label={t('settings.timer.hotkey')} hint={t('settings.timer.hotkeyHint')}>
                 <div className="flex flex-wrap items-center gap-2">
