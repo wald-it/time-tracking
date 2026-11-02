@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Project budgets support hours or euros, over all time or per calendar month, with matching budget bars, timer warnings and privacy-filtered MCP totals (#476).
+
 ### Fixed
 
 - Secret cleanup is retried after unencrypted feed-token or webhook changes and after a failed scrub when secrets move out of the database (#473).

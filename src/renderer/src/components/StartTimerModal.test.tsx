@@ -72,6 +72,44 @@ function setup(): void {
   useTimerStore.setState({ clients: CLIENTS })
 }
 
+describe('Q11 budget warning', () => {
+  it.each([
+    ['eur', 10000, 8000, null, 500, true],
+    ['eur', 10000, 7999, 600, 600, false],
+    ['eur', null, 9000, 600, 600, false],
+    ['hours', 10000, 9000, null, 600, false],
+    ['hours', null, 0, 600, 480, true],
+    ['eur', 0, 1, null, 600, true]
+  ] as const)(
+    '%s budget %s used %s selects only the active amount (%s minutes, %s used)',
+    async (kind, cent, usedCent, minutes, usedMinutes, warning) => {
+      setup()
+      const project: Project = {
+        ...PROJECTS[1],
+        budget_kind: kind,
+        budget_period: 'month',
+        budget_cent: cent,
+        budget_minutes: minutes,
+        used_cent: usedCent,
+        used_minutes: usedMinutes
+      }
+      window.api.projects.getAll = vi.fn(async () => ({ ok: true as const, data: [project] }))
+      render(
+        <I18nProvider>
+          <StartTimerModal open onClose={() => {}} prefill={{ clientId: 2, projectId: 8 }} />
+        </I18nProvider>
+      )
+      await waitFor(() => expect(screen.getAllByRole('combobox')[1]).toHaveValue('8'))
+      const text = screen.queryByText(/Achtung:|Budget überschritten:/)
+      expect(Boolean(text)).toBe(warning)
+      if (warning) {
+        expect(text).toHaveTextContent('Je Kalendermonat')
+        expect(text).toHaveTextContent(kind === 'eur' ? '€' : 'h')
+      }
+    }
+  )
+})
+
 describe('StartTimerModal — prefill (B6)', () => {
   it('preselects the given client and project when it opens', async () => {
     setup()

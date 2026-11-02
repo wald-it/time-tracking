@@ -108,7 +108,7 @@ describe('all money readers agree with the hand-computed month', () => {
   it('budget of the project and MCP list_projects', () => {
     const status = buildBudgetStatus(db, 10)
     if (!status.ok) throw new Error(status.error)
-    expect(status.data.usedMinutes).toBe(40)
+    expect(status.data.used).toBe(40)
     expect(listProjects(db, SHOW).find((p) => p.id === 10)?.used_minutes).toBe(40)
   })
 

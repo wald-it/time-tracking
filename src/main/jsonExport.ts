@@ -1,10 +1,11 @@
-import type { Client, Entry } from '../shared/types'
+import type { Client, Entry, Project } from '../shared/types'
 import type Database from 'better-sqlite3'
 import { EXPORT_FOLDERS_SETTING } from './exportFolders'
 
 export interface JsonExportPayload {
   meta: { schemaVersion: number; exportedAt: string; appVersion: string }
   clients: Client[]
+  projects: Project[]
   entries: Entry[]
   /**
    * 2.0 P3: the tables behind `entries`, verbatim, so the export holds every
@@ -101,6 +102,7 @@ export function buildJsonExportPayload(
       appVersion
     },
     clients,
+    projects: db.prepare('SELECT * FROM projects ORDER BY id ASC').all() as Project[],
     entries,
     entry: table(`SELECT * FROM entry ORDER BY id ASC`),
     entry_version: table(`SELECT * FROM entry_version ORDER BY entry_id ASC, version_no ASC`),

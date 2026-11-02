@@ -525,9 +525,20 @@ export const en: Record<TranslationKey, string> = {
   'projects.form.externalNumberPlaceholder': 'e.g. PO-2026-001',
   'projects.form.startDateLabel': 'Start date',
   'projects.form.endDateLabel': 'End date',
+  'projects.form.budgetKind': 'Budget type',
+  'projects.form.budgetHours': 'Hours',
+  'projects.form.budgetEur': 'Euros',
+  'projects.form.budgetEurLabel': 'Budget (euros)',
+  'projects.form.budgetPeriod': 'Budget period',
+  'projects.form.budgetTotal': 'Total',
+  'projects.form.budgetMonth': 'Per calendar month',
+  'projects.form.budgetKindInvalid': 'Invalid budget type.',
+  'projects.form.budgetPeriodInvalid': 'Invalid budget period.',
+  'projects.form.budgetInvalid': 'Enter an amount of 0 or more.',
   'projects.form.budgetLabel': 'Budget (hours)',
   'projects.form.budgetPlaceholder': 'e.g. 40',
-  'projects.form.budgetHint': 'Optional hour budget (decimal, e.g. 40.5 = 40h 30min).',
+  'projects.form.budgetHint':
+    'Leave blank for no budget. Completed billable time, as on the invoice.',
   'projects.form.statusLabel': 'Status',
   'projects.form.statusActive': 'Active',
   'projects.form.statusPaused': 'Paused',
@@ -1002,9 +1013,8 @@ export const en: Record<TranslationKey, string> = {
   'timer.project.placeholder': '— No project —',
   'timer.project.effectiveRate': 'Effective rate: {rate} €/h (project overrides client)',
   // v1.11 #94 — Budget warning
-  'timer.budget.warning':
-    'Warning: {percent} % of the budget already booked ({used} h / {total} h).',
-  'timer.budget.overBudget': 'Budget exceeded: {used} h of {total} h booked.',
+  'timer.budget.warning': 'Warning: {percent} % of the budget already booked ({used} / {total}).',
+  'timer.budget.overBudget': 'Budget exceeded: {used} of {total} booked.',
 
   // ── EntryEditForm — Project (v1.9 #75 PR 3) ──────────────────────────────
   'entry.project': 'Project',

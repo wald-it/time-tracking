@@ -42,6 +42,27 @@ describe('buildJsonExportPayload', () => {
     expect(payload.meta.exportedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
   })
 
+  it('exports project budget types and amounts without losing cents in JSON', () => {
+    db.exec(`INSERT INTO projects (name, budget_kind, budget_period, budget_cent)
+      VALUES ('Synthetic euro project', 'eur', 'month', 12345);
+      INSERT INTO projects (name, budget_minutes) VALUES ('Synthetic legacy project', 600);`)
+    const payload = JSON.parse(JSON.stringify(buildJsonExportPayload(db, '2.4.0')))
+    expect(payload.projects).toEqual([
+      expect.objectContaining({
+        budget_kind: 'eur',
+        budget_period: 'month',
+        budget_cent: 12345,
+        budget_minutes: null
+      }),
+      expect.objectContaining({
+        budget_kind: 'hours',
+        budget_period: 'total',
+        budget_cent: null,
+        budget_minutes: 600
+      })
+    ])
+  })
+
   it('includes seeded settings (alphabetically sorted)', () => {
     const payload = buildJsonExportPayload(db, '1.3.0')
     const keys = payload.settings.map((s) => s.key)

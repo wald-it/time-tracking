@@ -1,7 +1,12 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
-import type { BudgetStatus, IpcResult } from '../shared/types'
-import { budgetUsedMinutesSql } from '../shared/currency'
+import type { BudgetStatus, IpcResult, Project } from '../shared/types'
+import {
+  budgetUsageSql,
+  budgetPeriodUsageSql,
+  budgetMonthBounds,
+  projectBudgetStatus
+} from '../shared/currency'
 
 export type { BudgetStatus }
 
@@ -12,39 +17,20 @@ function fail(error: unknown): IpcResult<never> {
   return { ok: false, error: error instanceof Error ? error.message : String(error) }
 }
 
-/**
- * Core budget-status computation — extracted so it can be tested without
- * Electron IPC.
- *
- * - `usedMinutes` is what the invoice bills for the project (#285): completed,
- *   billable entries, each billed by the rule of `billing_lines`. The currently
- *   running entry is excluded; it hasn't been billed yet.
- * - When the project doesn't exist, returns `{ budgetMinutes: null, usedMinutes: 0 }`
- *   (silent fallback — suppresses any budget toast).
- */
+/** Invoice consumption in the active budget unit and period. */
 export function buildBudgetStatus(
   db: Database.Database,
   projectId: number
 ): IpcResult<BudgetStatus> {
   try {
     const project = db
-      .prepare('SELECT budget_minutes FROM projects WHERE id = ?')
-      .get(projectId) as { budget_minutes: number | null } | undefined
-
-    // Unknown project → silent fallback; caller suppresses toast/bar.
-    if (!project) {
-      return ok({ budgetMinutes: null, usedMinutes: 0 })
-    }
-
-    // Billed like the invoice: the view billing_lines.
-    const usedRow = db
-      .prepare(`SELECT used_minutes FROM (${budgetUsedMinutesSql()}) WHERE project_id = ?`)
-      .get(projectId) as { used_minutes: number } | undefined
-
-    return ok({
-      budgetMinutes: project.budget_minutes ?? null,
-      usedMinutes: usedRow?.used_minutes ?? 0
-    })
+      .prepare(
+        `SELECT p.*, ${budgetPeriodUsageSql()}
+      FROM projects p LEFT JOIN (${budgetUsageSql()}) bud ON bud.project_id = p.id
+      WHERE p.id = ?`
+      )
+      .get(budgetMonthBounds(), projectId) as Project | undefined
+    return ok(projectBudgetStatus(project ?? {}))
   } catch (e) {
     return fail(e)
   }

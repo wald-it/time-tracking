@@ -176,7 +176,10 @@ export function buildServer(): McpServer {
       title: 'Projekte auflisten',
       description:
         'Projekte inkl. Status, Budget, verbrauchten Minuten und Eintragszahl. ' +
-        'Verbraucht (used_minutes) zählt wie die Rechnung: abrechenbare Einträge, ' +
+        'budget_kind (hours/eur) und budget_period (total/month) sind immer enthalten. ' +
+        'Verbrauch gilt für die gewählte Periode, month für den laufenden lokalen Kalendermonat ohne Übertrag. ' +
+        'budget_cent und used_cent werden nur mit exposeRates ausgegeben. ' +
+        'Verbraucht (used_minutes, used_cent) zählt wie die Rechnung: abrechenbare Einträge, ' +
         'je Eintrag auf das App-Rundungsintervall aufgerundet. ' +
         'Optional nach Kunde gefiltert (client_id, oder null für Projekte ohne Kunde). ' +
         'Für gezielte Lookups nach name oder external_project_number filtern ' +

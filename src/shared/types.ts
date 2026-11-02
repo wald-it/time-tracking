@@ -173,16 +173,20 @@ export interface Project {
    * `used_minutes`. null = no budget set.
    */
   budget_minutes?: number | null
+  budget_kind?: 'hours' | 'eur'
+  budget_period?: 'total' | 'month'
+  budget_cent?: number | null
   /**
    * Project lifecycle status. Supersedes the binary `active` flag.
    */
   status?: 'active' | 'paused' | 'archived'
   /**
    * Only present in `projects:getAll` responses.
-   * Budget used, all-time: billed minutes of the project's completed,
+   * Budget used, in the chosen period: billed minutes of the project's completed,
    * billable entries, each rounded like the invoice (#285). 0 when none.
    */
   used_minutes?: number | null
+  used_cent?: number | null
   // v1.12 #105 — Project-level contact person
   /**
    * Project-specific contact person. When set, takes precedence over
@@ -205,6 +209,9 @@ export interface CreateProjectInput {
   start_date?: string | null
   end_date?: string | null
   budget_minutes?: number | null
+  budget_kind?: 'hours' | 'eur'
+  budget_period?: 'total' | 'month'
+  budget_cent?: number | null
   status?: 'active' | 'paused' | 'archived'
   // v1.12 #105
   contact_person?: string | null
@@ -222,6 +229,9 @@ export interface UpdateProjectInput {
   start_date?: string | null
   end_date?: string | null
   budget_minutes?: number | null
+  budget_kind?: 'hours' | 'eur'
+  budget_period?: 'total' | 'month'
+  budget_cent?: number | null
   status?: 'active' | 'paused' | 'archived'
   // v1.12 #105
   contact_person?: string | null
@@ -594,8 +604,10 @@ export interface AnalyticsSummary {
 // ── Budget (v1.11 #94) ────────────────────────────────────────────────────
 
 export interface BudgetStatus {
-  /** Total budget in minutes, or null when no budget is set. */
-  budgetMinutes: number | null
-  /** Billed minutes of completed, billable entries, all-time, as on the invoice (#285). */
-  usedMinutes: number
+  kind: 'hours' | 'eur'
+  period: 'total' | 'month'
+  /** Minutes for hours, cents for eur; null means no budget. */
+  budget: number | null
+  /** Invoice consumption in the same unit and chosen period. */
+  used: number
 }
