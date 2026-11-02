@@ -7,6 +7,7 @@ import {
   parseTimeToDate
 } from '../../../shared/date'
 import { useEntriesStore } from '../store/entriesStore'
+import { useTimerStore } from '../store/timerStore'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useT } from '../contexts/I18nContext'
 import { TagInput } from './TagInput'
@@ -27,6 +28,15 @@ interface Props {
 }
 
 type FormState = 'idle' | 'saving' | 'success'
+
+function syncRunningEntry(saved: Entry): void {
+  const state = useTimerStore.getState()
+  if (state.runningEntry?.id !== saved.id) return
+  state.setRunningEntry(saved)
+  state.setDescription(saved.description)
+  state.setSelectedClientId(saved.client_id)
+  state.setSelectedProjectId(saved.project_id ?? null)
+}
 
 const MAX_DESCRIPTION_LEN = 500
 const MAX_REFERENCE_LEN = 200
@@ -62,6 +72,7 @@ export function EntryEditForm({
   const billableLabelId = useId()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
   const initialStart = entry ? new Date(entry.started_at) : (defaultDate ?? new Date())
+  const isRunning = entry?.stopped_at === null
   const initialStop = entry?.stopped_at
     ? new Date(entry.stopped_at)
     : !entry && defaultEnd
@@ -119,14 +130,15 @@ export function EntryEditForm({
   function validateLocal(): string | null {
     if (!clientId) return t('entry.validation.clientRequired')
     let start: Date
-    let stop: Date
     try {
       start = parseTimeToDate(date, startTime)
-      stop = parseStopToDate(date, stopTime, untilMidnight)
+      if (!isRunning) {
+        const stop = parseStopToDate(date, stopTime, untilMidnight)
+        if (stop.getTime() <= start.getTime()) return t('entry.validation.endAfterStart')
+      }
     } catch (e) {
       return (e as Error).message
     }
-    if (stop.getTime() <= start.getTime()) return t('entry.validation.endAfterStart')
     if (start.getTime() > Date.now()) return t('entry.validation.startNotFuture')
     if (description.length > MAX_DESCRIPTION_LEN) {
       return t('entry.validation.descriptionTooLong', { max: String(MAX_DESCRIPTION_LEN) })
@@ -182,8 +194,14 @@ export function EntryEditForm({
           // goes as null, never as undefined.
           project_id: projectId,
           description: description.trim(),
-          started_at: start,
-          stopped_at: stop,
+          // A running entry is amended, never sealed by this form. Preserve
+          // its seconds unless the user actually changed the displayed start.
+          ...(!isRunning ||
+          date !== toDateInputValue(initialStart) ||
+          startTime !== formatTimeHHMM(initialStart)
+            ? { started_at: start }
+            : {}),
+          ...(!isRunning ? { stopped_at: stop } : {}),
           tags,
           reference: reference.trim(),
           billable,
@@ -214,6 +232,10 @@ export function EntryEditForm({
     }
     setState('success')
     bumpVersion()
+    // A running entry saved from any dialog (Today, calendar, long-run prompt)
+    // is still the timer's entry: carry the change into the timer store, or the
+    // header and the next start keep the old client and description (#485).
+    if (res.data.stopped_at === null) syncRunningEntry(res.data)
     // Brief success flash before handing control back to the parent.
     setTimeout(() => onSaved(res.data), 300)
   }

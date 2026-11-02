@@ -602,6 +602,14 @@ export const de = {
 
   // ── IdleModal ─────────────────────────────────────────────────────────────
   'idle.title': 'Inaktivität erkannt',
+  'longRun.title': 'Timer läuft schon lange',
+  'longRun.body': 'Der Timer für {client} läuft seit {start} ({duration}).',
+  'longRun.stopAt': 'Stoppen um …',
+  'longRun.stopAtInvalid':
+    'Das Ende muss nach dem Start liegen und darf nicht in der Zukunft liegen.',
+  'settings.timer.longRun': 'Langläufer-Schwelle (Stunden)',
+  'settings.timer.longRunHint':
+    'Nach dieser Laufzeit nachfragen: 1–24 Stunden, Standard 6 Stunden.',
   'idle.body':
     'Du warst seit {time} nicht mehr aktiv ({duration}). Was soll mit der Zeit passieren?',
   'idle.keep': 'Weiter laufen lassen',

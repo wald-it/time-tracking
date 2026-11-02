@@ -15,6 +15,7 @@ interface TimerState {
 
   // Idle modal
   idleEvent: { idleSince: string; idleSeconds: number } | null
+  longRun: { entryId: number } | null
 
   // Quicknote modal — shown after stop when description was empty
   quickNoteEntry: Entry | null
@@ -29,6 +30,7 @@ interface TimerState {
   setIsLoading: (v: boolean) => void
   setIdleEvent: (e: { idleSince: string; idleSeconds: number } | null) => void
   setQuickNoteEntry: (entry: Entry | null) => void
+  setLongRun: (prompt: { entryId: number } | null) => void
 }
 
 export const useTimerStore = create<TimerState>((set) => ({
@@ -40,6 +42,7 @@ export const useTimerStore = create<TimerState>((set) => ({
   elapsedSeconds: 0,
   isLoading: false,
   idleEvent: null,
+  longRun: null,
   quickNoteEntry: null,
 
   setClients: (clients) => set({ clients }),
@@ -50,5 +53,6 @@ export const useTimerStore = create<TimerState>((set) => ({
   setElapsedSeconds: (elapsedSeconds) => set({ elapsedSeconds }),
   setIsLoading: (isLoading) => set({ isLoading }),
   setIdleEvent: (idleEvent) => set({ idleEvent }),
+  setLongRun: (longRun) => set({ longRun }),
   setQuickNoteEntry: (quickNoteEntry) => set({ quickNoteEntry })
 }))

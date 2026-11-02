@@ -255,6 +255,7 @@ export interface Settings {
   backup_path: string
   // v1.1
   idle_threshold_minutes: string
+  long_run_threshold_hours?: string
   language: string
   auto_start: string
   hotkey_toggle: string

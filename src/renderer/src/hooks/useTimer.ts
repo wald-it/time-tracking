@@ -5,6 +5,9 @@ import { useClientsStore } from '../store/clientsStore'
 import { useEntriesStore } from '../store/entriesStore'
 import { readLastStartPair, useStartTimerModalStore } from '../store/startTimerModalStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
+import { parseLongRunThresholdHours, shouldAskLongRun } from '../../../shared/longRun'
+import { useSettingsStore } from '../store/settingsStore'
+import { askedLongRunEntries } from './longRunPrompt'
 
 export type IdleWorkResult = 'createFailed' | null
 
@@ -27,6 +30,9 @@ export interface UseTimerResult {
   elapsedSeconds: number
   isLoading: boolean
   idleEvent: { idleSince: string; idleSeconds: number } | null
+  longRun: { entryId: number } | null
+  longRunAnswer: (entryId: number) => void
+  longRunStopAt: (entryId: number, iso: string) => Promise<string | null>
   quickNoteEntry: Entry | null
   setSelectedClientId: (id: number | null) => void
   setSelectedProjectId: (id: number | null) => void
@@ -202,6 +208,10 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   } = useTimerStore()
 
   const clientsVersion = useClientsStore((s) => s.version)
+  const longRunThreshold = useSettingsStore((s) =>
+    s.settings === null ? null : parseLongRunThresholdHours(s.settings.long_run_threshold_hours)
+  )
+  const longRun = useTimerStore((s) => s.longRun)
 
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -250,10 +260,24 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   // nobody reads. elapsedSeconds is set on start/resync and reset on stop.
   useEffect(() => {
     if (!engine) return
+    function checkLongRun(): void {
+      const state = useTimerStore.getState()
+      if (state.longRun && state.longRun.entryId !== state.runningEntry?.id) state.setLongRun(null)
+      // Wait for the saved setting: an already running timer may load first.
+      if (
+        longRunThreshold !== null &&
+        shouldAskLongRun(state.runningEntry, Date.now(), longRunThreshold, askedLongRunEntries) &&
+        !state.longRun
+      ) {
+        state.setLongRun({ entryId: state.runningEntry!.id })
+      }
+    }
+    checkLongRun()
     if (runningEntry) {
       // Heartbeat every 30s — also refreshes the tray today-total so the
       // tooltip stays current without a second timer (v1.2 plan, E5).
       heartbeatRef.current = setInterval(() => {
+        checkLongRun()
         window.api.entries.heartbeat(runningEntry.id)
         const clientName =
           useTimerStore.getState().clients.find((c) => c.id === runningEntry.client_id)?.name ?? ''
@@ -266,7 +290,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     return () => {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current)
     }
-  }, [runningEntry, engine])
+  }, [runningEntry, engine, longRunThreshold])
 
   /**
    * The switch path shared by switchTo() and start() while a timer runs
@@ -491,8 +515,57 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
   }, [])
 
   const idleKeep = useCallback(() => {
+    const entry = useTimerStore.getState().runningEntry
+    const threshold = parseLongRunThresholdHours(
+      useSettingsStore.getState().settings?.long_run_threshold_hours
+    )
+    if (shouldAskLongRun(entry, Date.now(), threshold, askedLongRunEntries)) {
+      askedLongRunEntries.add(entry!.id)
+    }
+    // "Keep running" also answers a long-run prompt still pending for this
+    // entry, including one left open by a failed stop (already in the set).
+    const pending = useTimerStore.getState().longRun
+    if (pending && pending.entryId === entry?.id) {
+      askedLongRunEntries.add(entry.id)
+      useTimerStore.getState().setLongRun(null)
+    }
     dismissIdle()
   }, [dismissIdle])
+
+  const longRunAnswer = useCallback((entryId: number): void => {
+    askedLongRunEntries.add(entryId)
+    if (useTimerStore.getState().longRun?.entryId === entryId)
+      useTimerStore.getState().setLongRun(null)
+  }, [])
+
+  const longRunStopAt = useCallback(
+    async (entryId: number, iso: string): Promise<string | null> => {
+      const state = useTimerStore.getState()
+      const entry = state.runningEntry
+      if (!entry || entry.id !== entryId || state.isLoading) return null
+      // A stop attempt is an answer too; a failed write keeps the visible dialog.
+      askedLongRunEntries.add(entryId)
+      const res = await withLoading(() => window.api.entries.stopAt(entryId, iso, 'app'))
+      if (!res.ok) return res.error
+      longRunAnswer(entryId)
+      useEntriesStore.getState().bumpVersion()
+      // A new timer may have arrived from an external resync during the IPC.
+      if (useTimerStore.getState().runningEntry?.id === entryId) {
+        setRunningEntry(null)
+        setDescription('')
+        // An idle event that arrived during the IPC belongs to the stopped
+        // entry: drop it, as stop() does (Codex counter-check on #485).
+        if (useTimerStore.getState().idleEvent) {
+          setIdleEvent(null)
+          window.api.idle.dismiss()
+        }
+        await pushTrayUpdate(false, '')
+      }
+      if (entry.description.trim() === '') setQuickNoteEntry(res.data)
+      return null
+    },
+    [longRunAnswer, setRunningEntry, setDescription, setIdleEvent, setQuickNoteEntry]
+  )
 
   const idleStopAtIdle = useCallback(async () => {
     const ev = useTimerStore.getState().idleEvent
@@ -687,6 +760,9 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
 
   return {
     clients,
+    longRun,
+    longRunAnswer,
+    longRunStopAt,
     runningEntry,
     selectedClientId,
     selectedProjectId,
