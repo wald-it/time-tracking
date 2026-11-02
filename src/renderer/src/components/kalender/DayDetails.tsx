@@ -14,6 +14,8 @@ import { EntryEditForm } from '../EntryEditForm'
 import { EntryHistory } from './EntryHistory'
 import { useLocale, useT } from '../../contexts/I18nContext'
 import type { TFunction } from '../../contexts/I18nContext'
+import type { Gap } from '../../../../shared/gaps'
+import { gapFormRange } from '../heute/todayGaps'
 
 /**
  * Kalender — the selected day (HANDOFF §3.13). The content of the former
@@ -35,6 +37,7 @@ import type { TFunction } from '../../contexts/I18nContext'
 export function DayDetails({
   dateISO,
   entries,
+  gaps = [],
   clients,
   projects,
   onEscape,
@@ -44,6 +47,8 @@ export function DayDetails({
   dateISO: string
   /** Entries for this day (caller filters from getByMonth). */
   entries: Entry[]
+  /** All gaps for the day, independent of the tag filter. */
+  gaps?: Gap[]
   clients: Client[]
   /**
    * All projects, from the caller; null while they are not loaded (then no
@@ -84,6 +89,7 @@ export function DayDetails({
   // The edit form replaces the row, so history expansion must survive outside that row.
   const [openHistories, setOpenHistories] = useState<Record<number, boolean>>({})
   const [creating, setCreating] = useState(false)
+  const [createRange, setCreateRange] = useState<{ start: Date; end: Date } | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
 
   const busy = editingId !== null || creating
@@ -208,6 +214,12 @@ export function DayDetails({
   // filtered part of the day, never hours of one set next to euros of another.
   const revenueCent = dayRevenueCent(filteredEntries)
 
+  function openCreate(gap?: Gap): void {
+    if (creating) return
+    setCreateRange(gap ? gapFormRange(gap) : null)
+    setCreating(true)
+  }
+
   return (
     <section
       ref={sectionRef}
@@ -269,6 +281,33 @@ export function DayDetails({
                 title={active ? t('drawer.filter.remove') : t('drawer.filter.apply', { tag })}
               >
                 #{tag}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {gaps.length > 0 && (
+        <div className="mt-[14px] flex flex-wrap items-center gap-2">
+          <span className="text-[var(--ink2)]" style={LEGEND}>
+            {t('calendar.panel.gaps')}
+          </span>
+          {gaps.map((gap) => {
+            const start = clockTime(new Date(gap.startMs).toISOString())
+            const end = clockTime(new Date(gap.endMs).toISOString())
+            const duration = formatHMM((gap.endMs - gap.startMs) / 1000)
+            const label = t('today.dayscale.gap', { start, end, duration })
+            return (
+              <button
+                key={gap.startMs}
+                type="button"
+                aria-label={label}
+                title={label}
+                disabled={creating || clients.length === 0}
+                onClick={() => openCreate(gap)}
+                className="font-num min-h-[44px] rounded-[var(--r-key)] border border-[var(--tick)] bg-transparent px-2 text-[12px] text-[var(--ink2)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)] disabled:cursor-not-allowed"
+              >
+                {start}–{end} · {duration}
               </button>
             )
           })}
@@ -401,7 +440,8 @@ export function DayDetails({
             <li className="border-t-2 border-[var(--ink)] py-[10px]">
               <EntryEditForm
                 clients={clients}
-                defaultDate={defaultStartForDay(dateISO)}
+                defaultDate={createRange?.start ?? defaultStartForDay(dateISO)}
+                defaultEnd={createRange?.end}
                 onSaved={() => {
                   setCreating(false)
                   showToast(t('common.entrySaved'))
@@ -416,7 +456,7 @@ export function DayDetails({
       {!creating && (
         <button
           type="button"
-          onClick={() => setCreating(true)}
+          onClick={() => openCreate(gaps.at(-1))}
           data-add-entry
           disabled={clients.length === 0}
           className="key-hover mt-[6px] flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[var(--r-key)] border border-[var(--key-edge)] bg-[var(--key)] px-4 text-[13px] font-semibold text-[var(--ink)] shadow-[inset_0_-2px_0_var(--key-edge)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"

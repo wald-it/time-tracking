@@ -419,6 +419,7 @@ export const en: Record<TranslationKey, string> = {
   'calendar.cellAriaEmpty': '{date}, no entries',
   'calendar.panel.legend': 'Selected day',
   'calendar.panel.addFor': 'Add entry for {date}',
+  'calendar.panel.gaps': 'Gaps',
   'calendar.breakdown.legend': '{month} by client',
   'calendar.header.week': 'Wk',
   'calendar.days.mon': 'Mon',

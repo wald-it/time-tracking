@@ -867,11 +867,13 @@ describe('CalendarView — open form holds back the panel/drawer switch (PR 3)',
     await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
     fireEvent.click(cell('2026-08-10'))
     const drawer = screen.getByRole('dialog', { name: 'Einträge für 10.08.2026' })
-    fireEvent.click(within(drawer).getByRole('button', { name: /nachtragen/ }))
+    fireEvent.click(within(drawer).getByRole('button', { name: /Eintrag für .* nachtragen/ }))
     drawer.querySelector('textarea')!.focus()
 
     fireEvent.keyDown(window, { key: 'Escape' })
-    expect(document.activeElement).toBe(within(drawer).getByRole('button', { name: /nachtragen/ }))
+    expect(document.activeElement).toBe(
+      within(drawer).getByRole('button', { name: /Eintrag für .* nachtragen/ })
+    )
   })
 })
 
@@ -1000,5 +1002,132 @@ describe('CalendarView — unexplained time (#482)', () => {
     expect(cell('2026-09-01').getAttribute('aria-label')).toContain(' · ungeklärt 1:00')
     expect(screen.getByTestId('month-total').textContent).toBe('9:00')
     expect(within(cell('2026-08-31')).queryByTestId('unexplained-tick')).toBeNull()
+  })
+})
+
+describe('CalendarView — gap backfill (#483)', () => {
+  const localTime = (day: number, hour: number, minute = 0, second = 0): string =>
+    new Date(2026, 7, day, hour, minute, second).toISOString()
+  const rows = [
+    makeEntry({
+      id: 101,
+      started_at: localTime(10, 9),
+      stopped_at: localTime(10, 10, 0, 37),
+      tags: ',alpha,'
+    }),
+    makeEntry({
+      id: 102,
+      started_at: localTime(10, 11, 0, 42),
+      stopped_at: localTime(10, 18),
+      tags: ',beta,'
+    })
+  ]
+  const gapLabel = 'Lücke 10:00–11:00 · ungeklärt 1:00 · nachtragen'
+  const value = (label: string): string => (screen.getByLabelText(label) as HTMLInputElement).value
+
+  it.each([true, false])(
+    'shows ordered gap buttons and opens a minute-safe form (wide=%s)',
+    async (wide) => {
+      installMatchMedia(wide)
+      await setup({ now: localTime(17, 12), byMonth: { '2026-8': rows } })
+      fireEvent.click(cell('2026-08-10'))
+      expect(screen.getByText('Lücken')).not.toBeNull()
+      const buttons = screen.getAllByRole('button', { name: /^Lücke / })
+      expect(buttons.map((button) => button.textContent)).toEqual([
+        '08:00–09:00 · 1:00',
+        '10:00–11:00 · 1:00'
+      ])
+      expect(buttons[1].getAttribute('title')).toBe(gapLabel)
+      fireEvent.click(buttons[1])
+      expect(value('Datum')).toBe('2026-08-10')
+      expect(value('Start')).toBe('10:01')
+      expect(value('Ende')).toBe('11:00')
+      expect((buttons[0] as HTMLButtonElement).disabled).toBe(true)
+      fireEvent.click(buttons[0])
+      expect(document.querySelectorAll('form')).toHaveLength(1)
+      expect(value('Start')).toBe('10:01')
+    }
+  )
+
+  it('opens the latest gap from the backfill key, even with a tag filter', async () => {
+    installMatchMedia(true)
+    await setup({ now: localTime(17, 12), byMonth: { '2026-8': rows } })
+    fireEvent.click(cell('2026-08-10'))
+    fireEvent.click(screen.getByRole('button', { name: '#alpha' }))
+    expect(screen.getAllByRole('button', { name: /^Lücke / })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: gapLabel })).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Eintrag für .* nachtragen/ }))
+    expect(value('Start')).toBe('10:01')
+    expect(value('Ende')).toBe('11:00')
+  })
+
+  it.each([
+    { label: 'empty day', entries: [] },
+    {
+      label: 'covered day',
+      entries: [makeEntry({ id: 103, started_at: localTime(10, 8), stopped_at: localTime(10, 18) })]
+    }
+  ])('keeps the 09:00 default and has no gap row without gaps ($label)', async ({ entries }) => {
+    installMatchMedia(true)
+    await setup({ now: localTime(17, 12), byMonth: { '2026-8': entries } })
+    fireEvent.click(cell('2026-08-10'))
+    expect(screen.queryByText('Lücken')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Lücke / })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Eintrag für .* nachtragen/ }))
+    expect(value('Datum')).toBe('2026-08-10')
+    expect(value('Start')).toBe('09:00')
+    expect(value('Ende')).toBe('10:00')
+  })
+
+  it('shows today gaps capped at now but no future gaps', async () => {
+    installMatchMedia(true)
+    await setup({
+      now: localTime(10, 12),
+      byMonth: {
+        '2026-8': [
+          rows[0],
+          makeEntry({ id: 104, started_at: localTime(11, 9), stopped_at: localTime(11, 10) })
+        ]
+      }
+    })
+    expect(
+      screen.getByRole('button', { name: 'Lücke 10:00–12:00 · ungeklärt 1:59 · nachtragen' })
+    ).not.toBeNull()
+    fireEvent.click(cell('2026-08-11'))
+    expect(screen.queryByText('Lücken')).toBeNull()
+  })
+
+  it('uses carryovers for panel coverage without making carryover-only days eligible', async () => {
+    installMatchMedia(true)
+    await setup({
+      now: localTime(17, 12),
+      byMonth: {
+        '2026-8': [
+          makeEntry({ id: 105, started_at: localTime(9, 23), stopped_at: localTime(10, 9) }),
+          rows[1],
+          makeEntry({ id: 106, started_at: localTime(11, 23), stopped_at: localTime(12, 9) })
+        ]
+      }
+    })
+    fireEvent.click(cell('2026-08-10'))
+    expect(screen.getAllByRole('button', { name: /^Lücke / })).toHaveLength(1)
+    expect(
+      screen.getByRole('button', { name: 'Lücke 09:00–11:00 · ungeklärt 2:00 · nachtragen' })
+    ).not.toBeNull()
+    fireEvent.click(cell('2026-08-12'))
+    expect(screen.queryByText('Lücken')).toBeNull()
+  })
+
+  it('translates the row and gap labels into English', async () => {
+    installMatchMedia(true)
+    useSettingsStore.setState({ settings: { language: 'en' } as unknown as never })
+    await setup({ now: localTime(17, 12), byMonth: { '2026-8': rows } })
+    fireEvent.click(cell('2026-08-10'))
+    expect(screen.getByText('Gaps')).not.toBeNull()
+    expect(
+      screen
+        .getByRole('button', { name: 'Gap 10:00–11:00 · unexplained 1:00 · add entry' })
+        .getAttribute('title')
+    ).toBe('Gap 10:00–11:00 · unexplained 1:00 · add entry')
   })
 })
