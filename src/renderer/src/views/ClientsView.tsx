@@ -1,3 +1,4 @@
+import { projectBudgetStatus, budgetPercent, formatBudgetAmount } from '../../../shared/currency'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type {
   Client,
@@ -256,6 +257,9 @@ export default function ClientsView(): React.JSX.Element {
     start_date: string | null
     end_date: string | null
     budget_minutes: number | null
+    budget_cent: number | null
+    budget_kind: 'hours' | 'eur'
+    budget_period: 'total' | 'month'
     status: 'active' | 'paused' | 'archived'
     contact_person: string | null
   }): Promise<string | null> {
@@ -757,10 +761,11 @@ function ProjectItem({
     return `${countStr} · ${rel}`
   })()
 
-  const hasBudget = (p.budget_minutes ?? 0) > 0
-  const usedMin = p.used_minutes ?? 0
-  const budgetMin = p.budget_minutes ?? 0
-  const budgetPct = hasBudget ? Math.min(100, Math.round((usedMin / budgetMin) * 100)) : 0
+  const budgetStatus = projectBudgetStatus(p)
+  const hasBudget = budgetStatus.budget !== null
+  const usedMin = budgetStatus.used
+  const budgetMin = budgetStatus.budget ?? 0
+  const budgetPct = hasBudget ? Math.min(100, budgetPercent(budgetMin, usedMin)) : 0
   const overBudget = hasBudget && usedMin > budgetMin
   const budgetWarn = hasBudget && budgetPct >= 80
 
@@ -795,7 +800,19 @@ function ProjectItem({
         )}
         {hasBudget && (
           <span className="flex items-center gap-1.5 mt-1">
-            <span className="h-1 flex-1 overflow-hidden" style={{ background: 'var(--line)' }}>
+            <span
+              role="progressbar"
+              aria-label={t(
+                budgetStatus.kind === 'eur'
+                  ? 'projects.form.budgetEurLabel'
+                  : 'projects.form.budgetLabel'
+              )}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={budgetPct}
+              className="h-1 flex-1 overflow-hidden"
+              style={{ background: 'var(--line)' }}
+            >
               <span
                 className="block h-full"
                 style={{
@@ -816,7 +833,9 @@ function ProjectItem({
                 color: overBudget ? 'var(--danger)' : budgetWarn ? 'var(--ink)' : 'var(--ink3)'
               }}
             >
-              {(usedMin / 60).toFixed(1)}h / {(budgetMin / 60).toFixed(1)}h
+              {formatBudgetAmount(usedMin, budgetStatus.kind)} /{' '}
+              {formatBudgetAmount(budgetMin, budgetStatus.kind)}
+              {budgetStatus.period === 'month' && ` · ${t('projects.form.budgetMonth')}`}
             </span>
           </span>
         )}
@@ -1293,6 +1312,9 @@ function ProjectFormModal({
     start_date: string | null
     end_date: string | null
     budget_minutes: number | null
+    budget_cent: number | null
+    budget_kind: 'hours' | 'eur'
+    budget_period: 'total' | 'month'
     status: 'active' | 'paused' | 'archived'
     contact_person: string | null
   }) => Promise<string | null>
@@ -1324,10 +1346,15 @@ function ProjectFormModal({
   const [externalNumber, setExternalNumber] = useState(project?.external_project_number ?? '')
   const [startDate, setStartDate] = useState(project?.start_date ?? '')
   const [endDate, setEndDate] = useState(project?.end_date ?? '')
+  const [budgetKind, setBudgetKind] = useState<'hours' | 'eur'>(project?.budget_kind ?? 'hours')
+  const [budgetPeriod, setBudgetPeriod] = useState<'total' | 'month'>(
+    project?.budget_period ?? 'total'
+  )
   const [budgetInput, setBudgetInput] = useState(() => {
-    if (project?.budget_minutes == null) return ''
-    const hours = project.budget_minutes / 60
-    return hours % 1 === 0 ? String(hours) : hours.toFixed(2)
+    const current = projectBudgetStatus(project ?? {})
+    if (current.budget === null) return ''
+    const value = current.budget / (current.kind === 'eur' ? 100 : 60)
+    return value % 1 === 0 ? String(value) : value.toFixed(2)
   })
   // v1.12 #105
   const [contactPerson, setContactPerson] = useState(project?.contact_person ?? '')
@@ -1359,14 +1386,14 @@ function ProjectFormModal({
       // inherits the client rate.
       rate_cent = parsed
     }
-    let budget_minutes: number | null = null
+    let amount: number | null = null
     if (budgetInput.trim() !== '') {
-      const hours = parseFloat(budgetInput.replace(',', '.'))
-      if (!isFinite(hours) || hours <= 0) {
-        // silently ignore invalid budget input — treat as no budget
-      } else {
-        budget_minutes = Math.round(hours * 60)
+      const parsed = Number(budgetInput.replace(',', '.'))
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        setError(t('projects.form.budgetInvalid'))
+        return
       }
+      amount = Math.round(parsed * (budgetKind === 'eur' ? 100 : 60))
     }
     setIsSaving(true)
     try {
@@ -1377,7 +1404,10 @@ function ProjectFormModal({
         external_project_number: nullIfEmpty(externalNumber),
         start_date: nullIfEmpty(startDate),
         end_date: nullIfEmpty(endDate),
-        budget_minutes,
+        budget_minutes: budgetKind === 'hours' ? amount : null,
+        budget_cent: budgetKind === 'eur' ? amount : null,
+        budget_kind: budgetKind,
+        budget_period: budgetPeriod,
         status,
         contact_person: nullIfEmpty(contactPerson)
       })
@@ -1578,10 +1608,40 @@ function ProjectFormModal({
 
         {/* Budget */}
         <div className="flex flex-col gap-1.5">
-          <label className={FIELD_LABEL}>{t('projects.form.budgetLabel')}</label>
+          <label className={FIELD_LABEL} htmlFor="budget-kind">
+            {t('projects.form.budgetKind')}
+          </label>
+          <select
+            id="budget-kind"
+            value={budgetKind}
+            onChange={(e) => {
+              setBudgetKind(e.target.value as 'hours' | 'eur')
+              setBudgetInput('')
+            }}
+            className={INPUT}
+          >
+            <option value="hours">{t('projects.form.budgetHours')}</option>
+            <option value="eur">{t('projects.form.budgetEur')}</option>
+          </select>
+          <label className={FIELD_LABEL} htmlFor="budget-period">
+            {t('projects.form.budgetPeriod')}
+          </label>
+          <select
+            id="budget-period"
+            value={budgetPeriod}
+            onChange={(e) => setBudgetPeriod(e.target.value as 'total' | 'month')}
+            className={INPUT}
+          >
+            <option value="total">{t('projects.form.budgetTotal')}</option>
+            <option value="month">{t('projects.form.budgetMonth')}</option>
+          </select>
+          <label className={FIELD_LABEL} htmlFor="budget-amount">
+            {t(budgetKind === 'eur' ? 'projects.form.budgetEurLabel' : 'projects.form.budgetLabel')}
+          </label>
           <input
             type="text"
             inputMode="decimal"
+            id="budget-amount"
             value={budgetInput}
             onChange={(e) => setBudgetInput(e.target.value)}
             placeholder={t('projects.form.budgetPlaceholder')}

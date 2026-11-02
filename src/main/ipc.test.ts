@@ -887,23 +887,23 @@ describe('normaliseBudgetMinutes', () => {
     expect(normaliseBudgetMinutes(null)).toBeNull()
   })
 
-  it('returns null for zero', () => {
-    expect(normaliseBudgetMinutes(0)).toBeNull()
+  it('preserves zero as a set budget', () => {
+    expect(normaliseBudgetMinutes(0)).toBe(0)
   })
 
-  it('returns null for negative values', () => {
-    expect(normaliseBudgetMinutes(-60)).toBeNull()
+  it('rejects negative values', () => {
+    expect(() => normaliseBudgetMinutes(-60)).toThrow()
   })
 
-  it('returns null for NaN/Infinity', () => {
-    expect(normaliseBudgetMinutes(NaN)).toBeNull()
-    expect(normaliseBudgetMinutes(Infinity)).toBeNull()
+  it('rejects NaN/Infinity', () => {
+    expect(() => normaliseBudgetMinutes(NaN)).toThrow()
+    expect(() => normaliseBudgetMinutes(Infinity)).toThrow()
   })
 
   it('returns rounded positive integer', () => {
     expect(normaliseBudgetMinutes(120)).toBe(120)
     expect(normaliseBudgetMinutes(90.6)).toBe(91)
-    expect(normaliseBudgetMinutes('60')).toBe(60)
+    expect(() => normaliseBudgetMinutes('60')).toThrow()
   })
 })
 

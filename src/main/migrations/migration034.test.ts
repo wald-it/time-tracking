@@ -61,7 +61,7 @@ describe('migration 034', () => {
     applyIndexes()
     const fresh = new Ctor(':memory:')
     try {
-      applyMigrations(fresh)
+      applyMigrations(fresh, 34)
       const schema = (connection: Database.Database): unknown[] =>
         connection
           .prepare(

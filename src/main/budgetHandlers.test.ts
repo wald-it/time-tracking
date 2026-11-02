@@ -44,7 +44,10 @@ describe('buildBudgetStatus', () => {
       `INSERT INTO projects (id, client_id, name, budget_minutes) VALUES (1, 1, 'App', NULL)`
     ).run()
     const result = buildBudgetStatus(db, 1)
-    expect(result).toEqual({ ok: true, data: { budgetMinutes: null, usedMinutes: 0 } })
+    expect(result).toEqual({
+      ok: true,
+      data: { kind: 'hours', period: 'total', budget: null, used: 0 }
+    })
   })
 
   it('returns usedMinutes=0 when project has no entries', () => {
@@ -52,7 +55,10 @@ describe('buildBudgetStatus', () => {
       `INSERT INTO projects (id, client_id, name, budget_minutes) VALUES (1, 1, 'App', 600)`
     ).run()
     const result = buildBudgetStatus(db, 1)
-    expect(result).toEqual({ ok: true, data: { budgetMinutes: 600, usedMinutes: 0 } })
+    expect(result).toEqual({
+      ok: true,
+      data: { kind: 'hours', period: 'total', budget: 600, used: 0 }
+    })
   })
 
   it('sums the minutes of completed entries', () => {
@@ -74,7 +80,10 @@ describe('buildBudgetStatus', () => {
       stopped_at: '2026-05-02T09:30:00Z'
     })
     const result = buildBudgetStatus(db, 1)
-    expect(result).toEqual({ ok: true, data: { budgetMinutes: 600, usedMinutes: 150 } })
+    expect(result).toEqual({
+      ok: true,
+      data: { kind: 'hours', period: 'total', budget: 600, used: 150 }
+    })
   })
 
   it('excludes the currently running entry (stopped_at IS NULL)', () => {
@@ -91,12 +100,18 @@ describe('buildBudgetStatus', () => {
     // running entry — no stopped_at
     seedEntry(db, { client_id: 1, project_id: 1, started_at: '2026-05-02T08:00:00Z' })
     const result = buildBudgetStatus(db, 1)
-    expect(result).toEqual({ ok: true, data: { budgetMinutes: 600, usedMinutes: 60 } })
+    expect(result).toEqual({
+      ok: true,
+      data: { kind: 'hours', period: 'total', budget: 600, used: 60 }
+    })
   })
 
   it('returns silent fallback when project does not exist', () => {
     const result = buildBudgetStatus(db, 9999)
-    expect(result).toEqual({ ok: true, data: { budgetMinutes: null, usedMinutes: 0 } })
+    expect(result).toEqual({
+      ok: true,
+      data: { kind: 'hours', period: 'total', budget: null, used: 0 }
+    })
   })
 
   it('excludes soft-deleted entries (deleted_at IS NOT NULL)', () => {
@@ -119,7 +134,10 @@ describe('buildBudgetStatus', () => {
       stopped_at: '2026-05-03T09:00:00Z'
     })
     const result = buildBudgetStatus(db, 1)
-    expect(result).toEqual({ ok: true, data: { budgetMinutes: 600, usedMinutes: 60 } })
+    expect(result).toEqual({
+      ok: true,
+      data: { kind: 'hours', period: 'total', budget: 600, used: 60 }
+    })
   })
 
   // #285: the budget counts what the invoice bills. These go through the real
@@ -151,7 +169,7 @@ describe('buildBudgetStatus', () => {
       // 62:20 → 63 whole minutes → next 15-minute step: 75, as on the invoice.
       expect(buildBudgetStatus(db, 1)).toEqual({
         ok: true,
-        data: { budgetMinutes: 600, usedMinutes: 75 }
+        data: { kind: 'hours', period: 'total', budget: 600, used: 75 }
       })
     })
 
@@ -174,7 +192,7 @@ describe('buildBudgetStatus', () => {
       // 20:10 → 21 started minutes, no step.
       expect(buildBudgetStatus(db, 1)).toEqual({
         ok: true,
-        data: { budgetMinutes: 600, usedMinutes: 21 }
+        data: { kind: 'hours', period: 'total', budget: 600, used: 21 }
       })
     })
 
@@ -208,7 +226,7 @@ describe('buildBudgetStatus', () => {
       // not billed. The old sum of rounded_min said 38.
       expect(buildBudgetStatus(db, 1)).toEqual({
         ok: true,
-        data: { budgetMinutes: 600, usedMinutes: 90 }
+        data: { kind: 'hours', period: 'total', budget: 600, used: 90 }
       })
     })
 
@@ -218,7 +236,7 @@ describe('buildBudgetStatus', () => {
       const readers = ['main/budgetHandlers.ts', 'main/ipc.ts', 'mcp/queries.ts']
       for (const rel of readers) {
         const src = readFileSync(join(__dirname, '..', rel), 'utf8')
-        expect(src, rel).toContain('budgetUsedMinutesSql(')
+        expect(src, rel).toContain('budgetUsageSql(')
         expect(src, rel).not.toMatch(/SUM\(\s*rounded_min\s*\)/)
       }
     })
@@ -240,7 +258,7 @@ describe('buildBudgetStatus', () => {
       expect(sealed.ok).toBe(true)
       expect(buildBudgetStatus(db, 1)).toEqual({
         ok: true,
-        data: { budgetMinutes: 600, usedMinutes: 45 }
+        data: { kind: 'hours', period: 'total', budget: 600, used: 45 }
       })
     })
   })

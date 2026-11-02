@@ -23,6 +23,94 @@ import { useToastStore } from '../store/toastStore'
 
 afterEach(cleanup)
 
+describe('Q11 project budgets', () => {
+  it('edits and shows a euro monthly budget, then removes the old type on switching both ways', async () => {
+    let project: Project = {
+      ...PROJECTS[0],
+      budget_kind: 'eur',
+      budget_period: 'month',
+      budget_cent: 10000,
+      budget_minutes: null,
+      used_cent: 8000,
+      used_minutes: 500
+    }
+    window.api.projects.getAll = vi.fn(async () => ({ ok: true as const, data: [project] }))
+    window.api.projects.update = vi.fn(
+      async (input: import('../../../shared/types').UpdateProjectInput) => {
+        project = { ...project, ...input }
+        return { ok: true as const, data: project }
+      }
+    )
+    await renderView()
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /Projekte anzeigen/ })[0])
+    })
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '80')
+    expect(screen.getByText('80,00 € / 100,00 € · Je Kalendermonat')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Rollout' }))
+    expect(screen.getByLabelText('Budgettyp')).toHaveValue('eur')
+    expect(screen.getByLabelText('Budgetperiode')).toHaveValue('month')
+    expect(screen.getByRole('textbox', { name: 'Budget (Euro)' })).toHaveValue('100')
+    fireEvent.change(screen.getByLabelText('Budgettyp'), { target: { value: 'hours' } })
+    expect(screen.getByRole('textbox', { name: 'Budget (Stunden)' })).toHaveValue('')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    })
+    expect(window.api.projects.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ budget_kind: 'hours', budget_cent: null, budget_minutes: null })
+    )
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Rollout' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Budget (Stunden)' }), {
+      target: { value: '10' }
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    })
+    expect(screen.getByText('8.3h / 10.0h · Je Kalendermonat')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Rollout' }))
+    fireEvent.change(screen.getByLabelText('Budgettyp'), { target: { value: 'eur' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    })
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    expect(window.api.projects.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ budget_kind: 'eur', budget_cent: null, budget_minutes: null })
+    )
+  })
+
+  it('saves a decimal euro amount with its period', async () => {
+    window.api.projects.update = vi.fn(
+      async (input: import('../../../shared/types').UpdateProjectInput) => ({
+        ok: true as const,
+        data: { ...PROJECTS[0], ...input }
+      })
+    )
+    await renderView()
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /Projekte anzeigen/ })[0])
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Rollout' }))
+    fireEvent.change(screen.getByLabelText('Budgettyp'), { target: { value: 'eur' } })
+    fireEvent.change(screen.getByLabelText('Budgetperiode'), { target: { value: 'month' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Budget (Euro)' }), {
+      target: { value: '123,45' }
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    })
+    expect(window.api.projects.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        budget_kind: 'eur',
+        budget_period: 'month',
+        budget_cent: 12345,
+        budget_minutes: null
+      })
+    )
+  })
+})
+
 it('uses the shared width with flexible client names and spaced actions (#420)', async () => {
   await renderView()
   const root = screen.getByRole('heading', { level: 1 }).parentElement!.parentElement!

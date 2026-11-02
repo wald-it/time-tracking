@@ -1,3 +1,4 @@
+import { projectBudgetStatus, budgetPercent, formatBudgetAmount } from '../../../shared/currency'
 import { useEffect, useRef, useState } from 'react'
 import { useTimer } from '../hooks/useTimer'
 import { useT } from '../contexts/I18nContext'
@@ -221,16 +222,15 @@ export function StartTimerModal({
         )}
 
         {/* Budget warning — shows when selected project is ≥80% consumed */}
-        {selectedProject?.budget_minutes != null &&
-          selectedProject.budget_minutes > 0 &&
+        {selectedProject &&
           (() => {
-            const usedMin = selectedProject.used_minutes ?? 0
-            const budgetMin = selectedProject.budget_minutes
-            const pct = Math.round((usedMin / budgetMin) * 100)
+            const { budget, used, kind, period } = projectBudgetStatus(selectedProject)
+            if (budget === null) return null
+            const pct = budgetPercent(budget, used)
             if (pct < 80) return null
-            const usedH = (usedMin / 60).toFixed(1)
-            const totalH = (budgetMin / 60).toFixed(1)
-            const over = usedMin > budgetMin
+            const usedH = formatBudgetAmount(used, kind)
+            const totalH = formatBudgetAmount(budget, kind)
+            const over = used > budget
             return (
               <div
                 className="flex items-start gap-2 rounded-[var(--r-key)] px-3 py-2.5 text-xs"
@@ -247,10 +247,11 @@ export function StartTimerModal({
                   {over
                     ? t('timer.budget.overBudget', { used: usedH, total: totalH })
                     : t('timer.budget.warning', {
-                        percent: String(pct),
+                        percent: String(Math.round(pct)),
                         used: usedH,
                         total: totalH
                       })}
+                  {period === 'month' && ` · ${t('projects.form.budgetMonth')}`}
                 </span>
               </div>
             )

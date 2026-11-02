@@ -528,9 +528,20 @@ export const de = {
   'projects.form.externalNumberPlaceholder': 'z.B. PO-2026-001',
   'projects.form.startDateLabel': 'Startdatum',
   'projects.form.endDateLabel': 'Enddatum',
+  'projects.form.budgetKind': 'Budgettyp',
+  'projects.form.budgetHours': 'Stunden',
+  'projects.form.budgetEur': 'Euro',
+  'projects.form.budgetEurLabel': 'Budget (Euro)',
+  'projects.form.budgetPeriod': 'Budgetperiode',
+  'projects.form.budgetTotal': 'Gesamt',
+  'projects.form.budgetMonth': 'Je Kalendermonat',
+  'projects.form.budgetKindInvalid': 'Ungültiger Budgettyp.',
+  'projects.form.budgetPeriodInvalid': 'Ungültige Budgetperiode.',
+  'projects.form.budgetInvalid': 'Bitte einen Betrag ab 0 eingeben.',
   'projects.form.budgetLabel': 'Budget (Stunden)',
   'projects.form.budgetPlaceholder': 'z.B. 40',
-  'projects.form.budgetHint': 'Optionales Stundenbudget (Dezimalstunden, z.B. 40,5 = 40h 30min).',
+  'projects.form.budgetHint':
+    'Leer = kein Budget. Abrechenbare, abgeschlossene Zeiten wie auf der Rechnung.',
   'projects.form.statusLabel': 'Status',
   'projects.form.statusActive': 'Aktiv',
   'projects.form.statusPaused': 'Pausiert',
@@ -1015,9 +1026,8 @@ export const de = {
   'timer.project.placeholder': '— Kein Projekt —',
   'timer.project.effectiveRate': 'Effektiver Satz: {rate} €/h (Projekt überschreibt Kunden)',
   // v1.11 #94 — Budget-Warnung
-  'timer.budget.warning':
-    'Achtung: {percent} % des Budgets bereits verbucht ({used} h / {total} h).',
-  'timer.budget.overBudget': 'Budget überschritten: {used} h von {total} h verbucht.',
+  'timer.budget.warning': 'Achtung: {percent} % des Budgets bereits verbucht ({used} / {total}).',
+  'timer.budget.overBudget': 'Budget überschritten: {used} von {total} verbucht.',
 
   // ── EntryEditForm — Projekt (v1.9 #75 PR 3) ───────────────────────────────
   'entry.project': 'Projekt',

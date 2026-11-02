@@ -1,3 +1,6 @@
+import type { BudgetStatus, Project } from './types'
+import { localDateKey } from './dateRanges'
+
 /**
  * Currency formatting and integer-cent arithmetic for the PDF pipeline.
  *
@@ -133,18 +136,68 @@ export function feeCentSql(step: number): string {
 
 /**
  * Budget consumption per project, one row per `project_id` with
- * `used_minutes` (#285): what the invoice bills — completed, live, billable
- * entries, each rounded by `billedMinutes` — over all time. Computed from the
- * the view `billing_lines` (profile, minimum unit and all).
+ * Minutes and cents, over all time and in the supplied local calendar month.
+ * Only completed, live, billable segments from the invoice's billing_lines.
  * Every budget reader (projects:getAll, projects:getBudgetStatus, MCP
  * list_projects) uses this one query.
  */
-export function budgetUsedMinutesSql(): string {
+export function budgetUsageSql(): string {
   return `SELECT e.project_id AS project_id,
-            COALESCE(SUM(e.billed_minutes), 0) AS used_minutes
+            COALESCE(SUM(e.billed_minutes), 0) AS used_minutes,
+            COALESCE(SUM(e.fee_cent), 0) AS used_cent,
+            COALESCE(SUM(CASE WHEN e.segment_date >= :monthStart AND e.segment_date < :nextMonthStart
+              THEN e.billed_minutes ELSE 0 END), 0) AS month_used_minutes,
+            COALESCE(SUM(CASE WHEN e.segment_date >= :monthStart AND e.segment_date < :nextMonthStart
+              THEN e.fee_cent ELSE 0 END), 0) AS month_used_cent
           FROM billing_lines e
           WHERE e.stopped_at IS NOT NULL AND e.billable = 1
           GROUP BY e.project_id`
+}
+
+/** Local dates, not UTC instants: also correct just after midnight on the 1st. */
+export function budgetMonthBounds(now = new Date()): {
+  monthStart: string
+  nextMonthStart: string
+} {
+  return {
+    monthStart: localDateKey(new Date(now.getFullYear(), now.getMonth(), 1)),
+    nextMonthStart: localDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 1))
+  }
+}
+
+/** Both list readers expose consumption for the project's chosen period. */
+export function budgetPeriodUsageSql(): string {
+  return `COALESCE(CASE WHEN p.budget_period = 'month' THEN bud.month_used_minutes ELSE bud.used_minutes END, 0) AS used_minutes,
+    COALESCE(CASE WHEN p.budget_period = 'month' THEN bud.month_used_cent ELSE bud.used_cent END, 0) AS used_cent`
+}
+
+export function projectBudgetStatus(
+  project: Pick<
+    Project,
+    | 'budget_kind'
+    | 'budget_period'
+    | 'budget_minutes'
+    | 'budget_cent'
+    | 'used_minutes'
+    | 'used_cent'
+  >
+): BudgetStatus {
+  const kind = project.budget_kind ?? 'hours'
+  return {
+    kind,
+    period: project.budget_period ?? 'total',
+    budget: (kind === 'eur' ? project.budget_cent : project.budget_minutes) ?? null,
+    used: (kind === 'eur' ? project.used_cent : project.used_minutes) ?? 0
+  }
+}
+
+/** A zero budget is set; any positive consumption exceeds it. */
+export function budgetPercent(budget: number, used: number): number {
+  return budget > 0 ? (used / budget) * 100 : used > 0 ? 100 : 0
+}
+
+export function formatBudgetAmount(value: number, kind: BudgetStatus['kind']): string {
+  return kind === 'eur' ? formatEur(value) : `${(value / 60).toFixed(1)}h`
 }
 
 /**

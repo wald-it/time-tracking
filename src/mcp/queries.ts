@@ -13,7 +13,7 @@
  * honour the `pdf_round_minutes` rounding step and the
  * `rate = project.rate ?? client.rate` precedence.
  */
-import { budgetUsedMinutesSql } from '../shared/currency'
+import { budgetUsageSql, budgetPeriodUsageSql, budgetMonthBounds } from '../shared/currency'
 import { readDefaultIntervalMin } from '../shared/billingProfile'
 import { localDayRange, localMonthRange } from '../shared/dateRanges'
 import { dueRateSql } from '../shared/dueRate'
@@ -53,6 +53,10 @@ export interface McpProject {
   external_project_number: string | null
   start_date: string | null
   end_date: string | null
+  budget_kind: 'hours' | 'eur'
+  budget_period: 'total' | 'month'
+  budget_cent?: number | null
+  used_cent?: number
   budget_minutes: number | null
   /** Budget used: billed minutes of billable entries, as on the invoice (#285). */
   used_minutes: number | null
@@ -120,6 +124,10 @@ interface ProjectRow {
   external_project_number: string | null
   start_date: string | null
   end_date: string | null
+  budget_kind: 'hours' | 'eur'
+  budget_period: 'total' | 'month'
+  budget_cent?: number | null
+  used_cent?: number
   budget_minutes: number | null
   used_minutes: number | null
   entry_count: number
@@ -217,12 +225,18 @@ function shapeProject(row: ProjectRow, privacy: PrivacyConfig): McpProject {
     external_project_number: row.external_project_number ?? null,
     start_date: row.start_date ?? null,
     end_date: row.end_date ?? null,
-    budget_minutes: row.budget_minutes ?? null,
+    budget_kind: row.budget_kind,
+    budget_period: row.budget_period,
+    budget_minutes: row.budget_kind === 'hours' ? (row.budget_minutes ?? null) : null,
     used_minutes: row.used_minutes ?? null,
     entry_count: row.entry_count ?? 0,
     last_used_at: row.last_used_at ?? null
   }
-  if (privacy.exposeRates) out.rate_cent = row.rate_cent ?? null
+  if (privacy.exposeRates) {
+    out.rate_cent = row.rate_cent ?? null
+    out.budget_cent = row.budget_kind === 'eur' ? (row.budget_cent ?? null) : null
+    out.used_cent = row.used_cent ?? 0
+  }
   return out
 }
 
@@ -318,17 +332,17 @@ export function listProjects(
   // Budget use counts like the invoice (#285): billing_lines.
   const base = `
     SELECT p.id, p.client_id, p.name, p.color, p.status, p.external_project_number,
-      p.start_date, p.end_date, p.budget_minutes,
+      p.start_date, p.end_date, p.budget_minutes, p.budget_kind, p.budget_period, p.budget_cent,
       ${dueRateSql('p', 'project_id')} AS rate_cent,
       COALESCE(ec.cnt, 0) AS entry_count,
       ec.last_used_at,
-      COALESCE(bud.used_minutes, 0) AS used_minutes
+      ${budgetPeriodUsageSql()}
     FROM projects p
     LEFT JOIN (
       SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
       FROM entries WHERE deleted_at IS NULL GROUP BY project_id
     ) ec ON ec.project_id = p.id
-    LEFT JOIN (${budgetUsedMinutesSql()}) bud ON bud.project_id = p.id`
+    LEFT JOIN (${budgetUsageSql()}) bud ON bud.project_id = p.id`
   const filters: string[] = []
   const params: unknown[] = []
   if (opts.clientId === null) {
@@ -340,7 +354,9 @@ export function listProjects(
   if (!opts.includeArchived) filters.push(`p.status != 'archived'`)
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
   const order = `ORDER BY CASE WHEN p.status = 'active' THEN 0 WHEN p.status = 'paused' THEN 1 ELSE 2 END, p.name`
-  const rows = db.prepare(`${base} ${where} ${order}`).all(...params) as ProjectRow[]
+  const rows = db
+    .prepare(`${base} ${where} ${order}`)
+    .all(budgetMonthBounds(), ...params) as ProjectRow[]
   return rows
     .filter(
       (r) =>

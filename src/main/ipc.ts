@@ -79,7 +79,7 @@ import {
 } from './rateEditor'
 import type { RateTarget, SaveRateInput, ProfileFields } from '../shared/rateEditor'
 import { registerBudgetHandlers } from './budgetHandlers'
-import { budgetUsedMinutesSql } from '../shared/currency'
+import { budgetUsageSql, budgetPeriodUsageSql, budgetMonthBounds } from '../shared/currency'
 import {
   normaliseShortCodeInput,
   SHORT_CODE_INVALID_ERROR,
@@ -187,18 +187,42 @@ function normaliseRateCent(value: unknown): number {
   return Math.round(n)
 }
 
-/**
- * Coerce optional `budget_minutes` from the renderer into a positive integer
- * or null. `undefined`, `null`, `0`, or negative values all become null
- * ("no budget set"). Non-integer values are rounded.
- *
- * Exported for unit testing.
- */
-export function normaliseBudgetMinutes(value: unknown): number | null {
+/** Validate before writing; zero is a set budget and blank is null. */
+export function normaliseBudgetMinutes(value: unknown, t: DialogT = dialogT('de')): number | null {
   if (value === undefined || value === null) return null
-  const n = Number(value)
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.round(n)
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    !Number.isSafeInteger(Math.round(value))
+  ) {
+    throw new Error(t('projects.form.budgetInvalid'))
+  }
+  return Math.round(value)
+}
+
+function normaliseProjectBudget(
+  input: CreateProjectInput,
+  t: DialogT
+): {
+  kind: 'hours' | 'eur'
+  period: 'total' | 'month'
+  minutes: number | null
+  cent: number | null
+} {
+  const kind = input.budget_kind === undefined ? 'hours' : input.budget_kind
+  const period = input.budget_period === undefined ? 'total' : input.budget_period
+  if (kind !== 'hours' && kind !== 'eur') throw new Error(t('projects.form.budgetKindInvalid'))
+  if (period !== 'total' && period !== 'month')
+    throw new Error(t('projects.form.budgetPeriodInvalid'))
+  const minutes = normaliseBudgetMinutes(input.budget_minutes, t)
+  const cent = normaliseBudgetMinutes(input.budget_cent, t)
+  return {
+    kind,
+    period,
+    minutes: kind === 'hours' ? minutes : null,
+    cent: kind === 'eur' ? cent : null
+  }
 }
 
 export function registerIpcHandlers(hooks: IpcHooks): void {
@@ -656,14 +680,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         const base = `SELECT p.*,
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,
-            COALESCE(bud.used_minutes, 0) AS used_minutes,
+            ${budgetPeriodUsageSql()},
             ${hasEntryVersionsSql('project_id', 'p.id')} AS has_entry_versions
           FROM projects p
           LEFT JOIN (
             SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
             FROM entries WHERE deleted_at IS NULL GROUP BY project_id
           ) ec ON ec.project_id = p.id
-          LEFT JOIN (${budgetUsedMinutesSql()}) bud ON bud.project_id = p.id`
+          LEFT JOIN (${budgetUsageSql()}) bud ON bud.project_id = p.id`
         const order = `ORDER BY CASE WHEN p.status = 'active' THEN 0 WHEN p.status = 'paused' THEN 1 ELSE 2 END, p.name`
         let query: string
         let params: unknown[]
@@ -679,7 +703,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           query = `${base} ${order}`
           params = []
         }
-        const rows = db.prepare(query).all(...params) as Project[]
+        const rows = db.prepare(query).all(budgetMonthBounds(), ...params) as Project[]
         return ok(rows)
       } catch (e) {
         return fail(e)
@@ -691,14 +715,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     try {
       const err = validateProject(input, db)
       if (err) return fail(err)
-      const budget = normaliseBudgetMinutes(input.budget_minutes)
+      const budget = normaliseProjectBudget(input, tDialog)
       const result = db
         .prepare(
           `INSERT INTO projects
              (client_id, name, color, rate_cent,
-              external_project_number, start_date, end_date, budget_minutes, status,
+              external_project_number, start_date, end_date, budget_minutes, budget_cent, budget_kind, budget_period, status,
               contact_person)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
         )
         .get(
           input.client_id ?? null,
@@ -708,7 +732,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           input.external_project_number?.trim() ?? null,
           input.start_date ?? null,
           input.end_date ?? null,
-          budget,
+          budget.minutes,
+          budget.cent,
+          budget.kind,
+          budget.period,
           input.status ?? 'active',
           input.contact_person?.trim() || null
         ) as Project
@@ -736,7 +763,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           )
         }
       }
-      const budget = normaliseBudgetMinutes(input.budget_minutes)
+      const budget = normaliseProjectBudget(input, tDialog)
       const status = input.status ?? 'active'
       // Keep `active` in sync with `status` for backward compatibility.
       const activeFlag = status === 'active' ? 1 : 0
@@ -749,7 +776,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
              client_id=?, name=?, color=?,
              rate_cent = CASE WHEN ? THEN ? ELSE rate_cent END, active=?,
              external_project_number=?, start_date=?, end_date=?,
-             budget_minutes=?, status=?, contact_person=?
+             budget_minutes=?, budget_cent=?, budget_kind=?, budget_period=?, status=?, contact_person=?
            WHERE id=? RETURNING *`
         )
         .get(
@@ -762,7 +789,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           input.external_project_number?.trim() ?? null,
           input.start_date ?? null,
           input.end_date ?? null,
-          budget,
+          budget.minutes,
+          budget.cent,
+          budget.kind,
+          budget.period,
           status,
           input.contact_person?.trim() || null,
           input.id
