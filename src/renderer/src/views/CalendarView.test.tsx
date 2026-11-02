@@ -437,8 +437,10 @@ describe('CalendarView — selection state (§4.2.3)', () => {
 
   it('labels a cell with weekday, date and hours', async () => {
     await setup({ byMonth: { '2026-8': AUGUST_ENTRIES } })
-    expect(cell('2026-08-10').getAttribute('aria-label')).toBe(
-      'Montag, 10. August, 2:30 Stunden · ungeklärt 7:30'
+    // AUGUST_ENTRIES are UTC, so the unexplained duration depends on the test
+    // zone; its value is pinned with local times in the #482 block below.
+    expect(cell('2026-08-10').getAttribute('aria-label')).toMatch(
+      /^Montag, 10\. August, 2:30 Stunden · ungeklärt \d+:\d{2}$/
     )
     expect(cell('2026-08-11').getAttribute('aria-label')).toBe(
       'Dienstag, 11. August, keine Einträge'
