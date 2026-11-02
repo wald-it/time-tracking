@@ -275,6 +275,18 @@ describe('long-running engine and dialog', () => {
   })
   // Codex counter-check round 3 on #485: an untouched field shows the time an
   // untouched stop saves, also after the dialog stood open for an hour.
+  // Codex counter-check round 4 on #485: failed stop, then idle, then keep.
+  it('idle keep after a failed stop answers the still open long-run prompt', async () => {
+    const s = await setup()
+    s.api.entries.stopAt.mockImplementationOnce(async () => ({ ok: false, error: 'refused' }))
+    await click('Stoppen um …')
+    expect(longDialog()).toBeInTheDocument()
+    await s.idle()
+    await click('Weiter laufen lassen')
+    await tick(60_000)
+    expect(longDialog()).toBeNull()
+    expect(s.useTimerStore.getState().longRun).toBeNull()
+  })
   it('untouched fields follow the clock and show what the stop saves', async () => {
     const s = await setup()
     expect(screen.getByLabelText('Ende')).toHaveValue('02:00')

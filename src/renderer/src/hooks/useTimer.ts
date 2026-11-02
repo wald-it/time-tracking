@@ -521,6 +521,12 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     )
     if (shouldAskLongRun(entry, Date.now(), threshold, askedLongRunEntries)) {
       askedLongRunEntries.add(entry!.id)
+    }
+    // "Keep running" also answers a long-run prompt still pending for this
+    // entry, including one left open by a failed stop (already in the set).
+    const pending = useTimerStore.getState().longRun
+    if (pending && pending.entryId === entry?.id) {
+      askedLongRunEntries.add(entry.id)
       useTimerStore.getState().setLongRun(null)
     }
     dismissIdle()
