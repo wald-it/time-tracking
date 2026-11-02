@@ -6,6 +6,8 @@ import { useEntriesStore } from '../store/entriesStore'
 import { readLastStartPair, useStartTimerModalStore } from '../store/startTimerModalStore'
 import { formatDuration as _formatDuration } from '../../../shared/duration'
 
+export type IdleWorkResult = 'createFailed' | null
+
 export interface ResumeFailure {
   error: string
   path: 'start' | 'switch'
@@ -54,6 +56,8 @@ export interface UseTimerResult {
   idleKeep: () => void
   idleStopAtIdle: () => Promise<void>
   idleMarkPause: () => Promise<void>
+  /** 'createFailed': the timer stopped, but the idle span could not be booked (caller shows it). */
+  idleWorkFor: (clientId: number, projectId?: number | null) => Promise<IdleWorkResult>
 }
 
 /**
@@ -582,6 +586,60 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- store setters are stable (zustand)
   }, [])
 
+  const idleWorkFor = useCallback(
+    async (clientId: number, projectId?: number | null): Promise<IdleWorkResult> => {
+      const { idleEvent: ev, runningEntry: entry, isLoading } = useTimerStore.getState()
+      if (isLoading) return null
+      if (!ev || !entry) {
+        dismissIdle()
+        return null
+      }
+      const external = externalEpoch
+      setIsLoading(true)
+      try {
+        const boundary = ev.idleSince
+        const stopped = await window.api.entries.stopAt(entry.id, boundary)
+        if (!stopped.ok) return null
+        let created: IpcResult<Entry>
+        try {
+          created = await window.api.entries.create({
+            client_id: clientId,
+            project_id: projectId ?? null,
+            description: '',
+            started_at: boundary,
+            stopped_at: new Date().toISOString(),
+            source: 'idle'
+          })
+        } catch {
+          created = { ok: false, error: 'IPC failed' }
+        }
+        // The stop already committed, including when booking the idle span failed.
+        // Views that reload only on the entries version (Calendar) must see both writes.
+        useEntriesStore.getState().bumpVersion()
+        setRunningEntry(null)
+        setDescription('')
+        await pushTrayUpdate(false, '')
+        dismissIdle()
+        // MCP or a hardware key may have started a timer meanwhile, and its resync
+        // may already be overwritten above: settle on main's state, as resume does.
+        if (externalEpoch !== external) await resyncFromExternal()
+        if (!created.ok) return 'createFailed'
+        setQuickNoteEntry(created.data)
+        return null
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [
+      dismissIdle,
+      resyncFromExternal,
+      setDescription,
+      setIsLoading,
+      setQuickNoteEntry,
+      setRunningEntry
+    ]
+  )
+
   /**
    * Q8, 2.2: resume the clicked row, choosing the path from the current store.
    * Null means success or an ignored call; failures carry the path for the toast.
@@ -648,7 +706,8 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
     resume,
     idleKeep,
     idleStopAtIdle,
-    idleMarkPause
+    idleMarkPause,
+    idleWorkFor
   }
 }
 
