@@ -404,6 +404,7 @@ export const en: Record<TranslationKey, string> = {
   'today.table.resume': 'Resume',
   'today.table.resumeArchived': 'The client is archived.',
   'today.dayscale.running': 'running',
+  'today.dayscale.gap': 'Gap {start}–{end} · unexplained {duration} · add entry',
 
   // ── CalendarView ──────────────────────────────────────────────────────────
   'calendar.nav.prev': 'Previous month',

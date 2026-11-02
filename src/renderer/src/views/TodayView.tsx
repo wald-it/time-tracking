@@ -22,6 +22,9 @@ import type { TFunction } from '../contexts/I18nContext'
 import { useT } from '../contexts/I18nContext'
 import { useNow } from '../contexts/NowContext'
 import { rowsBilledSeconds, uniformRoundingRule } from '../../../shared/entryMoney'
+import { parseWorkingHours } from '../../../shared/workingHours'
+import type { Gap } from '../../../shared/gaps'
+import { todayGaps } from '../components/heute/todayGaps'
 
 /**
  * `Heute` — the Messinstrument layout (HANDOFF §4.1):
@@ -45,6 +48,7 @@ export default function TodayView(): React.JSX.Element {
   const weekStart = useWeekStart()
   const showToast = useToastStore((s) => s.show)
   const nowMs = useNow()
+  const hours = parseWorkingHours(useSettingsStore((s) => s.settings?.working_hours))
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [fetchedAt, setFetchedAt] = useState(0)
@@ -53,9 +57,18 @@ export default function TodayView(): React.JSX.Element {
   const [projectsById, setProjectsById] = useState<Map<number, Project>>(new Map())
 
   // Edit / create / delete dialog state
-  const [createOpen, setCreateOpen] = useState(false)
+  const [createDefaults, setCreateDefaults] = useState<{ start: Date; end?: Date } | null>(null)
   const [editEntry, setEditEntry] = useState<Entry | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
+  const gaps = todayGaps(summary?.todayEntries ?? [], new Date(nowMs), hours)
+
+  function openBackfill(gap?: Gap): void {
+    setCreateDefaults(
+      gap
+        ? { start: new Date(gap.startMs), end: new Date(gap.endMs) }
+        : { start: defaultBackfillStart() }
+    )
+  }
 
   // The local date; a change re-fetches, so a view left open across midnight
   // does not show yesterday's entries under today's date.
@@ -243,6 +256,8 @@ export default function TodayView(): React.JSX.Element {
             projectsById={projectsById}
             nowMs={nowMs}
             onSelect={(e) => setEditEntry(e)}
+            gaps={gaps}
+            onGap={openBackfill}
           />
 
           {/* 4 — Entry table, full width. A block wrapper, so the table's own
@@ -256,7 +271,7 @@ export default function TodayView(): React.JSX.Element {
               showProjectNumber={showProjectNumber}
               onEdit={(e) => setEditEntry(e)}
               onDelete={(e) => setDeleteCandidate(e)}
-              onAdd={() => setCreateOpen(true)}
+              onAdd={() => openBackfill(gaps.at(-1))}
               // Q8: resume the row's client, project and description; a refused
               // start or switch says so, as a quick-start key does.
               onResume={(e) => {
@@ -284,19 +299,20 @@ export default function TodayView(): React.JSX.Element {
       )}
 
       <Dialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        open={createDefaults !== null}
+        onClose={() => setCreateDefaults(null)}
         title={t('today.dialog.add')}
         widthClass="w-[520px]"
       >
         <EntryEditForm
           clients={clients}
-          defaultDate={defaultBackfillStart()}
+          defaultDate={createDefaults?.start}
+          defaultEnd={createDefaults?.end}
           onSaved={() => {
-            setCreateOpen(false)
+            setCreateDefaults(null)
             showToast(t('common.entrySaved'))
           }}
-          onCancel={() => setCreateOpen(false)}
+          onCancel={() => setCreateDefaults(null)}
         />
       </Dialog>
 
