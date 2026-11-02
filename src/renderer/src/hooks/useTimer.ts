@@ -539,7 +539,7 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       if (!entry || entry.id !== entryId || state.isLoading) return null
       // A stop attempt is an answer too; a failed write keeps the visible dialog.
       askedLongRunEntries.add(entryId)
-      const res = await withLoading(() => window.api.entries.stopAt(entryId, iso))
+      const res = await withLoading(() => window.api.entries.stopAt(entryId, iso, 'app'))
       if (!res.ok) return res.error
       longRunAnswer(entryId)
       useEntriesStore.getState().bumpVersion()

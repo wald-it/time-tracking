@@ -7,6 +7,7 @@ import {
   parseTimeToDate
 } from '../../../shared/date'
 import { useEntriesStore } from '../store/entriesStore'
+import { useTimerStore } from '../store/timerStore'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useT } from '../contexts/I18nContext'
 import { TagInput } from './TagInput'
@@ -27,6 +28,15 @@ interface Props {
 }
 
 type FormState = 'idle' | 'saving' | 'success'
+
+function syncRunningEntry(saved: Entry): void {
+  const state = useTimerStore.getState()
+  if (state.runningEntry?.id !== saved.id) return
+  state.setRunningEntry(saved)
+  state.setDescription(saved.description)
+  state.setSelectedClientId(saved.client_id)
+  state.setSelectedProjectId(saved.project_id ?? null)
+}
 
 const MAX_DESCRIPTION_LEN = 500
 const MAX_REFERENCE_LEN = 200
@@ -222,6 +232,10 @@ export function EntryEditForm({
     }
     setState('success')
     bumpVersion()
+    // A running entry saved from any dialog (Today, calendar, long-run prompt)
+    // is still the timer's entry: carry the change into the timer store, or the
+    // header and the next start keep the old client and description (#485).
+    if (res.data.stopped_at === null) syncRunningEntry(res.data)
     // Brief success flash before handing control back to the parent.
     setTimeout(() => onSaved(res.data), 300)
   }

@@ -3,7 +3,6 @@ import type { Entry } from '../../../shared/types'
 import { formatTimeHHMM, isSameLocalDay, parseTimeToDate } from '../../../shared/date'
 import { formatDuration } from '../../../shared/duration'
 import { useTimer } from '../hooks/useTimer'
-import { useTimerStore } from '../store/timerStore'
 import { useLocale, useT } from '../contexts/I18nContext'
 import { useNow } from '../contexts/NowContext'
 import { Dialog } from './Dialog'
@@ -20,7 +19,10 @@ export function LongRunModal(): React.JSX.Element | null {
   const t = useT()
   const [editEntry, setEditEntry] = useState<Entry | null>(null)
   const entry = timer.runningEntry
-  if (!entry || timer.idleEvent) return null
+  if (!entry) return null
+  // The edit form stays mounted under an idle dialog, like Today's edit form,
+  // so a draft survives a lock or sleep; only the prompt yields to idle.
+  // The form itself carries a saved running entry into the timer store.
   if (editEntry?.id === entry.id) {
     return (
       <Dialog open title={t('today.dialog.edit')} onClose={() => setEditEntry(null)}>
@@ -28,21 +30,12 @@ export function LongRunModal(): React.JSX.Element | null {
           entry={editEntry}
           clients={timer.clients}
           onCancel={() => setEditEntry(null)}
-          onSaved={(saved) => {
-            const state = useTimerStore.getState()
-            if (state.runningEntry?.id === saved.id) {
-              state.setRunningEntry(saved)
-              state.setDescription(saved.description)
-              state.setSelectedClientId(saved.client_id)
-              state.setSelectedProjectId(saved.project_id ?? null)
-            }
-            setEditEntry(null)
-          }}
+          onSaved={() => setEditEntry(null)}
         />
       </Dialog>
     )
   }
-  if (timer.longRun?.entryId !== entry.id) return null
+  if (timer.idleEvent || timer.longRun?.entryId !== entry.id) return null
   return (
     <LongRunPrompt
       key={entry.id}

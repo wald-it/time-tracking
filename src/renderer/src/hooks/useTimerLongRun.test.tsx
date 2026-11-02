@@ -189,6 +189,18 @@ describe('long-running engine and dialog', () => {
     await tick(60_000)
     expect(longDialog()).toBeNull()
   })
+  // Codex counter-check on #485: a lock or sleep during the edit must not
+  // throw the draft away; the idle dialog comes on top of the form.
+  it('an idle event during edit keeps the form and its draft', async () => {
+    const s = await setup()
+    await click('Bearbeiten')
+    fireEvent.change(screen.getByDisplayValue('Work'), { target: { value: 'Draft' } })
+    await s.idle()
+    expect(screen.getByRole('dialog', { name: 'Inaktivität erkannt' })).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Draft')).toBeInTheDocument()
+    await click('Weiter laufen lassen')
+    expect(screen.getByDisplayValue('Draft')).toBeInTheDocument()
+  })
   it('cancelling edit still counts as the answer', async () => {
     await setup()
     await click('Bearbeiten')
@@ -237,7 +249,8 @@ describe('long-running engine and dialog', () => {
     await click('Stoppen um …')
     expect(s.api.entries.stopAt).toHaveBeenCalledExactlyOnceWith(
       s.entry.id,
-      new Date(`${date}T${time}:00`).toISOString()
+      new Date(`${date}T${time}:00`).toISOString(),
+      'app'
     )
     expect(s.useEntriesStore.getState().version).toBe(before + 1)
     expect(s.useTimerStore.getState().runningEntry).toBeNull()
@@ -250,7 +263,8 @@ describe('long-running engine and dialog', () => {
     await click('Stoppen um …')
     expect(s.api.entries.stopAt).toHaveBeenCalledExactlyOnceWith(
       s.entry.id,
-      new Date(s.now.getTime() + 75_123).toISOString()
+      new Date(s.now.getTime() + 75_123).toISOString(),
+      'app'
     )
     expect(s.useTimerStore.getState().quickNoteEntry?.id).toBe(s.entry.id)
   })

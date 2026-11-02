@@ -19,7 +19,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
-- Editing a running entry keeps it running and preserves its start seconds when the displayed start was not changed (#485).
+- Editing a running entry keeps it running and preserves its start seconds when the displayed start was not changed; the timer then shows the edited client and description (#485).
 
 ## [2.4.0] — 2026-11-02
 

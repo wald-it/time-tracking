@@ -179,8 +179,10 @@ const api = {
       projectId: number | null
     }): Promise<IpcResult<string[]>> => ipcRenderer.invoke('entries:recentDescriptions', pair),
     stop: (id: number): Promise<IpcResult<Entry>> => ipcRenderer.invoke('entries:stop', id),
-    stopAt: (id: number, stoppedAt: string): Promise<IpcResult<Entry>> =>
-      ipcRenderer.invoke('entries:stopAt', id, stoppedAt),
+    stopAt: (id: number, stoppedAt: string, origin?: 'app'): Promise<IpcResult<Entry>> =>
+      origin
+        ? ipcRenderer.invoke('entries:stopAt', id, stoppedAt, origin)
+        : ipcRenderer.invoke('entries:stopAt', id, stoppedAt),
     heartbeat: (id: number): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('entries:heartbeat', id),
     getRunning: (): Promise<IpcResult<Entry | null>> => ipcRenderer.invoke('entries:getRunning'),

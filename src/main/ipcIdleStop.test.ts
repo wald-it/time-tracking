@@ -136,6 +136,22 @@ describe('idle stop webhooks (#330)', () => {
     )
   })
 
+  // #485: the long-run prompt stops as the app, the idle dialog as idle;
+  // an unknown origin never widens to another source.
+  it.each([
+    [[], 'idle'],
+    [['app'], 'app'],
+    [['mcp'], 'idle']
+  ] as const)('stores the stop with origin %j as source %s', (extra, source) => {
+    expect(invoke('entries:stopAt', 1, idleSince, ...extra).ok).toBe(true)
+    const row = db
+      .prepare(
+        'SELECT source FROM entry_version WHERE entry_id = 1 ORDER BY version_no DESC LIMIT 1'
+      )
+      .get() as { source: string }
+    expect(row.source).toBe(source)
+  })
+
   it('refuses a second stop without another webhook', () => {
     expect(invoke('entries:stopAt', 1, idleSince).ok).toBe(true)
     vi.mocked(emitWebhooks).mockClear()

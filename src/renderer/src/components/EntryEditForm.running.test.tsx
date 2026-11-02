@@ -80,6 +80,28 @@ describe('running entry form (#485)', () => {
     )
   })
 
+  // Codex counter-check on #485: a save from Today or the calendar must reach
+  // the timer store too, not only a save from the long-run prompt.
+  it('a saved running entry replaces the timer store entry and selection', async () => {
+    const { useTimerStore } = await import('../store/timerStore')
+    const update = await setup()
+    const running = db.prepare('SELECT id FROM entries WHERE stopped_at IS NULL').get() as {
+      id: number
+    }
+    useTimerStore.setState({
+      runningEntry: { id: running.id, description: 'Original' } as never,
+      description: 'Original'
+    })
+    fireEvent.change(screen.getByDisplayValue('Original'), { target: { value: 'Synced' } })
+    fireEvent.submit(screen.getByDisplayValue('Synced').closest('form')!)
+    await waitFor(() => expect(useTimerStore.getState().runningEntry?.description).toBe('Synced'))
+    expect(useTimerStore.getState().description).toBe('Synced')
+    expect(useTimerStore.getState().runningEntry?.stopped_at).toBeNull()
+    expect(useTimerStore.getState().selectedClientId).toBe(1)
+    expect(update).toHaveBeenCalledOnce()
+    useTimerStore.setState({ runningEntry: null, description: '' })
+  })
+
   it('can edit a running entry whose disabled end wraps midnight', async () => {
     const update = await setup(0, 23)
     fireEvent.change(screen.getByDisplayValue('Original'), { target: { value: 'Night' } })

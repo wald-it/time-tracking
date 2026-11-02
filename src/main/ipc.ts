@@ -484,15 +484,21 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
-  ipcMain.handle('entries:stopAt', (_e, id: number, stoppedAt: string): IpcResult<Entry> => {
-    try {
-      const res = stopEntryAt(db, id, stoppedAt, { source: 'idle' })
-      if (res.ok) emitWebhooks(db, 'timer.stopped', res.data, { log: logWebhookDelivery })
-      return res
-    } catch (e) {
-      return fail(e)
+  // The idle dialog stops with source 'idle'; the long-run prompt (#485) is a
+  // plain app stop at a chosen time and passes 'app'. Any other value is 'idle'.
+  ipcMain.handle(
+    'entries:stopAt',
+    (_e, id: number, stoppedAt: string, origin?: unknown): IpcResult<Entry> => {
+      try {
+        const source = origin === 'app' ? 'app' : 'idle'
+        const res = stopEntryAt(db, id, stoppedAt, { source })
+        if (res.ok) emitWebhooks(db, 'timer.stopped', res.data, { log: logWebhookDelivery })
+        return res
+      } catch (e) {
+        return fail(e)
+      }
     }
-  })
+  )
 
   ipcMain.handle('entries:heartbeat', (_e, id: number): IpcResult<void> => {
     try {

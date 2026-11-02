@@ -106,7 +106,8 @@ declare global {
           projectId: number | null
         }): Promise<IpcResult<string[]>>
         stop(id: number): Promise<IpcResult<Entry>>
-        stopAt(id: number, stoppedAt: string): Promise<IpcResult<Entry>>
+        /** origin 'app': the long-run prompt (#485); omitted: the idle dialog. */
+        stopAt(id: number, stoppedAt: string, origin?: 'app'): Promise<IpcResult<Entry>>
         heartbeat(id: number): Promise<IpcResult<void>>
         getRunning(): Promise<IpcResult<Entry | null>>
         getByMonth(query: MonthQuery): Promise<IpcResult<Entry[]>>
