@@ -1,4 +1,5 @@
 import type { Client, Entry, Project } from '../../../../shared/types'
+import type { Gap } from '../../../../shared/gaps'
 import { DayDetails } from './DayDetails'
 
 /**
@@ -15,12 +16,14 @@ import { DayDetails } from './DayDetails'
 export function DayPanel({
   dateISO,
   entries,
+  gaps,
   clients,
   projects,
   onBusyChange
 }: {
   dateISO: string
   entries: Entry[]
+  gaps?: Gap[]
   clients: Client[]
   projects: Project[] | null
   /** An edit or backfill form is open (see `DayDetails`). */
@@ -31,6 +34,7 @@ export function DayPanel({
       key={dateISO}
       dateISO={dateISO}
       entries={entries}
+      gaps={gaps}
       clients={clients}
       projects={projects}
       onBusyChange={onBusyChange}

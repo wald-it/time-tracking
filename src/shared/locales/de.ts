@@ -422,6 +422,7 @@ export const de = {
   'calendar.cellAriaEmpty': '{date}, keine Einträge',
   'calendar.panel.legend': 'Ausgewählter Tag',
   'calendar.panel.addFor': 'Eintrag für {date} nachtragen',
+  'calendar.panel.gaps': 'Lücken',
   'calendar.breakdown.legend': '{month} nach Kunde',
   'calendar.header.week': 'KW',
   'calendar.days.mon': 'Mo',

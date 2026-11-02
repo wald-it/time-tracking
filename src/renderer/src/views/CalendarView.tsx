@@ -22,7 +22,8 @@ import { dayBilledSeconds, dayRevenueCent } from '../components/kalender/dayReve
 import { uniformRoundingRule } from '../../../shared/entryMoney'
 import { formatRangeHour, monthRange } from '../components/kalender/monthScale'
 import { useSettingsStore } from '../store/settingsStore'
-import { unexplainedGaps, unexplainedMs } from '../../../shared/gaps'
+import { unexplainedMs } from '../../../shared/gaps'
+import { dayGaps } from '../components/kalender/dayGaps'
 import { parseWorkingHours } from '../../../shared/workingHours'
 
 /**
@@ -70,6 +71,7 @@ export default function CalendarView(): React.JSX.Element {
   const nowMs = useNow()
   const { clients } = useTimer()
   const weekStart = useWeekStart()
+  const hours = parseWorkingHours(useSettingsStore((s) => s.settings?.working_hours))
   const version = useEntriesStore((s) => s.version)
   const projectsVersion = useProjectsStore((s) => s.version)
   const wide = useMediaQuery(DAY_PANEL_MEDIA_QUERY)
@@ -218,7 +220,7 @@ export default function CalendarView(): React.JSX.Element {
       setSelectedDay(d)
       if (!wide) setDrawerOpen(true)
     },
-    [wide]
+    [wide, setDrawerOpen]
   )
 
   // Keyboard navigation on the grid.
@@ -258,6 +260,7 @@ export default function CalendarView(): React.JSX.Element {
   // Only meaningful while the selected day lies in the loaded month; the
   // drawer can only be opened from a visible cell, so that always holds there.
   const selectedEntries = byDay.get(selectedKey) ?? []
+  const selectedGaps = dayGaps(byDay, shownSelection, new Date(nowMs), hours)
 
   const dateFmt = useMemo(
     () =>
@@ -437,6 +440,7 @@ export default function CalendarView(): React.JSX.Element {
               <DayPanel
                 dateISO={selectedKey}
                 entries={selectedEntries}
+                gaps={selectedGaps}
                 clients={clients}
                 projects={loadedProjects}
                 onBusyChange={setPanelBusy}
@@ -457,6 +461,7 @@ export default function CalendarView(): React.JSX.Element {
         open={drawerOpen && (!wide || drawerBusy)}
         dateISO={selectedKey}
         entries={selectedEntries}
+        gaps={selectedGaps}
         clients={clients}
         projects={loadedProjects}
         onBusyChange={setDrawerBusy}
@@ -536,18 +541,8 @@ function Week({
         const key = localDateKey(day)
         const inMonth = isSameMonth(day, cursor)
         const dayEntries = inMonth ? (byDay.get(key) ?? []) : []
-        // Eligibility comes only from this cell's own rows. Carryovers cover
-        // time but never add to its hours; the month guard also stays intact.
-        const carryovers = (byDay.get(localDateKey(addDays(day, -1))) ?? []).filter(
-          (entry) =>
-            (entry.stopped_at === null ? nowMs : Date.parse(entry.stopped_at)) > day.getTime()
-        )
         const unexplained =
-          inMonth && key < todayKey && dayEntries.length > 0
-            ? unexplainedMs(
-                unexplainedGaps([...dayEntries, ...carryovers], day, new Date(nowMs), hours)
-              )
-            : 0
+          inMonth && key < todayKey ? unexplainedMs(dayGaps(byDay, day, new Date(nowMs), hours)) : 0
         const unexplainedLabel =
           unexplained > 0 ? t('time.unexplained', { total: formatHm(unexplained / 1000) }) : ''
         const unexplainedSuffix = unexplainedLabel ? ` · ${unexplainedLabel}` : ''

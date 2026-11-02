@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import type { Client, Entry, Project } from '../../../shared/types'
+import type { Gap } from '../../../shared/gaps'
 import { useT } from '../contexts/I18nContext'
 import { DayDetails } from './kalender/DayDetails'
 import { useModalFocus } from './modalFocus'
@@ -10,6 +11,7 @@ interface Props {
   dateISO: string
   /** Entries for this day (caller filters from getByMonth). */
   entries: Entry[]
+  gaps?: Gap[]
   clients: Client[]
   /** null while not loaded: the details then show no amount. */
   projects: Project[] | null
@@ -33,6 +35,7 @@ export function CalendarDrawer({
   open,
   dateISO,
   entries,
+  gaps,
   clients,
   projects,
   onBusyChange,
@@ -81,6 +84,7 @@ export function CalendarDrawer({
           <DayDetails
             dateISO={dateISO}
             entries={entries}
+            gaps={gaps}
             clients={clients}
             projects={projects}
             onBusyChange={onBusyChange}
