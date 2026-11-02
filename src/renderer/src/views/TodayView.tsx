@@ -24,7 +24,7 @@ import { useNow } from '../contexts/NowContext'
 import { rowsBilledSeconds, uniformRoundingRule } from '../../../shared/entryMoney'
 import { parseWorkingHours } from '../../../shared/workingHours'
 import type { Gap } from '../../../shared/gaps'
-import { todayGaps } from '../components/heute/todayGaps'
+import { gapFormRange, todayGaps } from '../components/heute/todayGaps'
 
 /**
  * `Heute` — the Messinstrument layout (HANDOFF §4.1):
@@ -63,11 +63,7 @@ export default function TodayView(): React.JSX.Element {
   const gaps = todayGaps(summary?.todayEntries ?? [], new Date(nowMs), hours)
 
   function openBackfill(gap?: Gap): void {
-    setCreateDefaults(
-      gap
-        ? { start: new Date(gap.startMs), end: new Date(gap.endMs) }
-        : { start: defaultBackfillStart() }
-    )
+    setCreateDefaults(gap ? gapFormRange(gap) : { start: defaultBackfillStart() })
   }
 
   // The local date; a change re-fetches, so a view left open across midnight

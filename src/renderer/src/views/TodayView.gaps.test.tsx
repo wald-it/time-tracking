@@ -123,6 +123,20 @@ describe('Today backfill gaps', () => {
     }
   )
 
+  it('rounds the gap start up and the end down, so the backfill never overlaps a neighbour', async () => {
+    // The neighbours stop at 09:00:37 and start again at 10:30:20 (local).
+    const before = { ...entry(8, 9), stopped_at: new Date(2026, 7, 10, 9, 0, 37).toISOString() }
+    const after = {
+      ...entry(10, 11),
+      id: 99,
+      started_at: new Date(2026, 7, 10, 10, 30, 20).toISOString(),
+      stopped_at: local(12).toISOString()
+    }
+    await mount([before, after])
+    await click(/^Lücke 09:00–10:30/)
+    expectTimes('09:01', '10:30')
+  })
+
   it('uses the configured window end after working hours', async () => {
     vi.setSystemTime(local(19))
     useSettingsStore.setState({
