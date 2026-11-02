@@ -581,6 +581,8 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
           created = { ok: false, error: 'IPC failed' }
         }
         // The stop already committed, including when booking the idle span failed.
+        // Views that reload only on the entries version (Calendar) must see both writes.
+        useEntriesStore.getState().bumpVersion()
         setRunningEntry(null)
         setDescription('')
         await pushTrayUpdate(false, '')

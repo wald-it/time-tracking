@@ -108,9 +108,13 @@ describe('idle work booking', () => {
     'stops then creates at the same instant, with project %s, and prompts for the new entry',
     async (projectId) => {
       const { hook, api } = await setup()
+      const { useEntriesStore } = await import('../store/entriesStore')
+      const versionBefore = useEntriesStore.getState().version
       await act(async () => {
         await hook.result.current.idleWorkFor(2, projectId)
       })
+      // The Calendar reloads only on the entries version.
+      expect(useEntriesStore.getState().version).toBeGreaterThan(versionBefore)
       expect(api.entries.stopAt).toHaveBeenCalledExactlyOnceWith(1, boundary)
       expect(api.entries.create).toHaveBeenCalledExactlyOnceWith({
         client_id: 2,
@@ -137,6 +141,8 @@ describe('idle work booking', () => {
     'keeps the timer stopped and reports createFailed on create %s',
     async (failure) => {
       const { hook, api } = await setup()
+      const { useEntriesStore } = await import('../store/entriesStore')
+      const versionBefore = useEntriesStore.getState().version
       if (failure === 'refusal')
         api.entries.create.mockResolvedValue({ ok: false, error: 'Cannot book' })
       else api.entries.create.mockRejectedValue(new Error('IPC unavailable'))
@@ -145,6 +151,8 @@ describe('idle work booking', () => {
         result = await hook.result.current.idleWorkFor(2)
       })
       expect(result).toBe('createFailed')
+      // The stop committed, so the views must reload even though the booking failed.
+      expect(useEntriesStore.getState().version).toBeGreaterThan(versionBefore)
       expect(hook.result.current.runningEntry).toBeNull()
       expect(hook.result.current.description).toBe('')
       expect(hook.result.current.quickNoteEntry).toBeNull()
@@ -159,6 +167,8 @@ describe('idle work booking', () => {
     'keeps the dialog and running entry on stopAt %s without creating',
     async (failure) => {
       const { hook, api } = await setup()
+      const { useEntriesStore } = await import('../store/entriesStore')
+      const versionBefore = useEntriesStore.getState().version
       if (failure === 'refusal')
         api.entries.stopAt.mockResolvedValue({ ok: false, error: 'Cannot stop' })
       else api.entries.stopAt.mockRejectedValue(new Error('IPC unavailable'))
