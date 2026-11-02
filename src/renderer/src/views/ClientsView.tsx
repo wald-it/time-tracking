@@ -238,6 +238,11 @@ export default function ClientsView(): React.JSX.Element {
     }
     await loadClients()
     bumpClientsVersion()
+    // A client rate change alters the shown projects' inherited rate (rate hint, forecast).
+    if (editingClient && projectsByClient[editingClient.id]) {
+      await loadProjectsForClient(editingClient.id)
+      bumpProjectsVersion()
+    }
     setShowForm(false)
     setEditingClient(null)
     return null

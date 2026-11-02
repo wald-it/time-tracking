@@ -941,4 +941,29 @@ describe('Q11 step 2 budget display', () => {
     fireEvent.change(dialog.getByPlaceholderText('Leer = Kundensatz'), { target: { value: '' } })
     expect(dialog.getByText('Kein Satz: Euro-Budget zählt nicht')).toBeInTheDocument()
   })
+
+  it('reloads the shown projects after a client save, so the rate hint follows a new client rate', async () => {
+    await showBudget({ rate_cent: null, effective_rate_cent: null })
+    expect(screen.getByText('Kein Satz: Euro-Budget zählt nicht')).toBeInTheDocument()
+    window.api.clients.update = vi.fn(async () => ({ ok: true as const, data: CLIENTS[0] }))
+    window.api.projects.getAll = vi.fn(async () => ({
+      ok: true as const,
+      data: [
+        {
+          ...PROJECTS[0],
+          budget_kind: 'eur' as const,
+          budget_cent: 10000,
+          effective_rate_cent: 6000
+        }
+      ]
+    }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Acme' }))
+    })
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Speichern' }))
+    })
+    expect(window.api.projects.getAll).toHaveBeenCalled()
+    expect(screen.queryByText('Kein Satz: Euro-Budget zählt nicht')).toBeNull()
+  })
 })
