@@ -491,3 +491,36 @@ describe('StartTimerModal — prefill when the last project is archived (#297)',
     })
   })
 })
+
+describe('Q11 step 2 leaves the timer warning unchanged', () => {
+  it.each([7999, 8000])(
+    'ignores pace, internal time and missing rates at %i cents',
+    async (used) => {
+      setup()
+      const project: Project = {
+        ...PROJECTS[1],
+        budget_kind: 'eur',
+        budget_period: 'month',
+        budget_cent: 10000,
+        used_cent: used,
+        used_minutes: 0,
+        pace_cent: 999999,
+        pace_minutes: 999999,
+        internal_minutes: 999999,
+        month_internal_minutes: 999999,
+        effective_rate_cent: null
+      }
+      window.api.projects.getAll = vi.fn(async () => ({ ok: true as const, data: [project] }))
+      render(
+        <I18nProvider>
+          <StartTimerModal open onClose={() => {}} prefill={{ clientId: 2, projectId: 8 }} />
+        </I18nProvider>
+      )
+      await waitFor(() => expect(screen.getAllByRole('combobox')[1]).toHaveValue('8'))
+      const text = screen.queryByText(/Achtung:|Budget überschritten:/)
+      expect(Boolean(text)).toBe(used === 8000)
+      if (text) expect(text).toHaveTextContent('80')
+      expect(screen.queryByText(/reicht bis|intern|Kein Satz/)).toBeNull()
+    }
+  )
+})

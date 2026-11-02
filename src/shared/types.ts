@@ -187,6 +187,14 @@ export interface Project {
    */
   used_minutes?: number | null
   used_cent?: number | null
+  /** Only in projects:getAll: completed billable use in the last 28 calendar days. */
+  pace_minutes?: number
+  pace_cent?: number
+  /** Completed non-billable work, without billing increments. */
+  internal_minutes?: number
+  month_internal_minutes?: number
+  /** Today's project rate, with client inheritance resolved through dueRateSql. */
+  effective_rate_cent?: number | null
   // v1.12 #105 — Project-level contact person
   /**
    * Project-specific contact person. When set, takes precedence over

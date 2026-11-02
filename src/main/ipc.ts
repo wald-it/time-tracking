@@ -79,7 +79,8 @@ import {
 } from './rateEditor'
 import type { RateTarget, SaveRateInput, ProfileFields } from '../shared/rateEditor'
 import { registerBudgetHandlers } from './budgetHandlers'
-import { budgetUsageSql, budgetPeriodUsageSql, budgetMonthBounds } from '../shared/currency'
+import { budgetUsageSql, budgetPeriodUsageSql, budgetBounds } from '../shared/currency'
+import { dueRateSql } from '../shared/dueRate'
 import {
   normaliseShortCodeInput,
   SHORT_CODE_INVALID_ERROR,
@@ -681,8 +682,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
             COALESCE(ec.cnt, 0) AS entry_count,
             ec.last_used_at,
             ${budgetPeriodUsageSql()},
+            COALESCE(bud.pace_minutes, 0) AS pace_minutes,
+            COALESCE(bud.pace_cent, 0) AS pace_cent,
+            COALESCE(bud.internal_minutes, 0) AS internal_minutes,
+            COALESCE(bud.month_internal_minutes, 0) AS month_internal_minutes,
+            COALESCE(${dueRateSql('p', 'project_id')}, ${dueRateSql('c', 'client_id')}) AS effective_rate_cent,
             ${hasEntryVersionsSql('project_id', 'p.id')} AS has_entry_versions
           FROM projects p
+          LEFT JOIN clients c ON c.id = p.client_id
           LEFT JOIN (
             SELECT project_id, COUNT(*) AS cnt, MAX(started_at) AS last_used_at
             FROM entries WHERE deleted_at IS NULL GROUP BY project_id
@@ -703,7 +710,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           query = `${base} ${order}`
           params = []
         }
-        const rows = db.prepare(query).all(budgetMonthBounds(), ...params) as Project[]
+        const rows = db.prepare(query).all(budgetBounds(), ...params) as Project[]
         return ok(rows)
       } catch (e) {
         return fail(e)

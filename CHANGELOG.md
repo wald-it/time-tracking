@@ -9,6 +9,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Added
 
+- Project budget bars show a 28-day pace forecast, separate internal hours, scale ticks and a time-progress mark. Euro budgets without a current rate show a hint in the bar and project form (#478).
 - Project budgets support hours or euros, over all time or per calendar month, with matching budget bars, timer warnings and privacy-filtered MCP totals (#476).
 
 ### Fixed

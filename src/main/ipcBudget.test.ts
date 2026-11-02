@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { seedEntry } from '../test/entryFixtures'
 import type { BudgetStatus, IpcResult, Project } from '../shared/types'
+import { budgetUsageSql } from '../shared/currency'
 import { listProjects } from '../mcp/queries'
 import { registerIpcHandlers, type IpcHooks } from './ipc'
 
@@ -239,3 +240,160 @@ describe('Q11 budget readers and writes', () => {
     expect(listProjects(db, privacy)[0].used_cent).toBe(0)
   })
 })
+
+describe('Q11 step 2 aggregation', () => {
+  beforeEach(() => {
+    vi.setSystemTime(new Date(2026, 10, 2, 12))
+    db.exec(
+      "INSERT INTO projects (id, client_id, name, budget_cent, budget_kind) VALUES (2, 1, 'Pace sample', 30000, 'eur'); UPDATE settings SET value = '15' WHERE key = 'pdf_round_minutes'; INSERT INTO rate (project_id, valid_from, rate_cent, source) VALUES (2, '2000-01-01', 6000, 'editor')"
+    )
+    for (const [date, minutes, billable] of [
+      ['2026-10-05', 31, 1],
+      ['2026-10-06', 16, 1],
+      ['2026-10-31', 7, 1],
+      ['2026-11-01', 20, 1],
+      ['2026-11-02', 1, 1],
+      ['2026-11-03', 46, 1],
+      ['2026-10-06', 7 + 40 / 60, 0],
+      ['2026-11-01', 16 + 20 / 60, 0],
+      ['2026-11-02', 3, 0]
+    ] as const) {
+      seedEntry(db, {
+        client_id: 1,
+        project_id: 2,
+        billable,
+        started_at: `${date}T10:00:00Z`,
+        stopped_at: new Date(Date.parse(`${date}T10:00:00Z`) + minutes * 60000).toISOString()
+      })
+    }
+    for (const billable of [0, 1]) {
+      seedEntry(db, { client_id: 1, project_id: 2, billable, started_at: '2026-11-02T12:00:00Z' })
+      seedEntry(db, {
+        client_id: 1,
+        project_id: 2,
+        billable,
+        started_at: '2026-11-01T12:00:00Z',
+        stopped_at: '2026-11-01T13:00:00Z',
+        deleted_at: '2026-11-02T10:00:00Z'
+      })
+    }
+  })
+
+  function usage(): Record<string, number> {
+    // Literal bounds keep the old-consumption check independent of the new helper.
+    return db
+      .prepare(budgetUsageSql())
+      .all({
+        monthStart: '2026-11-01',
+        nextMonthStart: '2026-12-01',
+        paceStart: '2026-10-06',
+        paceEnd: '2026-11-03'
+      })
+      .find((row) => (row as { project_id: number }).project_id === 2) as Record<string, number>
+  }
+
+  it('preserves all four existing consumption columns', () => {
+    // 45+30+15+30+15+60 = 195; November 30+15+60 = 105. At 6000/h: 100 cents/min.
+    expect(usage()).toMatchObject({
+      used_minutes: 195,
+      used_cent: 19500,
+      month_used_minutes: 105,
+      month_used_cent: 10500
+    })
+  })
+
+  it('counts internal completed raw minutes separately', () => {
+    // 8+17+3 = 28, November 17+3 = 20; billing increments would give 60 and 45.
+    expect(usage()).toMatchObject({ internal_minutes: 28, month_internal_minutes: 20 })
+  })
+
+  it('counts pace from day minus 27 through today only', () => {
+    // Oct 6 + Oct 31 + Nov 1 + today: 30+15+30+15 = 90; not Oct 5 or tomorrow.
+    expect(usage()).toMatchObject({ pace_minutes: 90, pace_cent: 9000 })
+  })
+
+  it.each(['total', 'month'])('exposes renderer values for %s', (period) => {
+    db.prepare('UPDATE projects SET budget_period = ? WHERE id = 2').run(period)
+    const project = data(invoke<Project[]>('projects:getAll', { clientId: 1 })).find(
+      (p) => p.id === 2
+    )
+    expect(project).toMatchObject({
+      pace_minutes: 90,
+      pace_cent: 9000,
+      internal_minutes: 28,
+      month_internal_minutes: 20,
+      effective_rate_cent: 6000
+    })
+  })
+
+  it.each(['total', 'month'])('preserves MCP keys and all reader totals for %s', (period) => {
+    db.prepare('UPDATE projects SET budget_period = ? WHERE id = 2').run(period)
+    const minutes = period === 'month' ? 105 : 195
+    const cent = period === 'month' ? 10500 : 19500
+    expect(data(invoke<Project[]>('projects:getAll')).find((p) => p.id === 2)).toMatchObject({
+      used_minutes: minutes,
+      used_cent: cent
+    })
+    expect(data(invoke<BudgetStatus>('projects:getBudgetStatus', 2))).toEqual({
+      kind: 'eur',
+      period,
+      budget: 30000,
+      used: cent
+    })
+    for (const exposeRates of [false, true]) {
+      const project = listProjects(db, { ...privacy, exposeRates }).find((p) => p.id === 2)!
+      expect(Object.keys(project).sort()).toEqual(
+        [
+          'id',
+          'client_id',
+          'name',
+          'color',
+          'status',
+          'external_project_number',
+          'start_date',
+          'end_date',
+          'budget_kind',
+          'budget_period',
+          'budget_minutes',
+          'used_minutes',
+          'entry_count',
+          'last_used_at',
+          ...(exposeRates ? ['rate_cent', 'budget_cent', 'used_cent'] : [])
+        ].sort()
+      )
+      expect(project.used_minutes).toBe(minutes)
+      if (exposeRates) expect(project.used_cent).toBe(cent)
+    }
+  })
+})
+
+it.each([
+  [null, 0, 1, 0],
+  [null, 5000, 1, 5000],
+  [6000, 5000, 1, 6000],
+  [0, 5000, 1, 0],
+  [null, 5000, null, null],
+  [6000, 5000, null, 6000]
+] as const)(
+  'Q11 step 2: current rate project=%s client=%s clientId=%s',
+  (projectRate, clientRate, clientId, expected) => {
+    // History dates stay far from SQLite's real clock, which fake timers do not change.
+    db.prepare('INSERT INTO projects (id, client_id, name, rate_cent) VALUES (3, ?, ?, 999)').run(
+      clientId,
+      'Rate sample'
+    )
+    db.prepare(
+      "INSERT INTO rate (project_id, valid_from, rate_cent, source) VALUES (3, '2000-01-01', ?, 'editor')"
+    ).run(projectRate)
+    db.prepare(
+      "INSERT INTO rate (project_id, valid_from, rate_cent, source) VALUES (3, '2999-01-01', 9900, 'editor')"
+    ).run()
+    db.prepare(
+      "INSERT INTO rate (client_id, valid_from, rate_cent, source) VALUES (1, '2000-01-01', ?, 'editor')"
+    ).run(clientRate)
+    expect(
+      data(invoke<Project[]>('projects:getAll', { clientId })).find((p) => p.id === 3)
+        ?.effective_rate_cent
+    ).toBe(expected)
+  }
+)

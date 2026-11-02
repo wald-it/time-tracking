@@ -4,7 +4,7 @@ import type { BudgetStatus, IpcResult, Project } from '../shared/types'
 import {
   budgetUsageSql,
   budgetPeriodUsageSql,
-  budgetMonthBounds,
+  budgetBounds,
   projectBudgetStatus
 } from '../shared/currency'
 
@@ -29,7 +29,7 @@ export function buildBudgetStatus(
       FROM projects p LEFT JOIN (${budgetUsageSql()}) bud ON bud.project_id = p.id
       WHERE p.id = ?`
       )
-      .get(budgetMonthBounds(), projectId) as Project | undefined
+      .get(budgetBounds(), projectId) as Project | undefined
     return ok(projectBudgetStatus(project ?? {}))
   } catch (e) {
     return fail(e)
