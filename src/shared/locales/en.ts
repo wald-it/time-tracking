@@ -66,6 +66,14 @@ export const en: Record<TranslationKey, string> = {
   'ruleCheck.format_name': 'Contact person in text: {name}.',
   'ruleCheck.too_long': 'Description: {length} characters, above {threshold}.',
   'ruleCheck.not_billable': 'Information: entry is not billable.',
+  'settings.workingHours.title': 'Working hours',
+  'settings.workingHours.start': 'From',
+  'settings.workingHours.end': 'To',
+  'settings.workingHours.days': 'Workdays',
+  'settings.workingHours.hint':
+    'This window is used to show unexplained time and is separate from the rule-check window.',
+  'settings.workingHours.invalid':
+    'Choose valid times with From before To and at least one workday.',
   'settings.ruleCheck.title': 'Rule check',
   'settings.ruleCheck.entryMaxHours': 'Maximum hours per entry',
   'settings.ruleCheck.dayMaxHours': 'Maximum hours per day',

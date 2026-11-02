@@ -18,6 +18,7 @@ import type { Settings } from './types'
  */
 export const RENDERER_SETTING_KEYS = [
   'target_hours_week',
+  'working_hours',
   'target_rate_cent',
   'company_name',
   'idle_threshold_minutes',
