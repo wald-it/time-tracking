@@ -13,6 +13,7 @@ All notable changes to TimeTrack are documented here.
 - Today shows the unexplained time within the working hours under its total, and calendar cells of past workdays with unexplained time get a small tick, with the duration in the cell's title and accessible label (#482).
 - Gaps in today's working hours are outlined buttons on the Today day scale; a click opens the backfill form with the gap's start and end, and "+ Add entry" now starts at the latest gap (#483).
 - The calendar day panel lists the selected day's gaps as buttons above its entries, independent of the tag filter; a click opens the backfill form with the gap's start and end, and "+ Add entry for …" starts at the latest gap (#483).
+- While a timer runs, sleep and screen lock longer than the idle threshold raise the idle dialog on return, starting at the moment the machine went away; listeners exist only while a timer runs and nothing is stored (#484).
 
 ## [2.4.0] — 2026-11-02
 
