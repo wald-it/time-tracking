@@ -90,6 +90,11 @@ function expectTimes(start: string, end: string): void {
 }
 
 describe('Today backfill gaps', () => {
+  it('passes the trailing gap to the stopped timer display', async () => {
+    await mount([entry(9, 10)])
+    expect(screen.getByText('Bereit · ungeklärt seit 10:00')).toBeInTheDocument()
+  })
+
   it('opens the clicked gap and can reopen with a different gap', async () => {
     await mount([entry(9, 10)])
     await click('Lücke 08:00–09:00 · ungeklärt 1:00 · nachtragen')

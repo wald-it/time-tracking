@@ -23,7 +23,7 @@ import { useT } from '../contexts/I18nContext'
 import { useNow } from '../contexts/NowContext'
 import { rowsBilledSeconds, uniformRoundingRule } from '../../../shared/entryMoney'
 import { parseWorkingHours } from '../../../shared/workingHours'
-import type { Gap } from '../../../shared/gaps'
+import { unexplainedSinceMs, type Gap } from '../../../shared/gaps'
 import { gapFormRange, todayGaps } from '../components/heute/todayGaps'
 
 /**
@@ -61,6 +61,7 @@ export default function TodayView(): React.JSX.Element {
   const [editEntry, setEditEntry] = useState<Entry | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
   const gaps = todayGaps(summary?.todayEntries ?? [], new Date(nowMs), hours)
+  const since = unexplainedSinceMs(gaps, new Date(nowMs), runningEntry !== null, hours)
 
   function openBackfill(gap?: Gap): void {
     setCreateDefaults(gap ? gapFormRange(gap) : { start: defaultBackfillStart() })
@@ -173,6 +174,7 @@ export default function TodayView(): React.JSX.Element {
       <div className="flex flex-wrap items-stretch gap-6">
         <div className="flex min-w-0 flex-[999_1_520px]">
           <TimerDisplay
+            unexplainedSinceMs={since}
             runningEntry={runningRow}
             client={runningClient}
             project={runningProject}

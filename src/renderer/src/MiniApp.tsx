@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { formatDuration } from '../../shared/duration'
+import { formatTimeHHMM } from '../../shared/date'
 import { useT } from './contexts/I18nContext'
 
 /**
@@ -28,6 +29,7 @@ interface MiniState {
   running: boolean
   label: string
   startedAt: string | null
+  unexplainedSince: string | null
 }
 
 export default function MiniApp(): React.JSX.Element {
@@ -35,7 +37,8 @@ export default function MiniApp(): React.JSX.Element {
   const [state, setState] = useState<MiniState>({
     running: false,
     label: '',
-    startedAt: null
+    startedAt: null,
+    unexplainedSince: null
   })
   // `now` ticks once per second while running; elapsed is then derived in
   // render. Driving it this way (instead of `setElapsed` inside the effect
@@ -103,9 +106,23 @@ export default function MiniApp(): React.JSX.Element {
       "
     >
       <span className="h-1.5 w-1.5 shrink-0 bg-[var(--disp-dim,#8f8c83)]" aria-hidden />
-      <span className="flex-1 truncate text-[var(--disp-dim,#8f8c83)]">
-        {t('miniWidget.noTimer')}
-      </span>
+      {state.unexplainedSince ? (
+        <span
+          className="flex min-w-0 flex-1 flex-col text-[11px] leading-[12px] text-[var(--disp-dim,#8f8c83)]"
+          title={t('today.display.readyUnexplained', {
+            time: formatTimeHHMM(state.unexplainedSince)
+          })}
+        >
+          <span>{t('today.display.ready')}</span>
+          <span className="truncate">
+            {t('miniWidget.unexplainedSince', { time: formatTimeHHMM(state.unexplainedSince) })}
+          </span>
+        </span>
+      ) : (
+        <span className="flex-1 truncate text-[var(--disp-dim,#8f8c83)]">
+          {t('miniWidget.noTimer')}
+        </span>
+      )}
       <button
         type="button"
         aria-label={t('miniWidget.start')}

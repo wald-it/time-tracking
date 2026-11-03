@@ -197,6 +197,7 @@ export const de = {
   'nav.settings': 'Einstellungen',
   // ── Mini-Widget ────────────────────────────────────────────────────
   'miniWidget.noTimer': 'Kein Timer',
+  'miniWidget.unexplainedSince': 'ungeklärt seit {time}',
   'miniWidget.timerRunning': 'Timer läuft',
   'miniWidget.stop': 'Timer stoppen',
   'miniWidget.start': 'Timer starten',
@@ -363,6 +364,7 @@ export const de = {
   'header.stopTimerFor': 'Timer stoppen – {client}',
   'today.display.running': 'Läuft · seit {time}',
   'today.display.ready': 'Bereit',
+  'today.display.readyUnexplained': 'Bereit · ungeklärt seit {time}',
   'today.display.rounding': 'Takt {step} min · gerundet {total} h',
   'today.display.roundedOnly': 'gerundet {total} h',
   'today.display.minimum': 'mind. {min} Min · gerundet {total} h',
@@ -1264,6 +1266,7 @@ export const de = {
   'mainTray.quit': 'Beenden',
   'mainTray.tooltipRunning': '● {label} · Heute {today}',
   'mainTray.tooltipIdle': 'TimeTrack — Heute {today}',
+  'mainTray.tooltipUnexplained': 'TimeTrack — Bereit · ungeklärt seit {time} · Heute {today}',
   'mainFile.pdf': 'Stundennachweis-{client}{project}-{month}.pdf',
   'mainFile.csv': 'Zeiterfassung-{client}{project}-{month}.csv',
   'mainFile.ical': 'Zeiterfassung-{client}{project}-{month}.ics',

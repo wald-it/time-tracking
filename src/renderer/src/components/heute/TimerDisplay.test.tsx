@@ -49,3 +49,38 @@ describe('TimerDisplay rounding label', () => {
     expect(screen.getByText('mind. 30 Min · gerundet 0:30 h')).toBeTruthy()
   })
 })
+
+describe('TimerDisplay unexplained status', () => {
+  it('shows the local time in the dim ready legend', () => {
+    render(
+      <I18nProvider>
+        <TimerDisplay
+          runningEntry={null}
+          nowMs={T0}
+          hotkey=""
+          unexplainedSinceMs={new Date(2026, 10, 2, 14).getTime()}
+        />
+      </I18nProvider>
+    )
+    expect(screen.getByText('Bereit · ungeklärt seit 14:00')).toHaveClass('text-[var(--disp-dim)]')
+  })
+
+  it('keeps the ready text without the optional prop', () => {
+    render(
+      <I18nProvider>
+        <TimerDisplay runningEntry={null} nowMs={T0} hotkey="" />
+      </I18nProvider>
+    )
+    expect(screen.getByText('Bereit')).toBeInTheDocument()
+  })
+
+  it('ignores the prop while running', () => {
+    render(
+      <I18nProvider>
+        <TimerDisplay runningEntry={running({})} nowMs={T0} hotkey="" unexplainedSinceMs={T0} />
+      </I18nProvider>
+    )
+    expect(screen.getByText(/^Läuft · seit/)).toBeInTheDocument()
+    expect(screen.queryByText(/ungeklärt/)).not.toBeInTheDocument()
+  })
+})

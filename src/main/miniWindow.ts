@@ -20,11 +20,16 @@ export interface MiniState {
   running: boolean
   label: string
   startedAt: string | null
+  unexplainedSince: string | null
 }
 
 let miniWindow: BrowserWindow | null = null
 let positionDebounce: NodeJS.Timeout | null = null
-let lastState: MiniState = { running: false, label: '', startedAt: null }
+let lastState: MiniState = { running: false, label: '', startedAt: null, unexplainedSince: null }
+
+export function getMiniState(): MiniState {
+  return lastState
+}
 
 const MINI_WIDTH = 200
 const MINI_HEIGHT = 40

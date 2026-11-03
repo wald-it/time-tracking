@@ -10,6 +10,41 @@ export interface Gap {
 
 export const MIN_GAP_MS = 5 * 60 * 1000
 
+/** Own entries make today eligible; yesterday's carryovers only add coverage. */
+export function todayGaps(entries: GapEntry[], now: Date, hours: WorkingHours): Gap[] {
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const previousStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+  const ownEntries = entries.filter(
+    (entry) => new Date(entry.started_at).toDateString() === dayStart.toDateString()
+  )
+  const carryovers = entries.filter((entry) => {
+    const start = Date.parse(entry.started_at)
+    return (
+      start >= previousStart.getTime() &&
+      start < dayStart.getTime() &&
+      (entry.stopped_at === null ? now.getTime() : Date.parse(entry.stopped_at)) >
+        dayStart.getTime()
+    )
+  })
+  return ownEntries.length
+    ? unexplainedGaps([...ownEntries, ...carryovers], dayStart, now, hours)
+    : []
+}
+
+/** The current trailing gap, only inside today's half-open working window. */
+export function unexplainedSinceMs(
+  gaps: Gap[],
+  now: Date,
+  running: boolean,
+  hours: WorkingHours
+): number | null {
+  const [hour, minute] = hours.end.split(':').map(Number)
+  const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute)
+  if (running || now.getTime() >= windowEnd.getTime()) return null
+  const last = gaps.at(-1)
+  return last?.endMs === now.getTime() ? last.startMs : null
+}
+
 /** Uncovered working time on a local workday with at least one live entry. */
 export function unexplainedGaps(
   entries: GapEntry[],
