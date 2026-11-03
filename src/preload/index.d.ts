@@ -70,7 +70,12 @@ declare global {
       }
       mini: {
         onState(
-          callback: (state: { running: boolean; label: string; startedAt: string | null }) => void
+          callback: (state: {
+            running: boolean
+            label: string
+            startedAt: string | null
+            unexplainedSince: string | null
+          }) => void
         ): () => void
         requestStart(): void
         requestStop(): void

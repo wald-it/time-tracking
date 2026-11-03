@@ -82,7 +82,15 @@ import { readRunning } from './mcpBridgeCore'
 import { reconcilePresence, type PresenceDeps } from './graphPresence'
 import { graphAccountDepsFor } from './graphHandlers'
 import { effectiveClientId, getAccessToken, getStatus } from './graphAccount'
-import { applyMiniEnabled, destroyMini, pushMiniState, toggleMini } from './miniWindow'
+import {
+  applyMiniEnabled,
+  destroyMini,
+  getMiniState,
+  pushMiniState,
+  toggleMini
+} from './miniWindow'
+import { createUnexplainedRefresh, readUnexplainedData } from './unexplained'
+import { formatTimeHHMM } from '../shared/date'
 import { decideStartRequest } from './startRequest'
 import {
   generateFeedToken,
@@ -202,6 +210,14 @@ let cachedActiveClients: Client[] = []
 let isTimerRunning = false
 let runningLabel = ''
 let lastTodaySeconds = 0
+const unexplained = createUnexplainedRefresh({
+  read: () => readUnexplainedData(getDb()),
+  now: () => new Date(),
+  isRunning: () => isTimerRunning,
+  lastState: getMiniState,
+  pushMiniState,
+  updateTooltip: updateTrayTooltip
+})
 
 /** Format seconds as `HH:MM` (no seconds) for the tray tooltip. */
 function fmtHHMM(seconds: number): string {
@@ -282,7 +298,12 @@ function buildTrayMenu(locale: Locale = appLanguage()): Menu {
   return Menu.buildFromTemplate(items)
 }
 
-function updateTray(running: boolean, label: string, todaySeconds: number): void {
+function updateTray(
+  running: boolean,
+  label: string,
+  todaySeconds: number,
+  startedAt: string | null = getMiniState().startedAt
+): void {
   if (!tray) return
   isTimerRunning = running
   runningLabel = label
@@ -295,8 +316,21 @@ function updateTray(running: boolean, label: string, todaySeconds: number): void
   //   running: `● {client} · Heute {HH:MM}`
   //   idle:    `TimeTrack — Heute {HH:MM}`
   const locale = appLanguage()
-  tray.setToolTip(trayTooltip(locale, running, label, fmtHHMM(todaySeconds)))
+  if (!unexplained.refresh({ running, label, startedAt })) updateTrayTooltip()
   tray.setContextMenu(buildTrayMenu(locale))
+}
+
+function updateTrayTooltip(): void {
+  const since = getMiniState().unexplainedSince
+  tray?.setToolTip(
+    trayTooltip(
+      appLanguage(),
+      isTimerRunning,
+      runningLabel,
+      fmtHHMM(lastTodaySeconds),
+      since === null ? null : formatTimeHHMM(since)
+    )
+  )
 }
 
 /**
@@ -902,6 +936,7 @@ app.whenReady().then(async () => {
 
   tray = new Tray(trayStoppedIcon)
   updateTray(false, '', 0)
+  unexplained.start()
   tray.on('click', () => {
     if (mainWindow?.isVisible()) {
       mainWindow.focus()
@@ -923,8 +958,7 @@ app.whenReady().then(async () => {
       todaySeconds: number,
       startedAt: string | null = null
     ) => {
-      updateTray(running, label, todaySeconds ?? lastTodaySeconds)
-      pushMiniState({ running, label, startedAt })
+      updateTray(running, label, todaySeconds ?? lastTodaySeconds, startedAt)
       if (running) startIdleWatcher()
       else stopIdleWatcher()
       pokePresence()
@@ -961,6 +995,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  unexplained.stop()
   globalShortcut.unregisterAll()
   stopIdleWatcher()
   destroyMini()

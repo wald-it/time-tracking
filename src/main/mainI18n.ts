@@ -341,10 +341,13 @@ export function trayTooltip(
   locale: Locale,
   running: boolean,
   label: string,
-  today: string
+  today: string,
+  unexplainedSince?: string | null
 ): string {
   const t = dialogT(locale)
   return running
     ? t('mainTray.tooltipRunning', { label, today })
-    : t('mainTray.tooltipIdle', { today })
+    : unexplainedSince
+      ? t('mainTray.tooltipUnexplained', { time: unexplainedSince, today })
+      : t('mainTray.tooltipIdle', { today })
 }

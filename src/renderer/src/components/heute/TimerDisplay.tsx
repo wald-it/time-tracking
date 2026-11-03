@@ -25,13 +25,15 @@ export function TimerDisplay({
   client,
   project,
   nowMs,
-  hotkey
+  hotkey,
+  unexplainedSinceMs
 }: {
   runningEntry: Entry | null
   client?: Client
   project?: Project
   nowMs: number
   hotkey: string
+  unexplainedSinceMs?: number | null
 }): React.JSX.Element {
   const t = useT()
   const showProjectNumber = useUiPrefsStore((s) => s.showProjectNumber)
@@ -75,7 +77,11 @@ export function TimerDisplay({
           <span className={`${LEGEND} ${running ? 'text-[var(--sig)]' : 'text-[var(--disp-dim)]'}`}>
             {running && runningEntry
               ? t('today.display.running', { time: formatTimeHHMM(runningEntry.started_at) })
-              : t('today.display.ready')}
+              : typeof unexplainedSinceMs === 'number'
+                ? t('today.display.readyUnexplained', {
+                    time: formatTimeHHMM(new Date(unexplainedSinceMs))
+                  })
+                : t('today.display.ready')}
           </span>
         </div>
         {rightHint && (

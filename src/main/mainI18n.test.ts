@@ -323,6 +323,21 @@ describe('#296 — tray', () => {
   })
 })
 
+describe('#486 — unexplained tray tooltip', () => {
+  it.each([
+    ['de', 'TimeTrack — Bereit · ungeklärt seit 14:00 · Heute 01:30'],
+    ['en', 'TimeTrack — Ready · unexplained since 14:00 · Today 01:30']
+  ] as const)('shows the idle time in %s', (locale, expected) => {
+    expect(trayTooltip(locale, false, '', '01:30', '14:00')).toBe(expected)
+    expect(trayTooltip(locale, true, 'Acme', '01:30', '14:00')).toBe(
+      trayTooltip(locale, true, 'Acme', '01:30')
+    )
+    expect(trayTooltip(locale, false, '', '01:30', null)).toBe(
+      trayTooltip(locale, false, '', '01:30')
+    )
+  })
+})
+
 describe('#296 — one way to the app language in the main process', () => {
   // Tray, dialogs, file names and the update notification (#309) all go
   // through appLocale, so they answer alike, also with the handle closed.

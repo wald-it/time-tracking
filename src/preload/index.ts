@@ -95,11 +95,21 @@ const api = {
   // v1.4 PR B — mini-widget channels.
   mini: {
     onState: (
-      callback: (state: { running: boolean; label: string; startedAt: string | null }) => void
+      callback: (state: {
+        running: boolean
+        label: string
+        startedAt: string | null
+        unexplainedSince: string | null
+      }) => void
     ): (() => void) => {
       const handler = (
         _e: unknown,
-        state: { running: boolean; label: string; startedAt: string | null }
+        state: {
+          running: boolean
+          label: string
+          startedAt: string | null
+          unexplainedSince: string | null
+        }
       ): void => callback(state)
       ipcRenderer.on('mini:state-changed', handler)
       return (): void => {

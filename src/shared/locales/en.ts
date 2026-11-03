@@ -195,6 +195,7 @@ export const en: Record<TranslationKey, string> = {
   'nav.settings': 'Settings',
   // ── Mini-Widget ────────────────────────────────────────────────────
   'miniWidget.noTimer': 'No timer',
+  'miniWidget.unexplainedSince': 'unexplained since {time}',
   'miniWidget.timerRunning': 'Timer running',
   'miniWidget.stop': 'Stop timer',
   'miniWidget.start': 'Start timer',
@@ -361,6 +362,7 @@ export const en: Record<TranslationKey, string> = {
   'header.stopTimerFor': 'Stop timer – {client}',
   'today.display.running': 'Running · since {time}',
   'today.display.ready': 'Ready',
+  'today.display.readyUnexplained': 'Ready · unexplained since {time}',
   'today.display.rounding': 'Step {step} min · rounded {total} h',
   'today.display.roundedOnly': 'rounded {total} h',
   'today.display.minimum': 'min. {min} min · rounded {total} h',
@@ -1241,6 +1243,7 @@ export const en: Record<TranslationKey, string> = {
   'mainTray.quit': 'Quit',
   'mainTray.tooltipRunning': '● {label} · Today {today}',
   'mainTray.tooltipIdle': 'TimeTrack — Today {today}',
+  'mainTray.tooltipUnexplained': 'TimeTrack — Ready · unexplained since {time} · Today {today}',
   'mainFile.pdf': 'Timesheet-{client}{project}-{month}.pdf',
   'mainFile.csv': 'Time-entries-{client}{project}-{month}.csv',
   'mainFile.ical': 'Time-entries-{client}{project}-{month}.ics',
