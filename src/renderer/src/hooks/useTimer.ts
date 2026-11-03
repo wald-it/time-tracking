@@ -584,6 +584,8 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
       setIsLoading(false)
     }
     if (res.ok) {
+      // Views that reload only on the entries version (Calendar) must see the stop (#494).
+      useEntriesStore.getState().bumpVersion()
       setRunningEntry(null)
       setDescription('')
       await pushTrayUpdate(false, '')
@@ -609,14 +611,20 @@ export function useTimer(opts: { engine?: boolean } = {}): UseTimerResult {
         // billable: it is time not worked and must stay off the client's
         // timesheet (#298). Starting it as a timer and closing it afterwards
         // left a running, billable "Pause" whenever the second call failed.
-        await window.api.entries.create({
-          client_id: entry.client_id,
-          description: 'Pause',
-          started_at: ev.idleSince,
-          stopped_at: new Date().toISOString(),
-          billable: 0,
-          source: 'idle'
-        })
+        try {
+          await window.api.entries.create({
+            client_id: entry.client_id,
+            description: 'Pause',
+            started_at: ev.idleSince,
+            stopped_at: new Date().toISOString(),
+            billable: 0,
+            source: 'idle'
+          })
+        } finally {
+          // The stop has committed whatever the pause write did. Views that
+          // reload only on the entries version (Calendar) must see both (#494).
+          useEntriesStore.getState().bumpVersion()
+        }
         setRunningEntry(null)
         setDescription('')
         await pushTrayUpdate(false, '')
