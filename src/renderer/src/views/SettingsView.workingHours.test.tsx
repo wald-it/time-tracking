@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import SettingsView from './SettingsView'
 import { I18nProvider } from '../contexts/I18nContext'
 import { useSettingsStore } from '../store/settingsStore'
@@ -64,6 +64,50 @@ async function setup(
 }
 
 describe('Settings working hours', () => {
+  it('mirrors working hours only after the write succeeds', async () => {
+    const seeded = JSON.stringify(DEFAULT_WORKING_HOURS)
+    const { set } = await setup('en', { working_hours: seeded })
+    let resolveWrite!: (result: { ok: boolean; data: undefined }) => void
+    set.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveWrite = resolve
+        })
+    )
+
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '09:00' } })
+    const saved = JSON.stringify({ ...DEFAULT_WORKING_HOURS, start: '09:00' })
+    expect(set).toHaveBeenCalledWith('working_hours', saved)
+    expect(useSettingsStore.getState().settings?.working_hours).toBe(seeded)
+
+    await act(async () => resolveWrite({ ok: true, data: undefined }))
+    expect(useSettingsStore.getState().settings?.working_hours).toBe(saved)
+  })
+
+  it('keeps the seeded working hours in the store after a failed write', async () => {
+    const seeded = JSON.stringify(DEFAULT_WORKING_HOURS)
+    const { set } = await setup('en', { working_hours: seeded }, true)
+
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '09:00' } })
+    expect(await screen.findByText(/Write failed/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('From')).toHaveValue('08:00'))
+    expect(set).toHaveBeenCalledWith(
+      'working_hours',
+      JSON.stringify({ ...DEFAULT_WORKING_HOURS, start: '09:00' })
+    )
+    expect(useSettingsStore.getState().settings?.working_hours).toBe(seeded)
+  })
+
+  it('mirrors the saved week start into the store', async () => {
+    const { set, strings } = await setup('en', { week_start: 'monday' })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: strings['settings.general.weekStartSunday'] })
+    )
+    await waitFor(() => expect(useSettingsStore.getState().settings?.week_start).toBe('sunday'))
+    expect(set).toHaveBeenCalledWith('week_start', 'sunday')
+  })
+
   it.each(['de', 'en'] as const)(
     'shows defaults next to targets and saves a valid window (%s)',
     async (locale) => {
