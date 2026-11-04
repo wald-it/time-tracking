@@ -23,6 +23,7 @@ All notable changes to TimeTrack are documented here.
 ### Fixed
 
 - Editing a running entry keeps it running and preserves its start seconds when the displayed start was not changed; the timer then shows the edited client and description (#485).
+- A setting saved in Settings now applies to the other views right away. Before, working hours, week start and PDF rounding reached Today, the Calendar and the other views only after a restart, so Today could show "Ready" without the unexplained time (#487, #486).
 - The idle dialog's "Stop at inactivity" and "Mark as break" now refresh an open Calendar, which before kept the stopped entry as running and missed the break entry until the next reload (#494).
 
 ## [2.4.0] — 2026-11-02

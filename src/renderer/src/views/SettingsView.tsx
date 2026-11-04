@@ -191,11 +191,7 @@ export default function SettingsView(): React.JSX.Element {
       if (res.code !== 'cancelled') setStatusMsg(t('common.error', { error: res.error }))
       // revert by reloading
       await loadAll()
-    } else if (
-      key === 'target_hours_week' ||
-      key === 'target_rate_cent' ||
-      key === 'long_run_threshold_hours'
-    ) {
+    } else {
       useSettingsStore.setState((s) =>
         s.settings ? { settings: { ...s.settings, [key]: value } } : s
       )
