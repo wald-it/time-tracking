@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-11-04
+
 ### Added
 
 - A long-running timer prompt asks once per entry while the app runs: keep running, stop at a date and time, or edit. Its separate threshold defaults to 6 hours and can be set to 1–24 hours (#485).
