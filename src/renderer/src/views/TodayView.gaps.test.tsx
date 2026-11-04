@@ -90,6 +90,29 @@ function expectTimes(start: string, end: string): void {
 }
 
 describe('Today backfill gaps', () => {
+  it('updates the stopped timer when working hours change in the store without remounting', async () => {
+    useSettingsStore.setState({
+      settings: {
+        working_hours: JSON.stringify({ start: '13:00', end: '18:00', days: [1] })
+      } as Settings
+    })
+    await mount([entry(9, 10)])
+    expect(screen.getByText('Bereit', { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText(/Bereit · ungeklärt seit/)).not.toBeInTheDocument()
+
+    act(() => {
+      useSettingsStore.setState((s) => ({
+        settings: {
+          ...s.settings!,
+          working_hours: JSON.stringify({ start: '08:00', end: '18:00', days: [1] })
+        }
+      }))
+    })
+
+    expect(screen.getByText('Bereit · ungeklärt seit 10:00')).toBeInTheDocument()
+    expect(screen.queryByText('Bereit', { exact: true })).not.toBeInTheDocument()
+  })
+
   it('passes the trailing gap to the stopped timer display', async () => {
     await mount([entry(9, 10)])
     expect(screen.getByText('Bereit · ungeklärt seit 10:00')).toBeInTheDocument()
