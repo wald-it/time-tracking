@@ -19,6 +19,7 @@ import trayRunningIcon from '../../resources/tray-running.png?asset'
 import trayStoppedIcon from '../../resources/tray-stopped.png?asset'
 import { getDb, getDbPath, recoverZombieEntries, MigrationError } from './db'
 import { runDailyBackupIfNeeded } from './backup'
+import { startDailyBackupSchedule } from './dailyBackupSchedule'
 import {
   initializeSecrets,
   feedSettings,
@@ -133,6 +134,7 @@ process.on('unhandledRejection', (reason) => {
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
+let stopBackupSchedule: (() => void) | undefined
 
 // ── Single-instance enforcement (v1.13.2) ───────────────────────
 // Closing the window only hides to tray, so accidental second launches are
@@ -799,6 +801,7 @@ app.whenReady().then(async () => {
   await initializeSecrets(getDb(), getDbPath(), { log: (m) => log.info(m) })
   // Fire-and-forget, after the migration: a backup must not carry plaintext secrets.
   void runDailyBackupIfNeeded(getDb())
+  stopBackupSchedule = startDailyBackupSchedule(async () => runDailyBackupIfNeeded(getDb()))
   registerIpcHandlers({
     refreshTrayClients: () => {
       refreshActiveClients()
@@ -995,6 +998,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  stopBackupSchedule?.()
   unexplained.stop()
   globalShortcut.unregisterAll()
   stopIdleWatcher()

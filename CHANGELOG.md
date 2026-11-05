@@ -10,6 +10,7 @@ All notable changes to TimeTrack are documented here.
 ### Fixed
 
 - The idle dialog shows its hint "Tip: Esc = Keep running" again, and hides it while the client picker is open, where Esc closes the picker first; since the bilingual migration, only "Tip:" was left (#499).
+- Daily backups now also run at local midnight and after resume in a long-running app instance, and "today" follows the local calendar day (#501).
 
 ## [2.5.0] — 2026-11-04
 

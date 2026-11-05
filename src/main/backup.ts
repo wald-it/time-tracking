@@ -13,6 +13,7 @@ import {
   closeSync
 } from 'fs'
 import type { Locale } from '../shared/i18n'
+import { localDateKey } from '../shared/dateRanges'
 import { dialogT } from './mainI18n'
 
 export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
@@ -54,7 +55,7 @@ function isoTimestamp(): string {
 }
 
 function todayDate(): string {
-  return new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+  return localDateKey(new Date())
 }
 
 function buildFilename(reason: BackupReason, fromVersion?: number): string {
