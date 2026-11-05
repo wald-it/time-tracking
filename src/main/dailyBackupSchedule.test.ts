@@ -53,23 +53,44 @@ describe('daily backup schedule', () => {
     expect(vi.getTimerCount()).toBe(1)
   })
 
-  it.each(['timer first', 'resume first'])('drops overlapping triggers: %s', async (order) => {
+  it.each(['timer first', 'resume first'])(
+    'runs once at a time and reruns once for triggers during a run: %s',
+    async (order) => {
+      let finish!: () => void
+      run.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)))
+      stop = startDailyBackupSchedule(run)
+      if (order === 'timer first') {
+        vi.advanceTimersByTime(31_000)
+        powerMonitor.emit('resume')
+      } else {
+        vi.advanceTimersByTime(30_999)
+        powerMonitor.emit('resume')
+        vi.advanceTimersByTime(1)
+      }
+      expect(run).toHaveBeenCalledTimes(1)
+      finish()
+      // Timer first: the resume came during the run and is replayed once after
+      // it. Resume first: the resume re-armed the timer for the next midnight,
+      // so nothing came during the run.
+      const afterRun = order === 'timer first' ? 2 : 1
+      await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(afterRun))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(run).toHaveBeenCalledTimes(afterRun)
+      powerMonitor.emit('resume')
+      expect(run).toHaveBeenCalledTimes(afterRun + 1)
+    }
+  )
+
+  it('does not lose the new day when a run is still busy at midnight (#501 Gegenprobe)', async () => {
+    vi.setSystemTime(new Date(2026, 10, 4, 23, 59, 58))
     let finish!: () => void
     run.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)))
     stop = startDailyBackupSchedule(run)
-    if (order === 'timer first') {
-      vi.advanceTimersByTime(31_000)
-      powerMonitor.emit('resume')
-    } else {
-      vi.advanceTimersByTime(30_999)
-      powerMonitor.emit('resume')
-      vi.advanceTimersByTime(1)
-    }
+    powerMonitor.emit('resume') // run for Nov 4 starts and stays busy
+    vi.advanceTimersByTime(3_000) // midnight + 1 s passes during that run
     expect(run).toHaveBeenCalledTimes(1)
     finish()
-    await Promise.resolve()
-    powerMonitor.emit('resume')
-    expect(run).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2))
   })
 
   it('stops timers and removes only its own resume listener, even during a run', async () => {

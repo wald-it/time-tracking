@@ -5,14 +5,28 @@ export function startDailyBackupSchedule(run: () => Promise<void>): () => void {
   let timer: ReturnType<typeof setTimeout>
   let stopped = false
   let inFlight = false
+  let pending = false
 
+  // A trigger during a run is remembered, not dropped: a run that started
+  // before midnight (or before sleep) may still be busy when the new day's
+  // trigger comes, and that day would otherwise get no backup. The rerun is
+  // cheap, `runDailyBackupIfNeeded` skips a day that already has one.
   async function trigger(): Promise<void> {
-    if (stopped || inFlight) return
+    if (stopped) return
+    if (inFlight) {
+      pending = true
+      return
+    }
     inFlight = true
     try {
-      await run()
-    } catch (err) {
-      console.warn('[backup] Scheduled daily backup failed (non-fatal):', err)
+      do {
+        pending = false
+        try {
+          await run()
+        } catch (err) {
+          console.warn('[backup] Scheduled daily backup failed (non-fatal):', err)
+        }
+      } while (pending && !stopped)
     } finally {
       inFlight = false
     }
