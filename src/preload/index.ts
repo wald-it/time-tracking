@@ -198,6 +198,8 @@ const api = {
     getRunning: (): Promise<IpcResult<Entry | null>> => ipcRenderer.invoke('entries:getRunning'),
     getByMonth: (query: MonthQuery): Promise<IpcResult<Entry[]>> =>
       ipcRenderer.invoke('entries:getByMonth', query),
+    getMonthCarryover: (query: MonthQuery): Promise<IpcResult<Entry[]>> =>
+      ipcRenderer.invoke('entries:getMonthCarryover', query),
     create: (input: CreateManualEntryInput): Promise<IpcResult<Entry>> =>
       ipcRenderer.invoke('entries:create', input),
     update: (input: UpdateEntryInput): Promise<IpcResult<Entry>> =>

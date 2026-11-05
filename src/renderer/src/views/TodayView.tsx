@@ -60,7 +60,15 @@ export default function TodayView(): React.JSX.Element {
   const [createDefaults, setCreateDefaults] = useState<{ start: Date; end?: Date } | null>(null)
   const [editEntry, setEditEntry] = useState<Entry | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
-  const gaps = todayGaps(summary?.todayEntries ?? [], new Date(nowMs), hours)
+  const gapEntries = useMemo(() => {
+    const seen = new Set<number>()
+    return [...(summary?.todayEntries ?? []), ...(summary?.gapCarryovers ?? [])].filter((entry) => {
+      if (seen.has(entry.id)) return false
+      seen.add(entry.id)
+      return true
+    })
+  }, [summary])
+  const gaps = todayGaps(gapEntries, new Date(nowMs), hours)
   const since = unexplainedSinceMs(gaps, new Date(nowMs), runningEntry !== null, hours)
 
   function openBackfill(gap?: Gap): void {
@@ -193,7 +201,7 @@ export default function TodayView(): React.JSX.Element {
         </div>
         {status === 'ready' && summary ? (
           <SummaryColumn
-            todayEntries={summary.todayEntries}
+            todayEntries={gapEntries}
             todaySeconds={summary.todaySeconds + liveDelta}
             weekSeconds={summary.weekSeconds + liveDelta}
             weekDaySeconds={weekDaySeconds}

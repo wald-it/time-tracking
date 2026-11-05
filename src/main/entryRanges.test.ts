@@ -12,7 +12,7 @@ import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { applyMigrations, loadSqlite, type DatabaseCtor } from '../test/sqlite'
 import { seedEntry } from '../test/entryFixtures'
-import { exportEntries, monthEntries } from './entryRanges'
+import { carryoverEntries, exportEntries, monthEntries } from './entryRanges'
 import { buildPdfPayload } from './pdf'
 import { listEntries } from '../mcp/queries'
 import { handleCsvExport } from './csvExport'
@@ -66,6 +66,42 @@ describe('local month boundaries are the same on every path', () => {
     const stop = new Date(Date.parse(startIso) + 20 * 60 * 1000).toISOString()
     seedEntry(db, { client_id: 1, description: label, started_at: startIso, stopped_at: stop })
   }
+
+  it('loads only live previous-local-day entries ending strictly after midnight (#489)', () => {
+    const stopped = seedEntry(db, {
+      client_id: 1,
+      started_at: at(2026, 10, 31, 22, 0),
+      stopped_at: at(2026, 11, 1, 9, 0)
+    })
+    const running = seedEntry(db, {
+      client_id: 1,
+      started_at: at(2026, 10, 31, 23, 0),
+      stopped_at: null
+    })
+    for (const stopped_at of [at(2026, 10, 31, 23, 30), at(2026, 11, 1, 0, 0)]) {
+      seedEntry(db, { client_id: 1, started_at: at(2026, 10, 31, 22, 0), stopped_at })
+    }
+    seedEntry(db, {
+      client_id: 1,
+      started_at: at(2026, 10, 31, 22, 0),
+      stopped_at: at(2026, 11, 1, 9, 0),
+      deleted_at: at(2026, 11, 1, 10, 0)
+    })
+    seedEntry(db, {
+      client_id: 1,
+      started_at: at(2026, 10, 30, 22, 0),
+      stopped_at: at(2026, 11, 1, 9, 0)
+    })
+    seedEntry(db, {
+      client_id: 1,
+      started_at: at(2026, 11, 1, 0, 0),
+      stopped_at: at(2026, 11, 1, 9, 0)
+    })
+
+    const entries = carryoverEntries(db, '2026-11-01')
+    expect(entries.map((e) => e.id)).toEqual([stopped, running])
+    expect(entries[0]).toMatchObject({ billed: 0, source: 'app' })
+  })
 
   /** Which of the labels the written export file mentions. */
   async function written(

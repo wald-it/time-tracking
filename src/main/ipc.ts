@@ -130,7 +130,8 @@ import type {
   DashboardSummary,
   LicenseEntry
 } from '../shared/types'
-import { monthEntries } from './entryRanges'
+import { carryoverEntries, monthEntries } from './entryRanges'
+import { localDateKey, localMonthRange } from '../shared/dateRanges'
 import {
   checkPeriod,
   entriesForReview,
@@ -544,6 +545,15 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
+  ipcMain.handle('entries:getMonthCarryover', (_e, query: MonthQuery): IpcResult<Entry[]> => {
+    try {
+      const { start } = localMonthRange(query.year, query.month)
+      return ok(carryoverEntries(db, localDateKey(new Date(start))))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
   ipcMain.handle(
     'ruleCheck:period',
     (_e, request: RuleCheckRequest): IpcResult<RuleCheckFinding[]> => {
@@ -885,6 +895,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
           weekDaySeconds: readWeekDaySeconds(db),
           recentEntries,
           todayEntries: readTodayEntries(db),
+          gapCarryovers: carryoverEntries(db, localDateKey(new Date())).filter(
+            (entry) => entry.stopped_at !== null
+          ),
           topClients30d: readTopClients30d(db)
         }
       })

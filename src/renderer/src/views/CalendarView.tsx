@@ -100,7 +100,11 @@ export default function CalendarView(): React.JSX.Element {
   // The loaded entries remember their month. While the next month loads, or
   // when its load fails, the old month's entries must not be summed up under
   // the new month's name.
-  const [loaded, setLoaded] = useState<{ month: string; entries: Entry[] } | null>(null)
+  const [loaded, setLoaded] = useState<{
+    month: string
+    entries: Entry[]
+    carryovers: Entry[]
+  } | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // Default selection on open = today (§4.2.3).
@@ -140,10 +144,17 @@ export default function CalendarView(): React.JSX.Element {
     async function load(): Promise<void> {
       // Keep the loaded day and its open form mounted during a reload.
       setStatus((s) => (s === 'ready' ? s : 'loading'))
-      const res = await window.api.entries.getByMonth({
+      const query = {
         year: cursor.getFullYear(),
         month: cursor.getMonth() + 1
-      })
+      }
+      const [res, carryovers] = await Promise.all([
+        window.api.entries.getByMonth(query),
+        Promise.resolve()
+          .then(() => window.api.entries.getMonthCarryover(query))
+          .then((result) => (result.ok ? result.data : NO_ENTRIES))
+          .catch(() => NO_ENTRIES)
+      ])
       if (cancelled) return
       if (res.ok) {
         // getByMonth cuts at local month boundaries (`shared/dateRanges`). The
@@ -152,7 +163,8 @@ export default function CalendarView(): React.JSX.Element {
         // breakdown.
         setLoaded({
           month: monthKey(cursor),
-          entries: res.data.filter((e) => isSameMonth(new Date(e.started_at), cursor))
+          entries: res.data.filter((e) => isSameMonth(new Date(e.started_at), cursor)),
+          carryovers
         })
         setStatus('ready')
         setErrorMsg(null)
@@ -187,6 +199,18 @@ export default function CalendarView(): React.JSX.Element {
     }
     return map
   }, [entries])
+
+  // Carryovers affect coverage only; byDay continues to own rows, scales and totals.
+  const gapByDay = useMemo(() => {
+    const map = new Map(byDay)
+    if (loaded?.month === monthKey(cursor)) {
+      for (const entry of loaded.carryovers) {
+        const key = localDateKey(new Date(entry.started_at))
+        map.set(key, [...(map.get(key) ?? []), entry])
+      }
+    }
+    return map
+  }, [byDay, loaded, cursor])
 
   const clientsById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients])
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
@@ -260,7 +284,7 @@ export default function CalendarView(): React.JSX.Element {
   // Only meaningful while the selected day lies in the loaded month; the
   // drawer can only be opened from a visible cell, so that always holds there.
   const selectedEntries = byDay.get(selectedKey) ?? []
-  const selectedGaps = dayGaps(byDay, shownSelection, new Date(nowMs), hours)
+  const selectedGaps = dayGaps(gapByDay, shownSelection, new Date(nowMs), hours)
 
   const dateFmt = useMemo(
     () =>
@@ -412,6 +436,7 @@ export default function CalendarView(): React.JSX.Element {
                 week={week}
                 cursor={cursor}
                 byDay={byDay}
+                gapByDay={gapByDay}
                 clientsById={clientsById}
                 projectsById={projectsById}
                 range={range}
@@ -483,6 +508,7 @@ function Week({
   week,
   cursor,
   byDay,
+  gapByDay,
   clientsById,
   projectsById,
   range,
@@ -496,6 +522,7 @@ function Week({
   week: WeekData
   cursor: Date
   byDay: Map<string, Entry[]>
+  gapByDay: Map<string, Entry[]>
   clientsById: Map<number, Client>
   projectsById: Map<number, Project>
   range: DayRange
@@ -542,7 +569,9 @@ function Week({
         const inMonth = isSameMonth(day, cursor)
         const dayEntries = inMonth ? (byDay.get(key) ?? []) : []
         const unexplained =
-          inMonth && key < todayKey ? unexplainedMs(dayGaps(byDay, day, new Date(nowMs), hours)) : 0
+          inMonth && key < todayKey
+            ? unexplainedMs(dayGaps(gapByDay, day, new Date(nowMs), hours))
+            : 0
         const unexplainedLabel =
           unexplained > 0 ? t('time.unexplained', { total: formatHm(unexplained / 1000) }) : ''
         const unexplainedSuffix = unexplainedLabel ? ` · ${unexplainedLabel}` : ''

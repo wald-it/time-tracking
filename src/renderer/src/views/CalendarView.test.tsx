@@ -136,6 +136,8 @@ async function setup(
   opts: {
     now?: string
     byMonth?: Record<string, Entry[]>
+    carryovers?: Record<string, Entry[]>
+    carryoverFailure?: 'error' | 'reject' | 'throw'
     clients?: Client[]
     projects?: Project[]
     /** The NowProvider ticks every second (as App does while a timer runs). */
@@ -163,6 +165,14 @@ async function setup(
   const api = {
     entries: {
       getByMonth,
+      getMonthCarryover: vi.fn(({ year, month }: { year: number; month: number }) => {
+        if (opts.carryoverFailure === 'throw') throw new Error('carryovers unavailable')
+        if (opts.carryoverFailure === 'reject')
+          return Promise.reject(new Error('carryovers unavailable'))
+        if (opts.carryoverFailure === 'error')
+          return Promise.resolve({ ok: false, error: 'carryovers unavailable' })
+        return Promise.resolve({ ok: true, data: opts.carryovers?.[`${year}-${month}`] ?? [] })
+      }),
       getRunning: async () => ({ ok: true as const, data: null })
     },
     clients: {
@@ -1003,6 +1013,82 @@ describe('CalendarView — unexplained time (#482)', () => {
     expect(screen.getByTestId('month-total').textContent).toBe('9:00')
     expect(within(cell('2026-08-31')).queryByTestId('unexplained-tick')).toBeNull()
   })
+})
+
+describe('CalendarView — month carryover (#489)', () => {
+  const own = makeEntry({
+    id: 489,
+    description: 'November work',
+    started_at: new Date(2026, 10, 1, 10).toISOString(),
+    stopped_at: new Date(2026, 10, 1, 12).toISOString()
+  })
+  const carryover = makeEntry({
+    id: 490,
+    description: 'October carryover',
+    started_at: new Date(2026, 9, 31, 22).toISOString(),
+    stopped_at: new Date(2026, 10, 1, 9).toISOString()
+  })
+
+  async function mount(
+    carryovers: Entry[],
+    carryoverFailure?: 'error' | 'reject' | 'throw'
+  ): Promise<void> {
+    // November 1 is a Sunday: explicitly configure it as a workday.
+    useSettingsStore.setState({
+      settings: {
+        working_hours: JSON.stringify({ start: '08:00', end: '18:00', days: [0] })
+      } as unknown as never
+    })
+    await setup({
+      now: new Date(2026, 10, 5, 12).toISOString(),
+      byMonth: { '2026-11': [own] },
+      carryovers: { '2026-11': carryovers },
+      carryoverFailure
+    })
+  }
+
+  it.each([false, true])('covers day 1 in the cell and selected day (wide=%s)', async (wide) => {
+    installMatchMedia(wide)
+    await mount([carryover])
+    const day = cell('2026-11-01')
+    expect(day.getAttribute('title')).toBe('ungeklärt 7:00')
+    expect(day.getAttribute('aria-label')).toContain(' · ungeklärt 7:00')
+    expect(within(day).getByTestId('unexplained-tick')).toBeInTheDocument()
+    expect(within(day).getByTestId('day-total')).toHaveTextContent('2:00')
+    expect(screen.getByTestId('month-total')).toHaveTextContent('2:00')
+    expect(screen.getAllByTestId('week-total').map((el) => el.textContent)).toEqual([
+      '2:00',
+      '–',
+      '–',
+      '–',
+      '–',
+      '–'
+    ])
+    fireEvent.click(day)
+    expect(
+      screen.getByRole('button', { name: 'Lücke 09:00–10:00 · ungeklärt 1:00 · nachtragen' })
+    ).toBeInTheDocument()
+    expect(screen.queryByText('October carryover')).toBeNull()
+    expect(screen.getByText('November work')).toBeInTheDocument()
+  })
+
+  it.each([undefined, 'error', 'reject', 'throw'] as const)(
+    'keeps the calendar and unchanged totals without carryover coverage (%s)',
+    async (failure) => {
+      await mount(failure ? [carryover] : [], failure)
+      expect(cell('2026-11-01').getAttribute('title')).toBe('ungeklärt 8:00')
+      expect(within(cell('2026-11-01')).getByTestId('unexplained-tick')).toBeInTheDocument()
+      expect(screen.getByTestId('month-total')).toHaveTextContent('2:00')
+      expect(screen.getAllByTestId('week-total').map((el) => el.textContent)).toEqual([
+        '2:00',
+        '–',
+        '–',
+        '–',
+        '–',
+        '–'
+      ])
+    }
+  )
 })
 
 describe('CalendarView — gap backfill (#483)', () => {
