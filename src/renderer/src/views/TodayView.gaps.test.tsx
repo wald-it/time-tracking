@@ -5,6 +5,7 @@ import { I18nProvider } from '../contexts/I18nContext'
 import { NowProvider } from '../contexts/NowContext'
 import { useSettingsStore } from '../store/settingsStore'
 import type { Client, DashboardSummary, Entry, Settings } from '../../../shared/types'
+import * as gapHelpers from '../components/heute/todayGaps'
 
 const clients: Client[] = [
   {
@@ -46,20 +47,25 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   vi.useRealTimers()
   useSettingsStore.setState({ settings: null })
   delete (window as unknown as { api?: unknown }).api
 })
 
-async function mount(entries: Entry[]): Promise<void> {
+async function mount(entries: Entry[], gapCarryovers?: Entry[]): Promise<void> {
   const summary: DashboardSummary = {
     todayEntries: entries,
+    gapCarryovers: [],
     recentEntries: [],
     topClients30d: [],
     todaySeconds: 3600,
     weekSeconds: 3600,
     weekDaySeconds: [3600, 0, 0, 0, 0, 0, 0]
   }
+  // Exercise the fallback for a response without the new field, too.
+  if (gapCarryovers === undefined) delete (summary as Partial<DashboardSummary>).gapCarryovers
+  else summary.gapCarryovers = gapCarryovers
   window.api = {
     dashboard: { summary: async () => ({ ok: true, data: summary }) },
     projects: { getAll: async () => ({ ok: true, data: [] }) },
@@ -90,6 +96,67 @@ function expectTimes(start: string, end: string): void {
 }
 
 describe('Today backfill gaps', () => {
+  it('uses a stopped carryover only for gaps, leaving rows and the today total unchanged (#489)', async () => {
+    const carryover = {
+      ...entry(9, 10),
+      id: 489,
+      description: 'Yesterday carryover',
+      started_at: new Date(2026, 7, 9, 22).toISOString(),
+      stopped_at: local(9).toISOString()
+    }
+    await mount([entry(10, 11)], [carryover])
+    expect(screen.getByText('ungeklärt 2:00', { exact: true })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Lücke 09:00–10:00 · ungeklärt 1:00 · nachtragen' })
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Yesterday carryover')).toBeNull()
+    expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(2)
+    expect(
+      within(screen.getByText('Heute', { exact: true }).parentElement!).getByText('1:00')
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the larger unexplained figure when gapCarryovers is absent (#489)', async () => {
+    await mount([entry(10, 11)])
+    expect(screen.getByText('ungeklärt 3:00', { exact: true })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Lücke 08:00–10:00 · ungeklärt 2:00 · nachtragen' })
+    ).toBeInTheDocument()
+    expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(2)
+    expect(
+      within(screen.getByText('Heute', { exact: true }).parentElement!).getByText('1:00')
+    ).toBeInTheDocument()
+  })
+
+  it('passes a running carryover present in both lists once to both gap consumers (#489)', async () => {
+    const compute = vi.spyOn(gapHelpers, 'todayGaps')
+    const running = {
+      ...entry(9, 10),
+      id: 489,
+      started_at: new Date(2026, 7, 9, 22).toISOString(),
+      stopped_at: null
+    }
+    await mount([entry(10, 11), running], [{ ...running }])
+    const loadedCalls = compute.mock.calls.filter(([entries]) => entries.length > 0)
+    expect(loadedCalls.length).toBeGreaterThanOrEqual(2)
+    for (const [entries] of loadedCalls) {
+      expect(entries).toHaveLength(2)
+      expect(entries.filter((e) => e === running)).toHaveLength(1)
+    }
+    expect(screen.queryByRole('button', { name: /^Lücke/ })).toBeNull()
+    expect(screen.queryByText(/^ungeklärt /)).toBeNull()
+  })
+
+  it('keeps two segments of one entry as separate coverage (#489 counter-check)', async () => {
+    const split = { ...entry(9, 10), id: 489, segment_seq: 0, segment_count: 2 }
+    const later = { ...entry(10, 11), id: 489, segment_seq: 1, segment_count: 2 }
+    await mount([split, later], [])
+    expect(
+      screen.getByRole('button', { name: 'Lücke 08:00–09:00 · ungeklärt 1:00 · nachtragen' })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Lücke 10:00/ })).toBeNull()
+  })
+
   it('updates the stopped timer when working hours change in the store without remounting', async () => {
     useSettingsStore.setState({
       settings: {

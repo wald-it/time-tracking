@@ -60,7 +60,18 @@ export default function TodayView(): React.JSX.Element {
   const [createDefaults, setCreateDefaults] = useState<{ start: Date; end?: Date } | null>(null)
   const [editEntry, setEditEntry] = useState<Entry | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
-  const gaps = todayGaps(summary?.todayEntries ?? [], new Date(nowMs), hours)
+  const gapEntries = useMemo(() => {
+    // Rows are segments: a midnight-split entry has several rows with one id,
+    // each covering its own stretch, so dedupe by segment, not by entry.
+    const seen = new Set<string>()
+    return [...(summary?.todayEntries ?? []), ...(summary?.gapCarryovers ?? [])].filter((entry) => {
+      const key = `${entry.id}:${entry.segment_seq ?? 0}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [summary])
+  const gaps = todayGaps(gapEntries, new Date(nowMs), hours)
   const since = unexplainedSinceMs(gaps, new Date(nowMs), runningEntry !== null, hours)
 
   function openBackfill(gap?: Gap): void {
@@ -193,7 +204,7 @@ export default function TodayView(): React.JSX.Element {
         </div>
         {status === 'ready' && summary ? (
           <SummaryColumn
-            todayEntries={summary.todayEntries}
+            todayEntries={gapEntries}
             todaySeconds={summary.todaySeconds + liveDelta}
             weekSeconds={summary.weekSeconds + liveDelta}
             weekDaySeconds={weekDaySeconds}

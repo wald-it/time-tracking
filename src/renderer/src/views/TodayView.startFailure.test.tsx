@@ -66,6 +66,7 @@ const SUMMARY: DashboardSummary = {
   weekDaySeconds: [600, 0, 0, 0, 0, 0, 0],
   recentEntries: [RUNNING],
   todayEntries: [RUNNING],
+  gapCarryovers: [],
   topClients30d: [
     { client_id: 1, name: 'Acme', color: '#111111', seconds: 7200, last_project_id: null },
     { client_id: 2, name: 'Beta', color: '#222222', seconds: 3600, last_project_id: null }

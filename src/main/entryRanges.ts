@@ -9,7 +9,7 @@
  * after the range fell in.
  */
 import type Database from 'better-sqlite3'
-import { localMonthRange } from '../shared/dateRanges'
+import { localDateKey, localDayRange, localMonthRange } from '../shared/dateRanges'
 import type { Entry } from '../shared/types'
 import { entryBilledSql } from './entryBillingState'
 import { entrySourceSql } from './entryOrigin'
@@ -25,6 +25,23 @@ export function monthEntries(db: Database.Database, year: number, month: number)
          ORDER BY started_at ASC`
     )
     .all(start, end) as Entry[]
+}
+
+/** Previous local day's entries covering time after midnight, only for gap coverage. */
+export function carryoverEntries(db: Database.Database, dayIso: string): Entry[] {
+  const dayStart = new Date(localDayRange(dayIso, dayIso).start)
+  dayStart.setDate(dayStart.getDate() - 1)
+  const previousDay = localDateKey(dayStart)
+  const { start, end } = localDayRange(previousDay, previousDay)
+  return db
+    .prepare(
+      `SELECT entries.*, ${entryBilledSql(db)} AS billed,
+              ${entrySourceSql(db)} AS source FROM entries
+         WHERE started_at >= ? AND started_at < ? AND deleted_at IS NULL
+           AND (stopped_at IS NULL OR stopped_at > ?)
+         ORDER BY started_at ASC`
+    )
+    .all(start, end, end) as Entry[]
 }
 
 /**

@@ -116,6 +116,7 @@ declare global {
         heartbeat(id: number): Promise<IpcResult<void>>
         getRunning(): Promise<IpcResult<Entry | null>>
         getByMonth(query: MonthQuery): Promise<IpcResult<Entry[]>>
+        getMonthCarryover(query: MonthQuery): Promise<IpcResult<Entry[]>>
         create(input: CreateManualEntryInput): Promise<IpcResult<Entry>>
         update(input: UpdateEntryInput): Promise<IpcResult<Entry>>
         delete(id: number, reason?: string): Promise<IpcResult<void>>

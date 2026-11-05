@@ -510,6 +510,8 @@ export interface DashboardSummary {
   recentEntries: Entry[]
   /** Every entry of today (started today or still running), newest first. */
   todayEntries: Entry[]
+  /** Stopped entries from yesterday covering today, exclusively for gap computation. */
+  gapCarryovers: Entry[]
   /**
    * Up to five ACTIVE clients by hours in the last 30 days. `last_project_id`
    * is the last used project that is still active (see `readTopClients30d`).
