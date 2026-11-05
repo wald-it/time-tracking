@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { IdleModal } from './IdleModal'
 import { I18nProvider } from '../contexts/I18nContext'
-import type { Client, Project } from '../../../shared/types'
+import { useSettingsStore } from '../store/settingsStore'
+import type { Client, Project, Settings } from '../../../shared/types'
 import type { PeriodReviewEntry } from '../../../shared/ruleCheck'
 
 const previousTz = process.env.TZ
@@ -125,6 +126,42 @@ function setup(list = clients): { keep: ReturnType<typeof vi.fn>; book: ReturnTy
 function expand(): void {
   fireEvent.click(screen.getByRole('button', { name: 'War Arbeit für …' }))
 }
+
+describe('IdleModal keyboard hint', () => {
+  afterEach(() => {
+    cleanup()
+    useSettingsStore.setState({ settings: null })
+  })
+
+  it.each([
+    ['de', 'Tipp: Esc = Weiter laufen lassen', 'War Arbeit für …'],
+    ['en', 'Tip: Esc = Keep running', 'Was work for …']
+  ])(
+    'shows the complete hint in %s with the picker closed and hides it while the picker is open',
+    async (language, hint, workFor) => {
+      useSettingsStore.setState({ settings: { language } as Settings })
+      setup()
+
+      function expectHint(): void {
+        const key = within(screen.getByRole('dialog')).getByText('Esc', { selector: 'kbd' })
+        expect(key).toBeVisible()
+        expect(key.closest('p')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(hint)
+      }
+
+      expectHint()
+      fireEvent.click(screen.getByRole('button', { name: workFor }))
+      await screen.findByRole('option', { name: 'Paused project' })
+      // Esc collapses the picker here, so the hint would be wrong.
+      expect(within(screen.getByRole('dialog')).queryByText('Esc', { selector: 'kbd' })).toBeNull()
+      expect(screen.getByRole('dialog').textContent?.replace(/\s+/g, ' ')).not.toContain(
+        hint.split(' ')[0]
+      )
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+      expectHint()
+    }
+  )
+})
 
 describe('IdleModal work picker', () => {
   it('expands inline, filters archived clients/projects, follows the client and books its project', async () => {

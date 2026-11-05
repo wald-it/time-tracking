@@ -199,7 +199,16 @@ export function IdleModal({
           </div>
         )}
       </div>
-      <p className="mt-4 text-xs text-[var(--ink3)]">{t('idle.tip')}</p>
+      {/* While the picker is open, Esc collapses it instead of keeping the timer (owner 2026-11-05). */}
+      {!pickerOpen && (
+        <p className="mt-4 text-xs text-[var(--ink3)]">
+          {t('idle.tip')}{' '}
+          <kbd className="rounded-[var(--r-fine)] border border-[var(--key-edge)] bg-[var(--key)] px-1.5 py-0.5 font-num text-xs text-[var(--ink)] shadow-[var(--edge-key)]">
+            Esc
+          </kbd>{' '}
+          {t('idle.tipAction')}
+        </p>
+      )}
     </Dialog>
   )
 }
