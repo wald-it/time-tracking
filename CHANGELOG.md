@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-11-05
+
 ### Fixed
 
 - The idle dialog shows its hint "Tip: Esc = Keep running" again, and hides it while the client picker is open, where Esc closes the picker first; since the bilingual migration, only "Tip:" was left (#499).
