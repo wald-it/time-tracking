@@ -61,10 +61,13 @@ export default function TodayView(): React.JSX.Element {
   const [editEntry, setEditEntry] = useState<Entry | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<Entry | null>(null)
   const gapEntries = useMemo(() => {
-    const seen = new Set<number>()
+    // Rows are segments: a midnight-split entry has several rows with one id,
+    // each covering its own stretch, so dedupe by segment, not by entry.
+    const seen = new Set<string>()
     return [...(summary?.todayEntries ?? []), ...(summary?.gapCarryovers ?? [])].filter((entry) => {
-      if (seen.has(entry.id)) return false
-      seen.add(entry.id)
+      const key = `${entry.id}:${entry.segment_seq ?? 0}`
+      if (seen.has(key)) return false
+      seen.add(key)
       return true
     })
   }, [summary])

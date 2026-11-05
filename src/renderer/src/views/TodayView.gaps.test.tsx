@@ -147,6 +147,16 @@ describe('Today backfill gaps', () => {
     expect(screen.queryByText(/^ungeklärt /)).toBeNull()
   })
 
+  it('keeps two segments of one entry as separate coverage (#489 counter-check)', async () => {
+    const split = { ...entry(9, 10), id: 489, segment_seq: 0, segment_count: 2 }
+    const later = { ...entry(10, 11), id: 489, segment_seq: 1, segment_count: 2 }
+    await mount([split, later], [])
+    expect(
+      screen.getByRole('button', { name: 'Lücke 08:00–09:00 · ungeklärt 1:00 · nachtragen' })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Lücke 10:00/ })).toBeNull()
+  })
+
   it('updates the stopped timer when working hours change in the store without remounting', async () => {
     useSettingsStore.setState({
       settings: {
