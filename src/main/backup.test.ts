@@ -1,9 +1,18 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, copyFileSync } from 'fs'
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+  copyFileSync,
+  mkdirSync,
+  readdirSync
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 import { loadSqlite, type DatabaseCtor } from '../test/sqlite'
+import { localDateKey } from '../shared/dateRanges'
 
 let DatabaseImpl: DatabaseCtor
 beforeAll(async () => {
@@ -457,5 +466,72 @@ describe('hasSqliteHeader', () => {
     const { hasSqliteHeader } = await loadBackup()
     // A directory: opening or reading it fails with something other than ENOENT.
     expect(() => hasSqliteHeader(userDataDir)).toThrow()
+  })
+})
+
+describe('runDailyBackupIfNeeded local days (#501)', () => {
+  let backupDir: string
+  let db: Database.Database
+  let runDailyBackupIfNeeded: typeof import('./backup').runDailyBackupIfNeeded
+
+  beforeEach(async () => {
+    runDailyBackupIfNeeded = (await loadBackup()).runDailyBackupIfNeeded
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 10, 5, 0, 30))
+    backupDir = join(userDataDir, 'custom-backups')
+    mkdirSync(backupDir)
+    db = new DatabaseImpl(join(userDataDir, 'source.sqlite'))
+    db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)')
+    db.prepare('INSERT INTO settings VALUES (?, ?)').run('backup_path', backupDir)
+  })
+
+  afterEach(() => {
+    db?.close()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('creates only one backup for two calls on the same local day', async () => {
+    const backup = vi.spyOn(db, 'backup')
+    await runDailyBackupIfNeeded(db)
+    vi.setSystemTime(new Date(2026, 10, 5, 12))
+    await runDailyBackupIfNeeded(db)
+    expect(backup).toHaveBeenCalledTimes(1)
+    expect(readdirSync(backupDir)).toEqual(['backup-daily-2026-11-05.sqlite'])
+  })
+
+  it('creates a second backup on the next local day', async () => {
+    vi.setSystemTime(new Date(2026, 10, 5, 23, 30))
+    await runDailyBackupIfNeeded(db)
+    vi.setSystemTime(new Date(2026, 10, 6, 0, 30))
+    await runDailyBackupIfNeeded(db)
+    expect(readdirSync(backupDir).sort()).toEqual([
+      'backup-daily-2026-11-05.sqlite',
+      'backup-daily-2026-11-06.sqlite'
+    ])
+  })
+
+  it('rotates eight existing daily files down to the seven newest including today', async () => {
+    for (let day = 1; day <= 8; day++) {
+      writeFileSync(join(backupDir, `backup-daily-2026-11-0${day}.sqlite`), '')
+    }
+    vi.setSystemTime(new Date(2026, 10, 9, 0, 30))
+    await runDailyBackupIfNeeded(db)
+    expect(readdirSync(backupDir).sort()).toEqual([
+      'backup-daily-2026-11-03.sqlite',
+      'backup-daily-2026-11-04.sqlite',
+      'backup-daily-2026-11-05.sqlite',
+      'backup-daily-2026-11-06.sqlite',
+      'backup-daily-2026-11-07.sqlite',
+      'backup-daily-2026-11-08.sqlite',
+      'backup-daily-2026-11-09.sqlite'
+    ])
+  })
+
+  it('names the daily file using localDateKey(now)', async () => {
+    const now = new Date('2026-11-04T23:30:00Z')
+    vi.setSystemTime(now)
+    await runDailyBackupIfNeeded(db)
+    expect(readdirSync(backupDir)).toEqual([`backup-daily-${localDateKey(now)}.sqlite`])
   })
 })
