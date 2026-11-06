@@ -1091,13 +1091,18 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle(
     'backup:get-path-info',
-    (): IpcResult<{ dir: string; isCustom: boolean; isReachable: boolean }> => {
+    (): IpcResult<{
+      dir: string
+      defaultDir: string
+      isCustom: boolean
+      isReachable: boolean
+    }> => {
       try {
         const configuredPath = getBackupPathSetting()
         const defaultDir = getDefaultBackupsDir()
         const isCustom = !!configuredPath
         if (!isCustom) {
-          return ok({ dir: defaultDir, isCustom: false, isReachable: true })
+          return ok({ dir: defaultDir, defaultDir, isCustom: false, isReachable: true })
         }
         const dir = normalize(configuredPath)
         let isReachable = true
@@ -1107,7 +1112,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         } catch {
           isReachable = false
         }
-        return ok({ dir, isCustom: true, isReachable })
+        // #506: an unreachable folder sends the daily backup to `defaultDir`;
+        // Settings names that folder in its warning.
+        return ok({ dir, defaultDir, isCustom: true, isReachable })
       } catch (e) {
         return fail(e)
       }

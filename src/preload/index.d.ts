@@ -140,7 +140,9 @@ declare global {
         restore(filename: string): Promise<IpcResult<{ safetyBackupPath: string }>>
         setPath(): Promise<IpcResult<string>>
         resetPath(): Promise<IpcResult<void>>
-        getPathInfo(): Promise<IpcResult<{ dir: string; isCustom: boolean; isReachable: boolean }>>
+        getPathInfo(): Promise<
+          IpcResult<{ dir: string; defaultDir: string; isCustom: boolean; isReachable: boolean }>
+        >
       }
       dashboard: {
         todayTotal(): Promise<IpcResult<number>>

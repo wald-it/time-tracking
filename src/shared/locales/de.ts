@@ -826,7 +826,7 @@ export const de = {
   'settings.data.backupPathChanged': 'Backup-Pfad gespeichert.',
   'settings.data.backupPathReset': 'Backup-Pfad auf Standard zurückgesetzt.',
   'settings.data.backupPathUnreachable':
-    'Backup-Pfad nicht erreichbar — neue Backups werden im Standardpfad gespeichert.',
+    'Backup-Ordner nicht erreichbar. Bis er wieder da ist, gehen die Tages-Backups in den Standardordner: {defaultDir}',
   'settings.data.restoreBackup': 'Aus Backup wiederherstellen',
   'settings.data.restoreBackupHint': 'Die App startet nach der Wiederherstellung automatisch neu.',
   'settings.data.restoreBtn': 'Wiederherstellen …',

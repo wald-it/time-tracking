@@ -110,6 +110,7 @@ export default function SettingsView(): React.JSX.Element {
   const [backups, setBackups] = useState<BackupInfo[]>([])
   const [backupPathInfo, setBackupPathInfo] = useState<{
     dir: string
+    defaultDir: string
     isCustom: boolean
     isReachable: boolean
   } | null>(null)
@@ -722,7 +723,10 @@ export default function SettingsView(): React.JSX.Element {
               {/* T2: Offline-Warnung */}
               {backupPathInfo?.isCustom && !backupPathInfo.isReachable && (
                 <div className="my-3 rounded-[var(--r-key)] border border-[var(--danger)] px-3 py-2 text-sm text-[var(--ink)]">
-                  ⚠️ {t('settings.data.backupPathUnreachable')}
+                  ⚠️{' '}
+                  {t('settings.data.backupPathUnreachable', {
+                    defaultDir: backupPathInfo.defaultDir
+                  })}
                 </div>
               )}
 

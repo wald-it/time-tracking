@@ -9,7 +9,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Fixed
 
-- Daily backups use the default folder when the configured folder is unreachable, and return to the configured folder when it is available again (#506).
+- Daily backups use the default folder when the configured folder is unreachable, and return to the configured folder when it is available again; the warning in Settings → Data names the default folder (#506).
 - JSON export file names use the local calendar date instead of the UTC date (#507).
 - Daily backups show the correct calendar date west of UTC and remain sorted by time with other backups (#508).
 
