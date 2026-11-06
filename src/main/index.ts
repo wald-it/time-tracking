@@ -723,22 +723,40 @@ app.whenReady().then(async () => {
         pdfBytes = buf.length
       }
 
-      let safeStorageAsync: { ok: boolean; reason?: string; skipped?: string }
+      let safeStorageAsync: {
+        ok: boolean
+        reason?: string
+        skipped?: string
+        legacy?: 'proven' | 'sync API removed'
+      }
       try {
-        // Deliberately use sync encryption only in this probe: existing Graph
-        // token files were written with it. Prove on the packaged binary that
-        // the async API reads those bytes, after app.whenReady() above.
-        if (!safeStorage.isEncryptionAvailable()) {
+        // Always prove an async round trip on the packaged binary (#354).
+        // Through Electron 45, also prove that async decryption reads legacy
+        // Graph token bytes. Electron 46 removes the sync API that creates them.
+        if (!(await safeStorage.isAsyncEncryptionAvailable())) {
           safeStorageAsync = { ok: false, skipped: 'OS encryption unavailable' }
-        } else if (!(await safeStorage.isAsyncEncryptionAvailable())) {
-          safeStorageAsync = { ok: false, reason: 'Async OS encryption unavailable' }
         } else {
           const plain = 'TimeTrack safeStorage legacy compatibility #354'
-          const file = join(smokeUserData, 'safe-storage-legacy.enc')
-          writeFileSync(file, safeStorage.encryptString(plain))
-          const { result } = await safeStorage.decryptStringAsync(readFileSync(file))
-          safeStorageAsync =
-            result === plain ? { ok: true } : { ok: false, reason: 'Decrypted value differs' }
+          const encrypted = await safeStorage.encryptStringAsync(plain)
+          const { result } = await safeStorage.decryptStringAsync(encrypted)
+          const legacyStorage = safeStorage as typeof safeStorage & {
+            encryptString?: (value: string) => Buffer
+          }
+          if (result !== plain) {
+            safeStorageAsync = { ok: false, reason: 'Async round trip differs' }
+          } else if (typeof legacyStorage.encryptString === 'function') {
+            const file = join(smokeUserData, 'safe-storage-legacy.enc')
+            writeFileSync(file, legacyStorage.encryptString(plain))
+            const { result: legacyResult } = await safeStorage.decryptStringAsync(
+              readFileSync(file)
+            )
+            safeStorageAsync =
+              legacyResult === plain
+                ? { ok: true, legacy: 'proven' }
+                : { ok: false, reason: 'Decrypted legacy value differs' }
+          } else {
+            safeStorageAsync = { ok: true, legacy: 'sync API removed' }
+          }
         }
       } catch (err) {
         safeStorageAsync = { ok: false, reason: (err as Error).message }

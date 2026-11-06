@@ -7,6 +7,10 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Package smoke test no longer depends on the synchronous safeStorage API removed in Electron 46: it always proves an async round trip and proves legacy bytes only while the sync API exists (#354).
+
 ## [2.5.1] — 2026-11-05
 
 ### Fixed

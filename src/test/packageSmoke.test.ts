@@ -291,30 +291,40 @@ describe('package-smoke async safeStorage proof', () => {
   it.each([
     ['missing', undefined],
     ['failed', { ok: false, reason: 'decrypted value differs' }],
-    ['skipped', { ok: false, skipped: 'OS encryption unavailable' }]
+    ['skipped', { ok: false, skipped: 'OS encryption unavailable' }],
+    ['missing legacy', { ok: true }],
+    ['invalid legacy', { ok: true, legacy: 'skipped' }],
+    [
+      'successful but skipped',
+      { ok: true, legacy: 'proven', skipped: 'OS encryption unavailable' }
+    ],
+    ['successful but empty skip', { ok: true, legacy: 'proven', skipped: '' }]
   ])('rejects a %s async encryption proof', (_label, result) => {
     const r = smokeReport(result)
     expect(r.status, r.output).toBe(1)
     expect(r.output).toContain('safeStorage async compatibility not proven')
   })
 
-  it('accepts and reports a successful async encryption proof', () => {
-    const r = smokeReport({ ok: true })
-    expect(r.status, r.output).toBe(0)
-    expect(r.output).toContain('safeStorage async compatibility proven')
-  })
+  it.each(['proven', 'sync API removed'])(
+    'accepts and reports a successful async encryption proof with legacy: %s',
+    (legacy) => {
+      const r = smokeReport({ ok: true, legacy })
+      expect(r.status, r.output).toBe(0)
+      expect(r.output).toContain(`safeStorage async compatibility proven (legacy: ${legacy})`)
+    }
+  )
 })
 
 describe('package-smoke sandbox probe', () => {
   it('rejects a missing sandbox probe', () => {
-    const r = smokeReport({ ok: true }, {})
+    const r = smokeReport({ ok: true, legacy: 'proven' }, {})
     expect(r.status, r.output).toBe(1)
     expect(r.output).toContain('smoke report has no sandbox probe')
   })
 
   it('rejects a renderer that is not sandboxed', () => {
     const r = smokeReport(
-      { ok: true },
+      { ok: true, legacy: 'proven' },
       { sandbox: { api: 'object', electron: 'undefined', sandboxed: false } }
     )
     expect(r.status, r.output).toBe(1)
@@ -323,7 +333,7 @@ describe('package-smoke sandbox probe', () => {
 
   it('rejects a missing window.api', () => {
     const r = smokeReport(
-      { ok: true },
+      { ok: true, legacy: 'proven' },
       { sandbox: { api: 'undefined', electron: 'undefined', sandboxed: true } }
     )
     expect(r.status, r.output).toBe(1)
@@ -332,7 +342,7 @@ describe('package-smoke sandbox probe', () => {
 
   it('rejects an exposed window.electron', () => {
     const r = smokeReport(
-      { ok: true },
+      { ok: true, legacy: 'proven' },
       { sandbox: { api: 'object', electron: 'object', sandboxed: true } }
     )
     expect(r.status, r.output).toBe(1)
@@ -340,7 +350,7 @@ describe('package-smoke sandbox probe', () => {
   })
 
   it('accepts a passing sandbox probe', () => {
-    const r = smokeReport({ ok: true })
+    const r = smokeReport({ ok: true, legacy: 'proven' })
     expect(r.status, r.output).toBe(0)
     expect(r.output).toContain('Smoke test passed')
   })
