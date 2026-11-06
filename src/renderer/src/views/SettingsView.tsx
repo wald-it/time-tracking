@@ -219,8 +219,10 @@ export default function SettingsView({
       const list = await window.api.backups.list()
       if (list.ok) {
         setBackups(list.data)
-        if (list.data.length > 0 && !selectedRestoreFile) {
-          setSelectedRestoreFile(backupKey(list.data[0]))
+        // #512: after a fallback the old `custom:` key may be gone; a stale
+        // selection would make the restore confirm do nothing.
+        if (!list.data.some((b) => backupKey(b) === selectedRestoreFile)) {
+          setSelectedRestoreFile(list.data.length > 0 ? backupKey(list.data[0]) : '')
         }
       }
     } else {

@@ -138,6 +138,21 @@ describe('Settings backup origins (#512)', () => {
     }
   )
 
+  it('replaces a selection that vanished after a fallback backup, so restore still acts', async () => {
+    const strings = await openData('en', false, [backups[0]])
+    const fallback = { ...backups[1], filename: 'backup-manual-2026-11-06.sqlite' }
+    window.api.backups.list = async () => ({ ok: true, data: [fallback] })
+    fireEvent.click(screen.getByRole('button', { name: strings['settings.data.createBackup'] }))
+    await screen.findByText(strings['settings.data.backupCreated'])
+    fireEvent.click(screen.getByRole('button', { name: strings['settings.data.restoreBtn'] }))
+    fireEvent.click(
+      await screen.findByRole('button', { name: strings['settings.data.restoreConfirmOk'] })
+    )
+    await waitFor(() =>
+      expect(window.api.backups.restore).toHaveBeenCalledWith(fallback.filename, 'default')
+    )
+  })
+
   it('does not toast when the manual backup uses the configured folder', async () => {
     const show = vi.spyOn(useToastStore.getState(), 'show').mockReturnValue(1)
     const strings = await openData('en', true)
