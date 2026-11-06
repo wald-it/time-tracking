@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.6.2] — 2026-11-06
+
 ### Fixed
 
 - Backups in the default folder remain listed and restorable after a custom backup folder recovers; restore binds each file to its listed folder, including same-named backups (#512, part 1).
