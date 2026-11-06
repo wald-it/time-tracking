@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-11-06
+
 ### Changed
 
 - Electron 45 (Chromium 156, Node 24.22); Electron 44 support ends in March 2027 (#354).
