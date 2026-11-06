@@ -69,13 +69,7 @@ export function effectiveBackupsDir(
     return dir
   } catch (err) {
     const fallback = getDefaultBackupsDir()
-    console.warn(
-      `[backup] Backup folder unreachable, ${what}:`,
-      configured,
-      '->',
-      fallback,
-      err
-    )
+    console.warn(`[backup] Backup folder unreachable, ${what}:`, configured, '->', fallback, err)
     return fallback
   }
 }
