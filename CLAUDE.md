@@ -16,7 +16,7 @@ ohne Visual Studio (Windows) oder Xcode (macOS) bricht er `pnpm install` ab — 
 Maschine des Owners hat kein Visual Studio.
 
 - Tests laufen mit `pnpm test`. Das startet Vitest über `scripts/run-vitest.mjs` auf der
-  Electron-Binary im Node-Modus, also auf dem Node, das die App mitbringt (Electron 44:
+  Electron-Binary im Node-Modus, also auf dem Node, das die App mitbringt (Electron 45:
   Node 24), nicht auf dem Node der Maschine. Ein grüner Lauf ist **0 skipped** über alle
   Vitest-Projekte.
 - `pnpm exec vitest` direkt (oder ein IDE-Runner auf dem System-Node) bricht sofort mit

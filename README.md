@@ -56,7 +56,7 @@ What is planned lives in [ROADMAP.md](ROADMAP.md), what was deferred with a reas
 
 | Layer    | Library                 |
 | -------- | ----------------------- |
-| Shell    | Electron 44 |
+| Shell    | Electron 45 |
 | Build    | electron-vite 5         |
 | UI       | React 19 + TypeScript 5 |
 | Styling  | Tailwind CSS 4          |
@@ -318,7 +318,7 @@ On start the app stops entries whose heartbeat is older than five minutes (crash
 - PR and release builds check the packaged fuses, sandboxed preload and MCP server on Windows.
 - Links leave the app only as `http(s)` links; app windows never navigate away from the app.
 - Local interfaces (MCP write bridge, hardware keys, iCal feed) are off by default and protected by random tokens.
-- Releases are not code-signed; checksums and build provenance are published. TimeTrack runs on Electron 44, which receives security updates until March 2027.
+- Releases are not code-signed; checksums and build provenance are published. TimeTrack runs on Electron 45, which receives security updates until April 2027.
 - Reporting a vulnerability and the full scope: [SECURITY.md](SECURITY.md).
 
 ## Contributing
