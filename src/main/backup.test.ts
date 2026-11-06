@@ -6,7 +6,8 @@ import {
   existsSync,
   copyFileSync,
   mkdirSync,
-  readdirSync
+  readdirSync,
+  utimesSync
 } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -140,6 +141,40 @@ describe('listBackups', () => {
   it('returns empty array for empty backups dir', async () => {
     const { listBackups } = await loadBackup()
     expect(listBackups()).toEqual([])
+  })
+})
+
+describe('listBackups local midnight (#508)', () => {
+  it('uses local midnight as a Z-ISO timestamp for daily backups', async () => {
+    const { listBackups, getBackupsDir } = await loadBackup()
+    makeFile(join(getBackupsDir(), 'backup-daily-2026-11-04.sqlite'))
+
+    const [backup] = listBackups()
+
+    expect(backup.createdAt).toBe(new Date(2026, 10, 4).toISOString())
+    expect(backup.createdAt.endsWith('Z')).toBe(true)
+  })
+
+  it('sorts multiple daily backups and a manual backup by newest timestamp first', async () => {
+    const { listBackups, getBackupsDir } = await loadBackup()
+    const dir = getBackupsDir()
+    for (const day of ['03', '04', '05']) {
+      makeFile(join(dir, `backup-daily-2026-11-${day}.sqlite`))
+    }
+    const manual = 'backup-manual-2026-11-04T12-00-00-000Z.sqlite'
+    const manualTime = new Date(2026, 10, 4, 0, 30)
+    makeFile(join(dir, manual))
+    utimesSync(join(dir, manual), manualTime, manualTime)
+
+    const list = listBackups()
+
+    expect(list.map((backup) => backup.filename)).toEqual([
+      'backup-daily-2026-11-05.sqlite',
+      manual,
+      'backup-daily-2026-11-04.sqlite',
+      'backup-daily-2026-11-03.sqlite'
+    ])
+    expect(list[1].createdAt).toBe(manualTime.toISOString())
   })
 })
 
@@ -466,6 +501,79 @@ describe('hasSqliteHeader', () => {
     const { hasSqliteHeader } = await loadBackup()
     // A directory: opening or reading it fails with something other than ENOENT.
     expect(() => hasSqliteHeader(userDataDir)).toThrow()
+  })
+})
+
+describe('runDailyBackupIfNeeded fallback (#506)', () => {
+  let blocked: string
+  let defaultDir: string
+  let db: Database.Database
+  let runDailyBackupIfNeeded: typeof import('./backup').runDailyBackupIfNeeded
+
+  beforeEach(async () => {
+    const backup = await loadBackup()
+    runDailyBackupIfNeeded = backup.runDailyBackupIfNeeded
+    defaultDir = backup.getDefaultBackupsDir()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 10, 5, 12))
+    blocked = join(userDataDir, 'blocked')
+    makeFile(blocked)
+    db = new DatabaseImpl(join(userDataDir, 'source.sqlite'))
+    db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)')
+    db.prepare('INSERT INTO settings VALUES (?, ?)').run('backup_path', blocked)
+  })
+
+  afterEach(() => {
+    db?.close()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('writes and rotates in the default folder when the configured folder is unreachable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mkdirSync(defaultDir)
+    const oldNames = Array.from({ length: 7 }, (_, day) => {
+      const name = `backup-daily-${localDateKey(new Date(2026, 9, 25 + day))}.sqlite`
+      makeFile(join(defaultDir, name))
+      return name
+    })
+
+    await runDailyBackupIfNeeded(db)
+
+    const todayName = `backup-daily-${localDateKey(new Date())}.sqlite`
+    expect(readdirSync(defaultDir).sort()).toEqual([...oldNames.slice(1), todayName])
+    expect(warn).toHaveBeenCalledWith(
+      '[backup] Backup folder unreachable, daily backup goes to the default folder:',
+      blocked,
+      '->',
+      defaultDir,
+      expect.any(Error)
+    )
+  })
+
+  it('does not create another fallback backup on the same local day', async () => {
+    const backup = vi.spyOn(db, 'backup')
+    await runDailyBackupIfNeeded(db)
+    await runDailyBackupIfNeeded(db)
+
+    expect(backup).toHaveBeenCalledTimes(1)
+    expect(readdirSync(defaultDir)).toEqual([`backup-daily-${localDateKey(new Date())}.sqlite`])
+  })
+
+  it('returns to the configured folder on the next day when it is reachable again', async () => {
+    await runDailyBackupIfNeeded(db)
+    const previousName = `backup-daily-${localDateKey(new Date())}.sqlite`
+    expect(readdirSync(defaultDir)).toEqual([previousName])
+    rmSync(blocked)
+    vi.setSystemTime(new Date(2026, 10, 6, 12))
+
+    await runDailyBackupIfNeeded(db)
+
+    expect(readdirSync(blocked)).toEqual([`backup-daily-${localDateKey(new Date())}.sqlite`])
+    expect(readdirSync(defaultDir)).toEqual([previousName])
+    expect(db.prepare('SELECT value FROM settings WHERE key = ?').get('backup_path')).toEqual({
+      value: blocked
+    })
   })
 })
 

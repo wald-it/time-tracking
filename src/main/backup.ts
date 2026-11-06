@@ -175,8 +175,10 @@ export function listBackups(backupPathOverride?: string): BackupInfo[] {
     const stat = statSync(fullPath)
     let createdAt: string
     if (reason === 'daily') {
-      const m = filename.match(/(\d{4}-\d{2}-\d{2})/)
-      createdAt = m ? `${m[1]}T00:00:00.000Z` : stat.mtime.toISOString()
+      const m = filename.match(/(\d{4})-(\d{2})-(\d{2})/)
+      createdAt = m
+        ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toISOString()
+        : stat.mtime.toISOString()
     } else {
       createdAt = stat.mtime.toISOString()
     }
@@ -244,13 +246,29 @@ export function rotateDailyBackups(retain = DAILY_RETENTION, backupDirOverride?:
 export async function runDailyBackupIfNeeded(db: Database.Database): Promise<void> {
   try {
     const override = readBackupPathSetting(db)
+    let dir = override ?? getDefaultBackupsDir()
+    if (override) {
+      try {
+        mkdirSync(dir, { recursive: true })
+        readdirSync(dir)
+      } catch (err) {
+        dir = getDefaultBackupsDir()
+        console.warn(
+          '[backup] Backup folder unreachable, daily backup goes to the default folder:',
+          override,
+          '->',
+          dir,
+          err
+        )
+      }
+    }
     const today = todayDate()
-    const existing = listBackups(override).find(
+    const existing = listBackups(dir).find(
       (b) => b.reason === 'daily' && b.filename.includes(today)
     )
     if (existing) return
-    await createBackup(db, 'daily', undefined, override)
-    rotateDailyBackups(DAILY_RETENTION, override)
+    await createBackup(db, 'daily', undefined, dir)
+    rotateDailyBackups(DAILY_RETENTION, dir)
   } catch (err) {
     console.warn('[backup] Daily backup failed (non-fatal):', err)
   }

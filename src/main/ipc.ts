@@ -132,6 +132,7 @@ import type {
 } from '../shared/types'
 import { carryoverEntries, monthEntries } from './entryRanges'
 import { localDateKey, localMonthRange } from '../shared/dateRanges'
+import { jsonExportFileName } from './jsonExportName'
 import {
   checkPeriod,
   entriesForReview,
@@ -1194,11 +1195,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    */
   ipcMain.handle('export:json', async (): Promise<IpcResult<{ path: string; bytes: number }>> => {
     try {
-      const today = new Date().toISOString().slice(0, 10)
       const locale = dialogLocale()
       const result = await dialog.showSaveDialog({
         title: dialogT(locale)('mainDialog.exportJson.title'),
-        defaultPath: await exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
+        defaultPath: await exportDefaultPath(db, 'json', jsonExportFileName(new Date())),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
