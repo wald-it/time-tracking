@@ -19,12 +19,18 @@ import { readMasterNames } from './feedbackRules'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
 import { dialog } from 'electron'
-import { writeFileSync, readFileSync, mkdirSync, readdirSync } from 'fs'
+import { writeFileSync, readFileSync } from 'fs'
+import { mkdir, readdir } from 'fs/promises'
 import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
-import { createBackup, createBackupListing, restoreListedBackupOrReport } from './backup'
+import {
+  createBackup,
+  createBackupListing,
+  effectiveBackupsDir,
+  restoreListedBackupOrReport
+} from './backup'
 import {
   readSettingSync,
   writeSettingFromRenderer,
@@ -1015,9 +1021,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     return readBackupPathSetting(db) ?? ''
   }
 
-  // #506: while the configured folder is unreachable, the list shows the
-  // default folder the daily backup falls back to, and `backup:restore` looks
-  // in exactly the folder the list showed.
+  // #512: remember the directory of each filename/folder pair in the merged
+  // list. Restore never resolves a listed entry against the current setting.
   const backupListing = createBackupListing()
 
   ipcMain.handle('backup:list', (): IpcResult<BackupInfo[]> => {
@@ -1028,14 +1033,19 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     }
   })
 
-  ipcMain.handle('backup:create', async (): Promise<IpcResult<string>> => {
-    try {
-      const path = await createBackup(db, 'manual', undefined, getBackupPathSetting() || undefined)
-      return ok(path)
-    } catch (e) {
-      return fail(e)
+  ipcMain.handle(
+    'backup:create',
+    async (): Promise<IpcResult<{ path: string; usedDefaultFolder: boolean }>> => {
+      try {
+        const configured = getBackupPathSetting() || undefined
+        const dir = effectiveBackupsDir(configured, 'manual backup goes to the default folder')
+        const path = await createBackup(db, 'manual', undefined, dir)
+        return ok({ path, usedDefaultFolder: !!configured && dir !== normalize(configured) })
+      } catch (e) {
+        return fail(e)
+      }
     }
-  })
+  )
 
   // #272: the renderer names a backup from `backup:list` by its file name; a
   // path is never accepted. Snapshots the current DB, closes it, then replaces
@@ -1043,13 +1053,13 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   // relaunches right after, and its own message would vanish with the window.
   ipcMain.handle(
     'backup:restore',
-    (_e, filename: unknown): IpcResult<{ safetyBackupPath: string }> => {
+    (_e, filename: unknown, folder?: unknown): IpcResult<{ safetyBackupPath: string }> => {
       const locale = dialogLocale()
       try {
         return restoreListedBackupOrReport(
           db,
           filename,
-          backupListing.dirForRestore(getBackupPathSetting() || undefined),
+          backupListing.dirForRestore(filename, folder, getBackupPathSetting() || undefined),
           getDbPath(),
           locale,
           (title, message) => dialog.showErrorBox(title, message)
@@ -1096,12 +1106,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle(
     'backup:get-path-info',
-    (): IpcResult<{
-      dir: string
-      defaultDir: string
-      isCustom: boolean
-      isReachable: boolean
-    }> => {
+    async (): Promise<
+      IpcResult<{
+        dir: string
+        defaultDir: string
+        isCustom: boolean
+        isReachable: boolean
+      }>
+    > => {
       try {
         const configuredPath = getBackupPathSetting()
         const defaultDir = getDefaultBackupsDir()
@@ -1111,9 +1123,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         }
         const dir = normalize(configuredPath)
         let isReachable = true
+        // #512: the banner polls this; async fs keeps an offline network
+        // share from blocking the main process until the SMB timeout.
         try {
-          mkdirSync(dir, { recursive: true })
-          readdirSync(dir)
+          await mkdir(dir, { recursive: true })
+          await readdir(dir)
         } catch {
           isReachable = false
         }

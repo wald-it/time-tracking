@@ -479,6 +479,7 @@ export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
 
 export interface BackupInfo {
   filename: string
+  folder: 'custom' | 'default'
   fullPath: string
   reason: BackupReason
   createdAt: string

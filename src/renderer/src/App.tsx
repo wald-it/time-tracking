@@ -12,6 +12,7 @@ import { StartTimerModal } from './components/StartTimerModal'
 import { useStartTimerModalStore } from './store/startTimerModalStore'
 import { ToastTray } from './components/Toast'
 import { UpdateBanner } from './components/UpdateBanner'
+import { BackupFolderBanner } from './components/BackupFolderBanner'
 import { OnboardingWizard } from './components/OnboardingWizard'
 import { handleOpenStart, useTimer } from './hooks/useTimer'
 import { useT } from './contexts/I18nContext'
@@ -25,6 +26,7 @@ function App(): React.JSX.Element {
   // Selector: re-renders only when the onboarding flag changes (v1.13.2 PR 2).
   const onboardingCompleted = useSettingsStore((s) => s.settings?.onboarding_completed)
   const [view, setView] = useState<View>('today')
+  const [settingsDataRequest, setSettingsDataRequest] = useState(0)
   const [showOnboarding, setShowOnboarding] = useState(false)
   // The one start modal (header key + Heute's START key), prefilled (B6).
   const startModal = useStartTimerModalStore()
@@ -74,9 +76,18 @@ function App(): React.JSX.Element {
         style={{ background: 'var(--bg)', color: 'var(--ink)' }}
       >
         <UpdateBanner />
+        <BackupFolderBanner
+          onOpenSettings={() => {
+            setSettingsDataRequest((request) => request + 1)
+            setView('settings')
+          }}
+        />
         <AppHeader
           view={view}
-          onNavigate={setView}
+          onNavigate={(next) => {
+            if (next !== view) setSettingsDataRequest(0)
+            setView(next)
+          }}
           onStartTimer={() => void startModal.openStart()}
         />
 
@@ -92,7 +103,12 @@ function App(): React.JSX.Element {
             {view === 'clients' && <ClientsView />}
             {view === 'analytics' && <AuswertungView />}
             {view === 'export' && <ExportView />}
-            {view === 'settings' && <SettingsView />}
+            {view === 'settings' && (
+              <SettingsView
+                key={settingsDataRequest}
+                initialTab={settingsDataRequest ? 'data' : 'general'}
+              />
+            )}
           </div>
         </main>
 

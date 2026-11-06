@@ -179,6 +179,20 @@ describe('listBackups local midnight (#508)', () => {
 })
 
 describe('rotateDailyBackups', () => {
+  it.each(['custom', 'default'])('only rotates the requested %s folder (#512)', async (folder) => {
+    const { createBackupListing, rotateDailyBackups, getBackupsDir } = await loadBackup()
+    const custom = getBackupsDir(join(userDataDir, 'custom'))
+    const defaultDir = getBackupsDir()
+    const names = ['backup-daily-2026-11-04.sqlite', 'backup-daily-2026-11-05.sqlite']
+    for (const dir of [custom, defaultDir]) {
+      for (const filename of names) makeFile(join(dir, filename))
+    }
+    expect(createBackupListing().list(custom)).toHaveLength(4)
+    rotateDailyBackups(1, folder === 'custom' ? custom : defaultDir)
+    expect(readdirSync(folder === 'custom' ? custom : defaultDir)).toEqual([names[1]])
+    expect(readdirSync(folder === 'custom' ? defaultDir : custom)).toEqual(names)
+  })
+
   it('keeps last N daily backups, deletes older', async () => {
     const { rotateDailyBackups, listBackups, getBackupsDir } = await loadBackup()
     const dir = getBackupsDir()
@@ -480,7 +494,7 @@ describe('restoreListedBackupOrReport', () => {
     const res = restoreListedBackupOrReport(
       db,
       NAME,
-      listing.dirForRestore(blocked),
+      listing.dirForRestore(NAME, undefined, blocked),
       currentDb,
       'de',
       (t) => reports.push(t)
@@ -506,7 +520,7 @@ describe('restoreListedBackupOrReport', () => {
     const res = restoreListedBackupOrReport(
       db,
       NAME,
-      listing.dirForRestore(custom),
+      listing.dirForRestore(NAME, undefined, custom),
       currentDb,
       'de',
       () => {}
@@ -532,7 +546,7 @@ describe('restoreListedBackupOrReport', () => {
     const res = restoreListedBackupOrReport(
       db,
       NAME,
-      listing.dirForRestore(custom),
+      listing.dirForRestore(NAME, 'custom', custom),
       currentDb,
       'de',
       (_t, m) => reports.push(m)
@@ -619,16 +633,15 @@ describe('effectiveBackupsDir (#506)', () => {
     vi.restoreAllMocks()
   })
 
-  // Known limit (#512): once the configured folder is back, the list shows
-  // only that folder; backups written to the default folder meanwhile are
-  // not listed there.
-  it('shows only the configured folder again once it is reachable', async () => {
-    const { effectiveBackupsDir, getDefaultBackupsDir, listBackups } = await loadBackup()
+  it('keeps default backups listed once the configured folder is reachable (#512)', async () => {
+    const { createBackupListing, getDefaultBackupsDir } = await loadBackup()
     mkdirSync(getDefaultBackupsDir(), { recursive: true })
     makeFile(join(getDefaultBackupsDir(), 'backup-daily-2026-11-05.sqlite'))
     const custom = join(userDataDir, 'custom')
 
-    expect(listBackups(effectiveBackupsDir(custom))).toEqual([])
+    expect(createBackupListing().list(custom)).toMatchObject([
+      { filename: 'backup-daily-2026-11-05.sqlite', folder: 'default' }
+    ])
   })
 })
 

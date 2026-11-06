@@ -7,6 +7,15 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Backups in the default folder remain listed and restorable after a custom backup folder recovers; restore binds each file to its listed folder, including same-named backups (#512, part 1).
+- Manual backups fall back to the default folder when the custom folder is unreachable, with a toast confirming where the backup was saved (#512, part 2).
+
+### Added
+
+- A dismissible banner above the app warns when the custom backup folder is unreachable, opens Settings → Data, and disappears automatically after recovery (#512, part 3).
+
 ## [2.6.1] — 2026-11-06
 
 ### Fixed

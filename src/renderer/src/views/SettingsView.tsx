@@ -13,6 +13,7 @@ import { Toggle } from '../components/Toggle'
 import { ToggleHintContext, ToggleLabelContext } from '../components/toggleLabelContext'
 import { useUiPrefsStore } from '../store/uiPrefsStore'
 import { useSettingsStore } from '../store/settingsStore'
+import { useToastStore } from '../store/toastStore'
 import {
   parseWeeklyTargetHours,
   parseTargetRateCent,
@@ -62,6 +63,10 @@ const DEFAULT_MINI_HOTKEY = 'Alt+Shift+M'
 
 type SettingsTab = 'general' | 'timer' | 'export' | 'data' | 'tags' | 'integrations' | 'about'
 
+function backupKey(backup: BackupInfo): string {
+  return `${backup.folder}:${backup.filename}`
+}
+
 /** Settings keys that hold a global accelerator string. */
 type HotkeyKey = 'hotkey_toggle' | 'mini_hotkey'
 
@@ -88,7 +93,11 @@ function parseAccelerator(e: KeyboardEvent): string | null {
   return [...mods, key].join('+')
 }
 
-export default function SettingsView(): React.JSX.Element {
+export default function SettingsView({
+  initialTab = 'general'
+}: {
+  initialTab?: SettingsTab
+}): React.JSX.Element {
   const t = useT()
   const { locale, setLocale } = useLocale()
   const { themeMode, setThemeMode } = useTheme()
@@ -120,7 +129,7 @@ export default function SettingsView(): React.JSX.Element {
   const [hotkeyError, setHotkeyError] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
   const [showAbout, setShowAbout] = useState(false)
-  const [tab, setTab] = useState<SettingsTab>('general')
+  const [tab, setTab] = useState<SettingsTab>(initialTab)
 
   async function loadAll(): Promise<void> {
     const [s, p, v, b, pi] = await Promise.all([
@@ -135,7 +144,7 @@ export default function SettingsView(): React.JSX.Element {
     if (v.ok) setVersion(v.data)
     if (b.ok) {
       setBackups(b.data)
-      if (b.data.length > 0) setSelectedRestoreFile(b.data[0].filename)
+      setSelectedRestoreFile(b.data.length > 0 ? backupKey(b.data[0]) : '')
     }
     if (pi.ok) setBackupPathInfo(pi.data)
   }
@@ -204,11 +213,16 @@ export default function SettingsView(): React.JSX.Element {
     const res = await window.api.backups.create()
     if (res.ok) {
       setStatusMsg(t('settings.data.backupCreated'))
+      if (res.data.usedDefaultFolder) {
+        useToastStore.getState().show(t('settings.data.backupCreatedInDefaultFolder'))
+      }
       const list = await window.api.backups.list()
       if (list.ok) {
         setBackups(list.data)
-        if (list.data.length > 0 && !selectedRestoreFile) {
-          setSelectedRestoreFile(list.data[0].filename)
+        // #512: after a fallback the old `custom:` key may be gone; a stale
+        // selection would make the restore confirm do nothing.
+        if (!list.data.some((b) => backupKey(b) === selectedRestoreFile)) {
+          setSelectedRestoreFile(list.data.length > 0 ? backupKey(list.data[0]) : '')
         }
       }
     } else {
@@ -243,10 +257,11 @@ export default function SettingsView(): React.JSX.Element {
   }
 
   async function restoreFromBackup(): Promise<void> {
-    if (!selectedRestoreFile) return
+    const selected = backups.find((b) => backupKey(b) === selectedRestoreFile)
+    if (!selected) return
     setShowRestoreConfirm(false)
     setStatusMsg(t('settings.data.restoring'))
-    const res = await window.api.backups.restore(selectedRestoreFile)
+    const res = await window.api.backups.restore(selected.filename, selected.folder)
     if (!res.ok) {
       // A failure after the snapshot leaves the DB closed in the main process,
       // so relaunch unconditionally; the main process has already shown the
@@ -796,9 +811,12 @@ export default function SettingsView(): React.JSX.Element {
                       className={`${INPUT_FRAME} font-num min-w-0 flex-1 text-xs`}
                     >
                       {backups.map((b) => (
-                        <option key={b.filename} value={b.filename}>
+                        <option key={backupKey(b)} value={backupKey(b)}>
                           {new Date(b.createdAt).toLocaleString('de-DE')} · {b.reason} ·{' '}
                           {(b.sizeBytes / 1024).toFixed(0)} KB
+                          {b.folder === 'default' && backupPathInfo?.isCustom
+                            ? ` · ${t('settings.data.backupInDefaultFolder')}`
+                            : ''}
                         </option>
                       ))}
                     </select>

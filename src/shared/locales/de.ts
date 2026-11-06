@@ -841,6 +841,12 @@ export const de = {
   'settings.data.createBackup': 'Backup jetzt erstellen',
   'settings.data.backupCreating': 'Backup wird erstellt …',
   'settings.data.backupCreated': 'Backup erstellt.',
+  'settings.data.backupInDefaultFolder': 'im Standardordner',
+  'settings.data.backupCreatedInDefaultFolder':
+    'Backup im Standardordner gespeichert, der eigene Backup-Ordner ist nicht erreichbar.',
+  'backupFolderBanner.unreachable':
+    'Backup-Ordner nicht erreichbar. Backups gehen in den Standardordner.',
+  'backupFolderBanner.openSettings': 'Einstellungen öffnen',
   'settings.data.backupCount': 'Insgesamt {count} Backup gespeichert.',
   'settings.data.backupCountPlural': 'Insgesamt {count} Backups gespeichert.',
   'settings.data.jsonExport': 'JSON-Vollexport',

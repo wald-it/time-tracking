@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import { app } from 'electron'
-import { join, normalize } from 'path'
+import { dirname, join, normalize, resolve } from 'path'
 import {
   mkdirSync,
   existsSync,
@@ -20,6 +20,7 @@ export type BackupReason = 'daily' | 'manual' | 'pre-migration' | 'mcp'
 
 export interface BackupInfo {
   filename: string
+  folder: 'custom' | 'default'
   fullPath: string
   reason: BackupReason
   /** ISO timestamp from filename (daily) or file mtime (others). */
@@ -51,10 +52,10 @@ export function getBackupsDir(backupPathOverride?: string): string {
 }
 
 /**
- * #506 — the folder the daily backup, the backup list and the restore use:
+ * #506 / #512 — the folder daily and manual backups use:
  * the configured `backup_path` when it can be created and read, otherwise the
- * default folder (logged with both paths). The manual backup does not use
- * this; it still fails visibly on an unreachable folder.
+ * default folder (logged with both paths). Restore uses the bound listing;
+ * only a folder-less restore before the first list uses this fallback.
  */
 export function effectiveBackupsDir(
   backupPathOverride?: string,
@@ -75,10 +76,29 @@ export function effectiveBackupsDir(
 }
 
 export interface BackupListing {
-  /** The backups of the effective folder; remembers that folder for restore. */
+  /** Merged backups, remembering each filename/folder pair for restore. */
   list(backupPathOverride?: string): BackupInfo[]
-  /** The folder the last list came from, or the effective one if none yet. */
-  dirForRestore(backupPathOverride?: string): string
+  /** Null refuses an unknown/ambiguous entry; never re-resolves a listed folder. */
+  dirForRestore(filename: unknown, folder?: unknown, backupPathOverride?: string): string | null
+}
+
+/**
+ * #512: the default folder is listed next to a reachable custom folder. If it
+ * cannot be read, the custom backups must still be listed, as before #512.
+ */
+function listDefaultAlongside(defaultDir: string): BackupInfo[] {
+  try {
+    return listBackups(defaultDir, 'default')
+  } catch (err) {
+    console.warn('[backup] Default backup folder unreadable, listing the custom folder only:', err)
+    return []
+  }
+}
+
+function sameDirectory(a: string, b: string): boolean {
+  const left = normalize(resolve(a))
+  const right = normalize(resolve(b))
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
 }
 
 /**
@@ -88,16 +108,33 @@ export interface BackupListing {
  * with the same name but other content may lie.
  */
 export function createBackupListing(): BackupListing {
-  let listedDir: string | undefined
+  let listed: Array<{ filename: string; folder: BackupInfo['folder']; dir: string }> | undefined
   return {
     list(backupPathOverride) {
       const dir = effectiveBackupsDir(backupPathOverride, 'backup list shows the default folder')
-      const result = listBackups(dir)
-      listedDir = dir
+      const defaultDir = getDefaultBackupsDir()
+      const result = sameDirectory(dir, defaultDir)
+        ? listBackups(defaultDir, 'default')
+        : [...listBackups(dir, 'custom'), ...listDefaultAlongside(defaultDir)].sort((a, b) =>
+            b.createdAt.localeCompare(a.createdAt)
+          )
+      listed = result.map((b) => ({
+        filename: b.filename,
+        folder: b.folder,
+        dir: dirname(b.fullPath)
+      }))
       return result
     },
-    dirForRestore(backupPathOverride) {
-      return listedDir ?? effectiveBackupsDir(backupPathOverride, 'restore uses the default folder')
+    dirForRestore(filename, folder, backupPathOverride) {
+      if (!listed) {
+        return folder === undefined
+          ? effectiveBackupsDir(backupPathOverride, 'restore uses the default folder')
+          : null
+      }
+      const matches = listed.filter(
+        (b) => b.filename === filename && (folder === undefined || b.folder === folder)
+      )
+      return matches.length === 1 ? matches[0].dir : null
     }
   }
 }
@@ -215,7 +252,10 @@ export function replaceDbFile(sourcePath: string, dbPath: string): void {
   copyFileSync(sourcePath, dbPath)
 }
 
-export function listBackups(backupPathOverride?: string): BackupInfo[] {
+export function listBackups(
+  backupPathOverride?: string,
+  folder?: BackupInfo['folder']
+): BackupInfo[] {
   const dir = getBackupsDir(backupPathOverride)
   const entries = readdirSync(dir)
   const result: BackupInfo[] = []
@@ -236,6 +276,7 @@ export function listBackups(backupPathOverride?: string): BackupInfo[] {
     }
     result.push({
       filename,
+      folder: folder ?? (sameDirectory(dir, getDefaultBackupsDir()) ? 'default' : 'custom'),
       fullPath,
       reason,
       createdAt,
@@ -403,7 +444,7 @@ export function restoreBackupOrReport(
 export function restoreListedBackupOrReport(
   db: Database.Database,
   filename: unknown,
-  backupsDir: string | undefined,
+  backupsDir: string | undefined | null,
   currentDbPath: string,
   locale: Locale,
   report: (title: string, message: string) => void
@@ -412,7 +453,7 @@ export function restoreListedBackupOrReport(
   let listed: BackupInfo | undefined
   try {
     listed =
-      typeof filename === 'string'
+      typeof filename === 'string' && backupsDir !== null
         ? listBackups(backupsDir).find((b) => b.filename === filename)
         : undefined
   } catch (err) {
