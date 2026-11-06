@@ -224,9 +224,13 @@ const api = {
   },
   backups: {
     list: (): Promise<IpcResult<BackupInfo[]>> => ipcRenderer.invoke('backup:list'),
-    create: (): Promise<IpcResult<string>> => ipcRenderer.invoke('backup:create'),
-    restore: (filename: string): Promise<IpcResult<{ safetyBackupPath: string }>> =>
-      ipcRenderer.invoke('backup:restore', filename),
+    create: (): Promise<IpcResult<{ path: string; usedDefaultFolder: boolean }>> =>
+      ipcRenderer.invoke('backup:create'),
+    restore: (
+      filename: string,
+      folder?: BackupInfo['folder']
+    ): Promise<IpcResult<{ safetyBackupPath: string }>> =>
+      ipcRenderer.invoke('backup:restore', filename, folder),
     setPath: (): Promise<IpcResult<string>> => ipcRenderer.invoke('backup:set-path'),
     resetPath: (): Promise<IpcResult<void>> => ipcRenderer.invoke('backup:reset-path'),
     getPathInfo: (): Promise<

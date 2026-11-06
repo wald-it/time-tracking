@@ -313,7 +313,10 @@ export function OnboardingWizard({ open, onFinish }: Props): React.JSX.Element |
                 <button
                   type="button"
                   onClick={async () => {
-                    const res = await window.api.backups.restore(availableBackups[0].filename)
+                    const res = await window.api.backups.restore(
+                      availableBackups[0].filename,
+                      availableBackups[0].folder
+                    )
                     // Relaunch regardless: a restore that fails after the snapshot has
                     // already closed the DB in the main process. The main process shows
                     // every failure as a native dialog, so the relaunch hides nothing.

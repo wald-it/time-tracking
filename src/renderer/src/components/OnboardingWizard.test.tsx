@@ -3,7 +3,7 @@
  * dialog, the colour presets are named 44 px keys with `aria-pressed`, and
  * the "created" line follows the app language.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { OnboardingWizard } from './OnboardingWizard'
@@ -34,6 +34,44 @@ async function renderWizard(): Promise<void> {
 }
 
 describe('OnboardingWizard', () => {
+  it('restores the latest backup with its folder origin (#512)', async () => {
+    window.api.backups.list = async () => ({
+      ok: true,
+      data: [
+        {
+          filename: 'backup-daily-2026-11-05.sqlite',
+          folder: 'default',
+          fullPath: '',
+          reason: 'daily',
+          createdAt: '2026-11-05T12:00:00Z',
+          sizeBytes: 1024
+        }
+      ]
+    })
+    window.api.backups.restore = vi.fn(async () => ({
+      ok: true as const,
+      data: { safetyBackupPath: '' }
+    }))
+    window.api.app = {
+      relaunch: vi.fn(async () => ({ ok: true as const, data: undefined }))
+    } as unknown as Window['api']['app']
+    await renderWizard()
+    for (let step = 0; step < 3; step++) {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Weiter' }))
+      })
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Wiederherstellen' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Wiederherstellen' }))
+    })
+    expect(window.api.backups.restore).toHaveBeenCalledWith(
+      'backup-daily-2026-11-05.sqlite',
+      'default'
+    )
+    expect(window.api.app.relaunch).toHaveBeenCalled()
+  })
+
   it('each step change puts focus on the new step: name field, then the finish key', async () => {
     await renderWizard()
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }))

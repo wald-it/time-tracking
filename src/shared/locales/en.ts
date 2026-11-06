@@ -830,6 +830,12 @@ export const en: Record<TranslationKey, string> = {
   'settings.data.createBackup': 'Create backup now',
   'settings.data.backupCreating': 'Creating backup …',
   'settings.data.backupCreated': 'Backup created.',
+  'settings.data.backupInDefaultFolder': 'in default folder',
+  'settings.data.backupCreatedInDefaultFolder':
+    'Backup saved in the default folder; your backup folder cannot be reached.',
+  'backupFolderBanner.unreachable':
+    'Backup folder cannot be reached. Backups go to the default folder.',
+  'backupFolderBanner.openSettings': 'Open settings',
   'settings.data.backupCount': '{count} backup saved in total.',
   'settings.data.backupCountPlural': '{count} backups saved in total.',
   'settings.data.jsonExport': 'JSON full export',

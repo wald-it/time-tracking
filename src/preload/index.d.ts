@@ -135,9 +135,12 @@ declare global {
       }
       backups: {
         list(): Promise<IpcResult<BackupInfo[]>>
-        create(): Promise<IpcResult<string>>
+        create(): Promise<IpcResult<{ path: string; usedDefaultFolder: boolean }>>
         /** `filename` of an entry from `list()` — a path is refused (#272). */
-        restore(filename: string): Promise<IpcResult<{ safetyBackupPath: string }>>
+        restore(
+          filename: string,
+          folder?: BackupInfo['folder']
+        ): Promise<IpcResult<{ safetyBackupPath: string }>>
         setPath(): Promise<IpcResult<string>>
         resetPath(): Promise<IpcResult<void>>
         getPathInfo(): Promise<
