@@ -194,6 +194,18 @@ describe('backup IPC folder binding (#512)', () => {
     })
   })
 
+  it('checks the folder asynchronously for the banner poll', async () => {
+    writeFileSync(custom, 'blocked')
+    const pending = handlers.get('backup:get-path-info')!(null)
+    expect(pending).toBeInstanceOf(Promise)
+    expect(await pending).toMatchObject({ ok: true, data: { isCustom: true, isReachable: false } })
+    rmSync(custom)
+    expect(await invoke('backup:get-path-info')).toMatchObject({
+      ok: true,
+      data: { isCustom: true, isReachable: true }
+    })
+  })
+
   it.each(['blocked', 'reachable', 'unset'] as const)(
     'manual backup uses the effective folder and reports fallback: %s',
     async (mode) => {

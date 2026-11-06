@@ -13,17 +13,23 @@ export function BackupFolderBanner({
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
+    // Dismissed: no more checks until the next start.
+    if (dismissed) return
     let active = true
-    let request = 0
+    // One check at a time: a hanging network share must not pile up requests.
+    let inFlight = false
     async function refresh(): Promise<void> {
-      const current = ++request
+      if (inFlight) return
+      inFlight = true
       try {
         const result = await window.api.backups.getPathInfo()
-        if (active && current === request && result.ok) {
+        if (active && result.ok) {
           setUnreachable(result.data.isCustom && !result.data.isReachable)
         }
       } catch (err) {
         console.warn('[backup] Could not check backup folder:', err)
+      } finally {
+        inFlight = false
       }
     }
     const onFocus = (): void => {
@@ -37,7 +43,7 @@ export function BackupFolderBanner({
       window.removeEventListener('focus', onFocus)
       window.clearInterval(interval)
     }
-  }, [])
+  }, [dismissed])
 
   if (!unreachable || dismissed) return null
   return (

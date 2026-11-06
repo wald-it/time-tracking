@@ -54,6 +54,28 @@ describe('BackupFolderBanner (#512)', () => {
       fireEvent.focus(window)
     })
     expect(screen.queryByRole('status')).toBeNull()
+    // No further checks once dismissed: a hanging share is not polled.
+    expect(getPathInfo).toHaveBeenCalledOnce()
+  })
+  it('starts no second check while one is still pending', async () => {
+    let resolve: (v: unknown) => void = () => {}
+    getPathInfo.mockImplementation(() => new Promise((r) => (resolve = r)))
+    await mount()
+    await act(async () => {
+      fireEvent.focus(window)
+      fireEvent.focus(window)
+    })
+    expect(getPathInfo).toHaveBeenCalledOnce()
+    await act(async () => {
+      resolve({ ok: true, data: info })
+    })
+    expect(screen.getByRole('status')).toBeTruthy()
+    getPathInfo.mockResolvedValue({ ok: true, data: { ...info, isReachable: true } })
+    await act(async () => {
+      fireEvent.focus(window)
+    })
+    expect(getPathInfo).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('status')).toBeNull()
   })
   it('rechecks on focus and hides after recovery', async () => {
     await mount()

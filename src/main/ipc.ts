@@ -19,7 +19,8 @@ import { readMasterNames } from './feedbackRules'
 import { ipcMain, shell } from 'electron'
 import { app } from 'electron'
 import { dialog } from 'electron'
-import { writeFileSync, readFileSync, mkdirSync, readdirSync } from 'fs'
+import { writeFileSync, readFileSync } from 'fs'
+import { mkdir, readdir } from 'fs/promises'
 import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
@@ -1105,12 +1106,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle(
     'backup:get-path-info',
-    (): IpcResult<{
-      dir: string
-      defaultDir: string
-      isCustom: boolean
-      isReachable: boolean
-    }> => {
+    async (): Promise<
+      IpcResult<{
+        dir: string
+        defaultDir: string
+        isCustom: boolean
+        isReachable: boolean
+      }>
+    > => {
       try {
         const configuredPath = getBackupPathSetting()
         const defaultDir = getDefaultBackupsDir()
@@ -1120,9 +1123,11 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         }
         const dir = normalize(configuredPath)
         let isReachable = true
+        // #512: the banner polls this; async fs keeps an offline network
+        // share from blocking the main process until the SMB timeout.
         try {
-          mkdirSync(dir, { recursive: true })
-          readdirSync(dir)
+          await mkdir(dir, { recursive: true })
+          await readdir(dir)
         } catch {
           isReachable = false
         }
