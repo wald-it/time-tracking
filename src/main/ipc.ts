@@ -24,7 +24,7 @@ import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
-import { createBackup, listBackups, restoreListedBackupOrReport } from './backup'
+import { createBackup, createBackupListing, restoreListedBackupOrReport } from './backup'
 import {
   readSettingSync,
   writeSettingFromRenderer,
@@ -132,6 +132,7 @@ import type {
 } from '../shared/types'
 import { carryoverEntries, monthEntries } from './entryRanges'
 import { localDateKey, localMonthRange } from '../shared/dateRanges'
+import { jsonExportFileName } from './jsonExportName'
 import {
   checkPeriod,
   entriesForReview,
@@ -1014,9 +1015,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     return readBackupPathSetting(db) ?? ''
   }
 
+  // #506: while the configured folder is unreachable, the list shows the
+  // default folder the daily backup falls back to, and `backup:restore` looks
+  // in exactly the folder the list showed.
+  const backupListing = createBackupListing()
+
   ipcMain.handle('backup:list', (): IpcResult<BackupInfo[]> => {
     try {
-      return ok(listBackups(getBackupPathSetting() || undefined))
+      return ok(backupListing.list(getBackupPathSetting() || undefined))
     } catch (e) {
       return fail(e)
     }
@@ -1043,7 +1049,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         return restoreListedBackupOrReport(
           db,
           filename,
-          getBackupPathSetting() || undefined,
+          backupListing.dirForRestore(getBackupPathSetting() || undefined),
           getDbPath(),
           locale,
           (title, message) => dialog.showErrorBox(title, message)
@@ -1090,13 +1096,18 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
 
   ipcMain.handle(
     'backup:get-path-info',
-    (): IpcResult<{ dir: string; isCustom: boolean; isReachable: boolean }> => {
+    (): IpcResult<{
+      dir: string
+      defaultDir: string
+      isCustom: boolean
+      isReachable: boolean
+    }> => {
       try {
         const configuredPath = getBackupPathSetting()
         const defaultDir = getDefaultBackupsDir()
         const isCustom = !!configuredPath
         if (!isCustom) {
-          return ok({ dir: defaultDir, isCustom: false, isReachable: true })
+          return ok({ dir: defaultDir, defaultDir, isCustom: false, isReachable: true })
         }
         const dir = normalize(configuredPath)
         let isReachable = true
@@ -1106,7 +1117,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         } catch {
           isReachable = false
         }
-        return ok({ dir, isCustom: true, isReachable })
+        // #506: an unreachable folder sends the daily backup to `defaultDir`;
+        // Settings names that folder in its warning.
+        return ok({ dir, defaultDir, isCustom: true, isReachable })
       } catch (e) {
         return fail(e)
       }
@@ -1194,11 +1207,10 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
    */
   ipcMain.handle('export:json', async (): Promise<IpcResult<{ path: string; bytes: number }>> => {
     try {
-      const today = new Date().toISOString().slice(0, 10)
       const locale = dialogLocale()
       const result = await dialog.showSaveDialog({
         title: dialogT(locale)('mainDialog.exportJson.title'),
-        defaultPath: await exportDefaultPath(db, 'json', `timetrack-export-${today}.json`),
+        defaultPath: await exportDefaultPath(db, 'json', jsonExportFileName(new Date())),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {

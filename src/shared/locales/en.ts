@@ -815,7 +815,7 @@ export const en: Record<TranslationKey, string> = {
   'settings.data.backupPathChanged': 'Backup path saved.',
   'settings.data.backupPathReset': 'Backup path reset to default.',
   'settings.data.backupPathUnreachable':
-    'Backup path unreachable — new backups will be saved to the default location.',
+    'Backup folder unreachable. Until it is back, daily backups go to the default folder: {defaultDir}',
   'settings.data.restoreBackup': 'Restore from backup',
   'settings.data.restoreBackupHint': 'The app will restart automatically after the restore.',
   'settings.data.restoreBtn': 'Restore…',
