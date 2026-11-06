@@ -74,6 +74,34 @@ export function effectiveBackupsDir(
   }
 }
 
+export interface BackupListing {
+  /** The backups of the effective folder; remembers that folder for restore. */
+  list(backupPathOverride?: string): BackupInfo[]
+  /** The folder the last list came from, or the effective one if none yet. */
+  dirForRestore(backupPathOverride?: string): string
+}
+
+/**
+ * #506 — ties `backup:restore` to the folder `backup:list` showed. Without
+ * it, a configured folder that comes back (or drops out) between list and
+ * restore would make restore look in the other folder, where a daily backup
+ * with the same name but other content may lie.
+ */
+export function createBackupListing(): BackupListing {
+  let listedDir: string | undefined
+  return {
+    list(backupPathOverride) {
+      const dir = effectiveBackupsDir(backupPathOverride, 'backup list shows the default folder')
+      const result = listBackups(dir)
+      listedDir = dir
+      return result
+    },
+    dirForRestore(backupPathOverride) {
+      return listedDir ?? effectiveBackupsDir(backupPathOverride, 'restore uses the default folder')
+    }
+  }
+}
+
 function isoTimestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-')
 }
@@ -364,13 +392,18 @@ export function restoreBackupOrReport(
 
 /**
  * #272 — `backup:restore` takes the file NAME of a backup that `listBackups`
- * shows for the effective backup folder (#506), never a path. Anything else is refused
- * before the open database is touched. The texts follow `locale` (#270).
+ * shows for `backupsDir`, never a path. Anything else is refused before the
+ * open database is touched. The texts follow `locale` (#270).
+ *
+ * `backupsDir` is read as given, with no fallback (#506): the caller passes
+ * the folder its list came from (`BackupListing.dirForRestore`), so a folder
+ * that comes back or drops out between list and restore cannot swap in a
+ * same-named backup from the other folder.
  */
 export function restoreListedBackupOrReport(
   db: Database.Database,
   filename: unknown,
-  backupPathOverride: string | undefined,
+  backupsDir: string | undefined,
   currentDbPath: string,
   locale: Locale,
   report: (title: string, message: string) => void
@@ -380,16 +413,11 @@ export function restoreListedBackupOrReport(
   try {
     listed =
       typeof filename === 'string'
-        ? listBackups(
-            // #506: the same folder `backup:list` showed — the default one
-            // while the configured folder is unreachable.
-            effectiveBackupsDir(backupPathOverride, 'restore uses the default folder')
-          ).find((b) => b.filename === filename)
+        ? listBackups(backupsDir).find((b) => b.filename === filename)
         : undefined
   } catch (err) {
-    // Reading the folder failed anyway (it vanished between check and read):
-    // say so here, the renderer relaunches right after and would swallow its
-    // own message.
+    // The folder is unreachable (an offline network share): say so here, the
+    // renderer relaunches right after and would swallow its own message.
     const message = t('mainDialog.restore.failed', { cause: (err as Error).message })
     report(t('mainDialog.restore.title'), message)
     return { ok: false, error: message }

@@ -24,12 +24,7 @@ import { dirname, join, normalize } from 'path'
 import log from 'electron-log/main'
 import { getDb, getDbPath } from './db'
 import { getBackupsDir, getDefaultBackupsDir, readBackupPathSetting } from './backup'
-import {
-  createBackup,
-  effectiveBackupsDir,
-  listBackups,
-  restoreListedBackupOrReport
-} from './backup'
+import { createBackup, createBackupListing, restoreListedBackupOrReport } from './backup'
 import {
   readSettingSync,
   writeSettingFromRenderer,
@@ -1020,18 +1015,14 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     return readBackupPathSetting(db) ?? ''
   }
 
+  // #506: while the configured folder is unreachable, the list shows the
+  // default folder the daily backup falls back to, and `backup:restore` looks
+  // in exactly the folder the list showed.
+  const backupListing = createBackupListing()
+
   ipcMain.handle('backup:list', (): IpcResult<BackupInfo[]> => {
     try {
-      // #506: while the configured folder is unreachable, list the default
-      // folder the daily backup falls back to; `backup:restore` uses the same.
-      return ok(
-        listBackups(
-          effectiveBackupsDir(
-            getBackupPathSetting() || undefined,
-            'backup list shows the default folder'
-          )
-        )
-      )
+      return ok(backupListing.list(getBackupPathSetting() || undefined))
     } catch (e) {
       return fail(e)
     }
@@ -1058,7 +1049,7 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
         return restoreListedBackupOrReport(
           db,
           filename,
-          getBackupPathSetting() || undefined,
+          backupListing.dirForRestore(getBackupPathSetting() || undefined),
           getDbPath(),
           locale,
           (title, message) => dialog.showErrorBox(title, message)

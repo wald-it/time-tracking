@@ -466,21 +466,82 @@ describe('restoreListedBackupOrReport', () => {
     db.close()
   })
 
-  it('restores a fallback backup from the default folder while the configured one is unreachable (#506)', async () => {
-    const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
+  it('restores a fallback backup listed from the default folder while the configured one is unreachable (#506)', async () => {
+    const { restoreListedBackupOrReport, getBackupsDir, createBackupListing } = await loadBackup()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     listedBackup(getBackupsDir()) // default folder, where the fallback went
     const blocked = join(userDataDir, 'blocked')
     makeFile(blocked)
+    const listing = createBackupListing()
+    expect(listing.list(blocked).map((b) => b.filename)).toEqual([NAME])
     const currentDb = join(userDataDir, 'current.sqlite')
     const db = walDb(currentDb, 'CURRENT')
     const reports: string[] = []
-    const res = restoreListedBackupOrReport(db, NAME, blocked, currentDb, 'de', (t) =>
-      reports.push(t)
+    const res = restoreListedBackupOrReport(
+      db,
+      NAME,
+      listing.dirForRestore(blocked),
+      currentDb,
+      'de',
+      (t) => reports.push(t)
     )
     expect(res.ok).toBe(true)
     expect(reports).toEqual([])
     expect(readValues(currentDb)).toEqual(['BACKUP'])
+    vi.restoreAllMocks()
+  })
+
+  it('restores from the listed folder even when the configured folder comes back in between (#506)', async () => {
+    const { restoreListedBackupOrReport, getBackupsDir, createBackupListing } = await loadBackup()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    listedBackup(getBackupsDir(), 'FALLBACK') // default folder
+    const custom = join(userDataDir, 'custom')
+    makeFile(custom) // unreachable while the list is shown
+    const listing = createBackupListing()
+    listing.list(custom)
+    rmSync(custom)
+    listedBackup(getBackupsDir(custom), 'CUSTOM') // back, with a same-named backup
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const res = restoreListedBackupOrReport(
+      db,
+      NAME,
+      listing.dirForRestore(custom),
+      currentDb,
+      'de',
+      () => {}
+    )
+    expect(res.ok).toBe(true)
+    expect(readValues(currentDb)).toEqual(['FALLBACK'])
+    vi.restoreAllMocks()
+  })
+
+  it('restores from the listed configured folder, not the default one, when it drops out in between (#506)', async () => {
+    const { restoreListedBackupOrReport, getBackupsDir, createBackupListing } = await loadBackup()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    listedBackup(getBackupsDir(), 'FALLBACK') // default folder
+    const custom = join(userDataDir, 'custom')
+    listedBackup(getBackupsDir(custom), 'CUSTOM')
+    const listing = createBackupListing()
+    listing.list(custom)
+    rmSync(custom, { recursive: true, force: true })
+    makeFile(custom) // gone after the list was shown
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreListedBackupOrReport(
+      db,
+      NAME,
+      listing.dirForRestore(custom),
+      currentDb,
+      'de',
+      (_t, m) => reports.push(m)
+    )
+    expect(res.ok).toBe(false)
+    expect(reports).toHaveLength(1)
+    expect(db.open).toBe(true)
+    db.close()
+    expect(readValues(currentDb)).toEqual(['CURRENT'])
     vi.restoreAllMocks()
   })
 
