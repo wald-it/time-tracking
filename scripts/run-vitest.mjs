@@ -2,7 +2,7 @@
  * Runs Vitest on the Electron binary in Node mode (`ELECTRON_RUN_AS_NODE=1`).
  *
  * Why this exists: the tests run in the runtime the app ships. Electron brings
- * its own Node (24.x with Electron 44), and the host may have another one
+ * its own Node (24.x with Electron 45), and the host may have another one
  * (CI uses Node 22). Test code that behaves differently on the two would pass
  * here and fail in the app, or the other way round.
  *

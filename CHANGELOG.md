@@ -9,6 +9,7 @@ All notable changes to TimeTrack are documented here.
 
 ### Changed
 
+- Electron 45 (Chromium 156, Node 24.22); Electron 44 support ends in March 2027 (#354).
 - Package smoke test no longer depends on the synchronous safeStorage API removed in Electron 46: it always proves an async round trip and proves legacy bytes only while the sync API exists (#354).
 
 ## [2.5.1] — 2026-11-05
