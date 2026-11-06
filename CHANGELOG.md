@@ -7,6 +7,8 @@ All notable changes to TimeTrack are documented here.
 
 ## [Unreleased]
 
+## [2.6.1] — 2026-11-06
+
 ### Fixed
 
 - Daily backups use the default folder when the configured folder is unreachable, and return to the configured folder when it is available again; meanwhile the backup list and restore use the default folder too, and the warning in Settings → Data names the default folder (#506).
