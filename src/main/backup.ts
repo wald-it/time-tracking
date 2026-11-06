@@ -82,6 +82,19 @@ export interface BackupListing {
   dirForRestore(filename: unknown, folder?: unknown, backupPathOverride?: string): string | null
 }
 
+/**
+ * #512: the default folder is listed next to a reachable custom folder. If it
+ * cannot be read, the custom backups must still be listed, as before #512.
+ */
+function listDefaultAlongside(defaultDir: string): BackupInfo[] {
+  try {
+    return listBackups(defaultDir, 'default')
+  } catch (err) {
+    console.warn('[backup] Default backup folder unreadable, listing the custom folder only:', err)
+    return []
+  }
+}
+
 function sameDirectory(a: string, b: string): boolean {
   const left = normalize(resolve(a))
   const right = normalize(resolve(b))
@@ -102,7 +115,7 @@ export function createBackupListing(): BackupListing {
       const defaultDir = getDefaultBackupsDir()
       const result = sameDirectory(dir, defaultDir)
         ? listBackups(defaultDir, 'default')
-        : [...listBackups(dir, 'custom'), ...listBackups(defaultDir, 'default')].sort((a, b) =>
+        : [...listBackups(dir, 'custom'), ...listDefaultAlongside(defaultDir)].sort((a, b) =>
             b.createdAt.localeCompare(a.createdAt)
           )
       listed = result.map((b) => ({

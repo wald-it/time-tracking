@@ -194,6 +194,15 @@ describe('backup IPC folder binding (#512)', () => {
     })
   })
 
+  it('still lists the custom backups when the default folder cannot be read', async () => {
+    backup(custom, 'CUSTOM')
+    writeFileSync(defaultDir, 'blocked')
+    expect(await invoke('backup:list')).toMatchObject({
+      ok: true,
+      data: [{ filename: NAME, folder: 'custom' }]
+    })
+  })
+
   it('checks the folder asynchronously for the banner poll', async () => {
     writeFileSync(custom, 'blocked')
     const pending = handlers.get('backup:get-path-info')!(null)
