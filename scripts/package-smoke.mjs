@@ -187,14 +187,22 @@ async function runSmoke(dir, exe, timeoutMs) {
   if (!(report.pdfBytes >= 1000)) {
     throw new ProbeError(`expected pdfBytes >= 1000, got ${report.pdfBytes}`)
   }
-  // CI has no guaranteed keychain setup. A skip is evidence that the migration
-  // was not tested, so it must not turn a package green.
-  if (report.safeStorageAsync?.ok !== true || report.safeStorageAsync?.skipped) {
+  // Require an async round trip and an explicit legacy verdict (#354).
+  // A skip cannot prove compatibility; Electron 46 removes the sync API.
+  const proof = report.safeStorageAsync
+  const skipped = Object.hasOwn(proof ?? {}, 'skipped')
+  if (proof?.ok !== true || skipped) {
+    const reason = skipped
+      ? `skipped (${JSON.stringify(proof.skipped)})`
+      : proof?.reason || 'missing or failed result'
+    throw new ProbeError(`safeStorage async compatibility not proven: ${reason}`)
+  }
+  if (proof.legacy !== 'proven' && proof.legacy !== 'sync API removed') {
     throw new ProbeError(
-      `safeStorage async compatibility not proven: ${report.safeStorageAsync?.skipped ?? report.safeStorageAsync?.reason ?? 'missing or failed result'}`
+      `safeStorage async compatibility not proven: missing or invalid legacy verdict (${JSON.stringify(proof.legacy)})`
     )
   }
-  console.log('safeStorage async compatibility proven')
+  console.log(`safeStorage async compatibility proven (legacy: ${proof.legacy})`)
   // #272: the app windows run sandboxed and their preload still exposes the API.
   const sandbox = report.sandbox
   if (!sandbox) throw new ProbeError('smoke report has no sandbox probe')
