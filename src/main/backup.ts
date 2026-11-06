@@ -50,6 +50,36 @@ export function getBackupsDir(backupPathOverride?: string): string {
   return dir
 }
 
+/**
+ * #506 — the folder the daily backup, the backup list and the restore use:
+ * the configured `backup_path` when it can be created and read, otherwise the
+ * default folder (logged with both paths). The manual backup does not use
+ * this; it still fails visibly on an unreachable folder.
+ */
+export function effectiveBackupsDir(
+  backupPathOverride?: string,
+  what = 'using the default folder'
+): string {
+  const configured = backupPathOverride?.trim()
+  if (!configured) return getDefaultBackupsDir()
+  const dir = normalize(configured)
+  try {
+    mkdirSync(dir, { recursive: true })
+    readdirSync(dir)
+    return dir
+  } catch (err) {
+    const fallback = getDefaultBackupsDir()
+    console.warn(
+      `[backup] Backup folder unreachable, ${what}:`,
+      configured,
+      '->',
+      fallback,
+      err
+    )
+    return fallback
+  }
+}
+
 function isoTimestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-')
 }
@@ -245,23 +275,10 @@ export function rotateDailyBackups(retain = DAILY_RETENTION, backupDirOverride?:
  */
 export async function runDailyBackupIfNeeded(db: Database.Database): Promise<void> {
   try {
-    const override = readBackupPathSetting(db)
-    let dir = override ?? getDefaultBackupsDir()
-    if (override) {
-      try {
-        mkdirSync(dir, { recursive: true })
-        readdirSync(dir)
-      } catch (err) {
-        dir = getDefaultBackupsDir()
-        console.warn(
-          '[backup] Backup folder unreachable, daily backup goes to the default folder:',
-          override,
-          '->',
-          dir,
-          err
-        )
-      }
-    }
+    const dir = effectiveBackupsDir(
+      readBackupPathSetting(db),
+      'daily backup goes to the default folder'
+    )
     const today = todayDate()
     const existing = listBackups(dir).find(
       (b) => b.reason === 'daily' && b.filename.includes(today)
@@ -353,7 +370,7 @@ export function restoreBackupOrReport(
 
 /**
  * #272 — `backup:restore` takes the file NAME of a backup that `listBackups`
- * shows for the current backup folder, never a path. Anything else is refused
+ * shows for the effective backup folder (#506), never a path. Anything else is refused
  * before the open database is touched. The texts follow `locale` (#270).
  */
 export function restoreListedBackupOrReport(
@@ -369,11 +386,16 @@ export function restoreListedBackupOrReport(
   try {
     listed =
       typeof filename === 'string'
-        ? listBackups(backupPathOverride).find((b) => b.filename === filename)
+        ? listBackups(
+            // #506: the same folder `backup:list` showed — the default one
+            // while the configured folder is unreachable.
+            effectiveBackupsDir(backupPathOverride, 'restore uses the default folder')
+          ).find((b) => b.filename === filename)
         : undefined
   } catch (err) {
-    // The folder is unreachable (an offline network share): say so here, the
-    // renderer relaunches right after and would swallow its own message.
+    // Reading the folder failed anyway (it vanished between check and read):
+    // say so here, the renderer relaunches right after and would swallow its
+    // own message.
     const message = t('mainDialog.restore.failed', { cause: (err as Error).message })
     report(t('mainDialog.restore.title'), message)
     return { ok: false, error: message }

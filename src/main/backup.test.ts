@@ -466,6 +466,24 @@ describe('restoreListedBackupOrReport', () => {
     db.close()
   })
 
+  it('restores a fallback backup from the default folder while the configured one is unreachable (#506)', async () => {
+    const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    listedBackup(getBackupsDir()) // default folder, where the fallback went
+    const blocked = join(userDataDir, 'blocked')
+    makeFile(blocked)
+    const currentDb = join(userDataDir, 'current.sqlite')
+    const db = walDb(currentDb, 'CURRENT')
+    const reports: string[] = []
+    const res = restoreListedBackupOrReport(db, NAME, blocked, currentDb, 'de', (t) =>
+      reports.push(t)
+    )
+    expect(res.ok).toBe(true)
+    expect(reports).toEqual([])
+    expect(readValues(currentDb)).toEqual(['BACKUP'])
+    vi.restoreAllMocks()
+  })
+
   it('refuses a listed file that is not a SQLite database', async () => {
     const { restoreListedBackupOrReport, getBackupsDir } = await loadBackup()
     makeFile(join(getBackupsDir(), NAME), 'not a database')
@@ -501,6 +519,55 @@ describe('hasSqliteHeader', () => {
     const { hasSqliteHeader } = await loadBackup()
     // A directory: opening or reading it fails with something other than ENOENT.
     expect(() => hasSqliteHeader(userDataDir)).toThrow()
+  })
+})
+
+describe('effectiveBackupsDir (#506)', () => {
+  it('is the default folder without a configured one', async () => {
+    const { effectiveBackupsDir, getDefaultBackupsDir } = await loadBackup()
+    expect(effectiveBackupsDir(undefined)).toBe(getDefaultBackupsDir())
+    expect(effectiveBackupsDir('  ')).toBe(getDefaultBackupsDir())
+  })
+
+  it('is the configured folder while it is reachable', async () => {
+    const { effectiveBackupsDir } = await loadBackup()
+    const custom = join(userDataDir, 'custom')
+    expect(effectiveBackupsDir(custom)).toBe(custom)
+    expect(existsSync(custom)).toBe(true)
+  })
+
+  it('falls back to the default folder and lists its backups while the configured one is unreachable', async () => {
+    const { effectiveBackupsDir, getDefaultBackupsDir, listBackups } = await loadBackup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const blocked = join(userDataDir, 'blocked')
+    makeFile(blocked)
+    mkdirSync(getDefaultBackupsDir(), { recursive: true })
+    makeFile(join(getDefaultBackupsDir(), 'backup-daily-2026-11-05.sqlite'))
+
+    const dir = effectiveBackupsDir(blocked, 'backup list shows the default folder')
+
+    expect(dir).toBe(getDefaultBackupsDir())
+    expect(listBackups(dir).map((b) => b.filename)).toEqual(['backup-daily-2026-11-05.sqlite'])
+    expect(warn).toHaveBeenCalledWith(
+      '[backup] Backup folder unreachable, backup list shows the default folder:',
+      blocked,
+      '->',
+      getDefaultBackupsDir(),
+      expect.any(Error)
+    )
+    vi.restoreAllMocks()
+  })
+
+  // Known limit (#512): once the configured folder is back, the list shows
+  // only that folder; backups written to the default folder meanwhile are
+  // not listed there.
+  it('shows only the configured folder again once it is reachable', async () => {
+    const { effectiveBackupsDir, getDefaultBackupsDir, listBackups } = await loadBackup()
+    mkdirSync(getDefaultBackupsDir(), { recursive: true })
+    makeFile(join(getDefaultBackupsDir(), 'backup-daily-2026-11-05.sqlite'))
+    const custom = join(userDataDir, 'custom')
+
+    expect(listBackups(effectiveBackupsDir(custom))).toEqual([])
   })
 })
 
